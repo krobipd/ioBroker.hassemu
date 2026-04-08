@@ -1,0 +1,130 @@
+{
+  "common": {
+    "name": "hassemu",
+    "version": "1.0.0",
+    "news": {
+      "1.0.0": {
+        "en": "Renamed from homeassistant-bridge to hassemu",
+        "de": "Umbenannt von homeassistant-bridge zu hassemu",
+        "ru": "Переименован из homeassistant-bridge в hassemu",
+        "pt": "Renomeado de homeassistant-bridge para hassemu",
+        "nl": "Hernoemd van homeassistant-bridge naar hassemu",
+        "fr": "Renommé de homeassistant-bridge en hassemu",
+        "it": "Rinominato da homeassistant-bridge a hassemu",
+        "es": "Renombrado de homeassistant-bridge a hassemu",
+        "pl": "Zmieniono nazwę z homeassistant-bridge na hassemu",
+        "uk": "Перейменовано з homeassistant-bridge на hassemu",
+        "zh-cn": "从homeassistant-bridge重命名为hassemu"
+      }
+    },
+    "titleLang": {
+      "en": "Home Assistant Emulator",
+      "de": "Home Assistant Emulator",
+      "ru": "Эмулятор Home Assistant",
+      "pt": "Emulador de Home Assistant",
+      "nl": "Home Assistant Emulator",
+      "fr": "Émulateur Home Assistant",
+      "it": "Emulatore Home Assistant",
+      "es": "Emulador de Home Assistant",
+      "pl": "Emulator Home Assistant",
+      "uk": "Емулятор Home Assistant",
+      "zh-cn": "Home Assistant模拟器"
+    },
+    "desc": {
+      "en": "Emulates a minimal Home Assistant server so devices expecting a Home Assistant dashboard can display any custom web URL.",
+      "de": "Emuliert einen minimalen Home Assistant Server, sodass Geräte mit Home-Assistant-Dashboard-Unterstützung beliebige Web-URLs anzeigen können.",
+      "ru": "Эмулирует минимальный сервер Home Assistant, чтобы устройства, ожидающие панель управления Home Assistant, могли отображать любой пользовательский URL.",
+      "pt": "Emula um servidor Home Assistant mínimo para que dispositivos que esperam um painel do Home Assistant possam exibir qualquer URL web personalizado.",
+      "nl": "Emuleert een minimale Home Assistant server zodat apparaten die een Home Assistant dashboard verwachten elke aangepaste web-URL kunnen weergeven.",
+      "fr": "Émule un serveur Home Assistant minimal pour que les appareils attendant un tableau de bord Home Assistant puissent afficher n'importe quelle URL web personnalisée.",
+      "it": "Emula un server Home Assistant minimale in modo che i dispositivi che si aspettano una dashboard Home Assistant possano visualizzare qualsiasi URL web personalizzato.",
+      "es": "Emula un servidor Home Assistant mínimo para que los dispositivos que esperan un panel de Home Assistant puedan mostrar cualquier URL web personalizada.",
+      "pl": "Emuluje minimalny serwer Home Assistant, dzięki czemu urządzenia oczekujące pulpitu nawigacyjnego Home Assistant mogą wyświetlać dowolny niestandardowy adres URL.",
+      "uk": "Емулює мінімальний сервер Home Assistant, щоб пристрої, що очікують панель Home Assistant, могли відображати будь-яку користувацьку URL-адресу.",
+      "zh-cn": "模拟一个最小的Home Assistant服务器，使期望Home Assistant仪表板的设备能够显示任何自定义网址。"
+    },
+    "authors": [
+      "krobi <krobi@power-dreams.com>"
+    ],
+    "keywords": [
+      "homeassistant",
+      "hass",
+      "shelly",
+      "wall display",
+      "vis",
+      "emulator"
+    ],
+    "licenseInformation": {
+      "license": "MIT",
+      "type": "free"
+    },
+    "platform": "Javascript/Node.js",
+    "icon": "hassemu.svg",
+    "extIcon": "https://raw.githubusercontent.com/krobipd/ioBroker.hassemu/main/admin/hassemu.svg",
+    "readme": "https://github.com/krobipd/ioBroker.hassemu/blob/main/README.md",
+    "enabled": true,
+    "tier": 3,
+    "loglevel": "info",
+    "mode": "daemon",
+    "type": "infrastructure",
+    "compact": true,
+    "connectionType": "local",
+    "dataSource": "push",
+    "adminUI": {
+      "config": "json"
+    },
+    "supportedMessages": {
+      "stopInstance": true
+    },
+    "dependencies": [
+      {
+        "js-controller": ">=7.0.0"
+      }
+    ],
+    "globalDependencies": [
+      {
+        "admin": ">=7.6.20"
+      }
+    ]
+  },
+  "encryptedNative": [
+    "password"
+  ],
+  "protectedNative": [
+    "password"
+  ],
+  "native": {
+    "port": 8123,
+    "bindAddress": "0.0.0.0",
+    "visUrl": "",
+    "authRequired": false,
+    "username": "admin",
+    "password": "",
+    "mdnsEnabled": true,
+    "serviceName": "ioBroker"
+  },
+  "objects": [],
+  "instanceObjects": [
+    {
+      "_id": "info",
+      "type": "channel",
+      "common": {
+        "name": "Information"
+      },
+      "native": {}
+    },
+    {
+      "_id": "info.connection",
+      "type": "state",
+      "common": {
+        "role": "indicator.connected",
+        "name": "Server is running",
+        "type": "boolean",
+        "read": true,
+        "write": false,
+        "def": false
+      },
+      "native": {}
+    }
+  ]
+}
