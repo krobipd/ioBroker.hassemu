@@ -12,7 +12,7 @@
     "header_server": "Serveur",
     "mdnsEnabled": "Activer la Découverte mDNS",
     "mdnsEnabledTooltip": "Diffuser le service via mDNS pour que les appareils le trouvent automatiquement (fonctionne sur toutes les plateformes)",
-    "mdnsInfo": "mDNS diffuse le service sur le réseau local pour que les appareils (ex. Shelly Wall Display) puissent le découvrir automatiquement.\n\nSi mDNS est désactivé ou ne fonctionne pas, entrez l'URL manuellement sur l'écran:\n`http://YOUR_IP:8123`",
+    "mdnsInfo": "mDNS diffuse le service sur le réseau local pour que les appareils puissent le découvrir automatiquement.\n\nSi mDNS est désactivé ou ne fonctionne pas, entrez l'URL manuellement sur l'écran:\n`http://YOUR_IP:8123`",
     "password": "Mot de passe",
     "serviceName": "Nom du Service",
     "serviceNameTooltip": "Nom affiché sur l'écran pendant la découverte",

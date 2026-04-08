@@ -4,18 +4,19 @@
 
 ## Projekt
 
-**ioBroker HASS Emulator** — Emuliert minimalen HA-Server für Shelly Wall Displays → Redirect zu VIS Dashboard.
+**ioBroker HASS Emulator** — Emuliert minimalen HA-Server für Geräte die ein HA-Dashboard erwarten → Redirect zu beliebiger URL.
 
 - **Version:** 1.0.0 (April 2026)
 - **GitHub:** https://github.com/krobipd/ioBroker.hassemu
 - **npm:** https://www.npmjs.com/package/iobroker.hassemu
+- **Repository PR:** ioBroker/ioBroker.repositories#5793
 - **Vorher:** homeassistant-bridge (umbenannt wegen irreführendem Namen)
 - **Runtime-Deps:** `@iobroker/adapter-core`, `express` (v5), `bonjour-service`
 
-## Shelly Wall Display — Limitationen
+## HA-Kompatible Geräte — Limitationen
 
-| Aspekt | Shelly Verhalten |
-|--------|------------------|
+| Aspekt | Typisches Verhalten |
+|--------|---------------------|
 | Protokoll | **Nur HTTP** — kein HTTPS für HA-Verbindungen |
 | Discovery | mDNS (`_home-assistant._tcp`) oder manuelle IP |
 | Auth | Erwartet vollständigen HA OAuth2-Flow |
@@ -33,11 +34,11 @@ src/lib/mdns.ts          → mDNS Broadcasting via bonjour-service
 
 ## Design-Entscheidungen
 
-1. **Minimale Komplexität** — nur emulieren was Shelly braucht
+1. **Minimale Komplexität** — nur emulieren was HA-Clients brauchen
 2. **Shared UUID** — eine UUID in main.ts, an WebServer + mDNS durchgereicht
-3. **Port 8123 fix** — Shelly-Anforderung, nicht konfigurierbar
-4. **mDNS kontinuierlich** — Broadcasting solange Adapter läuft (Shelly muss jederzeit finden können)
-5. **Kein HTTPS** — Shelly unterstützt es nicht für HA
+3. **Port 8123 fix** — HA-Standard-Port, nicht konfigurierbar
+4. **mDNS kontinuierlich** — Broadcasting solange Adapter läuft
+5. **Kein HTTPS** — HA-Clients erwarten HTTP auf Port 8123
 6. **Kein Rate Limiting** — nur Redirects, keine schützenswerten Daten
 
 ## Auth-Flow
@@ -64,8 +65,6 @@ test/integration.js      → @iobroker/testing Integration-Tests (plain JS)
 | 1.0.0 | Umbenannt von homeassistant-bridge zu hassemu |
 | 0.9.3 | Review-Fixes: Standard-Tests (plain JS), CHANGELOG.md entfernt |
 | 0.9.2 | Kompakter Startup-Log, mDNS/WebServer Detail-Logs auf debug |
-| 0.9.1 | Shared UUID (WebServer + mDNS konsistent), cleanup redundante Scripts |
-| 0.9.0 | mDNS: Avahi durch bonjour-service ersetzt (cross-platform) |
 
 ## Befehle
 

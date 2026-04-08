@@ -12,7 +12,7 @@
     "header_server": "服务器",
     "mdnsEnabled": "启用 mDNS 发现",
     "mdnsEnabledTooltip": "通过 mDNS 广播服务，使设备能够自动找到它（适用于所有平台）",
-    "mdnsInfo": "mDNS 在本地网络上广播服务，使设备（如 Shelly Wall Display）能够自动发现它。\n\n如果 mDNS 已禁用或无法正常工作，请在显示屏上手动输入 URL：\n`http://YOUR_IP:8123`",
+    "mdnsInfo": "mDNS 在本地网络上广播服务，使设备能够自动发现它。\n\n如果 mDNS 已禁用或无法正常工作，请在显示屏上手动输入 URL：\n`http://YOUR_IP:8123`",
     "password": "密码",
     "serviceName": "服务名称",
     "serviceNameTooltip": "发现期间在显示屏上显示的名称",

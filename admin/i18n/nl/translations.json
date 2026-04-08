@@ -12,7 +12,7 @@
     "header_server": "Server",
     "mdnsEnabled": "mDNS-detectie inschakelen",
     "mdnsEnabledTooltip": "De service via mDNS uitzenden zodat apparaten deze automatisch kunnen vinden (werkt op alle platformen)",
-    "mdnsInfo": "mDNS zendt de service uit op het lokale netwerk zodat apparaten (bijv. Shelly Wall Display) deze automatisch kunnen ontdekken.\n\nAls mDNS uitgeschakeld is of niet werkt, voer de URL handmatig in op het scherm:\n`http://YOUR_IP:8123`",
+    "mdnsInfo": "mDNS zendt de service uit op het lokale netwerk zodat apparaten deze automatisch kunnen ontdekken.\n\nAls mDNS uitgeschakeld is of niet werkt, voer de URL handmatig in op het scherm:\n`http://YOUR_IP:8123`",
     "password": "Wachtwoord",
     "serviceName": "Servicenaam",
     "serviceNameTooltip": "Naam weergegeven op het scherm tijdens detectie",

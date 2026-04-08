@@ -109,7 +109,7 @@ export class WebServer {
     }
 
     private setupApiRoutes(): void {
-        // CRITICAL: trailing slash — Shelly checks this endpoint for discovery
+        // CRITICAL: trailing slash — HA clients check this endpoint for discovery
         this.app.get('/api/', (_req: Request, res: Response) => {
             this.json(res, { message: 'API running.' });
         });

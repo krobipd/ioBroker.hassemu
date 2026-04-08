@@ -11,7 +11,7 @@
 
 <img src="https://raw.githubusercontent.com/krobipd/ioBroker.hassemu/main/admin/hassemu.svg" width="100" />
 
-Emulates a minimal [Home Assistant](https://www.home-assistant.io) server so that devices like the [Shelly Wall Display XL](https://www.shelly.com) can be redirected to any custom web URL — without running a real Home Assistant Core.
+Emulates a minimal [Home Assistant](https://www.home-assistant.io) server so that devices expecting a Home Assistant dashboard can be redirected to any custom web URL — without running a real Home Assistant Core.
 
 > Previously known as `ioBroker.homeassistant-bridge`. Renamed to better reflect that this adapter emulates, not bridges.
 
@@ -19,7 +19,7 @@ Emulates a minimal [Home Assistant](https://www.home-assistant.io) server so tha
 
 ## Features
 
-- **Home Assistant Emulation** — minimal HA API compatible with Shelly Wall Display XL
+- **Home Assistant Emulation** — minimal HA API for devices expecting a Home Assistant dashboard
 - **mDNS Discovery** — automatic detection via `_home-assistant._tcp` (cross-platform)
 - **OAuth2-like Auth Flow** — full login flow emulation, optional credential validation
 - **Flexible Redirect** — send the display to any ioBroker VIS, VIS-2, or custom web URL
@@ -39,7 +39,7 @@ Emulates a minimal [Home Assistant](https://www.home-assistant.io) server so tha
 
 | Port | Protocol | Purpose | Configurable |
 |------|----------|---------|--------------|
-| 8123 | TCP/HTTP | Home Assistant emulation (Shelly requires exactly this port) | No — fixed |
+| 8123 | TCP/HTTP | Home Assistant emulation (HA standard port) | No — fixed |
 
 ---
 
@@ -57,7 +57,7 @@ Configuration is done via the Admin UI (jsonConfig):
 | **Username** | Login name (if auth enabled) | "admin" |
 | **Password** | Login password (stored encrypted) | - |
 
-> **Important: Port 8123 is mandatory.** The adapter always listens on port 8123 — this is hardcoded and cannot be changed. Shelly displays and other Home Assistant-compatible devices expect exactly this port. Make sure port 8123 is not already in use on your ioBroker server.
+> **Important: Port 8123 is mandatory.** The adapter always listens on port 8123 — this is the standard Home Assistant port and cannot be changed. Make sure port 8123 is not already in use on your ioBroker server.
 
 **Important:** The redirect URL must be a network-accessible address, e.g.:
 ```
