@@ -25,7 +25,7 @@ var import_node_crypto = __toESM(require("node:crypto"));
 var utils = __toESM(require("@iobroker/adapter-core"));
 var import_mdns = require("./lib/mdns");
 var import_webserver = require("./lib/webserver");
-class HomeAssistantBridge extends utils.Adapter {
+class HassEmu extends utils.Adapter {
   mdnsService = null;
   webServer = null;
   constructor(options = {}) {
@@ -73,7 +73,7 @@ class HomeAssistantBridge extends utils.Adapter {
       await this.setStateAsync("info.connection", true, true);
       const bindAddr = config.bindAddress || "0.0.0.0";
       this.log.info(
-        `Home Assistant Bridge running on ${bindAddr}:${config.port}${config.mdnsEnabled ? ", mDNS active" : ""}`
+        `HA emulation running on ${bindAddr}:${config.port}${config.mdnsEnabled ? ", mDNS active" : ""}`
       );
     } catch (error) {
       const err = error;
@@ -103,8 +103,8 @@ class HomeAssistantBridge extends utils.Adapter {
   }
 }
 if (require.main !== module) {
-  module.exports = (options) => new HomeAssistantBridge(options);
+  module.exports = (options) => new HassEmu(options);
 } else {
-  (() => new HomeAssistantBridge())();
+  (() => new HassEmu())();
 }
 //# sourceMappingURL=main.js.map

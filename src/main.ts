@@ -16,7 +16,7 @@ interface NativeConfig {
     serviceName: string;
 }
 
-class HomeAssistantBridge extends utils.Adapter {
+class HassEmu extends utils.Adapter {
     private mdnsService: MDNSService | null = null;
     private webServer: WebServer | null = null;
 
@@ -80,7 +80,7 @@ class HomeAssistantBridge extends utils.Adapter {
             await this.setStateAsync('info.connection', true, true);
             const bindAddr = config.bindAddress || '0.0.0.0';
             this.log.info(
-                `Home Assistant Bridge running on ${bindAddr}:${config.port}${config.mdnsEnabled ? ', mDNS active' : ''}`,
+                `HA emulation running on ${bindAddr}:${config.port}${config.mdnsEnabled ? ', mDNS active' : ''}`,
             );
         } catch (error) {
             const err = error as Error;
@@ -115,8 +115,8 @@ class HomeAssistantBridge extends utils.Adapter {
 
 if (require.main !== module) {
     // Export the constructor in compact mode
-    module.exports = (options: Partial<utils.AdapterOptions> | undefined) => new HomeAssistantBridge(options);
+    module.exports = (options: Partial<utils.AdapterOptions> | undefined) => new HassEmu(options);
 } else {
     // Otherwise start the instance directly
-    (() => new HomeAssistantBridge())();
+    (() => new HassEmu())();
 }
