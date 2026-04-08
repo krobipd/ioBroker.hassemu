@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.0.0",
+    "version": "1.0.2",
     "news": {
+      "1.0.2": {
+        "en": "Remove build/ from git tracking, fix .gitignore, clean up keywords and metadata",
+        "de": "build/ aus Git-Tracking entfernt, .gitignore korrigiert, Keywords und Metadaten bereinigt",
+        "ru": "Удален build/ из отслеживания git, исправлен .gitignore, очищены ключевые слова и метаданные",
+        "pt": "Removido build/ do rastreamento git, corrigido .gitignore, limpeza de palavras-chave e metadados",
+        "nl": "build/ verwijderd uit git-tracking, .gitignore gecorrigeerd, trefwoorden en metadata opgeschoond",
+        "fr": "Suppression de build/ du suivi git, correction de .gitignore, nettoyage des mots-clés et métadonnées",
+        "it": "Rimosso build/ dal tracciamento git, corretto .gitignore, pulizia parole chiave e metadati",
+        "es": "Eliminado build/ del seguimiento git, corregido .gitignore, limpieza de palabras clave y metadatos",
+        "pl": "Usunięto build/ ze śledzenia git, poprawiono .gitignore, wyczyszczono słowa kluczowe i metadane",
+        "uk": "Видалено build/ з відстеження git, виправлено .gitignore, очищено ключові слова та метадані",
+        "zh-cn": "从git跟踪中删除build/，修复.gitignore，清理关键词和元数据"
+      },
       "1.0.0": {
         "en": "Renamed from homeassistant-bridge to hassemu",
         "de": "Umbenannt von homeassistant-bridge zu hassemu",
@@ -49,10 +62,10 @@
     "keywords": [
       "homeassistant",
       "hass",
-      "shelly",
-      "wall display",
-      "vis",
-      "emulator"
+      "emulator",
+      "dashboard",
+      "redirect",
+      "vis"
     ],
     "licenseInformation": {
       "license": "MIT",

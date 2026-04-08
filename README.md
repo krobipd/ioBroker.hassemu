@@ -113,6 +113,9 @@ http://<IP>:8123/health
 
 ## Changelog
 
+### 1.0.2 (2026-04-08)
+- Remove build/ from git tracking, fix .gitignore, clean up keywords and metadata
+
 ### 1.0.0 (2026-04-08)
 - Renamed from homeassistant-bridge to hassemu
 
