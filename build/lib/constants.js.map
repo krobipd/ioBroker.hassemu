@@ -1,7 +1,0 @@
-{
-  "version": 3,
-  "sources": ["../../src/lib/constants.ts"],
-  "sourcesContent": ["/**\n * Shared constants for the hassemu adapter\n */\n\n/** Emulated Home Assistant version (March 2026) */\nexport const HA_VERSION = '2026.3.1';\n\n/** Session TTL: 10 minutes */\nexport const SESSION_TTL_MS = 10 * 60 * 1000;\n\n/** Cleanup interval: 5 minutes */\nexport const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;\n\n/** Login form schema for Home Assistant auth flow */\nexport const LOGIN_SCHEMA = [\n    { name: 'username', required: true, type: 'string' },\n    { name: 'password', required: true, type: 'string' },\n] as const;\n"],
-  "mappings": ";;;;;;;;;;;;;;;;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAKO,MAAM,aAAa;AAGnB,MAAM,iBAAiB,KAAK,KAAK;AAGjC,MAAM,sBAAsB,IAAI,KAAK;AAGrC,MAAM,eAAe;AAAA,EACxB,EAAE,MAAM,YAAY,UAAU,MAAM,MAAM,SAAS;AAAA,EACnD,EAAE,MAAM,YAAY,UAAU,MAAM,MAAM,SAAS;AACvD;",
-  "names": []
-}

@@ -363,7 +363,7 @@ export class WebServer {
         return new Promise(resolve => {
             if (this.server) {
                 this.server.close(() => {
-                    this.adapter.log.info('Web server stopped');
+                    this.adapter.log.debug('Web server stopped');
                     this.server = null;
                     resolve();
                 });

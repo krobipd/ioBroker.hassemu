@@ -1,7 +1,0 @@
-{
-  "version": 3,
-  "sources": ["../../src/lib/types.ts"],
-  "sourcesContent": ["/**\n * Type definitions for the hassemu adapter\n */\n\n/** Adapter configuration from io-package.json native section */\nexport interface AdapterConfig {\n    /** HTTP port for the web server */\n    port: number;\n    /** IP address to bind the server to (0.0.0.0 = all interfaces) */\n    bindAddress: string;\n    /** URL to redirect to after authentication */\n    visUrl: string;\n    /** Whether authentication is required */\n    authRequired: boolean;\n    /** Username for authentication */\n    username: string;\n    /** Password for authentication */\n    password: string;\n    /** Whether mDNS broadcasting is enabled */\n    mdnsEnabled: boolean;\n    /** Service name for mDNS discovery */\n    serviceName: string;\n}\n\n/** Session data stored in the sessions map */\nexport interface SessionData {\n    /** Timestamp when the session was created */\n    created: number;\n}\n\n/** Minimal adapter interface for dependency injection */\nexport interface AdapterInterface {\n    /** Logger interface for adapter logging */\n    log: {\n        debug: (msg: string) => void;\n        info: (msg: string) => void;\n        warn: (msg: string) => void;\n        error: (msg: string) => void;\n    };\n    /** Adapter-managed setInterval (auto-cleanup on unload) */\n    setInterval: (callback: () => void, ms: number) => any;\n    /** Adapter-managed clearInterval */\n    clearInterval: (id: any) => void;\n}\n"],
-  "mappings": ";;;;;;;;;;;;;;AAAA;AAAA;",
-  "names": []
-}

@@ -6,7 +6,7 @@
   <path d="M32 12 L12 28 L12 52 L24 52 L24 38 L40 38 L40 52 L52 52 L52 28 Z"
         fill="white" stroke="white" stroke-width="2" stroke-linejoin="round"/>
 
-  <!-- Bridge connection symbol -->
+  <!-- Connection symbol -->
   <path d="M20 44 Q32 36 44 44"
         fill="none" stroke="#41BDF5" stroke-width="3" stroke-linecap="round"/>
   <circle cx="20" cy="44" r="3" fill="#41BDF5"/>
