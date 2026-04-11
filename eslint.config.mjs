@@ -13,17 +13,8 @@ export default [
         },
     },
     {
-        // Test files use Mocha globals
-        files: ['test/**/*.ts'],
-        languageOptions: {
-            globals: {
-                describe: 'readonly',
-                it: 'readonly',
-                before: 'readonly',
-                after: 'readonly',
-                beforeEach: 'readonly',
-                afterEach: 'readonly',
-            },
+        rules: {
+            "@typescript-eslint/no-floating-promises": "error",
         },
     },
     {

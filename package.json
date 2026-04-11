@@ -1,6 +1,6 @@
 {
   "name": "iobroker.hassemu",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Emulates a minimal Home Assistant server so devices expecting a Home Assistant dashboard can display any custom web URL.",
   "author": {
     "name": "krobi",
@@ -46,8 +46,6 @@
     "@types/iobroker": "npm:@iobroker/types@^7.1.0",
     "@types/node": "^25.5.0",
     "rimraf": "^6.1.3",
-    "source-map-support": "^0.5.21",
-    "ts-node": "^10.9.2",
     "typescript": "~5.9.3"
   },
   "main": "build/main.js",
@@ -62,7 +60,7 @@
     "build": "build-adapter ts",
     "watch": "build-adapter ts --watch",
     "check": "tsc --noEmit",
-    "test:ts": "npm run build:test && mocha --exit \"build/test/testConstants.js\" \"build/test/testMdns.js\" \"build/test/testWebServer.js\"",
+    "test:ts": "npm run build:test && mocha --exit \"build/test/test*.js\"",
     "test:package": "mocha test/package --exit",
     "test:integration": "mocha test/integration --exit",
     "test": "npm run build && npm run test:ts && npm run test:package",
