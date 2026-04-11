@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "news": {
+      "1.0.3": {
+        "en": "Remove unused devDependencies, add no-floating-promises lint rule, remove redundant CI checkout",
+        "de": "Ungenutzte devDependencies entfernt, no-floating-promises Lint-Regel hinzugefügt, redundanten CI-Checkout entfernt",
+        "ru": "Удалены неиспользуемые devDependencies, добавлено правило lint no-floating-promises, удален избыточный checkout в CI",
+        "pt": "Removidas devDependencies não utilizadas, adicionada regra lint no-floating-promises, removido checkout redundante no CI",
+        "nl": "Ongebruikte devDependencies verwijderd, no-floating-promises lintregel toegevoegd, redundante CI-checkout verwijderd",
+        "fr": "Suppression des devDependencies inutilisées, ajout de la règle lint no-floating-promises, suppression du checkout CI redondant",
+        "it": "Rimosse devDependencies inutilizzate, aggiunta regola lint no-floating-promises, rimosso checkout CI ridondante",
+        "es": "Eliminadas devDependencies no utilizadas, añadida regla lint no-floating-promises, eliminado checkout CI redundante",
+        "pl": "Usunięto nieużywane devDependencies, dodano regułę lint no-floating-promises, usunięto nadmiarowy checkout w CI",
+        "uk": "Видалено невикористані devDependencies, додано правило лінтингу no-floating-promises, видалено зайвий checkout у CI",
+        "zh-cn": "移除未使用的开发依赖，添加 no-floating-promises 检查规则，移除冗余的 CI checkout"
+      },
       "1.0.2": {
         "en": "Remove build/ from git tracking, fix .gitignore, clean up keywords and metadata",
         "de": "build/ aus Git-Tracking entfernt, .gitignore korrigiert, Keywords und Metadaten bereinigt",

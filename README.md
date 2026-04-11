@@ -113,13 +113,16 @@ http://<IP>:8123/health
 
 ## Changelog
 
+### 1.0.3 (2026-04-12)
+- Remove unused devDependencies, add `no-floating-promises` lint rule, remove redundant CI checkout
+
 ### 1.0.2 (2026-04-08)
 - Remove build/ from git tracking, fix .gitignore, clean up keywords and metadata
 
 ### 1.0.0 (2026-04-08)
 - Renamed from homeassistant-bridge to hassemu
 
-Older changelog: [CHANGELOG_OLD.md](CHANGELOG_OLD.md)
+Older entries have been moved to [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
 ---
 
