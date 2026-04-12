@@ -6,7 +6,7 @@
 
 **ioBroker HASS Emulator** — Emuliert minimalen HA-Server für Geräte die ein HA-Dashboard erwarten → Redirect zu beliebiger URL.
 
-- **Version:** 1.0.3 (April 2026)
+- **Version:** 1.0.4 (April 2026)
 - **GitHub:** https://github.com/krobipd/ioBroker.hassemu
 - **npm:** https://www.npmjs.com/package/iobroker.hassemu
 - **Repository PR:** ioBroker/ioBroker.repositories#5793
@@ -62,6 +62,7 @@ test/integration.js      → @iobroker/testing Integration-Tests (plain JS)
 
 | Version | Highlights |
 |---------|------------|
+| 1.0.4 | DRY: NativeConfig + Config-Mapping entfernt, Log-Spam Fix, createSession private |
 | 1.0.3 | Unused Deps entfernt, no-floating-promises, CI checkout entfernt |
 | 1.0.2 | build/ aus Git entfernt, .gitignore fix, Keywords bereinigt |
 | 1.0.0 | Umbenannt von homeassistant-bridge zu hassemu |

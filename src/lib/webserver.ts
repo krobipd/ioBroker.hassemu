@@ -57,7 +57,7 @@ export class WebServer {
      *
      * @param key - Unique session identifier
      */
-    createSession(key: string): void {
+    private createSession(key: string): void {
         this.sessions.set(key, { created: Date.now() });
     }
 
@@ -302,7 +302,7 @@ export class WebServer {
         // Redirect — Display WebView follows 302 natively
         this.app.get('/', (_req: Request, res: Response) => {
             if (!this.config.visUrl) {
-                this.adapter.log.error('No redirect URL configured!');
+                this.adapter.log.debug('No redirect URL configured — returning error to client');
                 this.json(
                     res,
                     {

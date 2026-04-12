@@ -285,7 +285,7 @@ class WebServer {
     });
     this.app.get("/", (_req, res) => {
       if (!this.config.visUrl) {
-        this.adapter.log.error("No redirect URL configured!");
+        this.adapter.log.debug("No redirect URL configured \u2014 returning error to client");
         this.json(
           res,
           {

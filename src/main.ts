@@ -4,23 +4,11 @@ import { MDNSService } from './lib/mdns';
 import { WebServer } from './lib/webserver';
 import type { AdapterConfig } from './lib/types';
 
-/** Native adapter configuration from io-package.json */
-interface NativeConfig {
-    port: number;
-    bindAddress: string;
-    visUrl: string;
-    authRequired: boolean;
-    username: string;
-    password: string;
-    mdnsEnabled: boolean;
-    serviceName: string;
-}
-
 class HassEmu extends utils.Adapter {
     private mdnsService: MDNSService | null = null;
     private webServer: WebServer | null = null;
 
-    declare config: NativeConfig;
+    declare config: AdapterConfig;
 
     public constructor(options: Partial<utils.AdapterOptions> = {}) {
         super({
@@ -36,51 +24,40 @@ class HassEmu extends utils.Adapter {
         try {
             await this.setStateAsync('info.connection', false, true);
 
-            // Validate configuration
             if (!this.config.visUrl) {
                 this.log.error('No redirect URL configured! Please configure a URL in the adapter settings.');
             }
 
-            const config: AdapterConfig = {
-                port: this.config.port || 8123,
-                bindAddress: this.config.bindAddress || '0.0.0.0',
-                visUrl: this.config.visUrl || '',
-                authRequired: this.config.authRequired === true,
-                username: this.config.username || 'admin',
-                password: this.config.password || '',
-                mdnsEnabled: this.config.mdnsEnabled !== false,
-                serviceName: this.config.serviceName || 'ioBroker',
-            };
-
-            // Single UUID shared between WebServer and mDNS for consistency
             const instanceUuid = crypto.randomUUID();
 
-            this.log.debug(`Config: port=${config.port}, auth=${config.authRequired}, mdns=${config.mdnsEnabled}`);
+            this.log.debug(
+                `Config: port=${this.config.port}, auth=${this.config.authRequired}, mdns=${this.config.mdnsEnabled}`,
+            );
 
-            if (config.visUrl) {
-                this.log.debug(`Target URL: ${config.visUrl}`);
+            if (this.config.visUrl) {
+                this.log.debug(`Target URL: ${this.config.visUrl}`);
 
-                if (/\blocalhost\b|127\.0\.0\.1/.test(config.visUrl)) {
+                if (/\blocalhost\b|127\.0\.0\.1/.test(this.config.visUrl)) {
                     this.log.warn(
                         'visUrl contains localhost — the display cannot reach this! Use the real IP address.',
                     );
                 }
             }
 
-            this.webServer = new WebServer(this, config, instanceUuid);
+            this.webServer = new WebServer(this, this.config, instanceUuid);
             await this.webServer.start();
 
-            if (config.mdnsEnabled) {
-                this.mdnsService = new MDNSService(this, config, instanceUuid);
+            if (this.config.mdnsEnabled) {
+                this.mdnsService = new MDNSService(this, this.config, instanceUuid);
                 this.mdnsService.start();
             } else {
                 this.log.debug('mDNS disabled — enter URL manually on the display');
             }
 
             await this.setStateAsync('info.connection', true, true);
-            const bindAddr = config.bindAddress || '0.0.0.0';
+            const bindAddr = this.config.bindAddress || '0.0.0.0';
             this.log.info(
-                `HA emulation running on ${bindAddr}:${config.port}${config.mdnsEnabled ? ', mDNS active' : ''}`,
+                `HA emulation running on ${bindAddr}:${this.config.port}${this.config.mdnsEnabled ? ', mDNS active' : ''}`,
             );
         } catch (error) {
             const err = error as Error;

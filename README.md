@@ -113,6 +113,11 @@ http://<IP>:8123/health
 
 ## Changelog
 
+### 1.0.4 (2026-04-12)
+- DRY: remove duplicate NativeConfig interface and redundant config mapping with fallbacks
+- Fix: prevent log spam when redirect URL is not configured (log once at startup, not per request)
+- Tighten `createSession` visibility to private
+
 ### 1.0.3 (2026-04-12)
 - Remove unused devDependencies, add `no-floating-promises` lint rule, remove redundant CI checkout
 
