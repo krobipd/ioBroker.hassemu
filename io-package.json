@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "news": {
+      "1.0.4": {
+        "en": "DRY: remove duplicate config interface and redundant mapping, fix log spam on missing redirect URL, tighten visibility",
+        "de": "DRY: doppeltes Config-Interface und redundantes Mapping entfernt, Log-Spam bei fehlender Redirect-URL behoben, Sichtbarkeit verschärft",
+        "ru": "DRY: удалён дублирующий интерфейс конфигурации и избыточное отображение, исправлен спам в логах при отсутствии URL перенаправления, ужесточена видимость",
+        "pt": "DRY: removida interface de configuração duplicada e mapeamento redundante, corrigido spam de log com URL de redirecionamento ausente, visibilidade restringida",
+        "nl": "DRY: dubbele config-interface en redundante mapping verwijderd, log-spam bij ontbrekende redirect-URL opgelost, zichtbaarheid verscherpt",
+        "fr": "DRY: suppression de l'interface de configuration dupliquée et du mapping redondant, correction du spam de log pour URL de redirection manquante, visibilité renforcée",
+        "it": "DRY: rimossa interfaccia di configurazione duplicata e mapping ridondante, corretto spam log con URL di reindirizzamento mancante, visibilità rafforzata",
+        "es": "DRY: eliminada interfaz de configuración duplicada y mapeo redundante, corregido spam de log con URL de redirección ausente, visibilidad reforzada",
+        "pl": "DRY: usunięto zduplikowany interfejs konfiguracji i nadmiarowe mapowanie, naprawiono spam logów przy brakującym URL przekierowania, zaostrzona widoczność",
+        "uk": "DRY: видалено дублюючий інтерфейс конфігурації та надлишкове відображення, виправлено спам логів при відсутньому URL перенаправлення, посилено видимість",
+        "zh-cn": "DRY：移除重复配置接口和冗余映射，修复缺少重定向URL时的日志刷屏，收紧可见性"
+      },
       "1.0.3": {
         "en": "Remove unused devDependencies, add no-floating-promises lint rule, remove redundant CI checkout",
         "de": "Ungenutzte devDependencies entfernt, no-floating-promises Lint-Regel hinzugefügt, redundanten CI-Checkout entfernt",
