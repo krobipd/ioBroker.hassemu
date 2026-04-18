@@ -54,7 +54,7 @@ Port 8123 is mandatory. Any HA-style display hard-codes that port number, so the
 
 ## Configuration
 
-Redirect URLs live in datapoints (see below), not in the Admin UI.
+The Admin UI only configures the server itself. Redirect URLs and per-client overrides live in the state tree below.
 
 | Option                  | Description                                                                 | Default       |
 | ----------------------- | --------------------------------------------------------------------------- | ------------- |
@@ -66,63 +66,26 @@ Redirect URLs live in datapoints (see below), not in the Admin UI.
 
 ---
 
-## Redirect URLs
-
-Two places, both datapoints with a dropdown of all known ioBroker URLs. Free text works too.
-
-- **`hassemu.0.clients.<id>.visUrl`** — per-client URL.
-- **`hassemu.0.global.visUrl`** + **`hassemu.0.global.enabled`** — global override. When `enabled` is `true`, every client is sent to `global.visUrl` regardless of the per-client value.
-
-If neither is set, hassemu serves a setup page with the client's device ID and the datapoint to fill in. The page refreshes every 15 s.
-
-URLs must be reachable from the display — use the LAN IP of the ioBroker host, not `localhost`.
-
----
-
-## Multi-client
-
-As soon as a display connects the first time, a channel is created:
-
-```
-hassemu.0.clients.<id>
-├── visUrl    — per-client URL (empty = use global or setup page)
-├── ip        — last observed IP
-└── remove    — button: forget this client
-```
-
-- The channel's display name is the reverse-DNS hostname if resolvable, otherwise the IP — visible in the Admin object browser.
-- **`remove`** forgets the client — channel, cookie, token, all gone. A returning display is re-registered with a new ID.
-- The client ID is a short 6-char string (e.g. `a4b9c2`). Identity is kept via an HttpOnly `hassemu_client` cookie (UUID v4, 10 years).
-
----
-
-## Redirect flow
-
-1. Display starts → mDNS lookup → finds `hassemu` on port 8123
-2. Display performs the HA OAuth2 flow against the adapter
-3. On first request the adapter sets a cookie and creates `clients.<id>`
-4. Resolution order for the redirect:
-   1. `global.enabled = true` → `global.visUrl`
-   2. otherwise `clients.<id>.visUrl`
-   3. otherwise the setup page
-5. Next time the display connects, the cookie maps it back to the same channel
-
----
-
 ## State tree
 
 ```
 hassemu.0.
-├── info.connection          — Server is running (bool, indicator)
+├── info.connection                — Server is running (bool, indicator)
 ├── global.
-│   ├── visUrl               — Global redirect URL (dropdown)
-│   └── enabled              — Apply global URL to all clients (switch)
+│   ├── visUrl                     — Global redirect URL (dropdown of known ioBroker URLs, free text allowed)
+│   └── enabled                    — When true, every client is sent to global.visUrl
 └── clients.
-    └── <id>.
-        ├── visUrl           — Per-client redirect URL (dropdown)
-        ├── ip               — Last seen client IP
-        └── remove           — Button: forget this client
+    └── <id>                       — One channel per display. Channel name = reverse-DNS hostname if resolvable, otherwise the IP
+        ├── visUrl                 — Per-client redirect URL (same dropdown as global). Used when global.enabled = false
+        ├── ip                     — Last observed client IP
+        └── remove                 — Button: forget this client (channel + cookie + token deleted)
 ```
+
+**Resolution per request:** `global.enabled=true` → `global.visUrl`, otherwise `clients.<id>.visUrl`, otherwise the setup page (a small HTML placeholder with the device ID and datapoint path, refreshes every 15 s).
+
+**Client identity:** each display gets a 6-char id (e.g. `a4b9c2`) and a persistent HttpOnly cookie `hassemu_client` (UUID v4, 10 years). The cookie survives IP changes and adapter restarts. Removing a client and re-visiting creates a fresh channel with a new id. URLs must be reachable from the display — use the LAN IP of the ioBroker host, not `localhost`.
+
+**Connection flow:** display discovers `hassemu` via mDNS (or manual URL) → runs the HA OAuth2 flow → adapter sets the cookie and creates `clients.<id>` → redirect resolves as above.
 
 ---
 
