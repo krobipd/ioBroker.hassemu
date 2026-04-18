@@ -65,8 +65,24 @@ export class ClientRegistry {
             }
             const visUrl = coerceSafeUrl(await this.readState(`${id}.visUrl`));
             const ip = coerceString(await this.readState(`${id}.ip`));
-            const hostname = coerceString(await this.readState(`${id}.hostname`));
             const token = coerceUuid(native.token);
+
+            // Legacy migration (<=1.1.1): hostname lived in its own state. If present,
+            // move the value into common.name and drop the state.
+            const legacyHostname = coerceString(await this.readState(`${id}.hostname`));
+            let channelName = coerceString(obj.common?.name);
+            if (legacyHostname) {
+                if (legacyHostname !== channelName) {
+                    await this.adapter.extendObjectAsync(`clients.${id}`, { common: { name: legacyHostname } });
+                    channelName = legacyHostname;
+                }
+                try {
+                    await this.adapter.delObjectAsync(`clients.${id}.hostname`);
+                } catch {
+                    /* best effort — ignore */
+                }
+            }
+            const hostname = channelName && channelName !== ip && channelName !== id ? channelName : null;
 
             const record: ClientRecord = { id, cookie, token, visUrl, ip, hostname };
             this.trackInMemory(record);
@@ -236,74 +252,62 @@ export class ClientRegistry {
     private async createObjects(record: ClientRecord): Promise<void> {
         const { id, cookie, ip, hostname } = record;
 
-        await this.adapter.setObjectNotExistsAsync(`clients.${id}`, {
-            type: 'channel',
-            common: { name: hostname ?? ip ?? id },
-            native: { cookie, token: null },
-        });
+        await Promise.all([
+            this.adapter.setObjectNotExistsAsync(`clients.${id}`, {
+                type: 'channel',
+                common: { name: hostname ?? ip ?? id },
+                native: { cookie, token: null },
+            }),
+            this.adapter.setObjectNotExistsAsync(`clients.${id}.visUrl`, {
+                type: 'state',
+                common: {
+                    name: 'Redirect URL',
+                    type: 'string',
+                    role: 'url',
+                    read: true,
+                    write: true,
+                    def: '',
+                    states: { ...this.currentUrlStates },
+                },
+                native: {},
+            }),
+            this.adapter.setObjectNotExistsAsync(`clients.${id}.ip`, {
+                type: 'state',
+                common: { name: 'Client IP', type: 'string', role: 'info.ip', read: true, write: false, def: '' },
+                native: {},
+            }),
+            this.adapter.setObjectNotExistsAsync(`clients.${id}.remove`, {
+                type: 'state',
+                common: {
+                    name: 'Forget this client',
+                    type: 'boolean',
+                    role: 'button',
+                    read: false,
+                    write: true,
+                    def: false,
+                },
+                native: {},
+            }),
+        ]);
 
-        await this.adapter.setObjectNotExistsAsync(`clients.${id}.visUrl`, {
-            type: 'state',
-            common: {
-                name: 'Redirect URL',
-                type: 'string',
-                role: 'url',
-                read: true,
-                write: true,
-                def: '',
-                states: { ...this.currentUrlStates },
-            },
-            native: {},
-        });
-
-        await this.adapter.setObjectNotExistsAsync(`clients.${id}.ip`, {
-            type: 'state',
-            common: { name: 'Client IP', type: 'string', role: 'info.ip', read: true, write: false, def: '' },
-            native: {},
-        });
-
-        await this.adapter.setObjectNotExistsAsync(`clients.${id}.hostname`, {
-            type: 'state',
-            common: {
-                name: 'Client hostname',
-                type: 'string',
-                role: 'info.name',
-                read: true,
-                write: false,
-                def: '',
-            },
-            native: {},
-        });
-
-        await this.adapter.setObjectNotExistsAsync(`clients.${id}.remove`, {
-            type: 'state',
-            common: {
-                name: 'Forget this client',
-                type: 'boolean',
-                role: 'button',
-                read: false,
-                write: true,
-                def: false,
-            },
-            native: {},
-        });
-
-        await this.adapter.setStateAsync(`clients.${id}.ip`, { val: ip ?? '', ack: true });
-        await this.adapter.setStateAsync(`clients.${id}.hostname`, { val: hostname ?? '', ack: true });
-        await this.adapter.setStateAsync(`clients.${id}.visUrl`, { val: '', ack: true });
+        await Promise.all([
+            this.adapter.setStateAsync(`clients.${id}.ip`, { val: ip ?? '', ack: true }),
+            this.adapter.setStateAsync(`clients.${id}.visUrl`, { val: '', ack: true }),
+        ]);
     }
 
     private async updateIpHostname(record: ClientRecord, ip: string | null, hostname: string | null): Promise<void> {
         if (ip && ip !== record.ip) {
             record.ip = ip;
             await this.adapter.setStateAsync(`clients.${record.id}.ip`, { val: ip, ack: true });
+            // If no hostname known yet, common.name falls back to the IP — keep it current.
+            if (!record.hostname) {
+                await this.adapter.extendObjectAsync(`clients.${record.id}`, { common: { name: ip } });
+            }
         }
         if (hostname && hostname !== record.hostname) {
             record.hostname = hostname;
-            await this.adapter.setStateAsync(`clients.${record.id}.hostname`, {
-                val: hostname,
-                ack: true,
-            });
+            await this.adapter.extendObjectAsync(`clients.${record.id}`, { common: { name: hostname } });
         }
     }
 

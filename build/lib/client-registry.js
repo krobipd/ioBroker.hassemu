@@ -48,7 +48,7 @@ class ClientRegistry {
   }
   /** Loads existing clients from ioBroker objects into memory. Call once on adapter start. */
   async restore() {
-    var _a;
+    var _a, _b;
     let channels = {};
     try {
       channels = (_a = await this.adapter.getForeignObjectsAsync(`${this.adapter.namespace}.clients.*`, "channel")) != null ? _a : {};
@@ -68,8 +68,20 @@ class ClientRegistry {
       }
       const visUrl = (0, import_coerce.coerceSafeUrl)(await this.readState(`${id}.visUrl`));
       const ip = (0, import_coerce.coerceString)(await this.readState(`${id}.ip`));
-      const hostname = (0, import_coerce.coerceString)(await this.readState(`${id}.hostname`));
       const token = (0, import_coerce.coerceUuid)(native.token);
+      const legacyHostname = (0, import_coerce.coerceString)(await this.readState(`${id}.hostname`));
+      let channelName = (0, import_coerce.coerceString)((_b = obj.common) == null ? void 0 : _b.name);
+      if (legacyHostname) {
+        if (legacyHostname !== channelName) {
+          await this.adapter.extendObjectAsync(`clients.${id}`, { common: { name: legacyHostname } });
+          channelName = legacyHostname;
+        }
+        try {
+          await this.adapter.delObjectAsync(`clients.${id}.hostname`);
+        } catch {
+        }
+      }
+      const hostname = channelName && channelName !== ip && channelName !== id ? channelName : null;
       const record = { id, cookie, token, visUrl, ip, hostname };
       this.trackInMemory(record);
     }
@@ -228,68 +240,59 @@ class ClientRegistry {
   async createObjects(record) {
     var _a;
     const { id, cookie, ip, hostname } = record;
-    await this.adapter.setObjectNotExistsAsync(`clients.${id}`, {
-      type: "channel",
-      common: { name: (_a = hostname != null ? hostname : ip) != null ? _a : id },
-      native: { cookie, token: null }
-    });
-    await this.adapter.setObjectNotExistsAsync(`clients.${id}.visUrl`, {
-      type: "state",
-      common: {
-        name: "Redirect URL",
-        type: "string",
-        role: "url",
-        read: true,
-        write: true,
-        def: "",
-        states: { ...this.currentUrlStates }
-      },
-      native: {}
-    });
-    await this.adapter.setObjectNotExistsAsync(`clients.${id}.ip`, {
-      type: "state",
-      common: { name: "Client IP", type: "string", role: "info.ip", read: true, write: false, def: "" },
-      native: {}
-    });
-    await this.adapter.setObjectNotExistsAsync(`clients.${id}.hostname`, {
-      type: "state",
-      common: {
-        name: "Client hostname",
-        type: "string",
-        role: "info.name",
-        read: true,
-        write: false,
-        def: ""
-      },
-      native: {}
-    });
-    await this.adapter.setObjectNotExistsAsync(`clients.${id}.remove`, {
-      type: "state",
-      common: {
-        name: "Forget this client",
-        type: "boolean",
-        role: "button",
-        read: false,
-        write: true,
-        def: false
-      },
-      native: {}
-    });
-    await this.adapter.setStateAsync(`clients.${id}.ip`, { val: ip != null ? ip : "", ack: true });
-    await this.adapter.setStateAsync(`clients.${id}.hostname`, { val: hostname != null ? hostname : "", ack: true });
-    await this.adapter.setStateAsync(`clients.${id}.visUrl`, { val: "", ack: true });
+    await Promise.all([
+      this.adapter.setObjectNotExistsAsync(`clients.${id}`, {
+        type: "channel",
+        common: { name: (_a = hostname != null ? hostname : ip) != null ? _a : id },
+        native: { cookie, token: null }
+      }),
+      this.adapter.setObjectNotExistsAsync(`clients.${id}.visUrl`, {
+        type: "state",
+        common: {
+          name: "Redirect URL",
+          type: "string",
+          role: "url",
+          read: true,
+          write: true,
+          def: "",
+          states: { ...this.currentUrlStates }
+        },
+        native: {}
+      }),
+      this.adapter.setObjectNotExistsAsync(`clients.${id}.ip`, {
+        type: "state",
+        common: { name: "Client IP", type: "string", role: "info.ip", read: true, write: false, def: "" },
+        native: {}
+      }),
+      this.adapter.setObjectNotExistsAsync(`clients.${id}.remove`, {
+        type: "state",
+        common: {
+          name: "Forget this client",
+          type: "boolean",
+          role: "button",
+          read: false,
+          write: true,
+          def: false
+        },
+        native: {}
+      })
+    ]);
+    await Promise.all([
+      this.adapter.setStateAsync(`clients.${id}.ip`, { val: ip != null ? ip : "", ack: true }),
+      this.adapter.setStateAsync(`clients.${id}.visUrl`, { val: "", ack: true })
+    ]);
   }
   async updateIpHostname(record, ip, hostname) {
     if (ip && ip !== record.ip) {
       record.ip = ip;
       await this.adapter.setStateAsync(`clients.${record.id}.ip`, { val: ip, ack: true });
+      if (!record.hostname) {
+        await this.adapter.extendObjectAsync(`clients.${record.id}`, { common: { name: ip } });
+      }
     }
     if (hostname && hostname !== record.hostname) {
       record.hostname = hostname;
-      await this.adapter.setStateAsync(`clients.${record.id}.hostname`, {
-        val: hostname,
-        ack: true
-      });
+      await this.adapter.extendObjectAsync(`clients.${record.id}`, { common: { name: hostname } });
     }
   }
   async readState(subId) {

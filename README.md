@@ -27,7 +27,7 @@ Typical use: wall tablets and display devices (Shelly Wall Display, Amazon Echo 
 - **Cookie-based identification** — displays are recognised across adapter restarts and IP changes
 - **mDNS discovery** — `_home-assistant._tcp` on the LAN, cross-platform, no avahi required
 - **Home Assistant OAuth2 flow** — optional credential check
-- **Reverse DNS** — LAN hostname per client when resolvable
+- **Reverse DNS** — LAN hostname shown as the client's name in the object tree when resolvable
 - **Input hardening** — URLs are restricted to http/https, no credentials, 2048 char cap
 
 ---
@@ -87,10 +87,10 @@ As soon as a display connects the first time, a channel is created:
 hassemu.0.clients.<id>
 ├── visUrl    — per-client URL (empty = use global or setup page)
 ├── ip        — last observed IP
-├── hostname  — reverse-DNS name (may be empty on some LANs)
 └── remove    — button: forget this client
 ```
 
+- The channel's display name is the reverse-DNS hostname if resolvable, otherwise the IP — visible in the Admin object browser.
 - **`remove`** forgets the client — channel, cookie, token, all gone. A returning display is re-registered with a new ID.
 - The client ID is a short 6-char string (e.g. `a4b9c2`). Identity is kept via an HttpOnly `hassemu_client` cookie (UUID v4, 10 years).
 
@@ -121,7 +121,6 @@ hassemu.0.
     └── <id>.
         ├── visUrl           — Per-client redirect URL (dropdown)
         ├── ip               — Last seen client IP
-        ├── hostname         — Reverse-DNS hostname (may be empty)
         └── remove           — Button: forget this client
 ```
 
@@ -154,7 +153,7 @@ That means the cookie is not being sent back. Check the display's browser/WebVie
 
 ### Reverse DNS shows nothing
 
-Reverse DNS on a home LAN often fails — it depends on your router/DHCP server. The IP is always recorded; the hostname is best-effort.
+Reverse DNS on a home LAN often fails — it depends on your router/DHCP server. The IP is always recorded and used as the client's name when no hostname is available.
 
 ### Health check
 
@@ -167,11 +166,18 @@ returns the adapter's runtime state — useful to verify the server is up and se
 
 ## Upgrading
 
+- **1.1.1 → 1.1.2** — the `clients.<id>.hostname` datapoint is dropped; the hostname is moved into the channel name (visible in the Admin object browser). Nothing to do manually — the adapter migrates on first start.
 - **1.0.x / 1.1.0 → 1.1.1** — any existing redirect URL is copied to `global.visUrl`, `global.enabled` is set to `true`. To switch to per-display URLs, clear `global.enabled` and fill each `clients.<id>.visUrl`.
 
 ---
 
 ## Changelog
+
+### 1.1.2 (2026-04-18)
+
+- Client name in the object browser now shows the reverse-DNS hostname instead of the IP as soon as it's resolved
+- `clients.<id>.hostname` datapoint removed — the value moved into the channel name; existing entries are migrated on first start
+- Client-channel creation parallelised — new displays register noticeably faster
 
 ### 1.1.1 (2026-04-18)
 
@@ -182,13 +188,13 @@ returns the adapter's runtime state — useful to verify the server is up and se
 
 ### 1.1.0 (2026-04-18)
 
-- **Multi-client support** — each connecting display gets its own channel in `clients.*` with an individual `visUrl`, `ip`, `hostname` and `remove` button
+- **Multi-client support** — each connecting display gets its own channel in `clients.*` with an individual `visUrl`, `ip` and `remove` button
 - **URL dropdown** — `clients.<id>.visUrl` is populated from all known ioBroker URLs (VIS-2, VIS, Admin intro tiles, Jarvis, …) — pick from the list or enter custom
 - **Cookie-based identification** — displays are recognised across adapter restarts and IP changes
 - **Fastify web server** — Express was replaced by Fastify for first-party cookie support, schema validation and a lighter runtime
 - **Input hardening** — all external URLs go through a coercion layer (http/https only, length-limited, no credentials); foreign adapter metadata is fully type-guarded
 - **Config migration** — `visUrl` → `defaultVisUrl` is applied automatically on first start
-- **Reverse DNS** — clients are labelled with their LAN hostname when resolvable
+- **Reverse DNS** — clients are labelled with their LAN hostname when resolvable (shown as the channel name in the object browser)
 
 ### 1.0.4 (2026-04-12)
 - DRY: remove duplicate NativeConfig interface and redundant config mapping

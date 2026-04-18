@@ -134,8 +134,45 @@ describe('ClientRegistry', () => {
             expect(store.objects.has(`hassemu.0.clients.${rec.id}`)).to.be.true;
             expect(store.objects.has(`hassemu.0.clients.${rec.id}.visUrl`)).to.be.true;
             expect(store.objects.has(`hassemu.0.clients.${rec.id}.ip`)).to.be.true;
-            expect(store.objects.has(`hassemu.0.clients.${rec.id}.hostname`)).to.be.true;
             expect(store.objects.has(`hassemu.0.clients.${rec.id}.remove`)).to.be.true;
+        });
+
+        it('does not create a legacy hostname state', async () => {
+            const rec = await registry.identifyOrCreate(null, '192.168.1.5', 'tablet.local');
+            expect(store.objects.has(`hassemu.0.clients.${rec.id}.hostname`)).to.be.false;
+        });
+
+        it('sets common.name to ip when hostname is unknown', async () => {
+            const rec = await registry.identifyOrCreate(null, '192.168.1.5', null);
+            const ch = store.objects.get(`hassemu.0.clients.${rec.id}`);
+            expect(ch?.common?.name).to.equal('192.168.1.5');
+        });
+
+        it('sets common.name to hostname when known at creation', async () => {
+            const rec = await registry.identifyOrCreate(null, '192.168.1.5', 'tablet.local');
+            const ch = store.objects.get(`hassemu.0.clients.${rec.id}`);
+            expect(ch?.common?.name).to.equal('tablet.local');
+        });
+
+        it('updates common.name when hostname resolves after creation', async () => {
+            const rec = await registry.identifyOrCreate(null, '192.168.1.5', null);
+            await registry.identifyOrCreate(rec.cookie, '192.168.1.5', 'tablet.local');
+            const ch = store.objects.get(`hassemu.0.clients.${rec.id}`);
+            expect(ch?.common?.name).to.equal('tablet.local');
+        });
+
+        it('keeps common.name in sync with ip while hostname unknown', async () => {
+            const rec = await registry.identifyOrCreate(null, '1.1.1.1', null);
+            await registry.identifyOrCreate(rec.cookie, '2.2.2.2', null);
+            const ch = store.objects.get(`hassemu.0.clients.${rec.id}`);
+            expect(ch?.common?.name).to.equal('2.2.2.2');
+        });
+
+        it('keeps common.name fixed to hostname when only ip changes', async () => {
+            const rec = await registry.identifyOrCreate(null, '1.1.1.1', 'tablet.local');
+            await registry.identifyOrCreate(rec.cookie, '2.2.2.2', null);
+            const ch = store.objects.get(`hassemu.0.clients.${rec.id}`);
+            expect(ch?.common?.name).to.equal('tablet.local');
         });
 
         it('persists cookie in channel.native', async () => {
@@ -179,6 +216,8 @@ describe('ClientRegistry', () => {
             const rec = await registry.identifyOrCreate(null, '1.1.1.1', 'old.local');
             await registry.identifyOrCreate(rec.cookie, '1.1.1.1', 'new.local');
             expect(rec.hostname).to.equal('new.local');
+            const ch = store.objects.get(`hassemu.0.clients.${rec.id}`);
+            expect(ch?.common?.name).to.equal('new.local');
         });
 
         it('does not overwrite ip with null on subsequent visit', async () => {
@@ -394,12 +433,11 @@ describe('ClientRegistry', () => {
             const cookie = crypto.randomUUID();
             store.objects.set(`hassemu.0.clients.${id}`, {
                 type: 'channel',
-                common: { name: 'tablet' },
+                common: { name: 'tablet.local' },
                 native: { cookie, token: null },
             });
             store.states.set(`hassemu.0.clients.${id}.visUrl`, { val: 'http://preserved.local/', ack: true });
             store.states.set(`hassemu.0.clients.${id}.ip`, { val: '192.168.1.20', ack: true });
-            store.states.set(`hassemu.0.clients.${id}.hostname`, { val: 'tablet.local', ack: true });
 
             await registry.restore();
             const rec = registry.getById(id);
@@ -408,6 +446,41 @@ describe('ClientRegistry', () => {
             expect(rec!.visUrl).to.equal('http://preserved.local/');
             expect(rec!.ip).to.equal('192.168.1.20');
             expect(rec!.hostname).to.equal('tablet.local');
+        });
+
+        it('treats common.name = ip as "no hostname known"', async () => {
+            const id = 'noHost';
+            const cookie = crypto.randomUUID();
+            store.objects.set(`hassemu.0.clients.${id}`, {
+                type: 'channel',
+                common: { name: '192.168.1.20' },
+                native: { cookie },
+            });
+            store.states.set(`hassemu.0.clients.${id}.ip`, { val: '192.168.1.20', ack: true });
+            await registry.restore();
+            const rec = registry.getById(id);
+            expect(rec?.hostname).to.be.null;
+        });
+
+        it('migrates legacy hostname state into common.name and drops the state', async () => {
+            const id = 'legacy';
+            const cookie = crypto.randomUUID();
+            store.objects.set(`hassemu.0.clients.${id}`, {
+                type: 'channel',
+                common: { name: '10.0.0.5' },
+                native: { cookie },
+            });
+            store.objects.set(`hassemu.0.clients.${id}.hostname`, { type: 'state' });
+            store.states.set(`hassemu.0.clients.${id}.ip`, { val: '10.0.0.5', ack: true });
+            store.states.set(`hassemu.0.clients.${id}.hostname`, { val: 'tablet.local', ack: true });
+
+            await registry.restore();
+            const rec = registry.getById(id);
+            expect(rec?.hostname).to.equal('tablet.local');
+            const ch = store.objects.get(`hassemu.0.clients.${id}`);
+            expect(ch?.common?.name).to.equal('tablet.local');
+            expect(store.objects.has(`hassemu.0.clients.${id}.hostname`)).to.be.false;
+            expect(store.states.has(`hassemu.0.clients.${id}.hostname`)).to.be.false;
         });
 
         it('skips channels without a valid cookie', async () => {

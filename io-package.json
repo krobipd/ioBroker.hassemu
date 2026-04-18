@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.1.1",
+    "version": "1.1.2",
     "news": {
+      "1.1.2": {
+        "en": "Client channel name in the object browser now shows the reverse-DNS hostname as soon as it resolves (previously stuck at the IP). The clients.<id>.hostname datapoint was removed and its value migrated into the channel name on first start. Client creation parallelised — new displays register noticeably faster.",
+        "de": "Der Channel-Name eines Clients im Objektbrowser zeigt jetzt den Reverse-DNS-Hostnamen, sobald dieser aufgelöst wurde (vorher blieb die IP stehen). Der Datenpunkt clients.<id>.hostname wurde entfernt, der Wert beim ersten Start in den Channel-Namen übernommen. Anlage eines neuen Clients parallelisiert — neue Displays werden spürbar schneller registriert.",
+        "ru": "Имя канала клиента в браузере объектов теперь показывает имя по обратному DNS, как только оно разрешено (раньше оставался IP). Точка данных clients.<id>.hostname удалена, её значение переносится в имя канала при первом запуске. Создание клиента распараллелено — новые дисплеи регистрируются заметно быстрее.",
+        "pt": "O nome do canal do cliente no navegador de objetos agora mostra o hostname via DNS reverso assim que resolvido (antes permanecia o IP). O ponto de dados clients.<id>.hostname foi removido e seu valor migrado para o nome do canal no primeiro início. Criação de cliente paralelizada — novos displays são registrados visivelmente mais rápido.",
+        "nl": "De kanaalnaam van een client in de objectbrowser toont nu de reverse-DNS hostname zodra die is opgelost (voorheen bleef het IP staan). Het datapunt clients.<id>.hostname is verwijderd en de waarde gemigreerd naar de kanaalnaam bij de eerste start. Aanmaken van een client geparallelliseerd — nieuwe displays registreren merkbaar sneller.",
+        "fr": "Le nom du canal client dans le navigateur d'objets affiche désormais le nom DNS inverse dès qu'il est résolu (l'IP restait auparavant). Le point de données clients.<id>.hostname a été supprimé et sa valeur migrée dans le nom du canal au premier démarrage. Création de client parallélisée — les nouveaux affichages s'enregistrent sensiblement plus vite.",
+        "it": "Il nome del canale del client nel browser degli oggetti ora mostra l'hostname via DNS inverso non appena risolto (prima rimaneva l'IP). Il datapoint clients.<id>.hostname è stato rimosso e il valore migrato nel nome del canale al primo avvio. Creazione del client parallelizzata — i nuovi display si registrano visibilmente più velocemente.",
+        "es": "El nombre del canal del cliente en el explorador de objetos ahora muestra el nombre DNS inverso en cuanto se resuelve (antes se quedaba la IP). El datapoint clients.<id>.hostname se eliminó y su valor se migra al nombre del canal en el primer inicio. Creación de cliente paralelizada — los nuevos displays se registran notablemente más rápido.",
+        "pl": "Nazwa kanału klienta w przeglądarce obiektów pokazuje teraz nazwę z odwrotnego DNS zaraz po rozwiązaniu (wcześniej zostawało IP). Datapoint clients.<id>.hostname został usunięty, a jego wartość przeniesiona do nazwy kanału przy pierwszym starcie. Tworzenie klienta zrównoleglone — nowe wyświetlacze rejestrują się zauważalnie szybciej.",
+        "uk": "Назва каналу клієнта в браузері об'єктів тепер показує ім'я зворотного DNS, щойно воно розв'язане (раніше лишалося IP). Датапоінт clients.<id>.hostname видалено, його значення перенесено у назву каналу при першому старті. Створення клієнта розпаралелено — нові дисплеї реєструються помітно швидше.",
+        "zh-cn": "对象浏览器中客户端频道的名称现在在反向 DNS 解析完成后立即显示主机名（之前一直停留在 IP）。已移除 clients.<id>.hostname 数据点，其值在首次启动时迁移到频道名称。客户端创建已并行化——新显示端注册明显更快。"
+      },
       "1.1.1": {
         "en": "Redirect target moved from adapter config to datapoints: global.visUrl + global.enabled as an optional override, otherwise each clients.<id>.visUrl applies. Unconfigured displays see a small setup page instead of an error. web adapter declared as dependency.",
         "de": "Redirect-Ziel aus den Adapter-Einstellungen in Datenpunkte verschoben: global.visUrl + global.enabled als optionales Override, sonst gilt jeweils clients.<id>.visUrl. Nicht konfigurierte Displays bekommen eine kleine Setup-Seite statt Fehlermeldung. web-Adapter als Abhängigkeit hinterlegt.",
