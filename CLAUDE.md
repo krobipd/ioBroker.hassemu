@@ -6,7 +6,7 @@
 
 **ioBroker HASS Emulator** — emuliert einen minimalen HA-Server für Geräte, die ein HA-Dashboard erwarten → leitet auf beliebige URL um.
 
-- **Version:** 1.1.1 (April 2026)
+- **Version:** 1.1.2 (April 2026)
 - **GitHub:** https://github.com/krobipd/ioBroker.hassemu
 - **npm:** https://www.npmjs.com/package/iobroker.hassemu
 - **Repository PR:** ioBroker/ioBroker.repositories#5793
@@ -46,7 +46,7 @@ src/lib/webserver.ts         → Fastify HTTP Server + HA API Emulation + Cookie
 3. **Port 8123 fix** — HA-Standard, nicht konfigurierbar
 4. **Kein HTTPS** — HA-Clients erwarten HTTP auf Port 8123
 5. **Cookie-Identifikation** — `hassemu_client` (UUID v4, 10 Jahre, HttpOnly, SameSite=Lax). Browser senden den Cookie automatisch auf jeder Navigation; Tokens kommen nur per API-Header und reichen daher zur Identifikation nicht aus.
-6. **Per-Client visUrl** — eigener Channel `clients.<id>` mit `visUrl`, `ip`, `hostname`, `remove`. `remove` = vergessen (kein Blocklist — ein zurückkehrender Client wird neu registriert).
+6. **Per-Client visUrl** — eigener Channel `clients.<id>` mit `visUrl`, `ip`, `remove`. Hostname lebt in `common.name` des Channels (sichtbar als Client-Name im Objektbrowser) — kein eigener Datenpunkt. `remove` = vergessen (kein Blocklist — ein zurückkehrender Client wird neu registriert).
 7. **Global-Override via Datenpunkt** — `global.visUrl` + `global.enabled`. Ist `enabled=true`, wird jede Verbindung zur globalen URL gelenkt; sonst greift die Client-URL. Umgesetzt in `global-config.ts`.
 8. **Setup-Seite statt Fehler** — ist keine URL gesetzt, liefert der Server ein kleines HTML (`setup-page.ts`) mit der Device-ID und dem Datenpunkt-Pfad. Display refresht alle 15 s automatisch.
 9. **visUrl-Dropdown** — `common.states` auf `global.visUrl` UND jedem `clients.<id>.visUrl`. Werte aus Intro-Tiles (`localLinks`, `welcomeScreen`, `welcomeScreenPro`) und VIS/VIS-2-Projekten. Freitext bleibt möglich.
@@ -65,7 +65,7 @@ src/lib/webserver.ts         → Fastify HTTP Server + HA API Emulation + Cookie
    2. sonst 302 auf `clients.<id>.visUrl`
    3. sonst 200 HTML mit der Setup-Seite
 
-## Tests (202 + 57 package)
+## Tests (210 + 57 package)
 
 ```
 test/testConstants.ts         → Shared Constants
@@ -83,6 +83,7 @@ test/integration.js           → @iobroker/testing Integration-Tests
 
 | Version | Highlights                                                                                           |
 | ------- | ---------------------------------------------------------------------------------------------------- |
+| 1.1.2   | Hostname als Channel-Name (kein eigener Datenpunkt mehr), createObjects parallelisiert, Legacy-Migration |
 | 1.1.1   | Redirect-URL raus aus Admin → global.visUrl/enabled + Setup-Seite, web als Dependency                |
 | 1.1.0   | Multi-Client, Cookie-Identifikation, visUrl-Dropdown, Fastify, Boundary-Härtung, Config-Migration    |
 | 1.0.4   | DRY: NativeConfig + Config-Mapping entfernt, Log-Spam-Fix, createSession private                     |
