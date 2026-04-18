@@ -24,6 +24,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 var import_node_crypto = __toESM(require("node:crypto"));
 var utils = __toESM(require("@iobroker/adapter-core"));
 var import_client_registry = require("./lib/client-registry");
+var import_global_config = require("./lib/global-config");
 var import_mdns = require("./lib/mdns");
 var import_url_discovery = require("./lib/url-discovery");
 var import_webserver = require("./lib/webserver");
@@ -31,6 +32,7 @@ class HassEmu extends utils.Adapter {
   mdnsService = null;
   webServer = null;
   registry = null;
+  globalConfig = null;
   urlDiscovery = null;
   constructor(options = {}) {
     super({ ...options, name: "hassemu" });
@@ -48,33 +50,26 @@ class HassEmu extends utils.Adapter {
   }
   async onReady() {
     await this.setState("info.connection", { val: false, ack: true });
-    await this.migrateConfig();
-    if (!this.config.defaultVisUrl) {
-      this.log.error("No default redirect URL configured. Set it in the adapter settings.");
-    }
+    this.globalConfig = new import_global_config.GlobalConfig(this);
+    await this.globalConfig.restore();
+    await this.migrateLegacyDefaultVisUrl();
     const instanceUuid = import_node_crypto.default.randomUUID();
     this.log.debug(
       `Config: port=${this.config.port}, auth=${this.config.authRequired}, mdns=${this.config.mdnsEnabled}`
     );
-    if (this.config.defaultVisUrl) {
-      this.log.debug(`Default target URL: ${this.config.defaultVisUrl}`);
-      if (/\blocalhost\b|127\.0\.0\.1/.test(this.config.defaultVisUrl)) {
-        this.log.warn(
-          "defaultVisUrl contains localhost \u2014 the display cannot reach this. Use the real IP address."
-        );
-      }
-    }
-    this.registry = new import_client_registry.ClientRegistry(this, this.config.defaultVisUrl);
+    this.registry = new import_client_registry.ClientRegistry(this);
     await this.registry.restore();
-    this.urlDiscovery = new import_url_discovery.UrlDiscovery(this, (states) => {
-      var _a;
-      return (_a = this.registry) == null ? void 0 : _a.syncUrlDropdown(states);
+    this.urlDiscovery = new import_url_discovery.UrlDiscovery(this, async (states) => {
+      var _a, _b;
+      await ((_a = this.globalConfig) == null ? void 0 : _a.syncUrlDropdown(states));
+      await ((_b = this.registry) == null ? void 0 : _b.syncUrlDropdown(states));
     });
     await this.urlDiscovery.collect();
     await this.subscribeForeignObjectsAsync("system.adapter.*");
     await this.subscribeStatesAsync("clients.*");
+    await this.subscribeStatesAsync("global.*");
     try {
-      this.webServer = new import_webserver.WebServer(this, this.config, this.registry, instanceUuid);
+      this.webServer = new import_webserver.WebServer(this, this.config, this.registry, this.globalConfig, instanceUuid);
       await this.webServer.start();
     } catch (err) {
       this.log.error(`Web server failed to start: ${String(err)}`);
@@ -93,41 +88,51 @@ class HassEmu extends utils.Adapter {
     );
   }
   /**
-   * 1.0.x → 1.1.0 migration — rename `visUrl` to `defaultVisUrl`.
-   * Persists to the instance object and saves the adapter from restarting:
-   * we only touch the in-memory config, the write happens async.
+   * 1.0.x / 1.1.0 → 1.1.1 migration — move the legacy `defaultVisUrl` from
+   * instance native into `global.visUrl` + `global.enabled=true` and drop it
+   * from native. Runs once; subsequent starts see empty/missing legacy fields.
    */
-  async migrateConfig() {
+  async migrateLegacyDefaultVisUrl() {
     const legacy = this.config;
-    if (!legacy.visUrl || this.config.defaultVisUrl) {
+    const url = legacy.defaultVisUrl || legacy.visUrl;
+    if (!url || !this.globalConfig) {
       return;
     }
-    this.log.info("Migrating config: visUrl \u2192 defaultVisUrl");
-    this.config.defaultVisUrl = legacy.visUrl;
+    this.log.info("Migrating defaultVisUrl \u2192 global.visUrl + global.enabled");
+    await this.globalConfig.handleVisUrlWrite(url);
+    if (this.globalConfig.getGlobalUrl()) {
+      await this.globalConfig.handleEnabledWrite(true);
+    }
     try {
       const id = `system.adapter.${this.namespace}`;
       const obj = await this.getForeignObjectAsync(id);
       if (obj == null ? void 0 : obj.native) {
-        obj.native.defaultVisUrl = legacy.visUrl;
+        delete obj.native.defaultVisUrl;
         delete obj.native.visUrl;
         await this.setForeignObjectAsync(id, obj);
       }
     } catch (err) {
-      this.log.warn(`Config migration write failed: ${String(err)}`);
+      this.log.warn(`Legacy config cleanup failed: ${String(err)}`);
     }
   }
   async onStateChange(id, state) {
-    if (!state || state.ack || !this.registry) {
+    if (!state || state.ack) {
       return;
     }
-    const parsed = (0, import_client_registry.parseClientStateId)(id, this.namespace);
-    if (!parsed) {
+    const clientParsed = this.registry ? (0, import_client_registry.parseClientStateId)(id, this.namespace) : null;
+    if (clientParsed) {
+      if (clientParsed.kind === "visUrl") {
+        await this.registry.handleVisUrlWrite(clientParsed.id, state.val);
+      } else if (clientParsed.kind === "remove" && state.val === true) {
+        await this.registry.remove(clientParsed.id);
+      }
       return;
     }
-    if (parsed.kind === "visUrl") {
-      await this.registry.handleVisUrlWrite(parsed.id, state.val);
-    } else if (parsed.kind === "remove" && state.val === true) {
-      await this.registry.remove(parsed.id);
+    const globalParsed = this.globalConfig ? (0, import_global_config.parseGlobalStateId)(id, this.namespace) : null;
+    if (globalParsed === "visUrl") {
+      await this.globalConfig.handleVisUrlWrite(state.val);
+    } else if (globalParsed === "enabled") {
+      await this.globalConfig.handleEnabledWrite(state.val);
     }
   }
   onUnload(callback) {
@@ -144,6 +149,7 @@ class HassEmu extends utils.Adapter {
         this.webServer = null;
       }
       this.registry = null;
+      this.globalConfig = null;
       void this.setState("info.connection", { val: false, ack: true });
     } catch (error) {
       const err = error;

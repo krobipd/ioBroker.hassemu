@@ -5,9 +5,6 @@
     "authRequiredTooltip": "Jeśli włączone, urządzenia muszą podać prawidłowe dane logowania",
     "bindAddress": "Przypisz do Interfejsu",
     "bindAddressTooltip": "Wybierz interfejs sieciowy do nasłuchiwania (0.0.0.0 = wszystkie interfejsy)",
-    "clientsInfo": "Każdy wyświetlacz, który się łączy, dostaje własny kanał w `clients.*`. Dla każdego klienta można ustawić inny URL — wybierz z listy znanych URL ioBrokera (VIS, Admin, ...) lub wpisz własny. Przycisk `remove` zapomina klienta — wracający wyświetlacz zostaje zarejestrowany z nowym ID.",
-    "defaultVisUrl": "Domyślny URL przekierowania",
-    "defaultVisUrlTooltip": "Rezerwowy URL, gdy klient nie ma własnego. Każdy klient może go nadpisać w clients.<id>.visUrl (lista rozwijana lub ręczne wpisanie).",
     "donateKofi": "Wesprzyj na Ko-fi",
     "donatePaypal": "Przekaż darowiznę przez PayPal",
     "header_auth": "Uwierzytelnianie",
@@ -17,9 +14,9 @@
     "mdnsEnabledTooltip": "Rozgłaszaj usługę przez mDNS, aby urządzenia mogły ją znaleźć automatycznie (działa na wszystkich platformach)",
     "mdnsInfo": "mDNS rozgłasza usługę w sieci lokalnej, aby urządzenia mogły ją odkryć automatycznie.\n\nJeśli mDNS jest wyłączone lub nie działa, wprowadź URL ręcznie na ekranie:\n`http://YOUR_IP:8123`",
     "password": "Hasło",
+    "redirectInfo": "Cele przekierowań ustawia się przez datapointy, nie tutaj. Użyj `global.visUrl` + `global.enabled`, aby skierować wszystkich klientów na ten sam URL, albo ustaw każdy wyświetlacz osobno w `clients.<id>.visUrl`. Oba pola oferują listę rozwijaną znanych URL ioBroker.",
     "serviceName": "Nazwa Usługi",
     "serviceNameTooltip": "Nazwa wyświetlana na ekranie podczas wykrywania",
     "supportHeader": "Wsparcie",
-    "username": "Nazwa użytkownika",
-    "warningLocalhost": "**Ważne:** Nie używaj 'localhost' ani '127.0.0.1' — użyj rzeczywistego adresu IP swojego serwera ioBroker!"
+    "username": "Nazwa użytkownika"
 }

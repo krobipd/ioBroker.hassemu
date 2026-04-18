@@ -5,9 +5,6 @@
     "authRequiredTooltip": "Si está habilitado, los dispositivos deben ingresar credenciales válidas para autenticarse",
     "bindAddress": "Vincular a la Interfaz",
     "bindAddressTooltip": "Seleccione la interfaz de red en la que escuchar (0.0.0.0 = todas las interfaces)",
-    "clientsInfo": "Cada pantalla que conecta recibe un canal propio en `clients.*`. Por cliente se puede usar una URL distinta — elige en el desplegable de URL de ioBroker conocidas (VIS, Admin, etc.) o escribe una URL propia. El botón `remove` olvida al cliente — si la pantalla vuelve, se registra con un nuevo ID.",
-    "defaultVisUrl": "URL de redirección predeterminada",
-    "defaultVisUrlTooltip": "URL de respaldo cuando un cliente no tiene URL individual. Cada cliente puede sobrescribirla en clients.<id>.visUrl (menú desplegable o entrada manual).",
     "donateKofi": "Apoyar en Ko-fi",
     "donatePaypal": "Donar vía PayPal",
     "header_auth": "Autenticación",
@@ -17,9 +14,9 @@
     "mdnsEnabledTooltip": "Difundir el servicio via mDNS para que los dispositivos lo encuentren automáticamente (funciona en todas las plataformas)",
     "mdnsInfo": "mDNS difunde el servicio en la red local para que los dispositivos puedan descubrirlo automáticamente.\n\nSi mDNS está deshabilitado o no funciona, ingrese la URL manualmente en la pantalla:\n`http://YOUR_IP:8123`",
     "password": "Contraseña",
+    "redirectInfo": "Los destinos de redirección se configuran mediante datapoints, no aquí. Usa `global.visUrl` + `global.enabled` para enviar todos los clientes al mismo URL, o configura cada display individualmente en `clients.<id>.visUrl`. Ambos campos ofrecen un desplegable con las URL de ioBroker conocidas.",
     "serviceName": "Nombre del Servicio",
     "serviceNameTooltip": "Nombre mostrado en la pantalla durante el descubrimiento",
     "supportHeader": "Apoyo",
-    "username": "Nombre de usuario",
-    "warningLocalhost": "**Importante:** No use 'localhost' ni '127.0.0.1' — use la dirección IP real de su servidor ioBroker!"
+    "username": "Nombre de usuario"
 }

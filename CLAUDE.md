@@ -6,12 +6,13 @@
 
 **ioBroker HASS Emulator** — emuliert einen minimalen HA-Server für Geräte, die ein HA-Dashboard erwarten → leitet auf beliebige URL um.
 
-- **Version:** 1.1.0 (April 2026)
+- **Version:** 1.1.1 (April 2026)
 - **GitHub:** https://github.com/krobipd/ioBroker.hassemu
 - **npm:** https://www.npmjs.com/package/iobroker.hassemu
 - **Repository PR:** ioBroker/ioBroker.repositories#5793
 - **Vorher:** homeassistant-bridge (umbenannt wegen irreführendem Namen)
 - **Runtime-Deps:** `@iobroker/adapter-core`, `fastify`, `@fastify/cookie`, `bonjour-service`
+- **Adapter-Abhängigkeit:** `web >=6.0.0` (dependencies in io-package.json) — ohne web kein VIS
 
 ## HA-kompatible Geräte — Limitationen
 
@@ -25,14 +26,16 @@
 ## Architektur
 
 ```
-src/main.ts                  → Adapter (Lifecycle, Config-Migration, State-Hooks)
+src/main.ts                  → Adapter (Lifecycle, Legacy-Migration, State-Dispatch)
 src/lib/types.ts             → AdapterConfig, ClientRecord, AdapterInterface
 src/lib/constants.ts         → HA_VERSION, SESSION_TTL, LOGIN_SCHEMA
-src/lib/coerce.ts            → Boundary-Validator (UUID/URL/Number/String)
+src/lib/coerce.ts            → Boundary-Validator (UUID/URL/Number/String/Boolean)
 src/lib/network.ts           → getLocalIp, generateClientId, Bind-Helpers
 src/lib/mdns.ts              → mDNS Broadcasting via bonjour-service
 src/lib/client-registry.ts   → Multi-Client-Store (Cookie → Record, ioBroker-Objekte)
+src/lib/global-config.ts     → global.visUrl + global.enabled (Override-Schalter)
 src/lib/url-discovery.ts     → Sammelt VIS/VIS-2/Admin-URLs für visUrl-Dropdown
+src/lib/setup-page.ts        → Minimales HTML für Displays ohne konfigurierte URL
 src/lib/webserver.ts         → Fastify HTTP Server + HA API Emulation + Cookie-Handling
 ```
 
@@ -44,10 +47,12 @@ src/lib/webserver.ts         → Fastify HTTP Server + HA API Emulation + Cookie
 4. **Kein HTTPS** — HA-Clients erwarten HTTP auf Port 8123
 5. **Cookie-Identifikation** — `hassemu_client` (UUID v4, 10 Jahre, HttpOnly, SameSite=Lax). Browser senden den Cookie automatisch auf jeder Navigation; Tokens kommen nur per API-Header und reichen daher zur Identifikation nicht aus.
 6. **Per-Client visUrl** — eigener Channel `clients.<id>` mit `visUrl`, `ip`, `hostname`, `remove`. `remove` = vergessen (kein Blocklist — ein zurückkehrender Client wird neu registriert).
-7. **visUrl-Dropdown** — `common.states` auf dem visUrl-Datenpunkt. Werte werden aus Intro-Tiles (`localLinks`, `welcomeScreen`, `welcomeScreenPro`) und VIS/VIS-2-Projekten zusammengestellt. Freitext bleibt möglich.
-8. **Fastify statt Express** — First-party Cookie-Plugin, Schema-Validierung, leichterer Runtime-Fußabdruck.
-9. **Boundary-Härtung** — jede externe URL / UUID / Zahl geht durch `coerce.ts`. Unsichere URLs (js:, data:, file:, mit Credentials, >2048 Zeichen) werden abgelehnt.
-10. **Config-Migration** — `visUrl` → `defaultVisUrl` passiert automatisch in `onReady`, die Instanz bleibt dafür nicht stehen.
+7. **Global-Override via Datenpunkt** — `global.visUrl` + `global.enabled`. Ist `enabled=true`, wird jede Verbindung zur globalen URL gelenkt; sonst greift die Client-URL. Umgesetzt in `global-config.ts`.
+8. **Setup-Seite statt Fehler** — ist keine URL gesetzt, liefert der Server ein kleines HTML (`setup-page.ts`) mit der Device-ID und dem Datenpunkt-Pfad. Display refresht alle 15 s automatisch.
+9. **visUrl-Dropdown** — `common.states` auf `global.visUrl` UND jedem `clients.<id>.visUrl`. Werte aus Intro-Tiles (`localLinks`, `welcomeScreen`, `welcomeScreenPro`) und VIS/VIS-2-Projekten. Freitext bleibt möglich.
+10. **Fastify statt Express** — First-party Cookie-Plugin, Schema-Validierung, leichterer Runtime-Fußabdruck.
+11. **Boundary-Härtung** — jede externe URL / UUID / Zahl / Boolean geht durch `coerce.ts`. Unsichere URLs (js:, data:, file:, mit Credentials, >2048 Zeichen) werden abgelehnt.
+12. **Legacy-Migration** — `visUrl` / `defaultVisUrl` aus nativer Config wandern beim ersten Start nach `global.visUrl` + `global.enabled=true`; danach sind die alten Felder weg.
 
 ## Auth-Flow
 
@@ -55,9 +60,12 @@ src/lib/webserver.ts         → Fastify HTTP Server + HA API Emulation + Cookie
 2. POST `/auth/login_flow` → `flow_id`, Session an clientId gebunden
 3. POST `/auth/login_flow/:flowId` → Credentials → `authorization_code`
 4. POST `/auth/token` → Code → Access Token, wird am Client-Record persistiert
-5. GET `/` → 302-Redirect auf `clients.<id>.visUrl` (oder `defaultVisUrl`)
+5. GET `/` → Redirect-Reihenfolge:
+   1. `global.enabled=true` → 302 auf `global.visUrl`
+   2. sonst 302 auf `clients.<id>.visUrl`
+   3. sonst 200 HTML mit der Setup-Seite
 
-## Tests (181)
+## Tests (202 + 57 package)
 
 ```
 test/testConstants.ts         → Shared Constants
@@ -65,7 +73,8 @@ test/testCoerce.ts            → Boundary-Validator
 test/testMdns.ts              → mDNS Lifecycle
 test/testUrlDiscovery.ts      → URL Discovery (Intro-Tiles + VIS-Projekte)
 test/testClientRegistry.ts    → Multi-Client Registry
-test/testWebServer.ts         → HTTP-Endpoints, Cookie-Flow, Multi-Client via app.inject()
+test/testGlobalConfig.ts      → global.visUrl + global.enabled Handler
+test/testWebServer.ts         → HTTP-Endpoints, Cookie-Flow, Setup-Page, Global-Override
 test/package.js               → @iobroker/testing Package-Tests
 test/integration.js           → @iobroker/testing Integration-Tests
 ```
@@ -74,6 +83,7 @@ test/integration.js           → @iobroker/testing Integration-Tests
 
 | Version | Highlights                                                                                           |
 | ------- | ---------------------------------------------------------------------------------------------------- |
+| 1.1.1   | Redirect-URL raus aus Admin → global.visUrl/enabled + Setup-Seite, web als Dependency                |
 | 1.1.0   | Multi-Client, Cookie-Identifikation, visUrl-Dropdown, Fastify, Boundary-Härtung, Config-Migration    |
 | 1.0.4   | DRY: NativeConfig + Config-Mapping entfernt, Log-Spam-Fix, createSession private                     |
 | 1.0.3   | Unused Deps entfernt, no-floating-promises, CI checkout entfernt                                     |

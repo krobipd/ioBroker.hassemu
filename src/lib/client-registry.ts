@@ -32,19 +32,14 @@ const CLIENTS_PREFIX = 'clients.';
 /** Persistent multi-client store: cookie → channel, with in-memory lookup maps. */
 export class ClientRegistry {
     private readonly adapter: RegistryAdapter;
-    private readonly defaultVisUrl: string;
     private readonly byCookie = new Map<string, ClientRecord>();
     private readonly byId = new Map<string, ClientRecord>();
     private readonly byToken = new Map<string, ClientRecord>();
     private currentUrlStates: UrlStates = {};
 
-    /**
-     * @param adapter       Adapter instance used for object/state I/O.
-     * @param defaultVisUrl Fallback URL used when a client has no override.
-     */
-    constructor(adapter: RegistryAdapter, defaultVisUrl: string) {
+    /** @param adapter Adapter instance used for object/state I/O. */
+    constructor(adapter: RegistryAdapter) {
         this.adapter = adapter;
-        this.defaultVisUrl = defaultVisUrl;
     }
 
     /** Loads existing clients from ioBroker objects into memory. Call once on adapter start. */
@@ -127,15 +122,6 @@ export class ClientRegistry {
         return this.byToken.get(token) ?? null;
     }
 
-    /**
-     * Returns the per-client visUrl if set, otherwise the adapter-wide default.
-     *
-     * @param record Client to resolve the URL for.
-     */
-    getVisUrl(record: ClientRecord): string {
-        return record.visUrl ?? this.defaultVisUrl;
-    }
-
     /** Returns a snapshot array of all registered clients. */
     listAll(): ClientRecord[] {
         return [...this.byId.values()];
@@ -165,7 +151,8 @@ export class ClientRegistry {
     /**
      * Accept an external visUrl write on `clients.<id>.visUrl`.
      * Unsafe URLs are rejected (state is reset to the current value).
-     * Empty string / null clears the override — client uses defaultVisUrl.
+     * Empty string / null clears the override — client falls back to global
+     * URL or the setup page.
      *
      * @param id       Client id.
      * @param rawValue Value written to the state (any type — coerced + validated).

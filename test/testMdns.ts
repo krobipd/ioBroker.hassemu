@@ -46,7 +46,6 @@ describe("MDNSService", () => {
   const config: AdapterConfig = {
     port: 8123,
     bindAddress: "0.0.0.0",
-    defaultVisUrl: "http://example.com",
     authRequired: false,
     username: "admin",
     password: "secret",
@@ -172,7 +171,6 @@ describe("MDNSService cross-platform", () => {
     const service = new MDNSService(adapter as never, {
       port: 8123,
       bindAddress: "0.0.0.0",
-      defaultVisUrl: "http://example.com",
       authRequired: false,
       username: "",
       password: "",

@@ -5,9 +5,6 @@
     "authRequiredTooltip": "Wenn aktiviert, müssen Geräte gültige Anmeldedaten eingeben",
     "bindAddress": "Interface binden",
     "bindAddressTooltip": "Netzwerk-Interface auswählen (0.0.0.0 = alle Interfaces)",
-    "clientsInfo": "Jedes Display bekommt beim ersten Verbinden einen eigenen Channel unter `clients.*`. Pro Client ist eine abweichende URL möglich — wähle aus dem Dropdown bekannter ioBroker-URLs (VIS-Projekte, Admin, ...) oder gib eine eigene URL ein. Über den `remove`-Button wird ein Client vergessen — ein wiederkehrendes Display bekommt dann eine neue ID.",
-    "defaultVisUrl": "Standard-Weiterleitungs-URL",
-    "defaultVisUrlTooltip": "Fallback-URL, wenn für einen Client keine eigene URL gesetzt ist. Jeder Client kann dies unter clients.<id>.visUrl überschreiben (Dropdown oder manuelle Eingabe).",
     "donateKofi": "Unterstützen auf Ko-fi",
     "donatePaypal": "Über PayPal spenden",
     "header_auth": "Authentifizierung",
@@ -17,9 +14,9 @@
     "mdnsEnabledTooltip": "Service per mDNS broadcasten damit Geräte ihn automatisch finden (funktioniert auf allen Plattformen)",
     "mdnsInfo": "mDNS sendet den Service im lokalen Netzwerk, damit Geräte ihn automatisch finden können.\n\nWenn mDNS deaktiviert oder nicht funktioniert, geben Sie die URL manuell am Display ein:\n`http://IHRE_IP:8123`",
     "password": "Passwort",
+    "redirectInfo": "Weiterleitungs-Ziele werden über Datenpunkte gesetzt, nicht hier. Entweder `global.visUrl` + `global.enabled` für alle Clients zusammen, oder pro Gerät unter `clients.<id>.visUrl`. Beide Felder bieten ein Dropdown aller bekannten ioBroker-URLs.",
     "serviceName": "Service-Name",
     "serviceNameTooltip": "Name der auf dem Display während der Erkennung angezeigt wird",
     "supportHeader": "Unterstützung",
-    "username": "Benutzername",
-    "warningLocalhost": "**Wichtig:** Verwenden Sie nicht 'localhost' oder '127.0.0.1' — nutzen Sie die echte IP-Adresse Ihres ioBroker-Servers!"
+    "username": "Benutzername"
 }

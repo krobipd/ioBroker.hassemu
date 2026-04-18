@@ -5,7 +5,12 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import { HA_VERSION, SESSION_TTL_MS, CLEANUP_INTERVAL_MS, LOGIN_SCHEMA } from './constants';
 import { coerceString, coerceUuid } from './coerce';
 import type { ClientRegistry } from './client-registry';
+import type { GlobalConfig } from './global-config';
+import { renderSetupPage } from './setup-page';
 import type { AdapterConfig, AdapterInterface, ClientRecord, SessionData } from './types';
+
+/** Adapter surface the WebServer depends on — adds `namespace` for the setup page. */
+export type WebServerAdapter = AdapterInterface & Pick<ioBroker.Adapter, 'namespace'>;
 
 /** Browser cookie name. Client identity lives here — auto-sent on every page navigation. */
 export const CLIENT_COOKIE = 'hassemu_client';
@@ -20,9 +25,10 @@ const COOKIE_MAX_AGE_S = 10 * 365 * 24 * 60 * 60;
  * cookie support, schema validation and a lighter runtime.
  */
 export class WebServer {
-    private readonly adapter: AdapterInterface;
+    private readonly adapter: WebServerAdapter;
     private readonly config: AdapterConfig;
     private readonly registry: ClientRegistry;
+    private readonly globalConfig: GlobalConfig;
     private readonly app: FastifyInstance;
     public readonly sessions: Map<string, SessionData> = new Map();
     private cleanupTimer: ioBroker.Interval | null = null;
@@ -31,15 +37,23 @@ export class WebServer {
     private readonly dnsInFlight = new Set<string>();
 
     /**
-     * @param adapter      Adapter instance used for logging and timers.
-     * @param config       Resolved runtime config (already migrated).
+     * @param adapter      Adapter instance used for logging, timers and namespace.
+     * @param config       Resolved runtime config.
      * @param registry     Multi-client registry.
+     * @param globalConfig Global redirect override.
      * @param instanceUuid Stable UUID shared with the mDNS advert.
      */
-    constructor(adapter: AdapterInterface, config: AdapterConfig, registry: ClientRegistry, instanceUuid: string) {
+    constructor(
+        adapter: WebServerAdapter,
+        config: AdapterConfig,
+        registry: ClientRegistry,
+        globalConfig: GlobalConfig,
+        instanceUuid: string,
+    ) {
         this.adapter = adapter;
         this.config = config;
         this.registry = registry;
+        this.globalConfig = globalConfig;
         this.instanceUuid = instanceUuid;
         this.app = Fastify({ logger: false, trustProxy: false });
     }
@@ -346,7 +360,7 @@ export class WebServer {
             config: {
                 mdns: this.config.mdnsEnabled,
                 auth: this.config.authRequired,
-                redirectTo: this.config.defaultVisUrl,
+                globalRedirect: this.globalConfig.isEnabled() ? this.globalConfig.getGlobalUrl() : null,
             },
         }));
 
@@ -359,17 +373,16 @@ export class WebServer {
             theme_color: '#03a9f4',
         }));
 
-        // Root — 302 redirect to the per-client or default vis URL
+        // Root — 302 redirect, or setup page when no URL is configured
         this.app.get('/', async (req, reply) => {
             const client = await this.identify(req, reply);
-            const url = this.registry.getVisUrl(client);
+            const url = this.globalConfig.resolveUrlFor(client);
             if (!url) {
-                this.adapter.log.debug('No redirect URL configured — returning error to client');
-                reply.status(500);
-                return {
-                    error: 'No redirect URL configured',
-                    message: 'Please configure a redirect URL in the adapter settings.',
-                };
+                this.adapter.log.debug(`No redirect URL for client ${client.id} — serving setup page`);
+                return reply
+                    .status(200)
+                    .type('text/html; charset=utf-8')
+                    .send(renderSetupPage(client.id, this.adapter.namespace));
             }
             this.adapter.log.debug(`Redirecting client ${client.id} → ${url}`);
             return reply.redirect(url, 302);

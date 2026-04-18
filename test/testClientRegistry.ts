@@ -108,8 +108,6 @@ function createMockAdapter(namespace = 'hassemu.0'): {
     return { store, adapter: buildAdapter() };
 }
 
-const DEFAULT_URL = 'http://vis.local/';
-
 describe('ClientRegistry', () => {
     let store: MockStore;
     let adapter: ReturnType<typeof createMockAdapter>['adapter'];
@@ -119,7 +117,7 @@ describe('ClientRegistry', () => {
         const built = createMockAdapter();
         store = built.store;
         adapter = built.adapter;
-        registry = new ClientRegistry(adapter as never, DEFAULT_URL);
+        registry = new ClientRegistry(adapter as never);
     });
 
     describe('identifyOrCreate', () => {
@@ -230,19 +228,6 @@ describe('ClientRegistry', () => {
         it('listAll returns all clients', async () => {
             await registry.identifyOrCreate(null, null, null);
             expect(registry.listAll().length).to.equal(2);
-        });
-    });
-
-    describe('getVisUrl', () => {
-        it('falls back to default when record has no override', async () => {
-            const rec = await registry.identifyOrCreate(null, null, null);
-            expect(registry.getVisUrl(rec)).to.equal(DEFAULT_URL);
-        });
-
-        it('uses per-client override when set', async () => {
-            const rec = await registry.identifyOrCreate(null, null, null);
-            rec.visUrl = 'http://override.local/';
-            expect(registry.getVisUrl(rec)).to.equal('http://override.local/');
         });
     });
 

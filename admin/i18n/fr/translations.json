@@ -5,9 +5,6 @@
     "authRequiredTooltip": "Si activé, les appareils doivent saisir des identifiants valides pour s'authentifier",
     "bindAddress": "Lier à l'Interface",
     "bindAddressTooltip": "Sélectionnez l'interface réseau sur laquelle écouter (0.0.0.0 = toutes les interfaces)",
-    "clientsInfo": "Chaque afficheur qui se connecte obtient son propre canal sous `clients.*`. Vous pouvez choisir une URL différente par client via un menu déroulant des URL ioBroker connues (VIS, Admin, etc.) ou saisir une URL personnalisée. Le bouton `remove` oublie le client — un afficheur qui revient est enregistré avec un nouvel ID.",
-    "defaultVisUrl": "URL de redirection par défaut",
-    "defaultVisUrlTooltip": "URL de secours utilisée quand un client n'a pas d'URL individuelle. Chaque client peut l'outrepasser via clients.<id>.visUrl (menu déroulant ou saisie manuelle).",
     "donateKofi": "Soutenir sur Ko-fi",
     "donatePaypal": "Faire un don via PayPal",
     "header_auth": "Authentification",
@@ -17,9 +14,9 @@
     "mdnsEnabledTooltip": "Diffuser le service via mDNS pour que les appareils le trouvent automatiquement (fonctionne sur toutes les plateformes)",
     "mdnsInfo": "mDNS diffuse le service sur le réseau local pour que les appareils puissent le découvrir automatiquement.\n\nSi mDNS est désactivé ou ne fonctionne pas, entrez l'URL manuellement sur l'écran:\n`http://YOUR_IP:8123`",
     "password": "Mot de passe",
+    "redirectInfo": "Les cibles de redirection se configurent via les points de données, pas ici. Utilisez `global.visUrl` + `global.enabled` pour envoyer tous les clients vers la même URL, ou configurez chaque écran individuellement sous `clients.<id>.visUrl`. Les deux champs proposent un menu déroulant des URL ioBroker connues.",
     "serviceName": "Nom du Service",
     "serviceNameTooltip": "Nom affiché sur l'écran pendant la découverte",
     "supportHeader": "Soutien",
-    "username": "Nom d'utilisateur",
-    "warningLocalhost": "**Important:** N'utilisez pas 'localhost' ou '127.0.0.1' — utilisez l'adresse IP réelle de votre serveur ioBroker!"
+    "username": "Nom d'utilisateur"
 }
