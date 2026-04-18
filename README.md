@@ -21,14 +21,14 @@ Typical use: wall tablets and display devices (Shelly Wall Display, Amazon Echo 
 
 ## Features
 
-- **Multi-client** — each display gets its own channel under `clients.*`, with an independent redirect URL
-- **URL dropdown** — each client's `visUrl` datapoint is populated with all known ioBroker URLs (VIS/VIS-2 projects, Admin tiles, Jarvis, etc.) — pick from the list or enter any URL
-- **Cookie-based identification** — displays are recognised across restarts and IP changes
-- **mDNS discovery** — automatic detection via `_home-assistant._tcp` (cross-platform, no avahi required)
-- **Home Assistant OAuth2 flow** — full login flow emulation, optional credential validation
-- **Reverse DNS hostname** — each client is labelled with its LAN hostname when available
-- **Input hardening** — every external URL is validated (http/https only, no credentials, 2048 char cap)
-- **Admin UI** — JSON-Config, translated into 11 languages
+- **Per-client redirect URLs** — each display gets its own channel under `clients.*` with an independent URL
+- **Optional global override** — one switch sends every client to the same URL
+- **URL dropdown** — every URL datapoint suggests the known ioBroker URLs (VIS/VIS-2 projects, Admin tiles, Jarvis, …); free text is allowed
+- **Cookie-based identification** — displays are recognised across adapter restarts and IP changes
+- **mDNS discovery** — `_home-assistant._tcp` on the LAN, cross-platform, no avahi required
+- **Home Assistant OAuth2 flow** — optional credential check
+- **Reverse DNS** — LAN hostname per client when resolvable
+- **Input hardening** — URLs are restricted to http/https, no credentials, 2048 char cap
 
 ---
 
@@ -36,6 +36,7 @@ Typical use: wall tablets and display devices (Shelly Wall Display, Amazon Echo 
 
 - **Node.js ≥ 20**
 - **ioBroker js-controller ≥ 7.0.0**
+- **ioBroker web adapter ≥ 6.0.0**
 - **ioBroker Admin ≥ 7.6.20**
 
 ---
@@ -53,18 +54,28 @@ Port 8123 is mandatory. Any HA-style display hard-codes that port number, so the
 
 ## Configuration
 
-Configuration lives in the Admin UI (jsonConfig):
+Redirect URLs live in datapoints (see below), not in the Admin UI.
 
-| Option                   | Description                                                                                                      | Default       |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------- | ------------- |
-| **Bind to Interface**    | Network interface to listen on                                                                                   | 0.0.0.0 (all) |
-| **Service Name**         | Name broadcast via mDNS — e.g. shown as server name on the display                                               | `ioBroker`    |
-| **Default Redirect URL** | Fallback URL for clients that have no individual `visUrl` set                                                    | *(empty)*     |
-| **mDNS Enabled**         | Broadcast `_home-assistant._tcp` on the LAN                                                                      | `true`        |
-| **Auth Required**        | Validate the credentials the display sends during the login flow                                                 | `false`       |
-| **Username / Password**  | Credentials used when *Auth Required* is on (password is encrypted at rest)                                      | `admin` / —   |
+| Option                  | Description                                                                 | Default       |
+| ----------------------- | --------------------------------------------------------------------------- | ------------- |
+| **Bind to Interface**   | Network interface to listen on                                              | 0.0.0.0 (all) |
+| **Service Name**        | Name broadcast via mDNS, shown as the server name on the display            | `ioBroker`    |
+| **mDNS Enabled**        | Broadcast `_home-assistant._tcp` on the LAN                                 | `true`        |
+| **Auth Required**       | Validate the credentials the display sends during the login flow            | `false`       |
+| **Username / Password** | Credentials used when *Auth Required* is on (password is encrypted at rest) | `admin` / —   |
 
-The **default redirect URL** must be reachable from the display — use the LAN IP of the ioBroker host, never `localhost`.
+---
+
+## Redirect URLs
+
+Two places, both datapoints with a dropdown of all known ioBroker URLs. Free text works too.
+
+- **`hassemu.0.clients.<id>.visUrl`** — per-client URL.
+- **`hassemu.0.global.visUrl`** + **`hassemu.0.global.enabled`** — global override. When `enabled` is `true`, every client is sent to `global.visUrl` regardless of the per-client value.
+
+If neither is set, hassemu serves a setup page with the client's device ID and the datapoint to fill in. The page refreshes every 15 s.
+
+URLs must be reachable from the display — use the LAN IP of the ioBroker host, not `localhost`.
 
 ---
 
@@ -74,16 +85,14 @@ As soon as a display connects the first time, a channel is created:
 
 ```
 hassemu.0.clients.<id>
-├── visUrl    — per-client URL (empty = use default)
+├── visUrl    — per-client URL (empty = use global or setup page)
 ├── ip        — last observed IP
 ├── hostname  — reverse-DNS name (may be empty on some LANs)
 └── remove    — button: forget this client
 ```
 
-- **`visUrl`** is a string datapoint but renders as a **dropdown**. The dropdown is populated from the live ioBroker state: enabled adapter instances with `common.welcomeScreen` / `common.welcomeScreenPro` / `common.localLinks`, plus every VIS-2 and VIS-1 project folder. Free text is allowed as well.
 - **`remove`** forgets the client — channel, cookie, token, all gone. A returning display is re-registered with a new ID.
-
-The client ID is a short 6-char string (e.g. `a4b9c2`) so it reads cleanly as a datapoint segment. Identity is kept via an HttpOnly `hassemu_client` cookie (UUID v4, 10 years).
+- The client ID is a short 6-char string (e.g. `a4b9c2`). Identity is kept via an HttpOnly `hassemu_client` cookie (UUID v4, 10 years).
 
 ---
 
@@ -92,8 +101,11 @@ The client ID is a short 6-char string (e.g. `a4b9c2`) so it reads cleanly as a 
 1. Display starts → mDNS lookup → finds `hassemu` on port 8123
 2. Display performs the HA OAuth2 flow against the adapter
 3. On first request the adapter sets a cookie and creates `clients.<id>`
-4. Display is 302-redirected to `clients.<id>.visUrl` or, if empty, to the default URL
-5. Next time the display connects, the cookie maps it back to the same channel — per-client URL persists
+4. Resolution order for the redirect:
+   1. `global.enabled = true` → `global.visUrl`
+   2. otherwise `clients.<id>.visUrl`
+   3. otherwise the setup page
+5. Next time the display connects, the cookie maps it back to the same channel
 
 ---
 
@@ -102,9 +114,12 @@ The client ID is a short 6-char string (e.g. `a4b9c2`) so it reads cleanly as a 
 ```
 hassemu.0.
 ├── info.connection          — Server is running (bool, indicator)
+├── global.
+│   ├── visUrl               — Global redirect URL (dropdown)
+│   └── enabled              — Apply global URL to all clients (switch)
 └── clients.
     └── <id>.
-        ├── visUrl           — Redirect URL (string, writable, dropdown)
+        ├── visUrl           — Per-client redirect URL (dropdown)
         ├── ip               — Last seen client IP
         ├── hostname         — Reverse-DNS hostname (may be empty)
         └── remove           — Button: forget this client
@@ -131,7 +146,7 @@ The adapter broadcasts `_home-assistant._tcp` via mDNS. If the display does not 
 
 ### Display is redirected to the wrong dashboard
 
-Check `clients.<id>.visUrl` — the per-client URL wins over the default. Empty `visUrl` ⇒ default URL.
+If the global override is on, it wins — check `global.enabled` and `global.visUrl` first. Otherwise the per-client `clients.<id>.visUrl` applies. Empty on both sides means the setup page is served.
 
 ### Display keeps getting a new ID
 
@@ -150,14 +165,20 @@ returns the adapter's runtime state — useful to verify the server is up and se
 
 ---
 
-## Upgrading from 1.0.x
+## Upgrading
 
-- The config field `visUrl` was renamed to `defaultVisUrl`. The adapter migrates the value on first start.
-- Per-client URLs land under `clients.<id>.visUrl`. Old single-URL setups keep working unchanged — clients without an override still use the default.
+- **1.0.x / 1.1.0 → 1.1.1** — any existing redirect URL is copied to `global.visUrl`, `global.enabled` is set to `true`. To switch to per-display URLs, clear `global.enabled` and fill each `clients.<id>.visUrl`.
 
 ---
 
 ## Changelog
+
+### 1.1.1 (2026-04-18)
+
+- Redirect URL moved from Admin config to datapoints: `global.visUrl` + `global.enabled`, otherwise each `clients.<id>.visUrl`
+- Setup page served when no URL is configured (shows device ID + datapoint path)
+- `web` adapter declared as dependency
+- Legacy `defaultVisUrl` migrates to `global.visUrl` + `global.enabled=true` on first start
 
 ### 1.1.0 (2026-04-18)
 
@@ -224,7 +245,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-*Developed with assistance from Claude.ai*

@@ -5,9 +5,6 @@
     "authRequiredTooltip": "Indien ingeschakeld moeten apparaten geldige inloggegevens invoeren om te authenticeren",
     "bindAddress": "Binden aan Interface",
     "bindAddressTooltip": "Selecteer de netwerkinterface om op te luisteren (0.0.0.0 = alle interfaces)",
-    "clientsInfo": "Elk display dat verbindt krijgt een eigen kanaal onder `clients.*`. Per client is een afwijkende URL mogelijk — kies uit de dropdown van bekende ioBroker-URL's (VIS, Admin, ...) of voer een eigen URL in. De knop `remove` vergeet een client — een terugkerend display wordt opnieuw geregistreerd met een nieuw ID.",
-    "defaultVisUrl": "Standaard omleidings-URL",
-    "defaultVisUrlTooltip": "Fallback-URL wanneer een client geen eigen URL heeft ingesteld. Elke client kan dit overschrijven via clients.<id>.visUrl (dropdown of handmatige invoer).",
     "donateKofi": "Steunen op Ko-fi",
     "donatePaypal": "Doneer via PayPal",
     "header_auth": "Authenticatie",
@@ -17,9 +14,9 @@
     "mdnsEnabledTooltip": "De service via mDNS uitzenden zodat apparaten deze automatisch kunnen vinden (werkt op alle platformen)",
     "mdnsInfo": "mDNS zendt de service uit op het lokale netwerk zodat apparaten deze automatisch kunnen ontdekken.\n\nAls mDNS uitgeschakeld is of niet werkt, voer de URL handmatig in op het scherm:\n`http://YOUR_IP:8123`",
     "password": "Wachtwoord",
+    "redirectInfo": "Redirect-doelen worden via datapunten ingesteld, niet hier. Gebruik `global.visUrl` + `global.enabled` om alle clients naar dezelfde URL te sturen, of stel elk display apart in onder `clients.<id>.visUrl`. Beide velden bieden een dropdown met bekende ioBroker-URL's.",
     "serviceName": "Servicenaam",
     "serviceNameTooltip": "Naam weergegeven op het scherm tijdens detectie",
     "supportHeader": "Steun",
-    "username": "Gebruikersnaam",
-    "warningLocalhost": "**Belangrijk:** Gebruik geen 'localhost' of '127.0.0.1' — gebruik het echte IP-adres van uw ioBroker-server!"
+    "username": "Gebruikersnaam"
 }

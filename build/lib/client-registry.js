@@ -38,18 +38,13 @@ var import_network = require("./network");
 const CLIENTS_PREFIX = "clients.";
 class ClientRegistry {
   adapter;
-  defaultVisUrl;
   byCookie = /* @__PURE__ */ new Map();
   byId = /* @__PURE__ */ new Map();
   byToken = /* @__PURE__ */ new Map();
   currentUrlStates = {};
-  /**
-   * @param adapter       Adapter instance used for object/state I/O.
-   * @param defaultVisUrl Fallback URL used when a client has no override.
-   */
-  constructor(adapter, defaultVisUrl) {
+  /** @param adapter Adapter instance used for object/state I/O. */
+  constructor(adapter) {
     this.adapter = adapter;
-    this.defaultVisUrl = defaultVisUrl;
   }
   /** Loads existing clients from ioBroker objects into memory. Call once on adapter start. */
   async restore() {
@@ -127,15 +122,6 @@ class ClientRegistry {
     var _a;
     return (_a = this.byToken.get(token)) != null ? _a : null;
   }
-  /**
-   * Returns the per-client visUrl if set, otherwise the adapter-wide default.
-   *
-   * @param record Client to resolve the URL for.
-   */
-  getVisUrl(record) {
-    var _a;
-    return (_a = record.visUrl) != null ? _a : this.defaultVisUrl;
-  }
   /** Returns a snapshot array of all registered clients. */
   listAll() {
     return [...this.byId.values()];
@@ -163,7 +149,8 @@ class ClientRegistry {
   /**
    * Accept an external visUrl write on `clients.<id>.visUrl`.
    * Unsafe URLs are rejected (state is reset to the current value).
-   * Empty string / null clears the override — client uses defaultVisUrl.
+   * Empty string / null clears the override — client falls back to global
+   * URL or the setup page.
    *
    * @param id       Client id.
    * @param rawValue Value written to the state (any type — coerced + validated).

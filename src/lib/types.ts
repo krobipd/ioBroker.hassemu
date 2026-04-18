@@ -8,8 +8,6 @@ export interface AdapterConfig {
     port: number;
     /** IP address to bind the server to (0.0.0.0 = all interfaces). */
     bindAddress: string;
-    /** Fallback redirect URL for newly registered clients (per-client URL overrides in clients.*.visUrl). */
-    defaultVisUrl: string;
     /** Whether authentication is required. */
     authRequired: boolean;
     /** Username for authentication (only used when authRequired=true). */
@@ -30,7 +28,7 @@ export interface ClientRecord {
     cookie: string;
     /** Currently active OAuth2 access token, or null if not authenticated. */
     token: string | null;
-    /** Per-client visUrl override (null = use defaultVisUrl). */
+    /** Per-client visUrl (null = use global override or setup page). */
     visUrl: string | null;
     /** Last observed client IP. */
     ip: string | null;

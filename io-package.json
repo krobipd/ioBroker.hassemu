@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "news": {
+      "1.1.1": {
+        "en": "Redirect target moved from adapter config to datapoints: global.visUrl + global.enabled as an optional override, otherwise each clients.<id>.visUrl applies. Unconfigured displays see a small setup page instead of an error. web adapter declared as dependency.",
+        "de": "Redirect-Ziel aus den Adapter-Einstellungen in Datenpunkte verschoben: global.visUrl + global.enabled als optionales Override, sonst gilt jeweils clients.<id>.visUrl. Nicht konfigurierte Displays bekommen eine kleine Setup-Seite statt Fehlermeldung. web-Adapter als Abhängigkeit hinterlegt.",
+        "ru": "Цель перенаправления перенесена из настроек адаптера в точки данных: global.visUrl + global.enabled как опциональное переопределение, иначе действует clients.<id>.visUrl. Ненастроенные дисплеи видят страницу настройки вместо ошибки. Адаптер web объявлен как зависимость.",
+        "pt": "Destino do redirecionamento movido das configurações do adaptador para pontos de dados: global.visUrl + global.enabled como substituição opcional, caso contrário aplica-se clients.<id>.visUrl. Displays não configurados veem uma página de configuração em vez de erro. Adaptador web declarado como dependência.",
+        "nl": "Redirect-doel verplaatst van adapterinstellingen naar datapunten: global.visUrl + global.enabled als optionele override, anders geldt clients.<id>.visUrl. Niet-geconfigureerde displays zien een setup-pagina in plaats van een fout. web-adapter gedeclareerd als afhankelijkheid.",
+        "fr": "Cible de redirection déplacée des paramètres de l'adaptateur vers des points de données : global.visUrl + global.enabled comme surcharge optionnelle, sinon clients.<id>.visUrl s'applique. Les écrans non configurés affichent une page de configuration au lieu d'une erreur. Adaptateur web déclaré en dépendance.",
+        "it": "Destinazione del redirect spostata dalle impostazioni dell'adattatore ai datapoint: global.visUrl + global.enabled come override opzionale, altrimenti vale clients.<id>.visUrl. I display non configurati mostrano una pagina di setup invece di un errore. Adattatore web dichiarato come dipendenza.",
+        "es": "Destino de redirección movido de la configuración del adaptador a datapoints: global.visUrl + global.enabled como sobrescritura opcional, de lo contrario se aplica clients.<id>.visUrl. Los displays no configurados muestran una página de configuración en lugar de un error. Adaptador web declarado como dependencia.",
+        "pl": "Cel przekierowania przeniesiony z ustawień adaptera do datapointów: global.visUrl + global.enabled jako opcjonalne nadpisanie, w przeciwnym razie obowiązuje clients.<id>.visUrl. Nieskonfigurowane wyświetlacze widzą stronę konfiguracji zamiast błędu. Adapter web zadeklarowany jako zależność.",
+        "uk": "Ціль перенаправлення перенесено з налаштувань адаптера в точки даних: global.visUrl + global.enabled як опціональне перевизначення, інакше діє clients.<id>.visUrl. Ненастроєні дисплеї бачать сторінку налаштування замість помилки. Адаптер web оголошено залежністю.",
+        "zh-cn": "重定向目标从适配器配置移至数据点：global.visUrl + global.enabled 作为可选覆盖，否则按各个 clients.<id>.visUrl 生效。未配置的显示器会看到一个小型设置页面而非错误。web 适配器已声明为依赖。"
+      },
       "1.1.0": {
         "en": "Multi-client support: each display gets its own channel in clients.*, independent visUrl with dropdown of all known ioBroker VIS/Admin URLs, cookie-based identification, reverse-DNS hostname. Web server switched to Fastify, hardened input validation.",
         "de": "Multi-Client-Unterstützung: Jedes Display bekommt einen eigenen Channel unter clients.*, eigene visUrl mit Dropdown aller bekannten ioBroker-VIS/Admin-URLs, Cookie-Identifikation, Reverse-DNS-Hostname. Web-Server auf Fastify umgestellt, härtere Eingabeprüfung.",
@@ -131,6 +144,9 @@
     "dependencies": [
       {
         "js-controller": ">=7.0.0"
+      },
+      {
+        "web": ">=6.0.0"
       }
     ],
     "globalDependencies": [
@@ -148,7 +164,6 @@
   "native": {
     "port": 8123,
     "bindAddress": "0.0.0.0",
-    "defaultVisUrl": "",
     "authRequired": false,
     "username": "admin",
     "password": "",
@@ -183,6 +198,40 @@
       "type": "folder",
       "common": {
         "name": "Known display clients"
+      },
+      "native": {}
+    },
+    {
+      "_id": "global",
+      "type": "channel",
+      "common": {
+        "name": "Global redirect override"
+      },
+      "native": {}
+    },
+    {
+      "_id": "global.enabled",
+      "type": "state",
+      "common": {
+        "name": "Apply global URL to all clients",
+        "type": "boolean",
+        "role": "switch",
+        "read": true,
+        "write": true,
+        "def": false
+      },
+      "native": {}
+    },
+    {
+      "_id": "global.visUrl",
+      "type": "state",
+      "common": {
+        "name": "Global redirect URL",
+        "type": "string",
+        "role": "url",
+        "read": true,
+        "write": true,
+        "def": ""
       },
       "native": {}
     }

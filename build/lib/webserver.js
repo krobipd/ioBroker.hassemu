@@ -38,12 +38,14 @@ var import_cookie = __toESM(require("@fastify/cookie"));
 var import_fastify = __toESM(require("fastify"));
 var import_constants = require("./constants");
 var import_coerce = require("./coerce");
+var import_setup_page = require("./setup-page");
 const CLIENT_COOKIE = "hassemu_client";
 const COOKIE_MAX_AGE_S = 10 * 365 * 24 * 60 * 60;
 class WebServer {
   adapter;
   config;
   registry;
+  globalConfig;
   app;
   sessions = /* @__PURE__ */ new Map();
   cleanupTimer = null;
@@ -51,15 +53,17 @@ class WebServer {
   /** Set of IPs whose reverse DNS lookup is already in-flight — prevents duplicate work. */
   dnsInFlight = /* @__PURE__ */ new Set();
   /**
-   * @param adapter      Adapter instance used for logging and timers.
-   * @param config       Resolved runtime config (already migrated).
+   * @param adapter      Adapter instance used for logging, timers and namespace.
+   * @param config       Resolved runtime config.
    * @param registry     Multi-client registry.
+   * @param globalConfig Global redirect override.
    * @param instanceUuid Stable UUID shared with the mDNS advert.
    */
-  constructor(adapter, config, registry, instanceUuid) {
+  constructor(adapter, config, registry, globalConfig, instanceUuid) {
     this.adapter = adapter;
     this.config = config;
     this.registry = registry;
+    this.globalConfig = globalConfig;
     this.instanceUuid = instanceUuid;
     this.app = (0, import_fastify.default)({ logger: false, trustProxy: false });
   }
@@ -327,7 +331,7 @@ class WebServer {
       config: {
         mdns: this.config.mdnsEnabled,
         auth: this.config.authRequired,
-        redirectTo: this.config.defaultVisUrl
+        globalRedirect: this.globalConfig.isEnabled() ? this.globalConfig.getGlobalUrl() : null
       }
     }));
     this.app.get("/manifest.json", () => ({
@@ -340,14 +344,10 @@ class WebServer {
     }));
     this.app.get("/", async (req, reply) => {
       const client = await this.identify(req, reply);
-      const url = this.registry.getVisUrl(client);
+      const url = this.globalConfig.resolveUrlFor(client);
       if (!url) {
-        this.adapter.log.debug("No redirect URL configured \u2014 returning error to client");
-        reply.status(500);
-        return {
-          error: "No redirect URL configured",
-          message: "Please configure a redirect URL in the adapter settings."
-        };
+        this.adapter.log.debug(`No redirect URL for client ${client.id} \u2014 serving setup page`);
+        return reply.status(200).type("text/html; charset=utf-8").send((0, import_setup_page.renderSetupPage)(client.id, this.adapter.namespace));
       }
       this.adapter.log.debug(`Redirecting client ${client.id} \u2192 ${url}`);
       return reply.redirect(url, 302);

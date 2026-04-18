@@ -31,32 +31,9 @@
 			"lg": 4,
 			"xl": 4
 		},
-		"defaultVisUrl": {
-			"type": "text",
-			"label": "defaultVisUrl",
-			"tooltip": "defaultVisUrlTooltip",
-			"placeholder": "http://192.168.1.100:8082/vis/",
-			"xs": 12,
-			"sm": 12,
-			"md": 12,
-			"lg": 12,
-			"xl": 12
-		},
-		"_clientsInfo": {
+		"_redirectInfo": {
 			"type": "staticText",
-			"text": "clientsInfo",
-			"xs": 12,
-			"sm": 12,
-			"md": 12,
-			"lg": 12,
-			"xl": 12
-		},
-		"_warning": {
-			"type": "staticText",
-			"text": "warningLocalhost",
-			"style": {
-				"color": "#ff9800"
-			},
+			"text": "redirectInfo",
 			"xs": 12,
 			"sm": 12,
 			"md": 12,

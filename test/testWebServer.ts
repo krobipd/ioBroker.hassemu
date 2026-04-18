@@ -2,6 +2,7 @@ import { expect } from 'chai';
 import crypto from 'node:crypto';
 import { CLIENT_COOKIE, WebServer } from '../src/lib/webserver';
 import { ClientRegistry } from '../src/lib/client-registry';
+import { GlobalConfig } from '../src/lib/global-config';
 import { HA_VERSION } from '../src/lib/constants';
 import type { AdapterConfig } from '../src/lib/types';
 
@@ -91,13 +92,27 @@ function createMockAdapter(namespace = 'hassemu.0'): {
 const baseConfig: AdapterConfig = {
     port: 0,
     bindAddress: '127.0.0.1',
-    defaultVisUrl: 'http://example.com/vis',
     authRequired: false,
     username: 'admin',
     password: 'secret',
     mdnsEnabled: false,
     serviceName: 'TestServer',
 };
+
+async function buildGlobalConfig(
+    adapter: ReturnType<typeof createMockAdapter>['adapter'],
+    url: string | null = null,
+    enabled = false,
+): Promise<GlobalConfig> {
+    const g = new GlobalConfig(adapter as never);
+    if (url) {
+        await g.handleVisUrlWrite(url);
+    }
+    if (enabled) {
+        await g.handleEnabledWrite(true);
+    }
+    return g;
+}
 
 function extractCookie(setCookieHeader: string | string[] | undefined): string | null {
     if (!setCookieHeader) return null;
@@ -109,13 +124,15 @@ function extractCookie(setCookieHeader: string | string[] | undefined): string |
 describe('WebServer', () => {
     let server: WebServer;
     let registry: ClientRegistry;
+    let globalConfig: GlobalConfig;
     let store: MockStore;
 
     beforeEach(async () => {
         const built = createMockAdapter();
         store = built.store;
-        registry = new ClientRegistry(built.adapter as never, baseConfig.defaultVisUrl);
-        server = new WebServer(built.adapter as never, baseConfig, registry, crypto.randomUUID());
+        registry = new ClientRegistry(built.adapter as never);
+        globalConfig = await buildGlobalConfig(built.adapter, 'http://example.com/vis', true);
+        server = new WebServer(built.adapter as never, baseConfig, registry, globalConfig, crypto.randomUUID());
         // ready() instead of listen() — we use inject(), not a real socket
         await server['app'].register((await import('@fastify/cookie')).default);
         server['setupErrorHandler']();
@@ -138,13 +155,15 @@ describe('WebServer', () => {
             expect(server.serviceName).to.equal('TestServer');
         });
 
-        it('falls back to ioBroker when service name is empty', () => {
+        it('falls back to ioBroker when service name is empty', async () => {
             const built = createMockAdapter();
-            const reg = new ClientRegistry(built.adapter as never, '');
+            const reg = new ClientRegistry(built.adapter as never);
+            const g = await buildGlobalConfig(built.adapter);
             const s = new WebServer(
                 built.adapter as never,
                 { ...baseConfig, serviceName: '' },
                 reg,
+                g,
                 crypto.randomUUID(),
             );
             expect(s.serviceName).to.equal('ioBroker');
@@ -286,11 +305,13 @@ describe('WebServer', () => {
         it('rejects invalid credentials when authRequired is true', async () => {
             // rebuild with authRequired = true
             const built = createMockAdapter();
-            const reg = new ClientRegistry(built.adapter as never, baseConfig.defaultVisUrl);
+            const reg = new ClientRegistry(built.adapter as never);
+            const g = await buildGlobalConfig(built.adapter, 'http://example.com/vis', true);
             const s = new WebServer(
                 built.adapter as never,
                 { ...baseConfig, authRequired: true },
                 reg,
+                g,
                 crypto.randomUUID(),
             );
             await s['app'].register((await import('@fastify/cookie')).default);
@@ -327,7 +348,7 @@ describe('WebServer', () => {
             expect(body.name).to.equal('TestServer');
         });
 
-        it('GET / redirects to defaultVisUrl for new clients', async () => {
+        it('GET / redirects to global URL for new clients when global override is on', async () => {
             const res = await server.inject({ method: 'GET', url: '/' });
             expect(res.statusCode).to.equal(302);
             expect(res.headers.location).to.equal('http://example.com/vis');
@@ -351,35 +372,58 @@ describe('WebServer', () => {
             expect(registry.getByCookie(cookie)).to.not.be.null;
         });
 
-        it('GET / uses per-client visUrl override if set', async () => {
-            const r1 = await server.inject({ method: 'GET', url: '/' });
+        it('GET / uses per-client visUrl when global override is off', async () => {
+            // rebuild with global.enabled = false so the client URL wins
+            const built = createMockAdapter();
+            const reg = new ClientRegistry(built.adapter as never);
+            const g = await buildGlobalConfig(built.adapter);
+            const s = new WebServer(built.adapter as never, baseConfig, reg, g, crypto.randomUUID());
+            await s['app'].register((await import('@fastify/cookie')).default);
+            s['setupErrorHandler']();
+            s['setupRoutes']();
+            await s['app'].ready();
+
+            const r1 = await s.inject({ method: 'GET', url: '/' });
             const cookie = extractCookie(r1.headers['set-cookie'])!;
-            const client = registry.getByCookie(cookie)!;
+            const client = reg.getByCookie(cookie)!;
             client.visUrl = 'http://override.local/ui';
-            const r2 = await server.inject({
+            const r2 = await s.inject({
                 method: 'GET',
                 url: '/',
                 headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
             });
             expect(r2.headers.location).to.equal('http://override.local/ui');
+            await s['app'].close();
         });
 
-        it('GET / returns 500 when neither per-client nor defaultVisUrl is set', async () => {
+        it('GET / prefers global URL over per-client when override is enabled', async () => {
+            const r1 = await server.inject({ method: 'GET', url: '/' });
+            const cookie = extractCookie(r1.headers['set-cookie'])!;
+            const client = registry.getByCookie(cookie)!;
+            client.visUrl = 'http://individual.local/ui';
+            const r2 = await server.inject({
+                method: 'GET',
+                url: '/',
+                headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
+            });
+            expect(r2.headers.location).to.equal('http://example.com/vis');
+        });
+
+        it('GET / serves the setup page when nothing is configured', async () => {
             const built = createMockAdapter();
-            const reg = new ClientRegistry(built.adapter as never, '');
-            const s = new WebServer(
-                built.adapter as never,
-                { ...baseConfig, defaultVisUrl: '' },
-                reg,
-                crypto.randomUUID(),
-            );
+            const reg = new ClientRegistry(built.adapter as never);
+            const g = await buildGlobalConfig(built.adapter);
+            const s = new WebServer(built.adapter as never, baseConfig, reg, g, crypto.randomUUID());
             await s['app'].register((await import('@fastify/cookie')).default);
             s['setupErrorHandler']();
             s['setupRoutes']();
             await s['app'].ready();
 
             const res = await s.inject({ method: 'GET', url: '/' });
-            expect(res.statusCode).to.equal(500);
+            expect(res.statusCode).to.equal(200);
+            expect(res.headers['content-type']).to.match(/^text\/html/);
+            expect(res.body).to.include('Device ID:');
+            expect(res.body).to.include('clients.');
             await s['app'].close();
         });
 
@@ -462,11 +506,13 @@ describe('WebServer', () => {
 describe('WebServer bindAddress / start-stop', () => {
     it('defaults to 0.0.0.0 when bindAddress is falsy', async () => {
         const built = createMockAdapter();
-        const reg = new ClientRegistry(built.adapter as never, 'http://x/');
+        const reg = new ClientRegistry(built.adapter as never);
+        const g = await buildGlobalConfig(built.adapter, 'http://x/', true);
         const s = new WebServer(
             built.adapter as never,
             { ...baseConfig, port: 0, bindAddress: '' },
             reg,
+            g,
             crypto.randomUUID(),
         );
         await s.start();
@@ -478,11 +524,13 @@ describe('WebServer bindAddress / start-stop', () => {
 
     it('binds to 127.0.0.1 when configured', async () => {
         const built = createMockAdapter();
-        const reg = new ClientRegistry(built.adapter as never, 'http://x/');
+        const reg = new ClientRegistry(built.adapter as never);
+        const g = await buildGlobalConfig(built.adapter, 'http://x/', true);
         const s = new WebServer(
             built.adapter as never,
             { ...baseConfig, port: 0, bindAddress: '127.0.0.1' },
             reg,
+            g,
             crypto.randomUUID(),
         );
         await s.start();
@@ -490,10 +538,11 @@ describe('WebServer bindAddress / start-stop', () => {
         await s.stop();
     });
 
-    it('returns null for boundAddress when server not running', () => {
+    it('returns null for boundAddress when server not running', async () => {
         const built = createMockAdapter();
-        const reg = new ClientRegistry(built.adapter as never, 'http://x/');
-        const s = new WebServer(built.adapter as never, baseConfig, reg, crypto.randomUUID());
+        const reg = new ClientRegistry(built.adapter as never);
+        const g = await buildGlobalConfig(built.adapter, 'http://x/', true);
+        const s = new WebServer(built.adapter as never, baseConfig, reg, g, crypto.randomUUID());
         expect(s.boundAddress).to.be.null;
     });
 });
