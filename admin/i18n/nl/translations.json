@@ -5,6 +5,9 @@
     "authRequiredTooltip": "Indien ingeschakeld moeten apparaten geldige inloggegevens invoeren om te authenticeren",
     "bindAddress": "Binden aan Interface",
     "bindAddressTooltip": "Selecteer de netwerkinterface om op te luisteren (0.0.0.0 = alle interfaces)",
+    "clientsInfo": "Elk display dat verbindt krijgt een eigen kanaal onder `clients.*`. Per client is een afwijkende URL mogelijk — kies uit de dropdown van bekende ioBroker-URL's (VIS, Admin, ...) of voer een eigen URL in. De knop `remove` vergeet een client — een terugkerend display wordt opnieuw geregistreerd met een nieuw ID.",
+    "defaultVisUrl": "Standaard omleidings-URL",
+    "defaultVisUrlTooltip": "Fallback-URL wanneer een client geen eigen URL heeft ingesteld. Elke client kan dit overschrijven via clients.<id>.visUrl (dropdown of handmatige invoer).",
     "donateKofi": "Steunen op Ko-fi",
     "donatePaypal": "Doneer via PayPal",
     "header_auth": "Authenticatie",
@@ -16,9 +19,7 @@
     "password": "Wachtwoord",
     "serviceName": "Servicenaam",
     "serviceNameTooltip": "Naam weergegeven op het scherm tijdens detectie",
+    "supportHeader": "Steun",
     "username": "Gebruikersnaam",
-    "visUrl": "Doorstuur-URL",
-    "visUrlTooltip": "URL waarnaar apparaten worden doorgestuurd na authenticatie (bijv. http://192.168.1.100:8082/vis/)",
-    "warningLocalhost": "**Belangrijk:** Gebruik geen 'localhost' of '127.0.0.1' — gebruik het echte IP-adres van uw ioBroker-server!",
-    "supportHeader": "Steun"
+    "warningLocalhost": "**Belangrijk:** Gebruik geen 'localhost' of '127.0.0.1' — gebruik het echte IP-adres van uw ioBroker-server!"
 }

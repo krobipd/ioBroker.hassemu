@@ -5,6 +5,9 @@
     "authRequiredTooltip": "Se abilitato, i dispositivi devono inserire credenziali valide per autenticarsi",
     "bindAddress": "Associa all'Interfaccia",
     "bindAddressTooltip": "Seleziona l'interfaccia di rete su cui ascoltare (0.0.0.0 = tutte le interfacce)",
+    "clientsInfo": "Ogni display che si connette riceve un canale proprio sotto `clients.*`. Per ciascun client è possibile un URL diverso — scegli dal menu a discesa degli URL ioBroker noti (VIS, Admin, ...) o inserisci un URL personalizzato. Il pulsante `remove` dimentica il client — un display che torna viene registrato con un nuovo ID.",
+    "defaultVisUrl": "URL di reindirizzamento predefinito",
+    "defaultVisUrlTooltip": "URL di fallback usato quando un client non ha un URL individuale. Ogni client può sovrascriverlo in clients.<id>.visUrl (menu a discesa o inserimento manuale).",
     "donateKofi": "Supporta su Ko-fi",
     "donatePaypal": "Dona tramite PayPal",
     "header_auth": "Autenticazione",
@@ -16,9 +19,7 @@
     "password": "Password",
     "serviceName": "Nome del Servizio",
     "serviceNameTooltip": "Nome mostrato sul display durante il rilevamento",
+    "supportHeader": "Supporto",
     "username": "Nome utente",
-    "visUrl": "URL di Reindirizzamento",
-    "visUrlTooltip": "URL a cui reindirizzare i dispositivi dopo l'autenticazione (es. http://192.168.1.100:8082/vis/)",
-    "warningLocalhost": "**Importante:** Non usare 'localhost' o '127.0.0.1' — usa l'indirizzo IP reale del tuo server ioBroker!",
-    "supportHeader": "Supporto"
+    "warningLocalhost": "**Importante:** Non usare 'localhost' o '127.0.0.1' — usa l'indirizzo IP reale del tuo server ioBroker!"
 }

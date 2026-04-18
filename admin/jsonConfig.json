@@ -31,11 +31,20 @@
 			"lg": 4,
 			"xl": 4
 		},
-		"visUrl": {
+		"defaultVisUrl": {
 			"type": "text",
-			"label": "visUrl",
-			"tooltip": "visUrlTooltip",
+			"label": "defaultVisUrl",
+			"tooltip": "defaultVisUrlTooltip",
 			"placeholder": "http://192.168.1.100:8082/vis/",
+			"xs": 12,
+			"sm": 12,
+			"md": 12,
+			"lg": 12,
+			"xl": 12
+		},
+		"_clientsInfo": {
+			"type": "staticText",
+			"text": "clientsInfo",
 			"xs": 12,
 			"sm": 12,
 			"md": 12,

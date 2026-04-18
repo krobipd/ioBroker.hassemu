@@ -1,6 +1,6 @@
-import os from 'node:os';
 import Bonjour, { type Service } from 'bonjour-service';
 import { HA_VERSION } from './constants';
+import { getLocalIp } from './network';
 import type { AdapterConfig, AdapterInterface } from './types';
 
 /** mDNS service for Home Assistant discovery via bonjour-service */
@@ -25,25 +25,14 @@ export class MDNSService {
         this.uuid = uuid;
     }
 
-    /** First non-internal IPv4 address */
+    /** First non-internal IPv4 address (wraps shared helper for backwards-compat). */
     getLocalIP(): string {
-        const interfaces = os.networkInterfaces();
-        for (const ifaces of Object.values(interfaces)) {
-            if (!ifaces) {
-                continue;
-            }
-            for (const iface of ifaces) {
-                if (iface.family === 'IPv4' && !iface.internal) {
-                    return iface.address;
-                }
-            }
-        }
-        return '127.0.0.1';
+        return getLocalIp();
     }
 
     /** Start mDNS broadcasting via bonjour-service */
     start(): void {
-        const localIP = this.getLocalIP();
+        const localIP = getLocalIp();
         const baseUrl = `http://${localIP}:${this.config.port}`;
         const serviceName = this.config.serviceName || 'ioBroker';
 

@@ -31,9 +31,9 @@ __export(mdns_exports, {
   MDNSService: () => MDNSService
 });
 module.exports = __toCommonJS(mdns_exports);
-var import_node_os = __toESM(require("node:os"));
 var import_bonjour_service = __toESM(require("bonjour-service"));
 var import_constants = require("./constants");
+var import_network = require("./network");
 class MDNSService {
   adapter;
   config;
@@ -53,24 +53,13 @@ class MDNSService {
     this.config = config;
     this.uuid = uuid;
   }
-  /** First non-internal IPv4 address */
+  /** First non-internal IPv4 address (wraps shared helper for backwards-compat). */
   getLocalIP() {
-    const interfaces = import_node_os.default.networkInterfaces();
-    for (const ifaces of Object.values(interfaces)) {
-      if (!ifaces) {
-        continue;
-      }
-      for (const iface of ifaces) {
-        if (iface.family === "IPv4" && !iface.internal) {
-          return iface.address;
-        }
-      }
-    }
-    return "127.0.0.1";
+    return (0, import_network.getLocalIp)();
   }
   /** Start mDNS broadcasting via bonjour-service */
   start() {
-    const localIP = this.getLocalIP();
+    const localIP = (0, import_network.getLocalIp)();
     const baseUrl = `http://${localIP}:${this.config.port}`;
     const serviceName = this.config.serviceName || "ioBroker";
     try {
