@@ -1,67 +1,106 @@
 import crypto from 'node:crypto';
-import type { Application, Request, Response, NextFunction } from 'express';
-import express from 'express';
-import type { Server } from 'node:http';
+import dns from 'node:dns/promises';
+import fastifyCookie from '@fastify/cookie';
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { HA_VERSION, SESSION_TTL_MS, CLEANUP_INTERVAL_MS, LOGIN_SCHEMA } from './constants';
-import type { AdapterConfig, SessionData, AdapterInterface } from './types';
+import { coerceString, coerceUuid } from './coerce';
+import type { ClientRegistry } from './client-registry';
+import type { AdapterConfig, AdapterInterface, ClientRecord, SessionData } from './types';
 
-/** Express web server emulating Home Assistant API */
+/** Browser cookie name. Client identity lives here — auto-sent on every page navigation. */
+export const CLIENT_COOKIE = 'hassemu_client';
+/** Cookie lifetime (10 years). Clients stay identified essentially forever unless removed. */
+const COOKIE_MAX_AGE_S = 10 * 365 * 24 * 60 * 60;
+
+/**
+ * Fastify web server emulating the HA REST API.
+ *
+ * Each incoming request is identified by cookie → {@link ClientRegistry} entry; new clients
+ * get a channel created on first hit. Express was swapped for Fastify in 1.1.0 for first-party
+ * cookie support, schema validation and a lighter runtime.
+ */
 export class WebServer {
     private readonly adapter: AdapterInterface;
     private readonly config: AdapterConfig;
-    private readonly app: Application;
-    private server: Server | null = null;
+    private readonly registry: ClientRegistry;
+    private readonly app: FastifyInstance;
     public readonly sessions: Map<string, SessionData> = new Map();
-    private cleanupTimer: unknown = null;
+    private cleanupTimer: ioBroker.Interval | null = null;
     public readonly instanceUuid: string;
+    /** Set of IPs whose reverse DNS lookup is already in-flight — prevents duplicate work. */
+    private readonly dnsInFlight = new Set<string>();
 
     /**
-     * Creates a new WebServer instance
-     *
-     * @param adapter - Adapter interface for logging and state management
-     * @param config - Adapter configuration
-     * @param instanceUuid - Shared UUID for consistent identity across WebServer and mDNS
+     * @param adapter      Adapter instance used for logging and timers.
+     * @param config       Resolved runtime config (already migrated).
+     * @param registry     Multi-client registry.
+     * @param instanceUuid Stable UUID shared with the mDNS advert.
      */
-    constructor(adapter: AdapterInterface, config: AdapterConfig, instanceUuid: string) {
+    constructor(adapter: AdapterInterface, config: AdapterConfig, registry: ClientRegistry, instanceUuid: string) {
         this.adapter = adapter;
         this.config = config;
-        this.app = express();
+        this.registry = registry;
         this.instanceUuid = instanceUuid;
+        this.app = Fastify({ logger: false, trustProxy: false });
     }
 
-    /** Configured service name */
+    /** Human-readable service name advertised in responses and mDNS. */
     get serviceName(): string {
         return this.config.serviceName || 'ioBroker';
     }
 
-    /** Returns the actual address the server is bound to, or null if not running */
+    /** Resolved listener address once `start()` has completed, or null otherwise. */
     get boundAddress(): { address: string; port: number } | null {
-        if (!this.server) {
-            return null;
-        }
-        const addr = this.server.address();
-        if (typeof addr === 'string' || !addr) {
+        const addr = this.app.server.address();
+        if (!addr || typeof addr === 'string') {
             return null;
         }
         return { address: addr.address, port: addr.port };
     }
 
-    // --- Helpers ---
+    // --- lifecycle ---
 
-    private json(res: Response, data: unknown, status = 200): void {
-        res.status(status).json(data);
+    /** Registers plugins and starts the HTTP listener. */
+    async start(): Promise<void> {
+        await this.app.register(fastifyCookie);
+        this.setupErrorHandler();
+        this.setupRoutes();
+
+        const bindAddress = this.config.bindAddress || '0.0.0.0';
+        try {
+            await this.app.listen({ port: this.config.port, host: bindAddress });
+        } catch (err) {
+            const e = err as NodeJS.ErrnoException;
+            const msg =
+                e.code === 'EADDRINUSE' ? `Port ${this.config.port} is already in use!` : `Server error: ${e.message}`;
+            this.adapter.log.error(msg);
+            throw err;
+        }
+        this.adapter.log.debug(`Web server listening on ${bindAddress}:${this.config.port}`);
+
+        this.cleanupTimer = this.adapter.setInterval(() => this.cleanupSessions(), CLEANUP_INTERVAL_MS) ?? null;
     }
 
-    /**
-     * Create a session entry with automatic expiration
-     *
-     * @param key - Unique session identifier
-     */
-    private createSession(key: string): void {
-        this.sessions.set(key, { created: Date.now() });
+    /** Stops the listener and cancels the session cleanup timer. */
+    async stop(): Promise<void> {
+        if (this.cleanupTimer) {
+            this.adapter.clearInterval(this.cleanupTimer);
+            this.cleanupTimer = null;
+        }
+        try {
+            await this.app.close();
+            this.adapter.log.debug('Web server stopped');
+        } catch (err) {
+            this.adapter.log.error(`Web server stop error: ${String(err)}`);
+        }
     }
 
-    /** Periodic cleanup of expired sessions */
+    /** Exposed for testing — fires injected requests without a real socket. */
+    get inject(): FastifyInstance['inject'] {
+        return this.app.inject.bind(this.app);
+    }
+
+    /** Periodic cleanup of expired in-flight auth sessions. */
     public cleanupSessions(): void {
         const now = Date.now();
         let cleaned = 0;
@@ -76,62 +115,100 @@ export class WebServer {
         }
     }
 
-    // --- Middleware ---
+    // --- client identification ---
 
-    private setupMiddleware(): void {
-        this.app.use(express.json());
-        this.app.use(express.urlencoded({ extended: true }));
+    private async identify(req: FastifyRequest, reply: FastifyReply): Promise<ClientRecord> {
+        const cookie = coerceUuid(req.cookies?.[CLIENT_COOKIE]);
+        const ip = coerceString(req.ip);
+        const record = await this.registry.identifyOrCreate(cookie, ip, null);
+        if (cookie !== record.cookie) {
+            reply.setCookie(CLIENT_COOKIE, record.cookie, {
+                path: '/',
+                httpOnly: true,
+                sameSite: 'lax',
+                maxAge: COOKIE_MAX_AGE_S,
+            });
+        }
+        if (ip) {
+            this.resolveHostnameAsync(record, ip);
+        }
+        return record;
+    }
 
-        // Handle JSON parse errors — return 400 instead of generic 500
-        this.app.use((err: Error, _req: Request, res: Response, next: NextFunction) => {
-            if (err instanceof SyntaxError && 'body' in err) {
-                this.adapter.log.debug(`Malformed JSON in request: ${err.message}`);
-                res.status(400).json({ error: 'Invalid JSON in request body' });
+    private resolveHostnameAsync(record: ClientRecord, ip: string): void {
+        if (record.hostname || this.dnsInFlight.has(ip)) {
+            return;
+        }
+        this.dnsInFlight.add(ip);
+        dns.reverse(ip)
+            .then(names => {
+                const name = names[0];
+                if (name) {
+                    this.registry.identifyOrCreate(record.cookie, ip, name).catch(() => {
+                        /* registry itself logs */
+                    });
+                }
+            })
+            .catch(() => {
+                // Reverse DNS often fails on LAN — intentionally silent.
+            })
+            .finally(() => {
+                this.dnsInFlight.delete(ip);
+            });
+    }
+
+    // --- error handling ---
+
+    private setupErrorHandler(): void {
+        this.app.setErrorHandler((err, _req, reply) => {
+            const error = err as Error & { validation?: unknown; statusCode?: number };
+            if (error.validation) {
+                this.adapter.log.debug(`Validation error: ${error.message}`);
+                reply.status(400).send({ error: 'Invalid request', details: error.message });
                 return;
             }
-            next(err);
-        });
-
-        // Request logging — use debug level to keep production logs clean
-        this.app.use((req: Request, _res: Response, next: NextFunction) => {
-            this.adapter.log.debug(`${req.method} ${req.path}`);
-            next();
+            // Fastify body-parsing / client errors already set statusCode in 4xx range
+            const code = typeof error.statusCode === 'number' ? error.statusCode : 500;
+            if (code >= 400 && code < 500) {
+                this.adapter.log.debug(`Client error ${code}: ${error.message}`);
+                reply.status(code).send({ error: error.message });
+                return;
+            }
+            this.adapter.log.warn(`Request error: ${error.message}`);
+            reply.status(500).send({ error: 'Internal server error' });
         });
     }
 
-    // --- Routes ---
+    // --- routes ---
 
     private setupRoutes(): void {
         this.setupApiRoutes();
         this.setupAuthRoutes();
         this.setupMiscRoutes();
-        this.setupCatchAll();
+        this.setupNotFound();
     }
 
     private setupApiRoutes(): void {
         // CRITICAL: trailing slash — HA clients check this endpoint for discovery
-        this.app.get('/api/', (_req: Request, res: Response) => {
-            this.json(res, { message: 'API running.' });
-        });
+        this.app.get('/api/', () => ({ message: 'API running.' }));
 
-        this.app.get('/api/config', (_req: Request, res: Response) => {
-            this.json(res, {
-                components: ['http', 'api', 'frontend', 'homeassistant'],
-                config_dir: '/config',
-                elevation: 0,
-                latitude: 0,
-                longitude: 0,
-                location_name: this.serviceName,
-                time_zone: 'UTC',
-                unit_system: { length: 'km', mass: 'g', temperature: '°C', volume: 'L' },
-                version: HA_VERSION,
-                whitelist_external_dirs: [],
-            });
-        });
+        this.app.get('/api/config', () => ({
+            components: ['http', 'api', 'frontend', 'homeassistant'],
+            config_dir: '/config',
+            elevation: 0,
+            latitude: 0,
+            longitude: 0,
+            location_name: this.serviceName,
+            time_zone: 'UTC',
+            unit_system: { length: 'km', mass: 'g', temperature: '°C', volume: 'L' },
+            version: HA_VERSION,
+            whitelist_external_dirs: [],
+        }));
 
-        this.app.get('/api/discovery_info', (req: Request, res: Response) => {
-            const baseUrl = `http://${req.hostname}:${this.config.port}`;
-            this.json(res, {
+        this.app.get('/api/discovery_info', req => {
+            const host = req.hostname || this.config.bindAddress || '0.0.0.0';
+            const baseUrl = `http://${host}:${this.config.port}`;
+            return {
                 base_url: baseUrl,
                 external_url: null,
                 internal_url: baseUrl,
@@ -139,35 +216,25 @@ export class WebServer {
                 requires_api_password: true,
                 uuid: this.instanceUuid,
                 version: HA_VERSION,
-            });
+            };
         });
 
-        // Stub-Endpoints for HA-API compatibility
         for (const path of ['/api/states', '/api/services', '/api/events']) {
-            this.app.get(path, (_req: Request, res: Response) => this.json(res, []));
+            this.app.get(path, () => []);
         }
-        this.app.get('/api/error_log', (_req: Request, res: Response) => this.json(res, ''));
+        this.app.get('/api/error_log', () => '');
     }
 
     private setupAuthRoutes(): void {
-        // Step 0: Auth providers
-        this.app.get('/auth/providers', (_req: Request, res: Response) => {
-            this.json(res, [
-                {
-                    name: 'Home Assistant Local',
-                    type: 'homeassistant',
-                    id: null,
-                },
-            ]);
-        });
+        this.app.get('/auth/providers', () => [{ name: 'Home Assistant Local', type: 'homeassistant', id: null }]);
 
-        // Step 1: Initiate login flow
-        this.app.post('/auth/login_flow', (_req: Request, res: Response) => {
+        this.app.post('/auth/login_flow', async (req, reply) => {
+            const client = await this.identify(req, reply);
             const flowId = crypto.randomUUID();
-            this.createSession(flowId);
-            this.adapter.log.debug(`Auth flow created: ${flowId}`);
+            this.sessions.set(flowId, { created: Date.now(), clientId: client.id });
+            this.adapter.log.debug(`Auth flow created: ${flowId} for client ${client.id}`);
 
-            this.json(res, {
+            return {
                 type: 'form',
                 flow_id: flowId,
                 handler: ['homeassistant', null],
@@ -175,35 +242,38 @@ export class WebServer {
                 data_schema: LOGIN_SCHEMA,
                 description_placeholders: null,
                 errors: null,
-            });
+            };
         });
 
-        // Step 2: Submit credentials
-        this.app.post('/auth/login_flow/:flowId', (req: Request, res: Response) => {
-            const flowId = req.params.flowId as string;
-
-            if (!this.sessions.has(flowId)) {
-                this.adapter.log.warn(`Unknown flow_id: ${flowId}`);
-                this.json(
-                    res,
-                    {
-                        type: 'abort',
-                        flow_id: flowId,
-                        reason: 'unknown_flow',
+        this.app.post<{
+            Params: { flowId: string };
+            Body: { username?: string; password?: string };
+        }>(
+            '/auth/login_flow/:flowId',
+            {
+                schema: {
+                    params: {
+                        type: 'object',
+                        properties: { flowId: { type: 'string', minLength: 1 } },
+                        required: ['flowId'],
                     },
-                    400,
-                );
-                return;
-            }
+                },
+            },
+            async (req, reply) => {
+                const flowId = req.params.flowId;
+                const session = this.sessions.get(flowId);
+                if (!session) {
+                    this.adapter.log.warn(`Unknown flow_id: ${flowId}`);
+                    reply.status(400);
+                    return { type: 'abort', flow_id: flowId, reason: 'unknown_flow' };
+                }
 
-            // Validate credentials if auth is enabled
-            if (this.config.authRequired) {
-                const { username, password } = req.body as { username?: string; password?: string };
-                if (username !== this.config.username || password !== this.config.password) {
-                    this.adapter.log.warn('Invalid credentials');
-                    this.json(
-                        res,
-                        {
+                if (this.config.authRequired) {
+                    const { username, password } = req.body ?? {};
+                    if (username !== this.config.username || password !== this.config.password) {
+                        this.adapter.log.warn('Invalid credentials');
+                        reply.status(400);
+                        return {
                             type: 'form',
                             flow_id: flowId,
                             handler: ['homeassistant', null],
@@ -211,165 +281,105 @@ export class WebServer {
                             data_schema: LOGIN_SCHEMA,
                             errors: { base: 'invalid_auth' },
                             description_placeholders: null,
-                        },
-                        400,
-                    );
-                    return;
+                        };
+                    }
                 }
-            }
 
-            // Auth OK — generate code
-            this.sessions.delete(flowId);
-            const code = crypto.randomUUID();
-            this.createSession(code);
-            this.adapter.log.debug('Auth flow completed — code issued');
+                this.sessions.delete(flowId);
+                const code = crypto.randomUUID();
+                this.sessions.set(code, { created: Date.now(), clientId: session.clientId });
+                this.adapter.log.debug('Auth flow completed — code issued');
 
-            this.json(res, {
-                version: 1,
-                type: 'create_entry',
-                flow_id: flowId,
-                handler: ['homeassistant', null],
-                result: code,
-                description: null,
-                description_placeholders: null,
-            });
-        });
+                return {
+                    version: 1,
+                    type: 'create_entry',
+                    flow_id: flowId,
+                    handler: ['homeassistant', null],
+                    result: code,
+                    description: null,
+                    description_placeholders: null,
+                };
+            },
+        );
 
-        // Step 3: Exchange code for token
-        this.app.post('/auth/token', (req: Request, res: Response) => {
-            const { code, grant_type } = req.body as { code?: string; grant_type?: string };
+        this.app.post<{ Body: { code?: string; grant_type?: string; refresh_token?: string } }>(
+            '/auth/token',
+            async (req, reply) => {
+                const { code, grant_type } = req.body ?? {};
 
-            if (grant_type === 'authorization_code' && code && this.sessions.has(code)) {
-                this.sessions.delete(code);
-                this.adapter.log.debug('Display authenticated successfully');
+                if (grant_type === 'authorization_code' && code && this.sessions.has(code)) {
+                    const session = this.sessions.get(code)!;
+                    this.sessions.delete(code);
+                    const token = crypto.randomUUID();
+                    if (session.clientId) {
+                        await this.registry.setToken(session.clientId, token);
+                        this.adapter.log.debug(`Display authenticated — client ${session.clientId}`);
+                    }
+                    return {
+                        access_token: token,
+                        token_type: 'Bearer',
+                        refresh_token: crypto.randomUUID(),
+                        expires_in: 1800,
+                    };
+                }
 
-                this.json(res, {
-                    access_token: crypto.randomUUID(),
-                    token_type: 'Bearer',
-                    refresh_token: crypto.randomUUID(),
-                    expires_in: 1800,
-                });
-                return;
-            }
+                if (grant_type === 'refresh_token') {
+                    return {
+                        access_token: crypto.randomUUID(),
+                        token_type: 'Bearer',
+                        expires_in: 1800,
+                    };
+                }
 
-            // Refresh token — issue new token
-            if (grant_type === 'refresh_token') {
-                this.json(res, {
-                    access_token: crypto.randomUUID(),
-                    token_type: 'Bearer',
-                    expires_in: 1800,
-                });
-                return;
-            }
-
-            this.adapter.log.warn(`Token exchange failed: grant_type=${grant_type}`);
-            this.json(
-                res,
-                {
-                    error: 'invalid_request',
-                    error_description: 'Invalid or expired code',
-                },
-                400,
-            );
-        });
+                this.adapter.log.warn(`Token exchange failed: grant_type=${String(grant_type)}`);
+                reply.status(400);
+                return { error: 'invalid_request', error_description: 'Invalid or expired code' };
+            },
+        );
     }
 
     private setupMiscRoutes(): void {
-        this.app.get('/health', (_req: Request, res: Response) => {
-            this.json(res, {
-                status: 'ok',
-                adapter: 'hassemu',
-                version: HA_VERSION,
-                config: {
-                    mdns: this.config.mdnsEnabled,
-                    auth: this.config.authRequired,
-                    redirectTo: this.config.visUrl,
-                },
-            });
-        });
+        this.app.get('/health', () => ({
+            status: 'ok',
+            adapter: 'hassemu',
+            version: HA_VERSION,
+            config: {
+                mdns: this.config.mdnsEnabled,
+                auth: this.config.authRequired,
+                redirectTo: this.config.defaultVisUrl,
+            },
+        }));
 
-        this.app.get('/manifest.json', (_req: Request, res: Response) => {
-            this.json(res, {
-                name: this.serviceName,
-                short_name: this.serviceName,
-                start_url: '/',
-                display: 'standalone',
-                background_color: '#ffffff',
-                theme_color: '#03a9f4',
-            });
-        });
+        this.app.get('/manifest.json', () => ({
+            name: this.serviceName,
+            short_name: this.serviceName,
+            start_url: '/',
+            display: 'standalone',
+            background_color: '#ffffff',
+            theme_color: '#03a9f4',
+        }));
 
-        // Redirect — Display WebView follows 302 natively
-        this.app.get('/', (_req: Request, res: Response) => {
-            if (!this.config.visUrl) {
+        // Root — 302 redirect to the per-client or default vis URL
+        this.app.get('/', async (req, reply) => {
+            const client = await this.identify(req, reply);
+            const url = this.registry.getVisUrl(client);
+            if (!url) {
                 this.adapter.log.debug('No redirect URL configured — returning error to client');
-                this.json(
-                    res,
-                    {
-                        error: 'No redirect URL configured',
-                        message: 'Please configure a redirect URL in the adapter settings.',
-                    },
-                    500,
-                );
-                return;
+                reply.status(500);
+                return {
+                    error: 'No redirect URL configured',
+                    message: 'Please configure a redirect URL in the adapter settings.',
+                };
             }
-            this.adapter.log.debug(`Redirecting to: ${this.config.visUrl}`);
-            res.redirect(this.config.visUrl);
+            this.adapter.log.debug(`Redirecting client ${client.id} → ${url}`);
+            return reply.redirect(url, 302);
         });
     }
 
-    private setupCatchAll(): void {
-        this.app.use((req: Request, res: Response) => {
-            this.adapter.log.debug(`404: ${req.method} ${req.path}`);
-            this.json(res, { error: 'Not Found', path: req.path }, 404);
-        });
-    }
-
-    // --- Lifecycle ---
-
-    /** Start the web server and session cleanup timer */
-    async start(): Promise<void> {
-        return new Promise((resolve, reject) => {
-            this.setupMiddleware();
-            this.setupRoutes();
-
-            const bindAddress = this.config.bindAddress || '0.0.0.0';
-            this.server = this.app.listen(this.config.port, bindAddress, () => {
-                this.adapter.log.debug(`Web server listening on ${bindAddress}:${this.config.port}`);
-                resolve();
-            });
-
-            this.server.on('error', (error: NodeJS.ErrnoException) => {
-                const msg =
-                    error.code === 'EADDRINUSE'
-                        ? `Port ${this.config.port} is already in use!`
-                        : `Server error: ${error.message}`;
-                this.adapter.log.error(msg);
-                reject(error);
-            });
-
-            // Session cleanup timer (adapter-managed for automatic cleanup on unload)
-            this.cleanupTimer = this.adapter.setInterval(() => this.cleanupSessions(), CLEANUP_INTERVAL_MS);
-        });
-    }
-
-    /** Stop the web server and cleanup timer */
-    async stop(): Promise<void> {
-        if (this.cleanupTimer) {
-            this.adapter.clearInterval(this.cleanupTimer);
-            this.cleanupTimer = null;
-        }
-
-        return new Promise(resolve => {
-            if (this.server) {
-                this.server.close(() => {
-                    this.adapter.log.debug('Web server stopped');
-                    this.server = null;
-                    resolve();
-                });
-            } else {
-                resolve();
-            }
+    private setupNotFound(): void {
+        this.app.setNotFoundHandler((req, reply) => {
+            this.adapter.log.debug(`404: ${req.method} ${req.url}`);
+            reply.status(404).send({ error: 'Not Found', path: req.url });
         });
     }
 }

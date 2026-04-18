@@ -5,6 +5,9 @@
     "authRequiredTooltip": "如果启用，设备必须输入有效凭据才能进行身份验证",
     "bindAddress": "绑定到接口",
     "bindAddressTooltip": "选择要监听的网络接口（0.0.0.0 = 所有接口）",
+    "clientsInfo": "每个连接的显示端都会在 `clients.*` 下获得独立通道。可为每个客户端指定不同的 URL — 从已知 ioBroker URL（VIS、Admin 等）的下拉列表中选择，或输入自定义 URL。`remove` 按钮用于忘记客户端 — 返回的显示端将以新 ID 重新注册。",
+    "defaultVisUrl": "默认重定向 URL",
+    "defaultVisUrlTooltip": "当客户端未单独设置 URL 时使用的回退 URL。每个客户端可在 clients.<id>.visUrl 中覆盖（下拉或手动输入）。",
     "donateKofi": "在Ko-fi上支持",
     "donatePaypal": "通过PayPal捐赠",
     "header_auth": "验证",
@@ -16,9 +19,7 @@
     "password": "密码",
     "serviceName": "服务名称",
     "serviceNameTooltip": "发现期间在显示屏上显示的名称",
+    "supportHeader": "支持",
     "username": "用户名",
-    "visUrl": "重定向 URL",
-    "visUrlTooltip": "认证后将设备重定向到的 URL（例如 http://192.168.1.100:8082/vis/）",
-    "warningLocalhost": "**重要：** 请勿使用 'localhost' 或 '127.0.0.1' — 请使用您的 ioBroker 服务器的实际 IP 地址！",
-    "supportHeader": "支持"
+    "warningLocalhost": "**重要：** 请勿使用 'localhost' 或 '127.0.0.1' — 请使用您的 ioBroker 服务器的实际 IP 地址！"
 }

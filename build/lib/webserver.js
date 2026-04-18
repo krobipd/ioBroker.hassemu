@@ -28,61 +28,90 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 var webserver_exports = {};
 __export(webserver_exports, {
+  CLIENT_COOKIE: () => CLIENT_COOKIE,
   WebServer: () => WebServer
 });
 module.exports = __toCommonJS(webserver_exports);
 var import_node_crypto = __toESM(require("node:crypto"));
-var import_express = __toESM(require("express"));
+var import_promises = __toESM(require("node:dns/promises"));
+var import_cookie = __toESM(require("@fastify/cookie"));
+var import_fastify = __toESM(require("fastify"));
 var import_constants = require("./constants");
+var import_coerce = require("./coerce");
+const CLIENT_COOKIE = "hassemu_client";
+const COOKIE_MAX_AGE_S = 10 * 365 * 24 * 60 * 60;
 class WebServer {
   adapter;
   config;
+  registry;
   app;
-  server = null;
   sessions = /* @__PURE__ */ new Map();
   cleanupTimer = null;
   instanceUuid;
+  /** Set of IPs whose reverse DNS lookup is already in-flight — prevents duplicate work. */
+  dnsInFlight = /* @__PURE__ */ new Set();
   /**
-   * Creates a new WebServer instance
-   *
-   * @param adapter - Adapter interface for logging and state management
-   * @param config - Adapter configuration
-   * @param instanceUuid - Shared UUID for consistent identity across WebServer and mDNS
+   * @param adapter      Adapter instance used for logging and timers.
+   * @param config       Resolved runtime config (already migrated).
+   * @param registry     Multi-client registry.
+   * @param instanceUuid Stable UUID shared with the mDNS advert.
    */
-  constructor(adapter, config, instanceUuid) {
+  constructor(adapter, config, registry, instanceUuid) {
     this.adapter = adapter;
     this.config = config;
-    this.app = (0, import_express.default)();
+    this.registry = registry;
     this.instanceUuid = instanceUuid;
+    this.app = (0, import_fastify.default)({ logger: false, trustProxy: false });
   }
-  /** Configured service name */
+  /** Human-readable service name advertised in responses and mDNS. */
   get serviceName() {
     return this.config.serviceName || "ioBroker";
   }
-  /** Returns the actual address the server is bound to, or null if not running */
+  /** Resolved listener address once `start()` has completed, or null otherwise. */
   get boundAddress() {
-    if (!this.server) {
-      return null;
-    }
-    const addr = this.server.address();
-    if (typeof addr === "string" || !addr) {
+    const addr = this.app.server.address();
+    if (!addr || typeof addr === "string") {
       return null;
     }
     return { address: addr.address, port: addr.port };
   }
-  // --- Helpers ---
-  json(res, data, status = 200) {
-    res.status(status).json(data);
+  // --- lifecycle ---
+  /** Registers plugins and starts the HTTP listener. */
+  async start() {
+    var _a;
+    await this.app.register(import_cookie.default);
+    this.setupErrorHandler();
+    this.setupRoutes();
+    const bindAddress = this.config.bindAddress || "0.0.0.0";
+    try {
+      await this.app.listen({ port: this.config.port, host: bindAddress });
+    } catch (err) {
+      const e = err;
+      const msg = e.code === "EADDRINUSE" ? `Port ${this.config.port} is already in use!` : `Server error: ${e.message}`;
+      this.adapter.log.error(msg);
+      throw err;
+    }
+    this.adapter.log.debug(`Web server listening on ${bindAddress}:${this.config.port}`);
+    this.cleanupTimer = (_a = this.adapter.setInterval(() => this.cleanupSessions(), import_constants.CLEANUP_INTERVAL_MS)) != null ? _a : null;
   }
-  /**
-   * Create a session entry with automatic expiration
-   *
-   * @param key - Unique session identifier
-   */
-  createSession(key) {
-    this.sessions.set(key, { created: Date.now() });
+  /** Stops the listener and cancels the session cleanup timer. */
+  async stop() {
+    if (this.cleanupTimer) {
+      this.adapter.clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+    try {
+      await this.app.close();
+      this.adapter.log.debug("Web server stopped");
+    } catch (err) {
+      this.adapter.log.error(`Web server stop error: ${String(err)}`);
+    }
   }
-  /** Periodic cleanup of expired sessions */
+  /** Exposed for testing — fires injected requests without a real socket. */
+  get inject() {
+    return this.app.inject.bind(this.app);
+  }
+  /** Periodic cleanup of expired in-flight auth sessions. */
   cleanupSessions() {
     const now = Date.now();
     let cleaned = 0;
@@ -96,51 +125,85 @@ class WebServer {
       this.adapter.log.debug(`Session cleanup: removed ${cleaned} expired sessions`);
     }
   }
-  // --- Middleware ---
-  setupMiddleware() {
-    this.app.use(import_express.default.json());
-    this.app.use(import_express.default.urlencoded({ extended: true }));
-    this.app.use((err, _req, res, next) => {
-      if (err instanceof SyntaxError && "body" in err) {
-        this.adapter.log.debug(`Malformed JSON in request: ${err.message}`);
-        res.status(400).json({ error: "Invalid JSON in request body" });
-        return;
+  // --- client identification ---
+  async identify(req, reply) {
+    var _a;
+    const cookie = (0, import_coerce.coerceUuid)((_a = req.cookies) == null ? void 0 : _a[CLIENT_COOKIE]);
+    const ip = (0, import_coerce.coerceString)(req.ip);
+    const record = await this.registry.identifyOrCreate(cookie, ip, null);
+    if (cookie !== record.cookie) {
+      reply.setCookie(CLIENT_COOKIE, record.cookie, {
+        path: "/",
+        httpOnly: true,
+        sameSite: "lax",
+        maxAge: COOKIE_MAX_AGE_S
+      });
+    }
+    if (ip) {
+      this.resolveHostnameAsync(record, ip);
+    }
+    return record;
+  }
+  resolveHostnameAsync(record, ip) {
+    if (record.hostname || this.dnsInFlight.has(ip)) {
+      return;
+    }
+    this.dnsInFlight.add(ip);
+    import_promises.default.reverse(ip).then((names) => {
+      const name = names[0];
+      if (name) {
+        this.registry.identifyOrCreate(record.cookie, ip, name).catch(() => {
+        });
       }
-      next(err);
-    });
-    this.app.use((req, _res, next) => {
-      this.adapter.log.debug(`${req.method} ${req.path}`);
-      next();
+    }).catch(() => {
+    }).finally(() => {
+      this.dnsInFlight.delete(ip);
     });
   }
-  // --- Routes ---
+  // --- error handling ---
+  setupErrorHandler() {
+    this.app.setErrorHandler((err, _req, reply) => {
+      const error = err;
+      if (error.validation) {
+        this.adapter.log.debug(`Validation error: ${error.message}`);
+        reply.status(400).send({ error: "Invalid request", details: error.message });
+        return;
+      }
+      const code = typeof error.statusCode === "number" ? error.statusCode : 500;
+      if (code >= 400 && code < 500) {
+        this.adapter.log.debug(`Client error ${code}: ${error.message}`);
+        reply.status(code).send({ error: error.message });
+        return;
+      }
+      this.adapter.log.warn(`Request error: ${error.message}`);
+      reply.status(500).send({ error: "Internal server error" });
+    });
+  }
+  // --- routes ---
   setupRoutes() {
     this.setupApiRoutes();
     this.setupAuthRoutes();
     this.setupMiscRoutes();
-    this.setupCatchAll();
+    this.setupNotFound();
   }
   setupApiRoutes() {
-    this.app.get("/api/", (_req, res) => {
-      this.json(res, { message: "API running." });
-    });
-    this.app.get("/api/config", (_req, res) => {
-      this.json(res, {
-        components: ["http", "api", "frontend", "homeassistant"],
-        config_dir: "/config",
-        elevation: 0,
-        latitude: 0,
-        longitude: 0,
-        location_name: this.serviceName,
-        time_zone: "UTC",
-        unit_system: { length: "km", mass: "g", temperature: "\xB0C", volume: "L" },
-        version: import_constants.HA_VERSION,
-        whitelist_external_dirs: []
-      });
-    });
-    this.app.get("/api/discovery_info", (req, res) => {
-      const baseUrl = `http://${req.hostname}:${this.config.port}`;
-      this.json(res, {
+    this.app.get("/api/", () => ({ message: "API running." }));
+    this.app.get("/api/config", () => ({
+      components: ["http", "api", "frontend", "homeassistant"],
+      config_dir: "/config",
+      elevation: 0,
+      latitude: 0,
+      longitude: 0,
+      location_name: this.serviceName,
+      time_zone: "UTC",
+      unit_system: { length: "km", mass: "g", temperature: "\xB0C", volume: "L" },
+      version: import_constants.HA_VERSION,
+      whitelist_external_dirs: []
+    }));
+    this.app.get("/api/discovery_info", (req) => {
+      const host = req.hostname || this.config.bindAddress || "0.0.0.0";
+      const baseUrl = `http://${host}:${this.config.port}`;
+      return {
         base_url: baseUrl,
         external_url: null,
         internal_url: baseUrl,
@@ -148,28 +211,21 @@ class WebServer {
         requires_api_password: true,
         uuid: this.instanceUuid,
         version: import_constants.HA_VERSION
-      });
+      };
     });
     for (const path of ["/api/states", "/api/services", "/api/events"]) {
-      this.app.get(path, (_req, res) => this.json(res, []));
+      this.app.get(path, () => []);
     }
-    this.app.get("/api/error_log", (_req, res) => this.json(res, ""));
+    this.app.get("/api/error_log", () => "");
   }
   setupAuthRoutes() {
-    this.app.get("/auth/providers", (_req, res) => {
-      this.json(res, [
-        {
-          name: "Home Assistant Local",
-          type: "homeassistant",
-          id: null
-        }
-      ]);
-    });
-    this.app.post("/auth/login_flow", (_req, res) => {
+    this.app.get("/auth/providers", () => [{ name: "Home Assistant Local", type: "homeassistant", id: null }]);
+    this.app.post("/auth/login_flow", async (req, reply) => {
+      const client = await this.identify(req, reply);
       const flowId = import_node_crypto.default.randomUUID();
-      this.createSession(flowId);
-      this.adapter.log.debug(`Auth flow created: ${flowId}`);
-      this.json(res, {
+      this.sessions.set(flowId, { created: Date.now(), clientId: client.id });
+      this.adapter.log.debug(`Auth flow created: ${flowId} for client ${client.id}`);
+      return {
         type: "form",
         flow_id: flowId,
         handler: ["homeassistant", null],
@@ -177,30 +233,34 @@ class WebServer {
         data_schema: import_constants.LOGIN_SCHEMA,
         description_placeholders: null,
         errors: null
-      });
+      };
     });
-    this.app.post("/auth/login_flow/:flowId", (req, res) => {
-      const flowId = req.params.flowId;
-      if (!this.sessions.has(flowId)) {
-        this.adapter.log.warn(`Unknown flow_id: ${flowId}`);
-        this.json(
-          res,
-          {
-            type: "abort",
-            flow_id: flowId,
-            reason: "unknown_flow"
-          },
-          400
-        );
-        return;
-      }
-      if (this.config.authRequired) {
-        const { username, password } = req.body;
-        if (username !== this.config.username || password !== this.config.password) {
-          this.adapter.log.warn("Invalid credentials");
-          this.json(
-            res,
-            {
+    this.app.post(
+      "/auth/login_flow/:flowId",
+      {
+        schema: {
+          params: {
+            type: "object",
+            properties: { flowId: { type: "string", minLength: 1 } },
+            required: ["flowId"]
+          }
+        }
+      },
+      async (req, reply) => {
+        var _a;
+        const flowId = req.params.flowId;
+        const session = this.sessions.get(flowId);
+        if (!session) {
+          this.adapter.log.warn(`Unknown flow_id: ${flowId}`);
+          reply.status(400);
+          return { type: "abort", flow_id: flowId, reason: "unknown_flow" };
+        }
+        if (this.config.authRequired) {
+          const { username, password } = (_a = req.body) != null ? _a : {};
+          if (username !== this.config.username || password !== this.config.password) {
+            this.adapter.log.warn("Invalid credentials");
+            reply.status(400);
+            return {
               type: "form",
               flow_id: flowId,
               handler: ["homeassistant", null],
@@ -208,144 +268,101 @@ class WebServer {
               data_schema: import_constants.LOGIN_SCHEMA,
               errors: { base: "invalid_auth" },
               description_placeholders: null
-            },
-            400
-          );
-          return;
+            };
+          }
         }
+        this.sessions.delete(flowId);
+        const code = import_node_crypto.default.randomUUID();
+        this.sessions.set(code, { created: Date.now(), clientId: session.clientId });
+        this.adapter.log.debug("Auth flow completed \u2014 code issued");
+        return {
+          version: 1,
+          type: "create_entry",
+          flow_id: flowId,
+          handler: ["homeassistant", null],
+          result: code,
+          description: null,
+          description_placeholders: null
+        };
       }
-      this.sessions.delete(flowId);
-      const code = import_node_crypto.default.randomUUID();
-      this.createSession(code);
-      this.adapter.log.debug("Auth flow completed \u2014 code issued");
-      this.json(res, {
-        version: 1,
-        type: "create_entry",
-        flow_id: flowId,
-        handler: ["homeassistant", null],
-        result: code,
-        description: null,
-        description_placeholders: null
-      });
-    });
-    this.app.post("/auth/token", (req, res) => {
-      const { code, grant_type } = req.body;
-      if (grant_type === "authorization_code" && code && this.sessions.has(code)) {
-        this.sessions.delete(code);
-        this.adapter.log.debug("Display authenticated successfully");
-        this.json(res, {
-          access_token: import_node_crypto.default.randomUUID(),
-          token_type: "Bearer",
-          refresh_token: import_node_crypto.default.randomUUID(),
-          expires_in: 1800
-        });
-        return;
+    );
+    this.app.post(
+      "/auth/token",
+      async (req, reply) => {
+        var _a;
+        const { code, grant_type } = (_a = req.body) != null ? _a : {};
+        if (grant_type === "authorization_code" && code && this.sessions.has(code)) {
+          const session = this.sessions.get(code);
+          this.sessions.delete(code);
+          const token = import_node_crypto.default.randomUUID();
+          if (session.clientId) {
+            await this.registry.setToken(session.clientId, token);
+            this.adapter.log.debug(`Display authenticated \u2014 client ${session.clientId}`);
+          }
+          return {
+            access_token: token,
+            token_type: "Bearer",
+            refresh_token: import_node_crypto.default.randomUUID(),
+            expires_in: 1800
+          };
+        }
+        if (grant_type === "refresh_token") {
+          return {
+            access_token: import_node_crypto.default.randomUUID(),
+            token_type: "Bearer",
+            expires_in: 1800
+          };
+        }
+        this.adapter.log.warn(`Token exchange failed: grant_type=${String(grant_type)}`);
+        reply.status(400);
+        return { error: "invalid_request", error_description: "Invalid or expired code" };
       }
-      if (grant_type === "refresh_token") {
-        this.json(res, {
-          access_token: import_node_crypto.default.randomUUID(),
-          token_type: "Bearer",
-          expires_in: 1800
-        });
-        return;
-      }
-      this.adapter.log.warn(`Token exchange failed: grant_type=${grant_type}`);
-      this.json(
-        res,
-        {
-          error: "invalid_request",
-          error_description: "Invalid or expired code"
-        },
-        400
-      );
-    });
+    );
   }
   setupMiscRoutes() {
-    this.app.get("/health", (_req, res) => {
-      this.json(res, {
-        status: "ok",
-        adapter: "hassemu",
-        version: import_constants.HA_VERSION,
-        config: {
-          mdns: this.config.mdnsEnabled,
-          auth: this.config.authRequired,
-          redirectTo: this.config.visUrl
-        }
-      });
-    });
-    this.app.get("/manifest.json", (_req, res) => {
-      this.json(res, {
-        name: this.serviceName,
-        short_name: this.serviceName,
-        start_url: "/",
-        display: "standalone",
-        background_color: "#ffffff",
-        theme_color: "#03a9f4"
-      });
-    });
-    this.app.get("/", (_req, res) => {
-      if (!this.config.visUrl) {
+    this.app.get("/health", () => ({
+      status: "ok",
+      adapter: "hassemu",
+      version: import_constants.HA_VERSION,
+      config: {
+        mdns: this.config.mdnsEnabled,
+        auth: this.config.authRequired,
+        redirectTo: this.config.defaultVisUrl
+      }
+    }));
+    this.app.get("/manifest.json", () => ({
+      name: this.serviceName,
+      short_name: this.serviceName,
+      start_url: "/",
+      display: "standalone",
+      background_color: "#ffffff",
+      theme_color: "#03a9f4"
+    }));
+    this.app.get("/", async (req, reply) => {
+      const client = await this.identify(req, reply);
+      const url = this.registry.getVisUrl(client);
+      if (!url) {
         this.adapter.log.debug("No redirect URL configured \u2014 returning error to client");
-        this.json(
-          res,
-          {
-            error: "No redirect URL configured",
-            message: "Please configure a redirect URL in the adapter settings."
-          },
-          500
-        );
-        return;
+        reply.status(500);
+        return {
+          error: "No redirect URL configured",
+          message: "Please configure a redirect URL in the adapter settings."
+        };
       }
-      this.adapter.log.debug(`Redirecting to: ${this.config.visUrl}`);
-      res.redirect(this.config.visUrl);
+      this.adapter.log.debug(`Redirecting client ${client.id} \u2192 ${url}`);
+      return reply.redirect(url, 302);
     });
   }
-  setupCatchAll() {
-    this.app.use((req, res) => {
-      this.adapter.log.debug(`404: ${req.method} ${req.path}`);
-      this.json(res, { error: "Not Found", path: req.path }, 404);
-    });
-  }
-  // --- Lifecycle ---
-  /** Start the web server and session cleanup timer */
-  async start() {
-    return new Promise((resolve, reject) => {
-      this.setupMiddleware();
-      this.setupRoutes();
-      const bindAddress = this.config.bindAddress || "0.0.0.0";
-      this.server = this.app.listen(this.config.port, bindAddress, () => {
-        this.adapter.log.debug(`Web server listening on ${bindAddress}:${this.config.port}`);
-        resolve();
-      });
-      this.server.on("error", (error) => {
-        const msg = error.code === "EADDRINUSE" ? `Port ${this.config.port} is already in use!` : `Server error: ${error.message}`;
-        this.adapter.log.error(msg);
-        reject(error);
-      });
-      this.cleanupTimer = this.adapter.setInterval(() => this.cleanupSessions(), import_constants.CLEANUP_INTERVAL_MS);
-    });
-  }
-  /** Stop the web server and cleanup timer */
-  async stop() {
-    if (this.cleanupTimer) {
-      this.adapter.clearInterval(this.cleanupTimer);
-      this.cleanupTimer = null;
-    }
-    return new Promise((resolve) => {
-      if (this.server) {
-        this.server.close(() => {
-          this.adapter.log.debug("Web server stopped");
-          this.server = null;
-          resolve();
-        });
-      } else {
-        resolve();
-      }
+  setupNotFound() {
+    this.app.setNotFoundHandler((req, reply) => {
+      this.adapter.log.debug(`404: ${req.method} ${req.url}`);
+      reply.status(404).send({ error: "Not Found", path: req.url });
     });
   }
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  CLIENT_COOKIE,
   WebServer
 });
 //# sourceMappingURL=webserver.js.map

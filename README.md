@@ -11,7 +11,9 @@
 
 <img src="https://raw.githubusercontent.com/krobipd/ioBroker.hassemu/main/admin/hassemu.svg" width="100" />
 
-Emulates a minimal [Home Assistant](https://www.home-assistant.io) server so that devices expecting a Home Assistant dashboard can be redirected to any custom web URL — without running a real Home Assistant Core.
+Emulates a minimal [Home Assistant](https://www.home-assistant.io) server so devices expecting a Home Assistant dashboard can be redirected to any URL inside your network — without running Home Assistant Core.
+
+Typical use: wall tablets and display devices (Shelly Wall Display, Amazon Echo Show in HA mode, cheap Android tablets with the HA app, …) that only accept a Home Assistant server as their data source, but you want them to show VIS / VIS-2 / Grafana / your own dashboard instead.
 
 > Previously known as `ioBroker.homeassistant-bridge`. Renamed to better reflect that this adapter emulates, not bridges.
 
@@ -19,115 +21,169 @@ Emulates a minimal [Home Assistant](https://www.home-assistant.io) server so tha
 
 ## Features
 
-- **Home Assistant Emulation** — minimal HA API for devices expecting a Home Assistant dashboard
-- **mDNS Discovery** — automatic detection via `_home-assistant._tcp` (cross-platform)
-- **OAuth2-like Auth Flow** — full login flow emulation, optional credential validation
-- **Flexible Redirect** — send the display to any ioBroker VIS, VIS-2, or custom web URL
-- **Modern Admin UI** — JSON-Config for easy configuration
+- **Multi-client** — each display gets its own channel under `clients.*`, with an independent redirect URL
+- **URL dropdown** — each client's `visUrl` datapoint is populated with all known ioBroker URLs (VIS/VIS-2 projects, Admin tiles, Jarvis, etc.) — pick from the list or enter any URL
+- **Cookie-based identification** — displays are recognised across restarts and IP changes
+- **mDNS discovery** — automatic detection via `_home-assistant._tcp` (cross-platform, no avahi required)
+- **Home Assistant OAuth2 flow** — full login flow emulation, optional credential validation
+- **Reverse DNS hostname** — each client is labelled with its LAN hostname when available
+- **Input hardening** — every external URL is validated (http/https only, no credentials, 2048 char cap)
+- **Admin UI** — JSON-Config, translated into 11 languages
 
 ---
 
 ## Requirements
 
-- **Node.js >= 20**
-- **ioBroker js-controller >= 7.0.0**
-- **ioBroker Admin >= 7.6.20**
+- **Node.js ≥ 20**
+- **ioBroker js-controller ≥ 7.0.0**
+- **ioBroker Admin ≥ 7.6.20**
 
 ---
 
 ## Ports
 
-| Port | Protocol | Purpose | Configurable |
-|------|----------|---------|--------------|
-| 8123 | TCP/HTTP | Home Assistant emulation (HA standard port) | No — fixed |
+| Port | Protocol | Purpose                                      | Configurable |
+| ---- | -------- | -------------------------------------------- | ------------ |
+| 8123 | TCP/HTTP | Home Assistant emulation (HA standard port)  | No — fixed   |
+| 5353 | UDP      | mDNS service broadcast (only if mDNS enabled)| No           |
+
+Port 8123 is mandatory. Any HA-style display hard-codes that port number, so the adapter cannot run on a different one.
 
 ---
 
 ## Configuration
 
-Configuration is done via the Admin UI (jsonConfig):
+Configuration lives in the Admin UI (jsonConfig):
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| **Bind to Interface** | Network interface to listen on | 0.0.0.0 (all) |
-| **Redirect URL** | Target URL for the display (e.g., VIS) | *must be set* |
-| **mDNS Enabled** | mDNS Service Discovery | enabled |
-| **Service Name** | Name in the network | "ioBroker" |
-| **Auth Required** | Validate credentials | disabled |
-| **Username** | Login name (if auth enabled) | "admin" |
-| **Password** | Login password (stored encrypted) | - |
+| Option                   | Description                                                                                                      | Default       |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------- | ------------- |
+| **Bind to Interface**    | Network interface to listen on                                                                                   | 0.0.0.0 (all) |
+| **Service Name**         | Name broadcast via mDNS — e.g. shown as server name on the display                                               | `ioBroker`    |
+| **Default Redirect URL** | Fallback URL for clients that have no individual `visUrl` set                                                    | *(empty)*     |
+| **mDNS Enabled**         | Broadcast `_home-assistant._tcp` on the LAN                                                                      | `true`        |
+| **Auth Required**        | Validate the credentials the display sends during the login flow                                                 | `false`       |
+| **Username / Password**  | Credentials used when *Auth Required* is on (password is encrypted at rest)                                      | `admin` / —   |
 
-> **Important: Port 8123 is mandatory.** The adapter always listens on port 8123 — this is the standard Home Assistant port and cannot be changed. Make sure port 8123 is not already in use on your ioBroker server.
-
-**Important:** The redirect URL must be a network-accessible address, e.g.:
-```
-http://192.168.1.100:8082/vis/index.html
-```
-
-`localhost` will not work because the display calls the URL!
+The **default redirect URL** must be reachable from the display — use the LAN IP of the ioBroker host, never `localhost`.
 
 ---
 
-## State Tree
+## Multi-client
+
+As soon as a display connects the first time, a channel is created:
+
+```
+hassemu.0.clients.<id>
+├── visUrl    — per-client URL (empty = use default)
+├── ip        — last observed IP
+├── hostname  — reverse-DNS name (may be empty on some LANs)
+└── remove    — button: forget this client
+```
+
+- **`visUrl`** is a string datapoint but renders as a **dropdown**. The dropdown is populated from the live ioBroker state: enabled adapter instances with `common.welcomeScreen` / `common.welcomeScreenPro` / `common.localLinks`, plus every VIS-2 and VIS-1 project folder. Free text is allowed as well.
+- **`remove`** forgets the client — channel, cookie, token, all gone. A returning display is re-registered with a new ID.
+
+The client ID is a short 6-char string (e.g. `a4b9c2`) so it reads cleanly as a datapoint segment. Identity is kept via an HttpOnly `hassemu_client` cookie (UUID v4, 10 years).
+
+---
+
+## Redirect flow
+
+1. Display starts → mDNS lookup → finds `hassemu` on port 8123
+2. Display performs the HA OAuth2 flow against the adapter
+3. On first request the adapter sets a cookie and creates `clients.<id>`
+4. Display is 302-redirected to `clients.<id>.visUrl` or, if empty, to the default URL
+5. Next time the display connects, the cookie maps it back to the same channel — per-client URL persists
+
+---
+
+## State tree
 
 ```
 hassemu.0.
-└── info.connection      — Server is running (bool)
+├── info.connection          — Server is running (bool, indicator)
+└── clients.
+    └── <id>.
+        ├── visUrl           — Redirect URL (string, writable, dropdown)
+        ├── ip               — Last seen client IP
+        ├── hostname         — Reverse-DNS hostname (may be empty)
+        └── remove           — Button: forget this client
 ```
 
 ---
 
 ## Troubleshooting
 
-### Display cannot find the server (mDNS)
+### Display cannot find the server
 
-The adapter broadcasts a `_home-assistant._tcp` mDNS service. If the display does not find the server automatically, configure it manually:
+The adapter broadcasts `_home-assistant._tcp` via mDNS. If the display does not find the server automatically:
 
-```
-IP:   <ioBroker-IP>
-Port: 8123
-```
-
-1. Check if the adapter log shows "mDNS: Broadcasting" on startup.
-
-2. Verify the service is visible on the network:
+1. Check the adapter log for `mDNS: Broadcasting`.
+2. Verify the service is visible from another host:
    ```bash
    # macOS
    dns-sd -B _home-assistant._tcp
-   # Linux (if avahi-utils installed)
+   # Linux (with avahi-utils)
    avahi-browse _home-assistant._tcp -r -t
    ```
+3. Make sure UDP 5353 is not blocked by a firewall.
+4. If mDNS is not usable on your LAN, set the URL manually on the display: `http://<ioBroker-IP>:8123`.
 
-3. Make sure mDNS port 5353/UDP is not blocked by a firewall.
+### Display is redirected to the wrong dashboard
 
-4. If mDNS doesn't work, use manual configuration on the display with the ioBroker server's IP address.
+Check `clients.<id>.visUrl` — the per-client URL wins over the default. Empty `visUrl` ⇒ default URL.
 
-### Health Check
+### Display keeps getting a new ID
 
-The adapter provides a health endpoint:
+That means the cookie is not being sent back. Check the display's browser/WebView — some devices with aggressive privacy settings delete cookies on restart. Nothing the adapter can do about it; worst case is a new channel per boot. Delete stale channels with the `remove` button.
+
+### Reverse DNS shows nothing
+
+Reverse DNS on a home LAN often fails — it depends on your router/DHCP server. The IP is always recorded; the hostname is best-effort.
+
+### Health check
+
 ```
 http://<IP>:8123/health
 ```
+returns the adapter's runtime state — useful to verify the server is up and see which features are active.
+
+---
+
+## Upgrading from 1.0.x
+
+- The config field `visUrl` was renamed to `defaultVisUrl`. The adapter migrates the value on first start.
+- Per-client URLs land under `clients.<id>.visUrl`. Old single-URL setups keep working unchanged — clients without an override still use the default.
 
 ---
 
 ## Changelog
 
+### 1.1.0 (2026-04-18)
+
+- **Multi-client support** — each connecting display gets its own channel in `clients.*` with an individual `visUrl`, `ip`, `hostname` and `remove` button
+- **URL dropdown** — `clients.<id>.visUrl` is populated from all known ioBroker URLs (VIS-2, VIS, Admin intro tiles, Jarvis, …) — pick from the list or enter custom
+- **Cookie-based identification** — displays are recognised across adapter restarts and IP changes
+- **Fastify web server** — Express was replaced by Fastify for first-party cookie support, schema validation and a lighter runtime
+- **Input hardening** — all external URLs go through a coercion layer (http/https only, length-limited, no credentials); foreign adapter metadata is fully type-guarded
+- **Config migration** — `visUrl` → `defaultVisUrl` is applied automatically on first start
+- **Reverse DNS** — clients are labelled with their LAN hostname when resolvable
+
 ### 1.0.4 (2026-04-12)
-- DRY: remove duplicate NativeConfig interface and redundant config mapping with fallbacks
-- Fix: prevent log spam when redirect URL is not configured (log once at startup, not per request)
+- DRY: remove duplicate NativeConfig interface and redundant config mapping
+- Fix: log spam when redirect URL is not configured (now logged once at startup)
 - Tighten `createSession` visibility to private
 
 ### 1.0.3 (2026-04-12)
 - Remove unused devDependencies, add `no-floating-promises` lint rule, remove redundant CI checkout
 
 ### 1.0.2 (2026-04-08)
-- Remove build/ from git tracking, fix .gitignore, clean up keywords and metadata
+- Remove `build/` from git tracking, fix `.gitignore`, clean up keywords and metadata
 
 ### 1.0.0 (2026-04-08)
 - Renamed from homeassistant-bridge to hassemu
 
-Older entries have been moved to [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
+Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
 ---
 
@@ -136,7 +192,7 @@ Older entries have been moved to [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 - [ioBroker Forum](https://forum.iobroker.net/)
 - [GitHub Issues](https://github.com/krobipd/ioBroker.hassemu/issues)
 
-### Support Development
+### Support development
 
 This adapter is free and open source. If you find it useful, consider buying me a coffee:
 
