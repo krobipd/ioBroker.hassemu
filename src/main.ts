@@ -58,8 +58,17 @@ class HassEmu extends utils.Adapter {
         await this.subscribeStatesAsync('clients.*');
         await this.subscribeStatesAsync('global.*');
 
+        const systemLanguage = await this.readSystemLanguage();
+
         try {
-            this.webServer = new WebServer(this, this.config, this.registry, this.globalConfig, instanceUuid);
+            this.webServer = new WebServer(
+                this,
+                this.config,
+                this.registry,
+                this.globalConfig,
+                instanceUuid,
+                systemLanguage,
+            );
             await this.webServer.start();
         } catch (err) {
             this.log.error(`Web server failed to start: ${String(err)}`);
@@ -78,6 +87,24 @@ class HassEmu extends utils.Adapter {
         this.log.info(
             `HA emulation running on ${bindAddr}:${this.config.port}${this.config.mdnsEnabled ? ', mDNS active' : ''}`,
         );
+    }
+
+    /**
+     * Read the ioBroker system language (set in Admin → Main Settings).
+     * Used for the setup page so the end-user sees the same language as
+     * their admin UI. Falls back to `en` when `system.config` can't be read
+     * or holds a language we don't translate. Read once on startup — a
+     * language switch at runtime only takes effect after an adapter restart,
+     * which is fine for a setup-hint page that most users see once.
+     */
+    private async readSystemLanguage(): Promise<string> {
+        try {
+            const cfg = await this.getForeignObjectAsync('system.config');
+            const lang = (cfg?.common as { language?: string } | undefined)?.language;
+            return typeof lang === 'string' && lang.length > 0 ? lang : 'en';
+        } catch {
+            return 'en';
+        }
     }
 
     /**

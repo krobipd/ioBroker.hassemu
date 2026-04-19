@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.1.2",
+    "version": "1.1.3",
     "news": {
+      "1.1.3": {
+        "en": "Fix duplicate client registration on initial connect — HA displays fire several parallel cookieless requests, each used to create a separate client record. Now locked per IP so the first create wins and the rest of the burst attach to the same client. Setup page redesigned: big green OK banner, localized into all 11 adapter languages (auto-picked from the ioBroker system language), IP shown alongside the device ID, responsive layout with dark-mode support.",
+        "de": "Doppelte Client-Registrierung beim ersten Verbinden behoben — HA-Displays feuern mehrere parallele Requests ohne Cookie, jeder legte bisher einen eigenen Client an. Jetzt pro IP gesperrt: der erste Create gewinnt, die restlichen Parallel-Requests werden dem gleichen Client zugeordnet. Setup-Seite überarbeitet: großes grünes OK-Banner, Lokalisierung in alle 11 Adapter-Sprachen (automatisch nach ioBroker-Systemsprache), IP wird neben der Device-ID angezeigt, responsive Layout mit Dark-Mode.",
+        "ru": "Исправлено дублирование регистрации клиента при первом подключении — HA-дисплеи шлют несколько параллельных запросов без cookie. Теперь блокировка по IP. Страница настройки переработана, локализована, показана IP.",
+        "pt": "Corrigido registro duplicado de cliente na conexão inicial — displays HA enviam várias requisições paralelas sem cookie. Agora bloqueadas por IP. Página de configuração redesenhada, traduzida, com IP.",
+        "nl": "Dubbele client-registratie bij eerste verbinding opgelost — HA-displays sturen meerdere parallelle requests zonder cookie. Nu vergrendeld per IP. Setup-pagina vernieuwd, gelokaliseerd, met IP.",
+        "fr": "Correction de l'enregistrement client dupliqué à la première connexion — les écrans HA envoient plusieurs requêtes parallèles sans cookie. Verrouillé par IP désormais. Page de configuration redessinée, traduite, IP affichée.",
+        "it": "Corretta la registrazione duplicata del client alla prima connessione — i display HA inviano più richieste parallele senza cookie. Ora bloccato per IP. Pagina di setup ridisegnata, localizzata, con IP.",
+        "es": "Corregido el registro duplicado de cliente en la conexión inicial — los displays HA envían varias solicitudes paralelas sin cookie. Ahora bloqueado por IP. Página de configuración rediseñada, traducida, con IP.",
+        "pl": "Naprawiono zduplikowaną rejestrację klienta przy pierwszym połączeniu — wyświetlacze HA wysyłają kilka równoległych żądań bez cookie. Teraz blokada per IP. Strona konfiguracji przeprojektowana, przetłumaczona, z IP.",
+        "uk": "Виправлено дублювання реєстрації клієнта при першому підключенні — HA-дисплеї надсилають кілька паралельних запитів без cookie. Тепер блокування за IP. Сторінка налаштування перероблена, перекладена, з IP.",
+        "zh-cn": "修复首次连接时客户端重复注册 — HA 显示器并行发送多个无 cookie 请求，之前每个都会创建独立客户端记录。现在按 IP 加锁。设置页面重新设计，已本地化，显示 IP。"
+      },
       "1.1.2": {
         "en": "Client channel name in the object browser now shows the reverse-DNS hostname as soon as it resolves (previously stuck at the IP). The clients.<id>.hostname datapoint was removed and its value migrated into the channel name on first start. Client creation parallelised — new displays register noticeably faster.",
         "de": "Der Channel-Name eines Clients im Objektbrowser zeigt jetzt den Reverse-DNS-Hostnamen, sobald dieser aufgelöst wurde (vorher blieb die IP stehen). Der Datenpunkt clients.<id>.hostname wurde entfernt, der Wert beim ersten Start in den Channel-Namen übernommen. Anlage eines neuen Clients parallelisiert — neue Displays werden spürbar schneller registriert.",
@@ -80,19 +93,6 @@
         "pl": "Usunięto build/ ze śledzenia git, poprawiono .gitignore, wyczyszczono słowa kluczowe i metadane",
         "uk": "Видалено build/ з відстеження git, виправлено .gitignore, очищено ключові слова та метадані",
         "zh-cn": "从git跟踪中删除build/，修复.gitignore，清理关键词和元数据"
-      },
-      "1.0.0": {
-        "en": "Renamed from homeassistant-bridge to hassemu",
-        "de": "Umbenannt von homeassistant-bridge zu hassemu",
-        "ru": "Переименован из homeassistant-bridge в hassemu",
-        "pt": "Renomeado de homeassistant-bridge para hassemu",
-        "nl": "Hernoemd van homeassistant-bridge naar hassemu",
-        "fr": "Renommé de homeassistant-bridge en hassemu",
-        "it": "Rinominato da homeassistant-bridge a hassemu",
-        "es": "Renombrado de homeassistant-bridge a hassemu",
-        "pl": "Zmieniono nazwę z homeassistant-bridge na hassemu",
-        "uk": "Перейменовано з homeassistant-bridge на hassemu",
-        "zh-cn": "从homeassistant-bridge重命名为hassemu"
       }
     },
     "titleLang": {

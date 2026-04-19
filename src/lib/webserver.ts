@@ -33,15 +33,18 @@ export class WebServer {
     public readonly sessions: Map<string, SessionData> = new Map();
     private cleanupTimer: ioBroker.Interval | null = null;
     public readonly instanceUuid: string;
+    /** ioBroker system language for the setup page — resolved on startup. */
+    public readonly systemLanguage: string;
     /** Set of IPs whose reverse DNS lookup is already in-flight — prevents duplicate work. */
     private readonly dnsInFlight = new Set<string>();
 
     /**
-     * @param adapter      Adapter instance used for logging, timers and namespace.
-     * @param config       Resolved runtime config.
-     * @param registry     Multi-client registry.
-     * @param globalConfig Global redirect override.
-     * @param instanceUuid Stable UUID shared with the mDNS advert.
+     * @param adapter        Adapter instance used for logging, timers and namespace.
+     * @param config         Resolved runtime config.
+     * @param registry       Multi-client registry.
+     * @param globalConfig   Global redirect override.
+     * @param instanceUuid   Stable UUID shared with the mDNS advert.
+     * @param systemLanguage ioBroker system language (`en`, `de`, …) used for the setup page.
      */
     constructor(
         adapter: WebServerAdapter,
@@ -49,12 +52,14 @@ export class WebServer {
         registry: ClientRegistry,
         globalConfig: GlobalConfig,
         instanceUuid: string,
+        systemLanguage: string = 'en',
     ) {
         this.adapter = adapter;
         this.config = config;
         this.registry = registry;
         this.globalConfig = globalConfig;
         this.instanceUuid = instanceUuid;
+        this.systemLanguage = systemLanguage;
         this.app = Fastify({ logger: false, trustProxy: false });
     }
 
@@ -382,7 +387,7 @@ export class WebServer {
                 return reply
                     .status(200)
                     .type('text/html; charset=utf-8')
-                    .send(renderSetupPage(client.id, this.adapter.namespace));
+                    .send(renderSetupPage(client.id, this.adapter.namespace, this.systemLanguage, client.ip));
             }
             this.adapter.log.debug(`Redirecting client ${client.id} → ${url}`);
             return reply.redirect(url, 302);

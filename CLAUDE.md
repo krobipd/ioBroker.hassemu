@@ -6,7 +6,7 @@
 
 **ioBroker HASS Emulator** — emuliert einen minimalen HA-Server für Geräte, die ein HA-Dashboard erwarten → leitet auf beliebige URL um.
 
-- **Version:** 1.1.2 (April 2026)
+- **Version:** 1.1.3 (April 2026)
 - **GitHub:** https://github.com/krobipd/ioBroker.hassemu
 - **npm:** https://www.npmjs.com/package/iobroker.hassemu
 - **Repository PR:** ioBroker/ioBroker.repositories#5793
@@ -65,7 +65,7 @@ src/lib/webserver.ts         → Fastify HTTP Server + HA API Emulation + Cookie
    2. sonst 302 auf `clients.<id>.visUrl`
    3. sonst 200 HTML mit der Setup-Seite
 
-## Tests (210 + 57 package)
+## Tests (215 + 57 package)
 
 ```
 test/testConstants.ts         → Shared Constants
@@ -83,6 +83,7 @@ test/integration.js           → @iobroker/testing Integration-Tests
 
 | Version | Highlights                                                                                           |
 | ------- | ---------------------------------------------------------------------------------------------------- |
+| 1.1.3   | Race-Fix: parallele cookieless Requests desselben Displays landen bei einem Client (Pending-Lock per IP). Setup-Seite neu: grünes OK-Banner, Dark-Mode, i18n in allen 11 Adapter-Sprachen via `system.config.language` |
 | 1.1.2   | Hostname als Channel-Name (kein eigener Datenpunkt mehr), createObjects parallelisiert, Legacy-Migration |
 | 1.1.1   | Redirect-URL raus aus Admin → global.visUrl/enabled + Setup-Seite, web als Dependency                |
 | 1.1.0   | Multi-Client, Cookie-Identifikation, visUrl-Dropdown, Fastify, Boundary-Härtung, Config-Migration    |

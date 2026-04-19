@@ -422,8 +422,49 @@ describe('WebServer', () => {
             const res = await s.inject({ method: 'GET', url: '/' });
             expect(res.statusCode).to.equal(200);
             expect(res.headers['content-type']).to.match(/^text\/html/);
-            expect(res.body).to.include('Device ID:');
+            expect(res.body).to.include('Device ID');
             expect(res.body).to.include('clients.');
+            // OK-banner — visual "everything is connected" signal
+            expect(res.body).to.include('banner');
+            expect(res.body).to.include('✓');
+            await s['app'].close();
+        });
+
+        it('GET / setup page honours the ioBroker system language (de)', async () => {
+            const built = createMockAdapter();
+            const reg = new ClientRegistry(built.adapter as never);
+            const g = await buildGlobalConfig(built.adapter);
+            const s = new WebServer(built.adapter as never, baseConfig, reg, g, crypto.randomUUID(), 'de');
+            await s['app'].register((await import('@fastify/cookie')).default);
+            s['setupErrorHandler']();
+            s['setupRoutes']();
+            await s['app'].ready();
+
+            const res = await s.inject({ method: 'GET', url: '/' });
+            expect(res.body).to.include('Display verbunden');
+            expect(res.body).to.include('lang="de"');
+            await s['app'].close();
+        });
+
+        it('GET / setup page falls back to English for unknown language', async () => {
+            const built = createMockAdapter();
+            const reg = new ClientRegistry(built.adapter as never);
+            const g = await buildGlobalConfig(built.adapter);
+            const s = new WebServer(
+                built.adapter as never,
+                baseConfig,
+                reg,
+                g,
+                crypto.randomUUID(),
+                'eo', // Esperanto — not in our translation table
+            );
+            await s['app'].register((await import('@fastify/cookie')).default);
+            s['setupErrorHandler']();
+            s['setupRoutes']();
+            await s['app'].ready();
+
+            const res = await s.inject({ method: 'GET', url: '/' });
+            expect(res.body).to.include('Display connected');
             await s['app'].close();
         });
 

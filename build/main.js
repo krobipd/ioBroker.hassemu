@@ -68,8 +68,16 @@ class HassEmu extends utils.Adapter {
     await this.subscribeForeignObjectsAsync("system.adapter.*");
     await this.subscribeStatesAsync("clients.*");
     await this.subscribeStatesAsync("global.*");
+    const systemLanguage = await this.readSystemLanguage();
     try {
-      this.webServer = new import_webserver.WebServer(this, this.config, this.registry, this.globalConfig, instanceUuid);
+      this.webServer = new import_webserver.WebServer(
+        this,
+        this.config,
+        this.registry,
+        this.globalConfig,
+        instanceUuid,
+        systemLanguage
+      );
       await this.webServer.start();
     } catch (err) {
       this.log.error(`Web server failed to start: ${String(err)}`);
@@ -86,6 +94,24 @@ class HassEmu extends utils.Adapter {
     this.log.info(
       `HA emulation running on ${bindAddr}:${this.config.port}${this.config.mdnsEnabled ? ", mDNS active" : ""}`
     );
+  }
+  /**
+   * Read the ioBroker system language (set in Admin → Main Settings).
+   * Used for the setup page so the end-user sees the same language as
+   * their admin UI. Falls back to `en` when `system.config` can't be read
+   * or holds a language we don't translate. Read once on startup — a
+   * language switch at runtime only takes effect after an adapter restart,
+   * which is fine for a setup-hint page that most users see once.
+   */
+  async readSystemLanguage() {
+    var _a;
+    try {
+      const cfg = await this.getForeignObjectAsync("system.config");
+      const lang = (_a = cfg == null ? void 0 : cfg.common) == null ? void 0 : _a.language;
+      return typeof lang === "string" && lang.length > 0 ? lang : "en";
+    } catch {
+      return "en";
+    }
   }
   /**
    * 1.0.x / 1.1.0 → 1.1.1 migration — move the legacy `defaultVisUrl` from

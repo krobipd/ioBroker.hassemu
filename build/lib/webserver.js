@@ -50,21 +50,25 @@ class WebServer {
   sessions = /* @__PURE__ */ new Map();
   cleanupTimer = null;
   instanceUuid;
+  /** ioBroker system language for the setup page — resolved on startup. */
+  systemLanguage;
   /** Set of IPs whose reverse DNS lookup is already in-flight — prevents duplicate work. */
   dnsInFlight = /* @__PURE__ */ new Set();
   /**
-   * @param adapter      Adapter instance used for logging, timers and namespace.
-   * @param config       Resolved runtime config.
-   * @param registry     Multi-client registry.
-   * @param globalConfig Global redirect override.
-   * @param instanceUuid Stable UUID shared with the mDNS advert.
+   * @param adapter        Adapter instance used for logging, timers and namespace.
+   * @param config         Resolved runtime config.
+   * @param registry       Multi-client registry.
+   * @param globalConfig   Global redirect override.
+   * @param instanceUuid   Stable UUID shared with the mDNS advert.
+   * @param systemLanguage ioBroker system language (`en`, `de`, …) used for the setup page.
    */
-  constructor(adapter, config, registry, globalConfig, instanceUuid) {
+  constructor(adapter, config, registry, globalConfig, instanceUuid, systemLanguage = "en") {
     this.adapter = adapter;
     this.config = config;
     this.registry = registry;
     this.globalConfig = globalConfig;
     this.instanceUuid = instanceUuid;
+    this.systemLanguage = systemLanguage;
     this.app = (0, import_fastify.default)({ logger: false, trustProxy: false });
   }
   /** Human-readable service name advertised in responses and mDNS. */
@@ -347,7 +351,7 @@ class WebServer {
       const url = this.globalConfig.resolveUrlFor(client);
       if (!url) {
         this.adapter.log.debug(`No redirect URL for client ${client.id} \u2014 serving setup page`);
-        return reply.status(200).type("text/html; charset=utf-8").send((0, import_setup_page.renderSetupPage)(client.id, this.adapter.namespace));
+        return reply.status(200).type("text/html; charset=utf-8").send((0, import_setup_page.renderSetupPage)(client.id, this.adapter.namespace, this.systemLanguage, client.ip));
       }
       this.adapter.log.debug(`Redirecting client ${client.id} \u2192 ${url}`);
       return reply.redirect(url, 302);
