@@ -205,6 +205,41 @@ describe('ClientRegistry', () => {
             expect(rec2.id).to.not.equal(rec1.id);
         });
 
+        // Regression: v1.1.2 and earlier registered a separate client for each
+        // parallel cookieless request from the same display on initial connect,
+        // leaving orphan clients behind (seen in the log as two "New client
+        // registered" lines within 100 ms from the same IP).
+        it('returns the same record for parallel cookieless requests from the same IP', async () => {
+            const promises = [
+                registry.identifyOrCreate(null, '192.168.77.10', null),
+                registry.identifyOrCreate(null, '192.168.77.10', null),
+                registry.identifyOrCreate(null, '192.168.77.10', null),
+            ];
+            const results = await Promise.all(promises);
+            expect(results[0].id).to.equal(results[1].id);
+            expect(results[1].id).to.equal(results[2].id);
+            expect(registry.listAll()).to.have.lengthOf(1);
+        });
+
+        it('still creates distinct clients for parallel requests from different IPs', async () => {
+            const results = await Promise.all([
+                registry.identifyOrCreate(null, '10.0.0.1', null),
+                registry.identifyOrCreate(null, '10.0.0.2', null),
+                registry.identifyOrCreate(null, '10.0.0.3', null),
+            ]);
+            const ids = new Set(results.map(r => r.id));
+            expect(ids.size).to.equal(3);
+            expect(registry.listAll()).to.have.lengthOf(3);
+        });
+
+        it('clears the pending-lock after creation so sequential cookieless visits create new clients', async () => {
+            const rec1 = await registry.identifyOrCreate(null, '192.168.77.20', null);
+            // Sequential — the first promise has resolved and been cleared from
+            // pendingByIp; a new cookieless visit is a new display session.
+            const rec2 = await registry.identifyOrCreate(null, '192.168.77.20', null);
+            expect(rec1.id).to.not.equal(rec2.id);
+        });
+
         it('updates IP when it changes on subsequent visit', async () => {
             const rec = await registry.identifyOrCreate(null, '1.1.1.1', null);
             await registry.identifyOrCreate(rec.cookie, '2.2.2.2', null);

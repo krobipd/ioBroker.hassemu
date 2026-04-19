@@ -42,6 +42,15 @@ class ClientRegistry {
   byId = /* @__PURE__ */ new Map();
   byToken = /* @__PURE__ */ new Map();
   currentUrlStates = {};
+  /**
+   * In-flight client creations keyed by remote IP. Keeps parallel cookieless
+   * requests from the same display (typical on first connect: HA clients fire
+   * `GET /`, `GET /api/`, `POST /auth/login_flow` almost simultaneously) from
+   * each creating a separate client record. The first request starts the
+   * create; parallel requests await the same Promise and receive the same
+   * client + cookie.
+   */
+  pendingByIp = /* @__PURE__ */ new Map();
   /** @param adapter Adapter instance used for object/state I/O. */
   constructor(adapter) {
     this.adapter = adapter;
@@ -102,6 +111,19 @@ class ClientRegistry {
       if (existing) {
         await this.updateIpHostname(existing, ip, hostname);
         return existing;
+      }
+    }
+    if (ip) {
+      const pending = this.pendingByIp.get(ip);
+      if (pending) {
+        return pending;
+      }
+      const promise = this.createClient(ip, hostname);
+      this.pendingByIp.set(ip, promise);
+      try {
+        return await promise;
+      } finally {
+        this.pendingByIp.delete(ip);
       }
     }
     return this.createClient(ip, hostname);
