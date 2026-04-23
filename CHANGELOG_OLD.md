@@ -1,4 +1,21 @@
 # Older Changes
+## 1.0.4 (2026-04-12)
+- DRY: remove duplicate NativeConfig interface and redundant config mapping
+- Fix: log spam when redirect URL is not configured (now logged once at startup)
+- Tighten `createSession` visibility to private
+
+## 1.0.3 (2026-04-12)
+- Remove unused devDependencies, add `no-floating-promises` lint rule, remove redundant CI checkout
+
+## 1.0.2 (2026-04-08)
+- Remove `build/` from git tracking, fix `.gitignore`, clean up keywords and metadata
+
+## 1.0.0 (2026-04-08)
+- Renamed from homeassistant-bridge to hassemu
+
+Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
+
+---
 
 ## 0.8.11 (2026-03-28)
 - Add error middleware for malformed JSON requests (returns 400 instead of 500)

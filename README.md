@@ -135,8 +135,7 @@ returns the adapter's runtime state — useful to verify the server is up and se
 ---
 
 ## Changelog
-
-### **WORK IN PROGRESS**
+### 1.1.4 (2026-04-23)
 - Separate test-build output (`build-test/`) from production `build/` — `npm test` no longer risks leaving duplicated `build/src` + `build/test` trees in the published package. No runtime change.
 
 ### 1.1.3 (2026-04-19)
@@ -167,24 +166,6 @@ returns the adapter's runtime state — useful to verify the server is up and se
 - **Input hardening** — all external URLs go through a coercion layer (http/https only, length-limited, no credentials); foreign adapter metadata is fully type-guarded
 - **Config migration** — `visUrl` → `defaultVisUrl` is applied automatically on first start
 - **Reverse DNS** — clients are labelled with their LAN hostname when resolvable (shown as the channel name in the object browser)
-
-### 1.0.4 (2026-04-12)
-- DRY: remove duplicate NativeConfig interface and redundant config mapping
-- Fix: log spam when redirect URL is not configured (now logged once at startup)
-- Tighten `createSession` visibility to private
-
-### 1.0.3 (2026-04-12)
-- Remove unused devDependencies, add `no-floating-promises` lint rule, remove redundant CI checkout
-
-### 1.0.2 (2026-04-08)
-- Remove `build/` from git tracking, fix `.gitignore`, clean up keywords and metadata
-
-### 1.0.0 (2026-04-08)
-- Renamed from homeassistant-bridge to hassemu
-
-Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
-
----
 
 ## Support
 

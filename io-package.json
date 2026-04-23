@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.1.3",
+    "version": "1.1.4",
     "news": {
+      "1.1.4": {
+        "en": "Separate test-build output (`build-test/`) from production `build/` — `npm test` no longer risks leaving duplicated `build/src` + `build/test` trees in the published package. No runtime change.",
+        "de": "Separate Test-Building-Ausgang (`Building-Test/`) von der Produktion `Building/` — `npm-Test` nicht mehr Risiken verlassen duplizierte `Building/Src` + `Building/test` Bäume im veröffentlichten Paket. Keine Laufzeitänderung.",
+        "ru": "Отдельная продукция испытательной постройки (‘build-test/’) от производства ‘build/’ — ‘npm test’ больше не рискует оставить дублированные деревья ‘build/src’ + ‘build/test’ в опубликованном пакете. Никаких изменений.",
+        "pt": "Saída de construção de teste separada (`build-test/`) da produção `build/` — `npm test` já não corre o risco de deixar árvores duplicadas `build/src` + `build/test` no pacote publicado. Nenhuma mudança de tempo de execução.",
+        "nl": "Aparte test-build output van de productie Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build- Geen verandering in de looptijd.",
+        "fr": "La sortie séparée de la construction d'essai (`build-test/`) de la production `build/` — `npm test` ne risque plus de laisser des arbres dupliqués `build/src` + `build/test` dans le paquet publié. Pas de changement d'exécution.",
+        "it": "Uscita separata di test-build (`build-test/`) dalla produzione `build/` — `npm test` non rischia più di lasciare duplicati `build/src` + `build/test` alberi nel pacchetto pubblicato. Nessun cambiamento di runtime.",
+        "es": "La producción separada de la producción de pruebas ( \" pruebas impresas \" ) de la producción \" , \" prueba npm \" ya no corre el riesgo de dejar árboles duplicados \" construidos/src \" + \" construidos/test \" en el paquete publicado. No hay cambio de horario.",
+        "pl": "Oddzielna produkcja testowa (\"build-test /\") z produkcji \"build /\" - \"npm test\" nie może już pozostawiać powielonych \"build / src\" + \"build / test\" drzew w opublikowanym pakiecie. Bez zmian.",
+        "uk": "Окремий тестово-будівельний вихід (`build-test/``) від виробництва `build/`` — `npm test’ не більше ризиків, що залишають дублікатом `build/src` + `build/test` дерев у опублікованому пакеті. Немає змін робочого часу.",
+        "zh-cn": "将试验-建设产出(`建设-测试/')与生产`建设/'——`npm测试 ' 分开,不再有将`建设/src ' +`建设/测试 ' 树木复制到已公布的成套材料的风险。 无运行时间变化 ."
+      },
       "1.1.3": {
         "en": "Fix duplicate client registration on initial connect — HA displays fire several parallel cookieless requests, each used to create a separate client record. Now locked per IP so the first create wins and the rest of the burst attach to the same client. Setup page redesigned: big green OK banner, localized into all 11 adapter languages (auto-picked from the ioBroker system language), IP shown alongside the device ID, responsive layout with dark-mode support.",
         "de": "Doppelte Client-Registrierung beim ersten Verbinden behoben — HA-Displays feuern mehrere parallele Requests ohne Cookie, jeder legte bisher einen eigenen Client an. Jetzt pro IP gesperrt: der erste Create gewinnt, die restlichen Parallel-Requests werden dem gleichen Client zugeordnet. Setup-Seite überarbeitet: großes grünes OK-Banner, Lokalisierung in alle 11 Adapter-Sprachen (automatisch nach ioBroker-Systemsprache), IP wird neben der Device-ID angezeigt, responsive Layout mit Dark-Mode.",
@@ -80,19 +93,6 @@
         "pl": "Usunięto nieużywane devDependencies, dodano regułę lint no-floating-promises, usunięto nadmiarowy checkout w CI",
         "uk": "Видалено невикористані devDependencies, додано правило лінтингу no-floating-promises, видалено зайвий checkout у CI",
         "zh-cn": "移除未使用的开发依赖，添加 no-floating-promises 检查规则，移除冗余的 CI checkout"
-      },
-      "1.0.2": {
-        "en": "Remove build/ from git tracking, fix .gitignore, clean up keywords and metadata",
-        "de": "build/ aus Git-Tracking entfernt, .gitignore korrigiert, Keywords und Metadaten bereinigt",
-        "ru": "Удален build/ из отслеживания git, исправлен .gitignore, очищены ключевые слова и метаданные",
-        "pt": "Removido build/ do rastreamento git, corrigido .gitignore, limpeza de palavras-chave e metadados",
-        "nl": "build/ verwijderd uit git-tracking, .gitignore gecorrigeerd, trefwoorden en metadata opgeschoond",
-        "fr": "Suppression de build/ du suivi git, correction de .gitignore, nettoyage des mots-clés et métadonnées",
-        "it": "Rimosso build/ dal tracciamento git, corretto .gitignore, pulizia parole chiave e metadati",
-        "es": "Eliminado build/ del seguimiento git, corregido .gitignore, limpieza de palabras clave y metadatos",
-        "pl": "Usunięto build/ ze śledzenia git, poprawiono .gitignore, wyczyszczono słowa kluczowe i metadane",
-        "uk": "Видалено build/ з відстеження git, виправлено .gitignore, очищено ключові слова та метадані",
-        "zh-cn": "从git跟踪中删除build/，修复.gitignore，清理关键词和元数据"
       }
     },
     "titleLang": {
