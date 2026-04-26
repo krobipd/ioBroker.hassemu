@@ -50,7 +50,7 @@ jobs:
 
   # Deploys the final package to NPM and creates GitHub release
   deploy:
-    needs: [check-and-lint, adapter-tests]
+    needs: [check-and-lint, adapter-tests, repochecker-version-gate]
 
     # Trigger this step only when a commit on main is tagged with a version number
     if: |
