@@ -34,6 +34,8 @@ class HassEmu extends utils.Adapter {
   registry = null;
   globalConfig = null;
   urlDiscovery = null;
+  unhandledRejectionHandler = null;
+  uncaughtExceptionHandler = null;
   constructor(options = {}) {
     super({ ...options, name: "hassemu" });
     this.on("ready", () => {
@@ -47,6 +49,14 @@ class HassEmu extends utils.Adapter {
       (_a = this.urlDiscovery) == null ? void 0 : _a.scheduleRefresh();
     });
     this.on("unload", this.onUnload.bind(this));
+    this.unhandledRejectionHandler = (reason) => {
+      this.log.error(`Unhandled rejection: ${reason instanceof Error ? reason.message : String(reason)}`);
+    };
+    this.uncaughtExceptionHandler = (err) => {
+      this.log.error(`Uncaught exception: ${err.message}`);
+    };
+    process.on("unhandledRejection", this.unhandledRejectionHandler);
+    process.on("uncaughtException", this.uncaughtExceptionHandler);
   }
   async onReady() {
     await this.setState("info.connection", { val: false, ack: true });
@@ -176,6 +186,14 @@ class HassEmu extends utils.Adapter {
       }
       this.registry = null;
       this.globalConfig = null;
+      if (this.unhandledRejectionHandler) {
+        process.off("unhandledRejection", this.unhandledRejectionHandler);
+        this.unhandledRejectionHandler = null;
+      }
+      if (this.uncaughtExceptionHandler) {
+        process.off("uncaughtException", this.uncaughtExceptionHandler);
+        this.uncaughtExceptionHandler = null;
+      }
       void this.setState("info.connection", { val: false, ack: true });
     } catch (error) {
       const err = error;

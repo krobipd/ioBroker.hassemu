@@ -13,6 +13,8 @@ class HassEmu extends utils.Adapter {
     private registry: ClientRegistry | null = null;
     private globalConfig: GlobalConfig | null = null;
     private urlDiscovery: UrlDiscovery | null = null;
+    private unhandledRejectionHandler: ((reason: unknown) => void) | null = null;
+    private uncaughtExceptionHandler: ((err: Error) => void) | null = null;
 
     declare config: AdapterConfig;
 
@@ -30,6 +32,18 @@ class HassEmu extends utils.Adapter {
             this.urlDiscovery?.scheduleRefresh();
         });
         this.on('unload', this.onUnload.bind(this));
+
+        // Last-line-of-defence against unhandled rejections / sync throws from
+        // fire-and-forget paths. The per-handler wrappers cover documented async
+        // paths; this catches anything that slips past during refactors.
+        this.unhandledRejectionHandler = (reason: unknown) => {
+            this.log.error(`Unhandled rejection: ${reason instanceof Error ? reason.message : String(reason)}`);
+        };
+        this.uncaughtExceptionHandler = (err: Error) => {
+            this.log.error(`Uncaught exception: ${err.message}`);
+        };
+        process.on('unhandledRejection', this.unhandledRejectionHandler);
+        process.on('uncaughtException', this.uncaughtExceptionHandler);
     }
 
     private async onReady(): Promise<void> {
@@ -174,6 +188,17 @@ class HassEmu extends utils.Adapter {
 
             this.registry = null;
             this.globalConfig = null;
+
+            // Detach process-level last-line-of-defence handlers
+            if (this.unhandledRejectionHandler) {
+                process.off('unhandledRejection', this.unhandledRejectionHandler);
+                this.unhandledRejectionHandler = null;
+            }
+            if (this.uncaughtExceptionHandler) {
+                process.off('uncaughtException', this.uncaughtExceptionHandler);
+                this.uncaughtExceptionHandler = null;
+            }
+
             void this.setState('info.connection', { val: false, ack: true });
         } catch (error) {
             const err = error as Error;

@@ -6,7 +6,7 @@
 
 **ioBroker HASS Emulator** — emuliert einen minimalen HA-Server für Geräte, die ein HA-Dashboard erwarten → leitet auf beliebige URL um.
 
-- **Version:** 1.1.4 (WIP — build-test separation, parcelapp learnings)
+- **Version:** 1.1.5 (2026-04-26 — process.on defense + Konsistenz-Cleanup + js-controller >=6.0.11)
 - **GitHub:** https://github.com/krobipd/ioBroker.hassemu
 - **npm:** https://www.npmjs.com/package/iobroker.hassemu
 - **Repository PR:** ioBroker/ioBroker.repositories#5793
@@ -83,7 +83,7 @@ test/integration.js           → @iobroker/testing Integration-Tests
 
 | Version | Highlights                                                                                           |
 | ------- | ---------------------------------------------------------------------------------------------------- |
-| 1.1.4 (WIP) | tsconfig.test.json → outDir `./build-test` (verhindert `build/src`+`build/test` Duplikate im veröffentlichten Paket), prebuild:test + .gitignore + eslint-ignore. Kein Runtime-Change. |
+| 1.1.4 | tsconfig.test.json → outDir `./build-test` (verhindert `build/src`+`build/test` Duplikate im veröffentlichten Paket), prebuild:test + .gitignore + eslint-ignore. Kein Runtime-Change. |
 | 1.1.3   | Race-Fix: parallele cookieless Requests desselben Displays landen bei einem Client (Pending-Lock per IP). Setup-Seite neu: grünes OK-Banner, Dark-Mode, i18n in allen 11 Adapter-Sprachen via `system.config.language` |
 | 1.1.2   | Hostname als Channel-Name (kein eigener Datenpunkt mehr), createObjects parallelisiert, Legacy-Migration |
 | 1.1.1   | Redirect-URL raus aus Admin → global.visUrl/enabled + Setup-Seite, web als Dependency                |
