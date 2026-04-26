@@ -1,4 +1,14 @@
 # Older Changes
+## 1.1.0 (2026-04-18)
+
+- **Multi-client support** — each connecting display gets its own channel in `clients.*` with an individual `visUrl`, `ip` and `remove` button
+- **URL dropdown** — `clients.<id>.visUrl` is populated from all known ioBroker URLs (VIS-2, VIS, Admin intro tiles, Jarvis, …) — pick from the list or enter custom
+- **Cookie-based identification** — displays are recognised across adapter restarts and IP changes
+- **Fastify web server** — Express was replaced by Fastify for first-party cookie support, schema validation and a lighter runtime
+- **Input hardening** — all external URLs go through a coercion layer (http/https only, length-limited, no credentials); foreign adapter metadata is fully type-guarded
+- **Config migration** — `visUrl` → `defaultVisUrl` is applied automatically on first start
+- **Reverse DNS** — clients are labelled with their LAN hostname when resolvable (shown as the channel name in the object browser)
+
 ## 1.0.4 (2026-04-12)
 - DRY: remove duplicate NativeConfig interface and redundant config mapping
 - Fix: log spam when redirect URL is not configured (now logged once at startup)
