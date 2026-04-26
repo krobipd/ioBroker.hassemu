@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.1.4",
+    "version": "1.1.5",
     "news": {
+      "1.1.5": {
+        "en": "Process-level unhandledRejection/uncaughtException handlers added as last-line-of-defence. Stop shipping the manual-review release-script plugin. Audit-driven boilerplate sync with the other krobi adapters. Min js-controller correction: was >=7.0.0, restored to repochecker-recommended >=6.0.11 (Source: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker bumped to ^7.1.1.",
+        "de": "Process-level unhandledRejection/uncaughtException-Handler als Last-Line-of-Defence hinzugefügt. Das manual-review-Release-Script-Plugin entfällt. Audit-getriebener Boilerplate-Sync gegenüber den anderen krobi-Adaptern. js-controller-Korrektur: war >=7.0.0, korrigiert auf Repochecker-recommended >=6.0.11 (Quelle: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker auf ^7.1.1 angehoben.",
+        "ru": "Process-level обробники unhandledRejection/uncaughtException додано як last-line-of-defence. Manual-review release-script plugin більше не постачається. Audit-керована синхронізація boilerplate з іншими krobi-адаптерами. Корекція js-controller: було >=7.0.0, відновлено на repochecker-recommended >=6.0.11 (Джерело: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker оновлено до ^7.1.1.",
+        "pt": "Handlers process-level unhandledRejection/uncaughtException adicionados como last-line-of-defence. O plugin manual-review do release-script foi removido. Sincronização de boilerplate orientada por audit com os outros adaptadores krobi. Correção js-controller: era >=7.0.0, restaurada para repochecker-recommended >=6.0.11 (Fonte: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker atualizado para ^7.1.1.",
+        "nl": "Process-level unhandledRejection/uncaughtException-handlers toegevoegd als last-line-of-defence. Het manual-review release-script plugin wordt niet meer meegeleverd. Audit-gestuurde boilerplate-sync met de andere krobi-adapters. js-controller-correctie: was >=7.0.0, hersteld naar repochecker-recommended >=6.0.11 (Bron: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker verhoogd naar ^7.1.1.",
+        "fr": "Handlers process-level unhandledRejection/uncaughtException ajoutés en last-line-of-defence. Le plugin manual-review du release-script n'est plus livré. Synchronisation boilerplate audit-driven avec les autres adaptateurs krobi. Correction js-controller: était >=7.0.0, restaurée à repochecker-recommended >=6.0.11 (Source: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker porté à ^7.1.1.",
+        "it": "Handler process-level unhandledRejection/uncaughtException aggiunti come last-line-of-defence. Il plugin manual-review del release-script non viene più distribuito. Sincronizzazione boilerplate audit-driven con gli altri adapter krobi. Correzione js-controller: era >=7.0.0, ripristinata a repochecker-recommended >=6.0.11 (Fonte: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker alzato a ^7.1.1.",
+        "es": "Handlers process-level unhandledRejection/uncaughtException añadidos como last-line-of-defence. El plugin manual-review del release-script ya no se incluye. Sincronización de boilerplate guiada por audit con los demás adaptadores krobi. Corrección js-controller: era >=7.0.0, restaurada a repochecker-recommended >=6.0.11 (Fuente: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker elevado a ^7.1.1.",
+        "pl": "Handlery process-level unhandledRejection/uncaughtException dodane jako last-line-of-defence. Plugin manual-review release-script nie jest już dostarczany. Synchronizacja boilerplate'u audit-driven z pozostałymi adapterami krobi. Korekcja js-controller: było >=7.0.0, przywrócono do repochecker-recommended >=6.0.11 (Źródło: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker podniesione do ^7.1.1.",
+        "uk": "Process-level обробники unhandledRejection/uncaughtException додано як last-line-of-defence. Manual-review release-script plugin більше не постачається. Audit-керована синхронізація boilerplate з іншими krobi-адаптерами. js-controller-корекція: було >=7.0.0, відновлено на repochecker-recommended >=6.0.11 (Джерело: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker оновлено до ^7.1.1.",
+        "zh-cn": "新增进程级 unhandledRejection/uncaughtException 处理器作为 last-line-of-defence。manual-review release-script 插件不再随包发布。与其他 krobi 适配器进行 audit 驱动的 boilerplate 同步。js-controller 更正：从 >=7.0.0 恢复为 repochecker 推荐的 >=6.0.11（来源：ioBroker.repochecker/lib/M1000_IOPackageJson.js）。@types/iobroker 升级至 ^7.1.1。"
+      },
       "1.1.4": {
         "en": "Separate test-build output (`build-test/`) from production `build/` — `npm test` no longer risks leaving duplicated `build/src` + `build/test` trees in the published package. No runtime change.",
         "de": "Separate Test-Building-Ausgang (`Building-Test/`) von der Produktion `Building/` — `npm-Test` nicht mehr Risiken verlassen duplizierte `Building/Src` + `Building/test` Bäume im veröffentlichten Paket. Keine Laufzeitänderung.",
@@ -80,19 +93,6 @@
         "pl": "DRY: usunięto zduplikowany interfejs konfiguracji i nadmiarowe mapowanie, naprawiono spam logów przy brakującym URL przekierowania, zaostrzona widoczność",
         "uk": "DRY: видалено дублюючий інтерфейс конфігурації та надлишкове відображення, виправлено спам логів при відсутньому URL перенаправлення, посилено видимість",
         "zh-cn": "DRY：移除重复配置接口和冗余映射，修复缺少重定向URL时的日志刷屏，收紧可见性"
-      },
-      "1.0.3": {
-        "en": "Remove unused devDependencies, add no-floating-promises lint rule, remove redundant CI checkout",
-        "de": "Ungenutzte devDependencies entfernt, no-floating-promises Lint-Regel hinzugefügt, redundanten CI-Checkout entfernt",
-        "ru": "Удалены неиспользуемые devDependencies, добавлено правило lint no-floating-promises, удален избыточный checkout в CI",
-        "pt": "Removidas devDependencies não utilizadas, adicionada regra lint no-floating-promises, removido checkout redundante no CI",
-        "nl": "Ongebruikte devDependencies verwijderd, no-floating-promises lintregel toegevoegd, redundante CI-checkout verwijderd",
-        "fr": "Suppression des devDependencies inutilisées, ajout de la règle lint no-floating-promises, suppression du checkout CI redondant",
-        "it": "Rimosse devDependencies inutilizzate, aggiunta regola lint no-floating-promises, rimosso checkout CI ridondante",
-        "es": "Eliminadas devDependencies no utilizadas, añadida regla lint no-floating-promises, eliminado checkout CI redundante",
-        "pl": "Usunięto nieużywane devDependencies, dodano regułę lint no-floating-promises, usunięto nadmiarowy checkout w CI",
-        "uk": "Видалено невикористані devDependencies, додано правило лінтингу no-floating-promises, видалено зайвий checkout у CI",
-        "zh-cn": "移除未使用的开发依赖，添加 no-floating-promises 检查规则，移除冗余的 CI checkout"
       }
     },
     "titleLang": {

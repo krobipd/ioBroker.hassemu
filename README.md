@@ -135,8 +135,7 @@ returns the adapter's runtime state — useful to verify the server is up and se
 ---
 
 ## Changelog
-
-### **WORK IN PROGRESS**
+### 1.1.5 (2026-04-26)
 - Process-level `unhandledRejection` / `uncaughtException` handlers added as last-line-of-defence against fire-and-forget rejections.
 - Stop shipping the `manual-review` release-script plugin — adapter-only consequence.
 - Audit-driven boilerplate sync with the other krobi adapters (`.vscode` json5 schemas, `tsconfig.test` looser test rules).
@@ -164,16 +163,6 @@ returns the adapter's runtime state — useful to verify the server is up and se
 - Setup page served when no URL is configured (shows device ID + datapoint path)
 - `web` adapter declared as dependency
 - Legacy `defaultVisUrl` migrates to `global.visUrl` + `global.enabled=true` on first start
-
-### 1.1.0 (2026-04-18)
-
-- **Multi-client support** — each connecting display gets its own channel in `clients.*` with an individual `visUrl`, `ip` and `remove` button
-- **URL dropdown** — `clients.<id>.visUrl` is populated from all known ioBroker URLs (VIS-2, VIS, Admin intro tiles, Jarvis, …) — pick from the list or enter custom
-- **Cookie-based identification** — displays are recognised across adapter restarts and IP changes
-- **Fastify web server** — Express was replaced by Fastify for first-party cookie support, schema validation and a lighter runtime
-- **Input hardening** — all external URLs go through a coercion layer (http/https only, length-limited, no credentials); foreign adapter metadata is fully type-guarded
-- **Config migration** — `visUrl` → `defaultVisUrl` is applied automatically on first start
-- **Reverse DNS** — clients are labelled with their LAN hostname when resolvable (shown as the channel name in the object browser)
 
 ## Support
 
