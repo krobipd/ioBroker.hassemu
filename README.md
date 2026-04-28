@@ -135,7 +135,7 @@ returns the adapter's runtime state — useful to verify the server is up and se
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.1.6 (2026-04-28)
 - Audit cleanup against the upstream `ioBroker.example/TypeScript` full standard:
   - Test setup migrated: tests now live next to source as `src/lib/*.test.ts` and run directly via `ts-node/register`. Removed `tsconfig.test.json` + `build-test/`, added `test/mocharc.custom.json` + `test/mocha.setup.js` + `test/tsconfig.json` + `test/.eslintrc.json`
   - `@types/node` rolled back from `^25.6.0` to `^20.19.24` so type defs match `engines.node: ">=20"`
@@ -164,13 +164,6 @@ returns the adapter's runtime state — useful to verify the server is up and se
 - Client name in the object browser now shows the reverse-DNS hostname instead of the IP as soon as it's resolved
 - `clients.<id>.hostname` datapoint removed — the value moved into the channel name; existing entries are migrated on first start
 - Client-channel creation parallelised — new displays register noticeably faster
-
-### 1.1.1 (2026-04-18)
-
-- Redirect URL moved from Admin config to datapoints: `global.visUrl` + `global.enabled`, otherwise each `clients.<id>.visUrl`
-- Setup page served when no URL is configured (shows device ID + datapoint path)
-- `web` adapter declared as dependency
-- Legacy `defaultVisUrl` migrates to `global.visUrl` + `global.enabled=true` on first start
 
 ## Support
 
