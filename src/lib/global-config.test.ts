@@ -1,6 +1,6 @@
 import { expect } from 'chai';
-import { GlobalConfig, parseGlobalStateId } from '../src/lib/global-config';
-import type { ClientRecord } from '../src/lib/types';
+import { GlobalConfig, parseGlobalStateId } from './global-config';
+import type { ClientRecord } from './types';
 
 interface ObjEntry {
     type: string;

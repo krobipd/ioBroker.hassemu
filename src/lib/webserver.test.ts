@@ -1,10 +1,10 @@
 import { expect } from 'chai';
 import crypto from 'node:crypto';
-import { CLIENT_COOKIE, WebServer } from '../src/lib/webserver';
-import { ClientRegistry } from '../src/lib/client-registry';
-import { GlobalConfig } from '../src/lib/global-config';
-import { HA_VERSION } from '../src/lib/constants';
-import type { AdapterConfig } from '../src/lib/types';
+import { CLIENT_COOKIE, WebServer } from './webserver';
+import { ClientRegistry } from './client-registry';
+import { GlobalConfig } from './global-config';
+import { HA_VERSION } from './constants';
+import type { AdapterConfig } from './types';
 
 interface ObjEntry {
     type: string;

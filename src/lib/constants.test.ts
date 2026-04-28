@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { HA_VERSION, SESSION_TTL_MS, CLEANUP_INTERVAL_MS, LOGIN_SCHEMA } from '../src/lib/constants';
+import { HA_VERSION, SESSION_TTL_MS, CLEANUP_INTERVAL_MS, LOGIN_SCHEMA } from './constants';
 
 describe('constants', () => {
     describe('HA_VERSION', () => {

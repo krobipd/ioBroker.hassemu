@@ -6,13 +6,15 @@
 
 **ioBroker HASS Emulator** — emuliert einen minimalen HA-Server für Geräte, die ein HA-Dashboard erwarten → leitet auf beliebige URL um.
 
-- **Version:** 1.1.5 (2026-04-26 — process.on defense + Konsistenz-Cleanup + js-controller >=6.0.11)
+- **Version:** 1.1.6 (2026-04-28 — Audit-Cleanup gegen ioBroker.example/TypeScript-Vollstandard)
 - **GitHub:** https://github.com/krobipd/ioBroker.hassemu
 - **npm:** https://www.npmjs.com/package/iobroker.hassemu
 - **Repository PR:** ioBroker/ioBroker.repositories#5793
 - **Vorher:** homeassistant-bridge (umbenannt wegen irreführendem Namen)
 - **Runtime-Deps:** `@iobroker/adapter-core`, `fastify`, `@fastify/cookie`, `bonjour-service`
 - **Adapter-Abhängigkeit:** `web >=6.0.0` (dependencies in io-package.json) — ohne web kein VIS
+- **Test-Setup:** offizieller ioBroker.example/TypeScript-Standard — Tests unter `src/lib/*.test.ts` direkt mit `ts-node/register`
+- **`@types/node` an `engines.node`-Min gekoppelt:** `^20.x` weil `engines.node: ">=20"`
 
 ## HA-kompatible Geräte — Limitationen
 
