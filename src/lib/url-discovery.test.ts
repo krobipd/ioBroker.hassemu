@@ -5,7 +5,7 @@ import {
     collectFromInstance,
     resolvePlaceholders,
     type DiscoveryAdapter,
-} from '../src/lib/url-discovery';
+} from './url-discovery';
 
 type TimerCallback = () => void;
 

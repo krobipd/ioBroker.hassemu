@@ -6,7 +6,7 @@ import {
     coerceUuid,
     coerceSafeUrl,
     isPlainObject,
-} from '../src/lib/coerce';
+} from './coerce';
 
 describe('coerce', () => {
     describe('coerceFiniteNumber', () => {

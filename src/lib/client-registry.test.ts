@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import crypto from 'node:crypto';
-import { ClientRegistry, parseClientStateId } from '../src/lib/client-registry';
-import type { ClientRecord } from '../src/lib/types';
+import { ClientRegistry, parseClientStateId } from './client-registry';
+import type { ClientRecord } from './types';
 
 interface ObjEntry {
     type: string;

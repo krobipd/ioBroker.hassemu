@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import crypto from "node:crypto";
-import { MDNSService } from "../src/lib/mdns";
-import type { AdapterConfig } from "../src/lib/types";
+import { MDNSService } from "./mdns";
+import type { AdapterConfig } from "./types";
 
 interface LogEntry {
   level: string;
