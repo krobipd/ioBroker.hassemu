@@ -1,4 +1,11 @@
 # Older Changes
+## 1.1.1 (2026-04-18)
+
+- Redirect URL moved from Admin config to datapoints: `global.visUrl` + `global.enabled`, otherwise each `clients.<id>.visUrl`
+- Setup page served when no URL is configured (shows device ID + datapoint path)
+- `web` adapter declared as dependency
+- Legacy `defaultVisUrl` migrates to `global.visUrl` + `global.enabled=true` on first start
+
 ## 1.1.0 (2026-04-18)
 
 - **Multi-client support** — each connecting display gets its own channel in `clients.*` with an individual `visUrl`, `ip` and `remove` button
