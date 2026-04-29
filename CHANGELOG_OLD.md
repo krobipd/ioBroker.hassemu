@@ -1,4 +1,10 @@
 # Older Changes
+## 1.1.2 (2026-04-18)
+
+- Client name in the object browser now shows the reverse-DNS hostname instead of the IP as soon as it's resolved
+- `clients.<id>.hostname` datapoint removed — the value moved into the channel name; existing entries are migrated on first start
+- Client-channel creation parallelised — new displays register noticeably faster
+
 ## 1.1.1 (2026-04-18)
 
 - Redirect URL moved from Admin config to datapoints: `global.visUrl` + `global.enabled`, otherwise each `clients.<id>.visUrl`
