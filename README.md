@@ -149,8 +149,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-
-### **WORK IN PROGRESS**
+### 1.2.0 (2026-04-29)
 
 - (krobi) Redirect target now configured via `mode` (dropdown) + `manualUrl` (free text) instead of the old `visUrl`. Migration runs automatically.
 - (krobi) Master switch `global.enabled` bulk-syncs every display: on → all follow the global URL, off → each display picks up its own again.
@@ -181,12 +180,6 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 - **Fix duplicate client registration on first connect** — HA displays fire several parallel cookieless requests (`GET /`, `GET /api/`, `POST /auth/login_flow`) within milliseconds of each other. Each used to create a separate client record, leaving orphans behind. The registry now locks per IP while the first client is being created, so parallel burst requests from the same display attach to the same client and cookie.
 - **Setup page redesigned** — big green OK banner so "everything's connected" is visible at a glance, responsive layout with dark-mode support, IP shown alongside the device ID, clearer step-by-step instructions.
 - **Setup page localized into all 11 adapter languages** — automatically picks the ioBroker system language (set in Admin → Main Settings), falls back to English for unknown languages.
-
-### 1.1.2 (2026-04-18)
-
-- Client name in the object browser now shows the reverse-DNS hostname instead of the IP as soon as it's resolved
-- `clients.<id>.hostname` datapoint removed — the value moved into the channel name; existing entries are migrated on first start
-- Client-channel creation parallelised — new displays register noticeably faster
 
 ## Support
 
