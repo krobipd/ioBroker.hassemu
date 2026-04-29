@@ -36,7 +36,7 @@ ioBroker adapter that emulates a [Home Assistant](https://www.home-assistant.io)
 - **Node.js >= 20**
 - **ioBroker js-controller >= 7.0.7**
 - **ioBroker Admin >= 7.7.22**
-- **ioBroker web >= 8.0.0** — required for the VIS/Admin URL discovery that fills the mode-dropdown
+- **ioBroker web >= 8.0.0**
 
 ---
 
@@ -60,8 +60,6 @@ The Admin UI configures the server. Redirect URLs are set via the state tree (se
 | **mDNS Enabled** | Broadcast `_home-assistant._tcp` on the LAN | `true` |
 | **Auth Required** | Check credentials the display sends during login | `false` |
 | **Username / Password** | Used when *Auth Required* is on (password encrypted at rest) | `admin` / — |
-
-> URLs you set must be reachable from the display — use the LAN IP of the ioBroker host, not `localhost`.
 
 ---
 
