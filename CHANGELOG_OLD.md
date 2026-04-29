@@ -36,8 +36,6 @@
 ## 1.0.0 (2026-04-08)
 - Renamed from homeassistant-bridge to hassemu
 
-Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
-
 ---
 
 ## 0.8.11 (2026-03-28)
