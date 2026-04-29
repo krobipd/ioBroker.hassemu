@@ -39,20 +39,23 @@ export class MDNSService {
         try {
             this.bonjour = new Bonjour();
 
+            // Empty TXT records are dropped — bonjour-service publishes them as
+            // empty strings otherwise, which clutters the discovery payload.
+            const txt: Record<string, string> = {
+                base_url: baseUrl,
+                internal_url: baseUrl,
+                version: HA_VERSION,
+                uuid: this.uuid,
+                location_name: serviceName,
+                requires_api_password: 'True',
+            };
+
             this.published = this.bonjour.publish({
                 name: serviceName,
                 type: 'home-assistant',
                 protocol: 'tcp',
                 port: this.config.port,
-                txt: {
-                    base_url: baseUrl,
-                    internal_url: baseUrl,
-                    external_url: '',
-                    version: HA_VERSION,
-                    uuid: this.uuid,
-                    location_name: serviceName,
-                    requires_api_password: 'True',
-                },
+                txt,
             });
 
             this.active = true;

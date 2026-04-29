@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import os from 'node:os';
 
 /** Returns the first non-internal IPv4 address, or `127.0.0.1` as fallback. */
@@ -37,16 +38,12 @@ export function resolveBindToReachable(bindAddress: string | undefined | null): 
     return isWildcardBind(bindAddress) ? getLocalIp() : bindAddress!;
 }
 
-const CLIENT_ID_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789';
-
 /**
- * Generates a short (6-char), URL-safe, lowercase alphanumeric client ID.
- * ~2 billion combinations — good enough for home networks, plain-readable as a datapoint segment.
+ * Generates a short (6-char), URL-safe, lowercase hex client ID.
+ * 16^6 = 16.7 million combinations — sufficient for home networks, readable as
+ * a datapoint segment. Uses `crypto.randomBytes` for consistency with the rest
+ * of the codebase (cookies, session ids, tokens are all crypto-secure).
  */
 export function generateClientId(): string {
-    let out = '';
-    for (let i = 0; i < 6; i++) {
-        out += CLIENT_ID_CHARS[Math.floor(Math.random() * CLIENT_ID_CHARS.length)];
-    }
-    return out;
+    return crypto.randomBytes(3).toString('hex');
 }

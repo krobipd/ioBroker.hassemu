@@ -156,12 +156,15 @@
     },
     "dependencies": [
       {
-        "js-controller": ">=6.0.11"
+        "js-controller": ">=7.0.7"
       }
     ],
     "globalDependencies": [
       {
-        "admin": ">=7.6.20"
+        "admin": ">=7.7.22"
+      },
+      {
+        "web": ">=8.0.0"
       }
     ]
   },
@@ -233,10 +236,23 @@
       "native": {}
     },
     {
-      "_id": "global.visUrl",
+      "_id": "global.mode",
       "type": "state",
       "common": {
-        "name": "Global redirect URL",
+        "name": "Global redirect mode",
+        "type": "mixed",
+        "role": "value",
+        "read": true,
+        "write": true,
+        "def": ""
+      },
+      "native": {}
+    },
+    {
+      "_id": "global.manualUrl",
+      "type": "state",
+      "common": {
+        "name": "Global manual URL (used when mode='manual')",
         "type": "string",
         "role": "url",
         "read": true,

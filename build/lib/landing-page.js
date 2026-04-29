@@ -16,11 +16,11 @@ var __copyProps = (to, from, except, desc) => {
   return to;
 };
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
-var setup_page_exports = {};
-__export(setup_page_exports, {
-  renderSetupPage: () => renderSetupPage
+var landing_page_exports = {};
+__export(landing_page_exports, {
+  renderLandingPage: () => renderLandingPage
 });
-module.exports = __toCommonJS(setup_page_exports);
+module.exports = __toCommonJS(landing_page_exports);
 const STRINGS = {
   en: {
     htmlLang: "en",
@@ -177,12 +177,12 @@ const STRINGS = {
     autoRefresh: "\u6B64\u9875\u9762\u6BCF 15 \u79D2\u81EA\u52A8\u5237\u65B0\u4E00\u6B21\u3002"
   }
 };
-function renderSetupPage(clientId, namespace, language = "en", ip = null) {
+function renderLandingPage(clientId, namespace, language = "en", ip = null) {
   var _a;
   const s = (_a = STRINGS[language]) != null ? _a : STRINGS.en;
   const id = escapeHtml(clientId);
   const ns = escapeHtml(namespace);
-  const datapoint = `${ns}.clients.${id}.visUrl`;
+  const datapoint = `${ns}.clients.${id}.mode`;
   const ipLine = ip && ip.trim() ? `<tr><th scope="row">${escapeHtml(s.ipLabel)}</th><td>${escapeHtml(ip)}</td></tr>` : "";
   return `<!DOCTYPE html>
 <html lang="${escapeHtml(s.htmlLang)}">
@@ -397,6 +397,6 @@ function escapeHtml(s) {
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
-  renderSetupPage
+  renderLandingPage
 });
-//# sourceMappingURL=setup-page.js.map
+//# sourceMappingURL=landing-page.js.map

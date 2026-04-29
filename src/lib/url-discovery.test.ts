@@ -457,6 +457,24 @@ describe('UrlDiscovery', () => {
         });
     });
 
+    describe('getFirstDiscoveredUrl', () => {
+        it('returns null when cache is empty', () => {
+            expect(discovery.getFirstDiscoveredUrl()).to.be.null;
+        });
+
+        it('returns the first inserted URL after collect()', async () => {
+            adapter._instances = {
+                'system.adapter.admin.0': enabledInstance({
+                    common: { localLinks: { _default: { link: 'http://%ip%:8081/', name: 'Admin' } } },
+                }),
+            };
+            await discovery.collect();
+            const first = discovery.getFirstDiscoveredUrl();
+            expect(first).to.be.a('string');
+            expect(first).to.match(/^https?:\/\//);
+        });
+    });
+
     describe('scheduleRefresh / cancelRefresh', () => {
         it('schedules a timer', () => {
             discovery.scheduleRefresh(1000);

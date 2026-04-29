@@ -34,6 +34,7 @@ __export(network_exports, {
   resolveBindToReachable: () => resolveBindToReachable
 });
 module.exports = __toCommonJS(network_exports);
+var import_node_crypto = __toESM(require("node:crypto"));
 var import_node_os = __toESM(require("node:os"));
 function getLocalIp() {
   const interfaces = import_node_os.default.networkInterfaces();
@@ -58,13 +59,8 @@ function isWildcardBind(bindAddress) {
 function resolveBindToReachable(bindAddress) {
   return isWildcardBind(bindAddress) ? getLocalIp() : bindAddress;
 }
-const CLIENT_ID_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
 function generateClientId() {
-  let out = "";
-  for (let i = 0; i < 6; i++) {
-    out += CLIENT_ID_CHARS[Math.floor(Math.random() * CLIENT_ID_CHARS.length)];
-  }
-  return out;
+  return import_node_crypto.default.randomBytes(3).toString("hex");
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {

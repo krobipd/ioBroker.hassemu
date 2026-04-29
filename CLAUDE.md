@@ -6,13 +6,13 @@
 
 **ioBroker HASS Emulator** — emuliert einen minimalen HA-Server für Geräte, die ein HA-Dashboard erwarten → leitet auf beliebige URL um.
 
-- **Version:** 1.1.6 (2026-04-28 — Audit-Cleanup gegen ioBroker.example/TypeScript-Vollstandard)
+- **Version:** 1.2.0 (in progress — Datenmodell-Rework: visUrl → mode/manualUrl + Master-Switch + Sicherheits-Härtung)
 - **GitHub:** https://github.com/krobipd/ioBroker.hassemu
 - **npm:** https://www.npmjs.com/package/iobroker.hassemu
 - **Repository PR:** ioBroker/ioBroker.repositories#5793
 - **Vorher:** homeassistant-bridge (umbenannt wegen irreführendem Namen)
 - **Runtime-Deps:** `@iobroker/adapter-core`, `fastify`, `@fastify/cookie`, `bonjour-service`
-- **Adapter-Abhängigkeit:** `web >=6.0.0` (dependencies in io-package.json) — ohne web kein VIS
+- **Adapter-Abhängigkeit:** `web` (deklariert als globalDependency in io-package.json) — Audit hält Version auf latest-stable. Ohne web läuft die URL-Discovery leer (Dropdown bleibt leer).
 - **Test-Setup:** offizieller ioBroker.example/TypeScript-Standard — Tests unter `src/lib/*.test.ts` direkt mit `ts-node/register`
 - **`@types/node` an `engines.node`-Min gekoppelt:** `^20.x` weil `engines.node: ">=20"`
 
@@ -28,17 +28,17 @@
 ## Architektur
 
 ```
-src/main.ts                  → Adapter (Lifecycle, Legacy-Migration, State-Dispatch)
-src/lib/types.ts             → AdapterConfig, ClientRecord, AdapterInterface
+src/main.ts                  → Adapter (Lifecycle, Migration, State-Dispatch, Master-Switch, Stale-GC)
+src/lib/types.ts             → AdapterConfig, ClientRecord (mode + manualUrl), AdapterInterface
 src/lib/constants.ts         → HA_VERSION, SESSION_TTL, LOGIN_SCHEMA
 src/lib/coerce.ts            → Boundary-Validator (UUID/URL/Number/String/Boolean)
-src/lib/network.ts           → getLocalIp, generateClientId, Bind-Helpers
+src/lib/network.ts           → getLocalIp, generateClientId (crypto.randomBytes), Bind-Helpers
 src/lib/mdns.ts              → mDNS Broadcasting via bonjour-service
-src/lib/client-registry.ts   → Multi-Client-Store (Cookie → Record, ioBroker-Objekte)
-src/lib/global-config.ts     → global.visUrl + global.enabled (Override-Schalter)
-src/lib/url-discovery.ts     → Sammelt VIS/VIS-2/Admin-URLs für visUrl-Dropdown
-src/lib/setup-page.ts        → Minimales HTML für Displays ohne konfigurierte URL
-src/lib/webserver.ts         → Fastify HTTP Server + HA API Emulation + Cookie-Handling
+src/lib/client-registry.ts   → Multi-Client-Store (Cookie → Record), bulkSetMode, NewClientModeProvider, lastSeen-Tracking
+src/lib/global-config.ts     → global.mode + global.manualUrl + global.enabled, MODE_GLOBAL/MODE_MANUAL Sentinels, Resolver-Delegate
+src/lib/url-discovery.ts     → Sammelt VIS/VIS-2/Admin-URLs, getFirstDiscoveredUrl
+src/lib/landing-page.ts      → Minimales HTML für Displays ohne konfigurierte URL (keine Anleitung — siehe README)
+src/lib/webserver.ts         → Fastify HTTP Server + HA API Emulation + Cookie-Handling + Sessions/RefreshToken-Caps + timing-safe Credentials
 ```
 
 ## Design-Entscheidungen
@@ -48,24 +48,29 @@ src/lib/webserver.ts         → Fastify HTTP Server + HA API Emulation + Cookie
 3. **Port 8123 fix** — HA-Standard, nicht konfigurierbar
 4. **Kein HTTPS** — HA-Clients erwarten HTTP auf Port 8123
 5. **Cookie-Identifikation** — `hassemu_client` (UUID v4, 10 Jahre, HttpOnly, SameSite=Lax). Browser senden den Cookie automatisch auf jeder Navigation; Tokens kommen nur per API-Header und reichen daher zur Identifikation nicht aus.
-6. **Per-Client visUrl** — eigener Channel `clients.<id>` mit `visUrl`, `ip`, `remove`. Hostname lebt in `common.name` des Channels (sichtbar als Client-Name im Objektbrowser) — kein eigener Datenpunkt. `remove` = vergessen (kein Blocklist — ein zurückkehrender Client wird neu registriert).
-7. **Global-Override via Datenpunkt** — `global.visUrl` + `global.enabled`. Ist `enabled=true`, wird jede Verbindung zur globalen URL gelenkt; sonst greift die Client-URL. Umgesetzt in `global-config.ts`.
-8. **Setup-Seite statt Fehler** — ist keine URL gesetzt, liefert der Server ein kleines HTML (`setup-page.ts`) mit der Device-ID und dem Datenpunkt-Pfad. Display refresht alle 15 s automatisch.
-9. **visUrl-Dropdown** — `common.states` auf `global.visUrl` UND jedem `clients.<id>.visUrl`. Werte aus Intro-Tiles (`localLinks`, `welcomeScreen`, `welcomeScreenPro`) und VIS/VIS-2-Projekten. Freitext bleibt möglich.
-10. **Fastify statt Express** — First-party Cookie-Plugin, Schema-Validierung, leichterer Runtime-Fußabdruck.
-11. **Boundary-Härtung** — jede externe URL / UUID / Zahl / Boolean geht durch `coerce.ts`. Unsichere URLs (js:, data:, file:, mit Credentials, >2048 Zeichen) werden abgelehnt.
-12. **Legacy-Migration** — `visUrl` / `defaultVisUrl` aus nativer Config wandern beim ersten Start nach `global.visUrl` + `global.enabled=true`; danach sind die alten Felder weg.
+6. **Per-Client mode + manualUrl** (seit v1.2.0) — eigener Channel `clients.<id>` mit `mode` (Dropdown: discovered URLs + `'global'` + `'manual'`), `manualUrl` (Freitext, role:url), `ip`, `remove`. Hostname lebt in `common.name` des Channels — kein eigener Datenpunkt.
+7. **Master-Switch via Bulk-Sync** (seit v1.2.0) — `global.enabled` triggert kein Resolver-Pfad mehr, sondern `bulkSetMode` auf der Registry: `true` → alle clients `mode='global'`; `false` → erste discovered URL (oder `'manual'`). `applyMasterSwitch` in main.ts. Resolver bleibt clean ohne Master-Branch.
+8. **Resolver-Delegate** — `client.mode='global'` → `resolveGlobalMode()`. `'manual'` → `record.manualUrl`. URL-string → diese URL. Sonst → null = landing-page. `global.mode` darf NICHT `'global'` sein (self-referential, von handleModeWrite rejected).
+9. **Landing-Seite statt Fehler** — ist keine URL gesetzt, liefert der Server ein kleines HTML (`landing-page.ts`) mit der Device-ID und dem Datenpunkt-Pfad. Display refresht alle 15 s automatisch. Anleitungs-Inhalt lebt in der README, nicht hier.
+10. **Mode-Dropdown** — `common.states` auf `global.mode` (URLs + `'manual'`) UND `clients.<id>.mode` (URLs + `'global'` + `'manual'`). Werte aus Intro-Tiles (`localLinks`, `welcomeScreen`, `welcomeScreenPro`) und VIS/VIS-2-Projekten via `url-discovery.ts`. `type:'mixed'` future-proofs gegen js-controller strict-type-cast (govee-smart v1.11.0 Pattern).
+11. **Fastify statt Express** — First-party Cookie-Plugin, Schema-Validierung, leichterer Runtime-Fußabdruck.
+12. **Boundary-Härtung** — jede externe URL / UUID / Zahl / Boolean geht durch `coerce.ts`. Unsichere URLs (js:, data:, file:, mit Credentials, >2048 Zeichen) werden abgelehnt.
+13. **Sicherheits-Härtung Auth-Flow** (seit v1.2.0) — refresh_token wird gegen `webserver.refreshTokens`-Map validiert (vorher: jeder String akzeptiert). Sessions-Map und refreshTokens-Map FIFO-capped. Credential-Vergleich via `crypto.timingSafeEqual` (gegen Timing-Attacks).
+14. **Stale-Client-GC** (seit v1.2.0) — bei jedem `identifyOrCreate`-Hit wird `native.lastSeen` throttled (1×/h) aktualisiert. Beim Adapter-Start: clients ohne Token + `lastSeen` älter als 30 Tagen werden auto-removed.
+15. **Migration 1.x → 1.2.0** — `migrateLegacyDefaultVisUrl` (1.0.x → 1.1.1) bleibt; neu `migrateVisUrlToMode` mappt `clients.<id>.visUrl` → `mode='manual'` + `manualUrl`, plus `global.visUrl` analog. Alte Datapunkte per `delObjectAsync` weg, mode-Type-Upgrade auf `'mixed'` via `extendObjectAsync`.
 
 ## Auth-Flow
 
 1. Display macht GET `/` → Cookie wird gesetzt (neuer Client) oder erkannt (bekannter Client)
-2. POST `/auth/login_flow` → `flow_id`, Session an clientId gebunden
-3. POST `/auth/login_flow/:flowId` → Credentials → `authorization_code`
-4. POST `/auth/token` → Code → Access Token, wird am Client-Record persistiert
-5. GET `/` → Redirect-Reihenfolge:
-   1. `global.enabled=true` → 302 auf `global.visUrl`
-   2. sonst 302 auf `clients.<id>.visUrl`
-   3. sonst 200 HTML mit der Setup-Seite
+2. POST `/auth/login_flow` → `flow_id`, Session an clientId gebunden (sessions-Map FIFO-capped 100)
+3. POST `/auth/login_flow/:flowId` → Credentials (timing-safe geprüft) → `authorization_code`
+4. POST `/auth/token` mit `grant_type=authorization_code` → Access Token + Refresh Token. Refresh Token wird in `webserver.refreshTokens` gespeichert (FIFO-capped 200), Access Token am Client-Record persistiert.
+5. POST `/auth/token` mit `grant_type=refresh_token` → Refresh Token wird in der Map gelookupped; unbekannt → 400 invalid_grant; bekannt → neuer Access Token wird ausgestellt.
+6. GET `/` → Resolver-Reihenfolge (kein Master-Branch — der Master-Switch wird beim Toggle in `bulkSetMode` umgesetzt):
+   1. `clients.<id>.mode = 'global'` → delegate `global.mode` (`'manual'` → `global.manualUrl`; URL → URL)
+   2. `clients.<id>.mode = 'manual'` → `clients.<id>.manualUrl`
+   3. `clients.<id>.mode = <URL>` → diese URL
+   4. sonst → 200 HTML mit der Landing-Seite
 
 ## Tests (215 + 57 package)
 

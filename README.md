@@ -11,33 +11,32 @@
 
 <img src="https://raw.githubusercontent.com/krobipd/ioBroker.hassemu/main/admin/hassemu.svg" width="100" />
 
-Emulates a minimal [Home Assistant](https://www.home-assistant.io) server so devices expecting a Home Assistant dashboard can be redirected to any URL inside your network — without running Home Assistant Core.
+ioBroker adapter that emulates a [Home Assistant](https://www.home-assistant.io) server so displays which only accept an HA server can show any web URL on your network instead.
 
-Typical use: wall tablets and display devices (Shelly Wall Display, Amazon Echo Show in HA mode, cheap Android tablets with the HA app, …) that only accept a Home Assistant server as their data source, but you want them to show VIS / VIS-2 / Grafana / your own dashboard instead.
+---
 
-> Previously known as `ioBroker.homeassistant-bridge`. Renamed to better reflect that this adapter emulates, not bridges.
+## When to use this adapter
+
+**Use it for displays that only speak the HA dashboard protocol but should render something else** — VIS, Grafana, a Node-RED dashboard, anything served over HTTP. Examples: Shelly Wall Display, Amazon Echo Show with the HA Companion App, Android tablets running the HA app, in-wall panels with built-in HA support.
 
 ---
 
 ## Features
 
-- **Per-client redirect URLs** — each display gets its own channel under `clients.*` with an independent URL
-- **Optional global override** — one switch sends every client to the same URL
-- **URL dropdown** — every URL datapoint suggests the known ioBroker URLs (VIS/VIS-2 projects, Admin tiles, Jarvis, …); free text is allowed
-- **Cookie-based identification** — displays are recognised across adapter restarts and IP changes
-- **mDNS discovery** — `_home-assistant._tcp` on the LAN, cross-platform, no avahi required
-- **Home Assistant OAuth2 flow** — optional credential check
-- **Reverse DNS** — LAN hostname shown as the client's name in the object tree when resolvable
-- **Input hardening** — URLs are restricted to http/https, no credentials, 2048 char cap
+- **One URL per display** — each display gets its own channel under `clients.*` with a dropdown of discovered ioBroker URLs (VIS, VIS-2, Admin tiles) or a free-text URL
+- **Master switch** — `global.enabled` points every display at the same URL; flip it back and each display picks up its own again
+- **mDNS discovery** — displays find the adapter automatically on the LAN
+- **Home Assistant OAuth2 flow** — optional username/password
+- **Cookie-based identification** — displays keep their URL across restarts, IP changes and renames
 
 ---
 
 ## Requirements
 
-- **Node.js ≥ 20**
-- **ioBroker js-controller ≥ 7.0.0**
-- **ioBroker web adapter ≥ 6.0.0**
-- **ioBroker Admin ≥ 7.6.20**
+- **Node.js >= 20**
+- **ioBroker js-controller >= 7.0.7**
+- **ioBroker Admin >= 7.7.22**
+- **ioBroker web >= 8.0.0** — required for the VIS/Admin URL discovery that fills the mode-dropdown
 
 ---
 
@@ -48,44 +47,55 @@ Typical use: wall tablets and display devices (Shelly Wall Display, Amazon Echo 
 | 8123 | TCP/HTTP | Home Assistant emulation (HA standard port)  | No — fixed   |
 | 5353 | UDP      | mDNS service broadcast (only if mDNS enabled)| No           |
 
-Port 8123 is mandatory. Any HA-style display hard-codes that port number, so the adapter cannot run on a different one.
-
 ---
 
 ## Configuration
 
-The Admin UI only configures the server itself. Redirect URLs and per-client overrides live in the state tree below.
+The Admin UI configures the server. Redirect URLs are set via the state tree (see below).
 
-| Option                  | Description                                                                 | Default       |
-| ----------------------- | --------------------------------------------------------------------------- | ------------- |
-| **Bind to Interface**   | Network interface to listen on                                              | 0.0.0.0 (all) |
-| **Service Name**        | Name broadcast via mDNS, shown as the server name on the display            | `ioBroker`    |
-| **mDNS Enabled**        | Broadcast `_home-assistant._tcp` on the LAN                                 | `true`        |
-| **Auth Required**       | Validate the credentials the display sends during the login flow            | `false`       |
-| **Username / Password** | Credentials used when *Auth Required* is on (password is encrypted at rest) | `admin` / —   |
+| Option | Description | Default |
+|--------|-------------|---------|
+| **Bind to Interface** | Network interface to listen on | 0.0.0.0 (all) |
+| **Service Name** | Name broadcast via mDNS, shown as the server name on the display | `ioBroker` |
+| **mDNS Enabled** | Broadcast `_home-assistant._tcp` on the LAN | `true` |
+| **Auth Required** | Check credentials the display sends during login | `false` |
+| **Username / Password** | Used when *Auth Required* is on (password encrypted at rest) | `admin` / — |
+
+> URLs you set must be reachable from the display — use the LAN IP of the ioBroker host, not `localhost`.
 
 ---
 
-## State tree
+## State Tree
 
 ```
 hassemu.0.
-├── info.connection                — Server is running (bool, indicator)
+├── info.connection              — Server is running (bool)
 ├── global.
-│   ├── visUrl                     — Global redirect URL (dropdown of known ioBroker URLs, free text allowed)
-│   └── enabled                    — When true, every client is sent to global.visUrl
+│   ├── enabled                  — Master switch (see below)
+│   ├── mode                     — Dropdown of discovered URLs + 'manual'
+│   └── manualUrl                — Free-text URL used when global.mode='manual'
 └── clients.
-    └── <id>                       — One channel per display. Channel name = reverse-DNS hostname if resolvable, otherwise the IP
-        ├── visUrl                 — Per-client redirect URL (same dropdown as global). Used when global.enabled = false
-        ├── ip                     — Last observed client IP
-        └── remove                 — Button: forget this client (channel + cookie + token deleted)
+    └── <id>                     — One channel per display. Channel name = reverse-DNS hostname if resolvable, else the IP
+        ├── mode                 — Dropdown: discovered URLs + 'global' (follow master) + 'manual' (use manualUrl)
+        ├── manualUrl            — Free-text URL used when mode='manual'
+        ├── ip                   — Last observed client IP
+        └── remove               — Button: forget this client (channel + cookie + token deleted)
 ```
 
-**Resolution per request:** `global.enabled=true` → `global.visUrl`, otherwise `clients.<id>.visUrl`, otherwise the setup page (a small HTML placeholder with the device ID and datapoint path, refreshes every 15 s).
+### How the display gets its URL
 
-**Client identity:** each display gets a 6-char id (e.g. `a4b9c2`) and a persistent HttpOnly cookie `hassemu_client` (UUID v4, 10 years). The cookie survives IP changes and adapter restarts. Removing a client and re-visiting creates a fresh channel with a new id. URLs must be reachable from the display — use the LAN IP of the ioBroker host, not `localhost`.
+The adapter reads `clients.<id>.mode` on every visit:
 
-**Connection flow:** display discovers `hassemu` via mDNS (or manual URL) → runs the HA OAuth2 flow → adapter sets the cookie and creates `clients.<id>` → redirect resolves as above.
+| `mode` value | redirect target |
+|--------------|----------------|
+| `global` | `global.mode` / `global.manualUrl` (same rules, one level up) |
+| `manual` | `clients.<id>.manualUrl` |
+| a URL | that URL |
+| empty / unknown | landing page (small HTML with device ID, refreshes every 15 s) |
+
+### Master switch
+
+When `global.enabled` is **on**, every client's `mode` is set to `global` and all displays follow `global.mode`. When **off**, every client's `mode` is set to the first discovered URL (or `manual` if nothing was discovered). New clients pick up the same default.
 
 ---
 
@@ -108,33 +118,46 @@ The adapter broadcasts `_home-assistant._tcp` via mDNS. If the display does not 
 
 ### Display is redirected to the wrong dashboard
 
-If the global override is on, it wins — check `global.enabled` and `global.visUrl` first. Otherwise the per-client `clients.<id>.visUrl` applies. Empty on both sides means the setup page is served.
+Look at `clients.<id>.mode` (the device id is shown on the landing page, or read it from `clients.<id>.ip`):
+
+- `global` → look at `global.mode` / `global.manualUrl`
+- `manual` → look at `clients.<id>.manualUrl`
+- a URL → that's where the display goes
+
+Empty `mode` serves the landing page — pick one of the above.
+
+### URL was changed but the display still shows the old dashboard
+
+After the display has been redirected once, it's running on the target dashboard and doesn't ask hassemu again. Reboot the display, or use its built-in "reload" function if it has one.
 
 ### Display keeps getting a new ID
 
-That means the cookie is not being sent back. Check the display's browser/WebView — some devices with aggressive privacy settings delete cookies on restart. Nothing the adapter can do about it; worst case is a new channel per boot. Delete stale channels with the `remove` button.
+The display's WebView is dropping the cookie on restart (aggressive privacy settings). Delete stale channels via the `remove` button — there's nothing the adapter can do beyond that.
 
 ### Reverse DNS shows nothing
 
-Reverse DNS on a home LAN often fails — it depends on your router/DHCP server. The IP is always recorded and used as the client's name when no hostname is available.
-
-### Health check
-
-```
-http://<IP>:8123/health
-```
-returns the adapter's runtime state — useful to verify the server is up and see which features are active.
+Reverse DNS on a home LAN depends on your router/DHCP server and often fails. The IP is used as the client's name when no hostname is available.
 
 ---
 
 ## Upgrading
 
-- **1.1.1 → 1.1.2** — the `clients.<id>.hostname` datapoint is dropped; the hostname is moved into the channel name (visible in the Admin object browser). Nothing to do manually — the adapter migrates on first start.
-- **1.0.x / 1.1.0 → 1.1.1** — any existing redirect URL is copied to `global.visUrl`, `global.enabled` is set to `true`. To switch to per-display URLs, clear `global.enabled` and fill each `clients.<id>.visUrl`.
+- **1.1.6 → 1.2.0** — `clients.<id>.visUrl` and `global.visUrl` replaced by `mode` (dropdown) + `manualUrl` (free text). Migration runs automatically. Scripts pointing at the old `visUrl` paths need to be updated to the new datapoints in the State Tree above.
+- **1.1.1 → 1.1.2** — `clients.<id>.hostname` datapoint dropped, value moves into the channel name. Migrates automatically.
+- **1.0.x / 1.1.0 → 1.1.1** — existing redirect URL is moved into the state tree. 1.2.0 then migrates further as above.
 
 ---
 
 ## Changelog
+
+### **WORK IN PROGRESS**
+
+- (krobi) Redirect target now configured via `mode` (dropdown) + `manualUrl` (free text) instead of the old `visUrl`. Migration runs automatically.
+- (krobi) Master switch `global.enabled` bulk-syncs every display: on → all follow the global URL, off → each display picks up its own again.
+- (krobi) Idle displays without auth token are auto-removed after 30 days.
+- (krobi) Security hardening of the auth flow.
+- (krobi) `web` adapter declared as dependency — needed for the URL dropdown.
+
 ### 1.1.6 (2026-04-28)
 - Audit cleanup against the upstream `ioBroker.example/TypeScript` full standard:
   - Test setup migrated: tests now live next to source as `src/lib/*.test.ts` and run directly via `ts-node/register`. Removed `tsconfig.test.json` + `build-test/`, added `test/mocharc.custom.json` + `test/mocha.setup.js` + `test/tsconfig.json` + `test/.eslintrc.json`
@@ -170,9 +193,7 @@ returns the adapter's runtime state — useful to verify the server is up and se
 - [ioBroker Forum](https://forum.iobroker.net/)
 - [GitHub Issues](https://github.com/krobipd/ioBroker.hassemu/issues)
 
-### Support development
-
-This adapter is free and open source. If you find it useful, consider buying me a coffee:
+If the adapter is useful to you, consider buying me a coffee:
 
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Support-ff5e5b?style=for-the-badge&logo=ko-fi)](https://ko-fi.com/krobipd)
 [![PayPal](https://img.shields.io/badge/Donate-PayPal-blue.svg?style=for-the-badge)](https://paypal.me/krobipd)

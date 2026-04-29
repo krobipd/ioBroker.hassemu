@@ -64,20 +64,20 @@ class MDNSService {
     const serviceName = this.config.serviceName || "ioBroker";
     try {
       this.bonjour = new import_bonjour_service.default();
+      const txt = {
+        base_url: baseUrl,
+        internal_url: baseUrl,
+        version: import_constants.HA_VERSION,
+        uuid: this.uuid,
+        location_name: serviceName,
+        requires_api_password: "True"
+      };
       this.published = this.bonjour.publish({
         name: serviceName,
         type: "home-assistant",
         protocol: "tcp",
         port: this.config.port,
-        txt: {
-          base_url: baseUrl,
-          internal_url: baseUrl,
-          external_url: "",
-          version: import_constants.HA_VERSION,
-          uuid: this.uuid,
-          location_name: serviceName,
-          requires_api_password: "True"
-        }
+        txt
       });
       this.active = true;
       this.adapter.log.debug(

@@ -2,7 +2,7 @@
  * Client Registry — persistent multi-client store.
  *
  * Each client gets a channel `clients.<id>` with native.cookie / native.token
- * and states visUrl / ip / hostname / remove. Cookie is the primary identity
+ * and states mode / manualUrl / ip / remove. Cookie is the primary identity
  * (auto-sent by browsers on page navigation), IP is only advisory.
  *
  * Registry state is dual-homed: in-memory maps for hot lookups, ioBroker
@@ -11,6 +11,7 @@
 
 import crypto from 'node:crypto';
 import { coerceString, coerceUuid, coerceSafeUrl, isPlainObject } from './coerce';
+import { MODE_GLOBAL, MODE_MANUAL } from './global-config';
 import { generateClientId } from './network';
 import type { AdapterInterface, ClientRecord, UrlStates } from './types';
 
@@ -29,6 +30,9 @@ export type RegistryAdapter = AdapterInterface &
 
 const CLIENTS_PREFIX = 'clients.';
 
+/** Provides the default mode value for a freshly created client. */
+export type NewClientModeProvider = () => string;
+
 /** Persistent multi-client store: cookie → channel, with in-memory lookup maps. */
 export class ClientRegistry {
     private readonly adapter: RegistryAdapter;
@@ -36,6 +40,7 @@ export class ClientRegistry {
     private readonly byId = new Map<string, ClientRecord>();
     private readonly byToken = new Map<string, ClientRecord>();
     private currentUrlStates: UrlStates = {};
+    private newClientModeProvider: NewClientModeProvider = () => MODE_GLOBAL;
     /**
      * In-flight client creations keyed by remote IP. Keeps parallel cookieless
      * requests from the same display (typical on first connect: HA clients fire
@@ -45,10 +50,26 @@ export class ClientRegistry {
      * client + cookie.
      */
     private readonly pendingByIp = new Map<string, Promise<ClientRecord>>();
+    /**
+     * Throttle for lastSeen-updates per client. Keyed by client id, value is the
+     * last `Date.now()` we wrote `native.lastSeen` to ioBroker. Throttle window
+     * is one hour — saves us extendObject roundtrips on every request.
+     */
+    private readonly lastSeenFlushedAt = new Map<string, number>();
 
     /** @param adapter Adapter instance used for object/state I/O. */
     constructor(adapter: RegistryAdapter) {
         this.adapter = adapter;
+    }
+
+    /**
+     * Wires the default-mode provider used when a new client is registered.
+     * Called from main.ts once registry, globalConfig and urlDiscovery exist.
+     *
+     * @param provider Function returning the desired default mode for a new client.
+     */
+    setNewClientModeProvider(provider: NewClientModeProvider): void {
+        this.newClientModeProvider = provider;
     }
 
     /** Loads existing clients from ioBroker objects into memory. Call once on adapter start. */
@@ -72,7 +93,9 @@ export class ClientRegistry {
             if (!cookie) {
                 continue;
             }
-            const visUrl = coerceSafeUrl(await this.readState(`${id}.visUrl`));
+            const modeRaw = await this.readState(`${id}.mode`);
+            const mode = typeof modeRaw === 'string' ? modeRaw : '';
+            const manualUrl = coerceSafeUrl(await this.readState(`${id}.manualUrl`));
             const ip = coerceString(await this.readState(`${id}.ip`));
             const token = coerceUuid(native.token);
 
@@ -93,7 +116,7 @@ export class ClientRegistry {
             }
             const hostname = channelName && channelName !== ip && channelName !== id ? channelName : null;
 
-            const record: ClientRecord = { id, cookie, token, visUrl, ip, hostname };
+            const record: ClientRecord = { id, cookie, token, mode, manualUrl, ip, hostname };
             this.trackInMemory(record);
         }
         this.adapter.log.debug(`client-registry: restored ${this.byId.size} client(s)`);
@@ -113,6 +136,7 @@ export class ClientRegistry {
             const existing = this.byCookie.get(validCookie);
             if (existing) {
                 await this.updateIpHostname(existing, ip, hostname);
+                this.touchLastSeen(existing);
                 return existing;
             }
         }
@@ -191,15 +215,57 @@ export class ClientRegistry {
     }
 
     /**
-     * Accept an external visUrl write on `clients.<id>.visUrl`.
-     * Unsafe URLs are rejected (state is reset to the current value).
-     * Empty string / null clears the override — client falls back to global
-     * URL or the setup page.
+     * Accept an external mode write on `clients.<id>.mode`.
+     *
+     * Allowed values: `'global'`, `'manual'`, or any URL that passes
+     * {@link coerceSafeUrl}. Empty string clears the choice → setup page.
      *
      * @param id       Client id.
-     * @param rawValue Value written to the state (any type — coerced + validated).
+     * @param rawValue Value written to the state.
      */
-    async handleVisUrlWrite(id: string, rawValue: unknown): Promise<void> {
+    async handleModeWrite(id: string, rawValue: unknown): Promise<void> {
+        const record = this.byId.get(id);
+        if (!record) {
+            return;
+        }
+        if (typeof rawValue !== 'string') {
+            this.adapter.log.warn(`client-registry: rejected non-string mode for ${id}`);
+            await this.adapter.setStateAsync(`clients.${id}.mode`, { val: record.mode, ack: true });
+            return;
+        }
+        if (rawValue === '') {
+            record.mode = '';
+            await this.adapter.setStateAsync(`clients.${id}.mode`, { val: '', ack: true });
+            return;
+        }
+        if (rawValue === MODE_GLOBAL || rawValue === MODE_MANUAL) {
+            if (rawValue === MODE_MANUAL && !record.manualUrl) {
+                this.adapter.log.warn(
+                    `client-registry: ${id} mode set to 'manual' but manualUrl is empty — fill clients.${id}.manualUrl to redirect`,
+                );
+            }
+            record.mode = rawValue;
+            await this.adapter.setStateAsync(`clients.${id}.mode`, { val: rawValue, ack: true });
+            return;
+        }
+        const safe = coerceSafeUrl(rawValue);
+        if (!safe) {
+            this.adapter.log.warn(`client-registry: rejected unsafe mode value for ${id}: '${rawValue}'`);
+            await this.adapter.setStateAsync(`clients.${id}.mode`, { val: record.mode, ack: true });
+            return;
+        }
+        record.mode = safe;
+        await this.adapter.setStateAsync(`clients.${id}.mode`, { val: safe, ack: true });
+    }
+
+    /**
+     * Accept an external manualUrl write on `clients.<id>.manualUrl`.
+     * Free-text — must pass {@link coerceSafeUrl} or be empty (clears).
+     *
+     * @param id       Client id.
+     * @param rawValue Value written to the state.
+     */
+    async handleManualUrlWrite(id: string, rawValue: unknown): Promise<void> {
         const record = this.byId.get(id);
         if (!record) {
             return;
@@ -207,12 +273,41 @@ export class ClientRegistry {
         const empty = rawValue === '' || rawValue === null || rawValue === undefined;
         const safe = empty ? null : coerceSafeUrl(rawValue);
         if (!empty && !safe) {
-            this.adapter.log.warn(`client-registry: rejected unsafe visUrl for ${id}`);
-            await this.adapter.setStateAsync(`clients.${id}.visUrl`, { val: record.visUrl, ack: true });
+            this.adapter.log.warn(`client-registry: rejected unsafe manualUrl for ${id}`);
+            await this.adapter.setStateAsync(`clients.${id}.manualUrl`, { val: record.manualUrl ?? '', ack: true });
             return;
         }
-        record.visUrl = safe;
-        await this.adapter.setStateAsync(`clients.${id}.visUrl`, { val: safe ?? '', ack: true });
+        record.manualUrl = safe;
+        await this.adapter.setStateAsync(`clients.${id}.manualUrl`, { val: safe ?? '', ack: true });
+        if (record.mode === MODE_MANUAL && !safe) {
+            this.adapter.log.warn(
+                `client-registry: ${id} manualUrl cleared while mode='manual' — display will hit the setup page`,
+            );
+        }
+    }
+
+    /**
+     * Set every client's `mode` to the same value. Used by the master switch
+     * (`global.enabled`) to bulk-sync all displays — `'global'` when on,
+     * the first discovered URL when off.
+     *
+     * Skips clients whose mode already matches (no spurious state writes).
+     *
+     * @param value New mode value (sentinel or URL).
+     */
+    async bulkSetMode(value: string): Promise<void> {
+        let changed = 0;
+        for (const record of this.byId.values()) {
+            if (record.mode === value) {
+                continue;
+            }
+            record.mode = value;
+            await this.adapter.setStateAsync(`clients.${record.id}.mode`, { val: value, ack: true });
+            changed++;
+        }
+        if (changed > 0) {
+            this.adapter.log.info(`client-registry: bulk-set mode='${value}' on ${changed} client(s)`);
+        }
     }
 
     /**
@@ -239,15 +334,21 @@ export class ClientRegistry {
     }
 
     /**
-     * Updates the visUrl dropdown states (common.states) on every client's visUrl datapoint.
+     * Updates the mode dropdown states (`common.states`) on every client's mode datapoint.
+     * Adds the `'global'` and `'manual'` sentinels on top of the discovered URLs.
      *
      * @param states Discovered URL → label map.
      */
     async syncUrlDropdown(states: UrlStates): Promise<void> {
         this.currentUrlStates = states;
+        const merged: UrlStates = {
+            [MODE_GLOBAL]: 'Global URL',
+            [MODE_MANUAL]: 'Manual URL',
+            ...states,
+        };
         for (const id of this.byId.keys()) {
-            await this.adapter.extendObjectAsync(`clients.${id}.visUrl`, {
-                common: { states: { ...states } },
+            await this.adapter.extendObjectAsync(`clients.${id}.mode`, {
+                common: { states: merged },
             });
         }
     }
@@ -268,15 +369,43 @@ export class ClientRegistry {
             id = generateClientId();
         }
         const cookie = crypto.randomUUID();
-        const record: ClientRecord = { id, cookie, token: null, visUrl: null, ip, hostname };
+        const mode = this.newClientModeProvider();
+        const record: ClientRecord = { id, cookie, token: null, mode, manualUrl: null, ip, hostname };
         this.trackInMemory(record);
         await this.createObjects(record);
-        this.adapter.log.info(`New client registered: ${id}${ip ? ` (${hostname ?? ip})` : ''}`);
+        this.touchLastSeen(record);
+        this.adapter.log.info(`New client registered: ${id}${ip ? ` (${hostname ?? ip})` : ''}, mode='${mode}'`);
         return record;
     }
 
+    /**
+     * Updates `native.lastSeen` on the channel, throttled to once per hour per
+     * client. Used for the stale-client-GC: clients without token + lastSeen
+     * older than 30 days get auto-removed on adapter start.
+     *
+     * Fire-and-forget — failures only debug-logged.
+     *
+     * @param record Client whose lastSeen-timestamp should be refreshed.
+     */
+    private touchLastSeen(record: ClientRecord): void {
+        const now = Date.now();
+        const last = this.lastSeenFlushedAt.get(record.id) ?? 0;
+        if (now - last < 60 * 60 * 1000) {
+            return; // throttle: 1× per hour
+        }
+        this.lastSeenFlushedAt.set(record.id, now);
+        this.adapter
+            .extendObjectAsync(`clients.${record.id}`, { native: { lastSeen: now } })
+            .catch(err => this.adapter.log.debug(`touchLastSeen failed for ${record.id}: ${String(err)}`));
+    }
+
     private async createObjects(record: ClientRecord): Promise<void> {
-        const { id, cookie, ip, hostname } = record;
+        const { id, cookie, mode, ip, hostname } = record;
+        const mergedStates: UrlStates = {
+            [MODE_GLOBAL]: 'Global URL',
+            [MODE_MANUAL]: 'Manual URL',
+            ...this.currentUrlStates,
+        };
 
         await Promise.all([
             this.adapter.setObjectNotExistsAsync(`clients.${id}`, {
@@ -284,16 +413,32 @@ export class ClientRegistry {
                 common: { name: hostname ?? ip ?? id },
                 native: { cookie, token: null },
             }),
-            this.adapter.setObjectNotExistsAsync(`clients.${id}.visUrl`, {
+            this.adapter.setObjectNotExistsAsync(`clients.${id}.mode`, {
                 type: 'state',
                 common: {
-                    name: 'Redirect URL',
+                    name: 'Redirect mode',
+                    // 'mixed' future-proofs against the upcoming js-controller
+                    // strict-type cast (see govee-smart v1.11.0 pattern). User
+                    // can write Number/String/Sentinel from Blockly/scripts
+                    // without "expects type X but received Y" warnings.
+                    type: 'mixed',
+                    role: 'value',
+                    read: true,
+                    write: true,
+                    def: '',
+                    states: mergedStates,
+                },
+                native: {},
+            }),
+            this.adapter.setObjectNotExistsAsync(`clients.${id}.manualUrl`, {
+                type: 'state',
+                common: {
+                    name: 'Manual URL',
                     type: 'string',
                     role: 'url',
                     read: true,
                     write: true,
                     def: '',
-                    states: { ...this.currentUrlStates },
                 },
                 native: {},
             }),
@@ -318,7 +463,8 @@ export class ClientRegistry {
 
         await Promise.all([
             this.adapter.setStateAsync(`clients.${id}.ip`, { val: ip ?? '', ack: true }),
-            this.adapter.setStateAsync(`clients.${id}.visUrl`, { val: '', ack: true }),
+            this.adapter.setStateAsync(`clients.${id}.mode`, { val: mode, ack: true }),
+            this.adapter.setStateAsync(`clients.${id}.manualUrl`, { val: '', ack: true }),
         ]);
     }
 
@@ -356,7 +502,7 @@ export class ClientRegistry {
 export function parseClientStateId(
     fullId: string,
     namespace: string,
-): { id: string; kind: 'visUrl' | 'remove' } | null {
+): { id: string; kind: 'mode' | 'manualUrl' | 'remove' } | null {
     const prefix = `${namespace}.${CLIENTS_PREFIX}`;
     if (!fullId.startsWith(prefix)) {
         return null;
@@ -367,7 +513,7 @@ export function parseClientStateId(
         return null;
     }
     const [id, kind] = parts;
-    if (kind !== 'visUrl' && kind !== 'remove') {
+    if (kind !== 'mode' && kind !== 'manualUrl' && kind !== 'remove') {
         return null;
     }
     return { id, kind };

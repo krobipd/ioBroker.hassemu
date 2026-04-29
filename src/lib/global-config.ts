@@ -1,9 +1,14 @@
 /**
  * Global redirect override.
  *
- * When `global.enabled` is true, every client is redirected to `global.visUrl`.
- * Otherwise each client uses its own `clients.<id>.visUrl`. If neither is set,
- * the webserver serves the setup page instead of a redirect.
+ * Holds three datapoints:
+ * - `global.enabled` — master switch. Toggling triggers a bulk-update of all
+ *    `clients.<id>.mode` (driven from {@link main.ts}, not from this class).
+ * - `global.mode` — dropdown with discovered URLs plus the `'manual'` sentinel.
+ *    `'global'` is intentionally not allowed here (would be self-referential).
+ * - `global.manualUrl` — free-text URL used when `global.mode === 'manual'`.
+ *
+ * The resolver delegates: a client whose `mode === 'global'` ends up here.
  */
 
 import { coerceBoolean, coerceSafeUrl } from './coerce';
@@ -14,12 +19,18 @@ export type GlobalConfigAdapter = AdapterInterface &
     Pick<ioBroker.Adapter, 'getStateAsync' | 'setStateAsync' | 'extendObjectAsync'>;
 
 /** Kinds of state IDs the GlobalConfig reacts to. */
-export type GlobalStateKind = 'visUrl' | 'enabled';
+export type GlobalStateKind = 'mode' | 'manualUrl' | 'enabled';
+
+/** Sentinel value: client delegates to global. Not legal as `global.mode`. */
+export const MODE_GLOBAL = 'global';
+/** Sentinel value: use the matching manualUrl datapoint. */
+export const MODE_MANUAL = 'manual';
 
 /** Holds the runtime state of the global redirect override. */
 export class GlobalConfig {
     private readonly adapter: GlobalConfigAdapter;
-    private visUrl: string | null = null;
+    private mode: string = '';
+    private manualUrl: string | null = null;
     private enabled = false;
 
     /** @param adapter Adapter instance used for state and object I/O. */
@@ -29,56 +40,132 @@ export class GlobalConfig {
 
     /** Loads the current global.* values from the broker. Call once on adapter start. */
     async restore(): Promise<void> {
-        const urlState = await this.safeGetState('global.visUrl');
+        const modeState = await this.safeGetState('global.mode');
+        const manualState = await this.safeGetState('global.manualUrl');
         const enabledState = await this.safeGetState('global.enabled');
-        this.visUrl = coerceSafeUrl(urlState?.val);
+        this.mode = typeof modeState?.val === 'string' ? modeState.val : '';
+        this.manualUrl = coerceSafeUrl(manualState?.val);
         this.enabled = coerceBoolean(enabledState?.val) === true;
     }
 
     /**
      * Resolves the redirect URL for `record`.
-     * Returns the global URL if the override is enabled and set, otherwise the
-     * client's own URL, or `null` when nothing is configured.
      *
-     * @param record Client to resolve the URL for.
+     * Delegates via the client's `mode`:
+     * - `'global'` → resolve global mode/manualUrl
+     * - `'manual'` → client's manualUrl
+     * - URL string → that URL
+     * - empty / unknown → null (setup page)
+     *
+     * @param record Client to resolve for.
      */
     resolveUrlFor(record: ClientRecord): string | null {
-        if (this.enabled && this.visUrl) {
-            return this.visUrl;
+        return this.resolveClientMode(record);
+    }
+
+    private resolveClientMode(record: ClientRecord): string | null {
+        const m = record.mode;
+        if (m === MODE_GLOBAL) {
+            return this.resolveGlobalMode();
         }
-        return record.visUrl;
+        if (m === MODE_MANUAL) {
+            return record.manualUrl ?? null;
+        }
+        return coerceSafeUrl(m);
     }
 
-    /** Returns the stored global URL regardless of the enabled flag. */
-    getGlobalUrl(): string | null {
-        return this.visUrl;
+    private resolveGlobalMode(): string | null {
+        if (this.mode === MODE_MANUAL) {
+            return this.manualUrl;
+        }
+        return coerceSafeUrl(this.mode);
     }
 
-    /** Returns whether the global override is currently active. */
+    /** Returns the stored global mode (raw string — sentinel or URL). */
+    getMode(): string {
+        return this.mode;
+    }
+
+    /** Returns the stored global manualUrl. */
+    getManualUrl(): string | null {
+        return this.manualUrl;
+    }
+
+    /** Returns whether the master switch is currently active. */
     isEnabled(): boolean {
         return this.enabled;
     }
 
     /**
-     * Accept an external write on `global.visUrl`. Unsafe URLs are rejected,
-     * empty string / null clears the override.
+     * Accept a write on `global.mode`. Allowed values: `'manual'` or a URL that
+     * passes {@link coerceSafeUrl}. `'global'` is rejected (would be
+     * self-referential). Empty string clears the choice.
      *
      * @param rawValue Value written to the state.
      */
-    async handleVisUrlWrite(rawValue: unknown): Promise<void> {
-        const empty = rawValue === '' || rawValue === null || rawValue === undefined;
-        const safe = empty ? null : coerceSafeUrl(rawValue);
-        if (!empty && !safe) {
-            this.adapter.log.warn('global-config: rejected unsafe global.visUrl');
-            await this.adapter.setStateAsync('global.visUrl', { val: this.visUrl ?? '', ack: true });
+    async handleModeWrite(rawValue: unknown): Promise<void> {
+        if (typeof rawValue !== 'string') {
+            this.adapter.log.warn('global-config: rejected non-string global.mode');
+            await this.adapter.setStateAsync('global.mode', { val: this.mode, ack: true });
             return;
         }
-        this.visUrl = safe;
-        await this.adapter.setStateAsync('global.visUrl', { val: safe ?? '', ack: true });
+        if (rawValue === '') {
+            this.mode = '';
+            await this.adapter.setStateAsync('global.mode', { val: '', ack: true });
+            return;
+        }
+        if (rawValue === MODE_GLOBAL) {
+            this.adapter.log.warn("global-config: 'global' is not allowed as global.mode (self-referential)");
+            await this.adapter.setStateAsync('global.mode', { val: this.mode, ack: true });
+            return;
+        }
+        if (rawValue === MODE_MANUAL) {
+            if (!this.manualUrl) {
+                this.adapter.log.warn(
+                    "global-config: global.mode set to 'manual' but global.manualUrl is empty — fill it to redirect",
+                );
+            }
+            this.mode = MODE_MANUAL;
+            await this.adapter.setStateAsync('global.mode', { val: MODE_MANUAL, ack: true });
+            return;
+        }
+        const safe = coerceSafeUrl(rawValue);
+        if (!safe) {
+            this.adapter.log.warn(`global-config: rejected unsafe global.mode value '${rawValue}'`);
+            await this.adapter.setStateAsync('global.mode', { val: this.mode, ack: true });
+            return;
+        }
+        this.mode = safe;
+        await this.adapter.setStateAsync('global.mode', { val: safe, ack: true });
     }
 
     /**
-     * Accept an external write on `global.enabled`.
+     * Accept a write on `global.manualUrl`. Free-text — must pass
+     * {@link coerceSafeUrl} (or be empty to clear).
+     *
+     * @param rawValue Value written to the state.
+     */
+    async handleManualUrlWrite(rawValue: unknown): Promise<void> {
+        const empty = rawValue === '' || rawValue === null || rawValue === undefined;
+        const safe = empty ? null : coerceSafeUrl(rawValue);
+        if (!empty && !safe) {
+            this.adapter.log.warn('global-config: rejected unsafe global.manualUrl');
+            await this.adapter.setStateAsync('global.manualUrl', { val: this.manualUrl ?? '', ack: true });
+            return;
+        }
+        this.manualUrl = safe;
+        await this.adapter.setStateAsync('global.manualUrl', { val: safe ?? '', ack: true });
+        if (this.mode === MODE_MANUAL && !safe) {
+            this.adapter.log.warn(
+                "global-config: global.manualUrl cleared while global.mode='manual' — clients delegating to global will hit the setup page",
+            );
+        }
+    }
+
+    /**
+     * Accept a write on `global.enabled`. Persists the value but does NOT trigger
+     * the bulk-sync of client modes — the caller (main.ts) does that, because it
+     * holds the registry + url-discovery references needed for the sync.
      *
      * @param rawValue Value written to the state.
      */
@@ -89,14 +176,31 @@ export class GlobalConfig {
     }
 
     /**
-     * Updates the dropdown states (common.states) on `global.visUrl`.
+     * Updates the dropdown states (`common.states`) on `global.mode`.
+     * The `'manual'` sentinel is added; `'global'` is NOT (would be self-referential).
      *
      * @param states Discovered URL → label map.
      */
     async syncUrlDropdown(states: UrlStates): Promise<void> {
-        await this.adapter.extendObjectAsync('global.visUrl', {
-            common: { states: { ...states } },
+        const merged: UrlStates = { ...states, [MODE_MANUAL]: 'Manual URL' };
+        await this.adapter.extendObjectAsync('global.mode', {
+            common: { states: merged },
         });
+    }
+
+    /**
+     * Convenience for migration: set mode + manualUrl together. Skips the
+     * write-side validation that {@link handleModeWrite} / {@link handleManualUrlWrite}
+     * apply, because migration trusts the legacy values it carries forward.
+     *
+     * @param mode      New mode value.
+     * @param manualUrl New manualUrl, or null to clear.
+     */
+    async migrationSet(mode: string, manualUrl: string | null): Promise<void> {
+        this.mode = mode;
+        this.manualUrl = manualUrl;
+        await this.adapter.setStateAsync('global.mode', { val: mode, ack: true });
+        await this.adapter.setStateAsync('global.manualUrl', { val: manualUrl ?? '', ack: true });
     }
 
     private async safeGetState(id: string): Promise<ioBroker.State | null> {
@@ -120,7 +224,7 @@ export function parseGlobalStateId(fullId: string, namespace: string): GlobalSta
         return null;
     }
     const tail = fullId.substring(prefix.length);
-    if (tail === 'visUrl' || tail === 'enabled') {
+    if (tail === 'mode' || tail === 'manualUrl' || tail === 'enabled') {
         return tail;
     }
     return null;
