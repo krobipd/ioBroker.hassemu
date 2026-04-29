@@ -149,11 +149,11 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ## Changelog
 ### 1.2.0 (2026-04-29)
 
-- (krobi) Redirect target now configured via `mode` (dropdown) + `manualUrl` (free text) instead of the old `visUrl`. Migration runs automatically.
-- (krobi) Master switch `global.enabled` bulk-syncs every display: on → all follow the global URL, off → each display picks up its own again.
-- (krobi) Idle displays without auth token are auto-removed after 30 days.
-- (krobi) Security hardening of the auth flow.
-- (krobi) `web` adapter declared as dependency — needed for the URL dropdown.
+- Redirect target now configured via `mode` (dropdown) + `manualUrl` (free text) instead of the old `visUrl`. Migration runs automatically.
+- Master switch `global.enabled` syncs every display: on → all follow the global URL, off → each display picks up its own again.
+- Idle displays without auth token are auto-removed after 30 days.
+- Security hardening of the auth flow.
+- `web` adapter declared as dependency.
 
 ### 1.1.6 (2026-04-28)
 - Audit cleanup against the upstream `ioBroker.example/TypeScript` full standard:
