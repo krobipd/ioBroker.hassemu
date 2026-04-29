@@ -38,7 +38,17 @@ var import_cookie = __toESM(require("@fastify/cookie"));
 var import_fastify = __toESM(require("fastify"));
 var import_constants = require("./constants");
 var import_coerce = require("./coerce");
-var import_setup_page = require("./setup-page");
+var import_landing_page = require("./landing-page");
+const SESSIONS_CAP = 100;
+const REFRESH_TOKENS_CAP = 200;
+function safeStringEqual(a, b) {
+  const ab = Buffer.from(a, "utf8");
+  const bb = Buffer.from(b, "utf8");
+  if (ab.length !== bb.length) {
+    return false;
+  }
+  return import_node_crypto.default.timingSafeEqual(ab, bb);
+}
 const CLIENT_COOKIE = "hassemu_client";
 const COOKIE_MAX_AGE_S = 10 * 365 * 24 * 60 * 60;
 class WebServer {
@@ -48,6 +58,11 @@ class WebServer {
   globalConfig;
   app;
   sessions = /* @__PURE__ */ new Map();
+  /**
+   * Issued refresh tokens → owning clientId. Validated on every refresh-grant —
+   * unknown tokens are rejected (was: any string accepted).
+   */
+  refreshTokens = /* @__PURE__ */ new Map();
   cleanupTimer = null;
   instanceUuid;
   /** ioBroker system language for the setup page — resolved on startup. */
@@ -132,6 +147,37 @@ class WebServer {
     if (cleaned > 0) {
       this.adapter.log.debug(`Session cleanup: removed ${cleaned} expired sessions`);
     }
+  }
+  /**
+   * Inserts a session, dropping the oldest entry if {@link SESSIONS_CAP} is exceeded.
+   * Map iteration order is insertion order, so the first key is the oldest.
+   *
+   * @param key  Session key (flow id or auth code).
+   * @param data Session payload.
+   */
+  storeSession(key, data) {
+    if (this.sessions.size >= SESSIONS_CAP) {
+      const oldest = this.sessions.keys().next().value;
+      if (oldest !== void 0) {
+        this.sessions.delete(oldest);
+      }
+    }
+    this.sessions.set(key, data);
+  }
+  /**
+   * Inserts a refresh token mapping, dropping the oldest if cap exceeded.
+   *
+   * @param token    Refresh token issued in `/auth/token`.
+   * @param clientId Owning client id.
+   */
+  storeRefreshToken(token, clientId) {
+    if (this.refreshTokens.size >= REFRESH_TOKENS_CAP) {
+      const oldest = this.refreshTokens.keys().next().value;
+      if (oldest !== void 0) {
+        this.refreshTokens.delete(oldest);
+      }
+    }
+    this.refreshTokens.set(token, clientId);
   }
   // --- client identification ---
   async identify(req, reply) {
@@ -231,7 +277,7 @@ class WebServer {
     this.app.post("/auth/login_flow", async (req, reply) => {
       const client = await this.identify(req, reply);
       const flowId = import_node_crypto.default.randomUUID();
-      this.sessions.set(flowId, { created: Date.now(), clientId: client.id });
+      this.storeSession(flowId, { created: Date.now(), clientId: client.id });
       this.adapter.log.debug(`Auth flow created: ${flowId} for client ${client.id}`);
       return {
         type: "form",
@@ -265,7 +311,9 @@ class WebServer {
         }
         if (this.config.authRequired) {
           const { username, password } = (_a = req.body) != null ? _a : {};
-          if (username !== this.config.username || password !== this.config.password) {
+          const userOk = typeof username === "string" && safeStringEqual(username, this.config.username);
+          const passOk = typeof password === "string" && safeStringEqual(password, this.config.password);
+          if (!userOk || !passOk) {
             this.adapter.log.warn("Invalid credentials");
             reply.status(400);
             return {
@@ -281,7 +329,7 @@ class WebServer {
         }
         this.sessions.delete(flowId);
         const code = import_node_crypto.default.randomUUID();
-        this.sessions.set(code, { created: Date.now(), clientId: session.clientId });
+        this.storeSession(code, { created: Date.now(), clientId: session.clientId });
         this.adapter.log.debug("Auth flow completed \u2014 code issued");
         return {
           version: 1,
@@ -298,25 +346,36 @@ class WebServer {
       "/auth/token",
       async (req, reply) => {
         var _a;
-        const { code, grant_type } = (_a = req.body) != null ? _a : {};
+        const { code, grant_type, refresh_token } = (_a = req.body) != null ? _a : {};
         if (grant_type === "authorization_code" && code && this.sessions.has(code)) {
           const session = this.sessions.get(code);
           this.sessions.delete(code);
           const token = import_node_crypto.default.randomUUID();
+          const refreshToken = import_node_crypto.default.randomUUID();
           if (session.clientId) {
             await this.registry.setToken(session.clientId, token);
+            this.storeRefreshToken(refreshToken, session.clientId);
             this.adapter.log.debug(`Display authenticated \u2014 client ${session.clientId}`);
           }
           return {
             access_token: token,
             token_type: "Bearer",
-            refresh_token: import_node_crypto.default.randomUUID(),
+            refresh_token: refreshToken,
             expires_in: 1800
           };
         }
         if (grant_type === "refresh_token") {
+          const incoming = typeof refresh_token === "string" ? refresh_token : "";
+          const ownerId = incoming ? this.refreshTokens.get(incoming) : void 0;
+          if (!ownerId) {
+            this.adapter.log.warn("Refresh token rejected \u2014 unknown or missing");
+            reply.status(400);
+            return { error: "invalid_grant", error_description: "Invalid refresh token" };
+          }
+          const newAccess = import_node_crypto.default.randomUUID();
+          await this.registry.setToken(ownerId, newAccess);
           return {
-            access_token: import_node_crypto.default.randomUUID(),
+            access_token: newAccess,
             token_type: "Bearer",
             expires_in: 1800
           };
@@ -334,8 +393,7 @@ class WebServer {
       version: import_constants.HA_VERSION,
       config: {
         mdns: this.config.mdnsEnabled,
-        auth: this.config.authRequired,
-        globalRedirect: this.globalConfig.isEnabled() ? this.globalConfig.getGlobalUrl() : null
+        auth: this.config.authRequired
       }
     }));
     this.app.get("/manifest.json", () => ({
@@ -350,8 +408,8 @@ class WebServer {
       const client = await this.identify(req, reply);
       const url = this.globalConfig.resolveUrlFor(client);
       if (!url) {
-        this.adapter.log.debug(`No redirect URL for client ${client.id} \u2014 serving setup page`);
-        return reply.status(200).type("text/html; charset=utf-8").send((0, import_setup_page.renderSetupPage)(client.id, this.adapter.namespace, this.systemLanguage, client.ip));
+        this.adapter.log.debug(`No redirect URL for client ${client.id} \u2014 serving landing page`);
+        return reply.status(200).type("text/html; charset=utf-8").send((0, import_landing_page.renderLandingPage)(client.id, this.adapter.namespace, this.systemLanguage, client.ip));
       }
       this.adapter.log.debug(`Redirecting client ${client.id} \u2192 ${url}`);
       return reply.redirect(url, 302);

@@ -2,9 +2,9 @@ import { expect } from 'chai';
 import crypto from 'node:crypto';
 import { CLIENT_COOKIE, WebServer } from './webserver';
 import { ClientRegistry } from './client-registry';
-import { GlobalConfig } from './global-config';
+import { GlobalConfig, MODE_GLOBAL, MODE_MANUAL } from './global-config';
 import { HA_VERSION } from './constants';
-import type { AdapterConfig } from './types';
+import type { AdapterConfig, ClientRecord } from './types';
 
 interface ObjEntry {
     type: string;
@@ -99,14 +99,20 @@ const baseConfig: AdapterConfig = {
     serviceName: 'TestServer',
 };
 
+/**
+ * Build a GlobalConfig with optional `global.mode` (sentinel or URL) and
+ * `global.manualUrl` set up via the migration helper. `enabled` flag is
+ * persisted but does NOT bulk-sync clients here — that lives in main.ts.
+ */
 async function buildGlobalConfig(
     adapter: ReturnType<typeof createMockAdapter>['adapter'],
-    url: string | null = null,
+    mode: string | null = null,
+    manualUrl: string | null = null,
     enabled = false,
 ): Promise<GlobalConfig> {
     const g = new GlobalConfig(adapter as never);
-    if (url) {
-        await g.handleVisUrlWrite(url);
+    if (mode !== null) {
+        await g.migrationSet(mode, manualUrl);
     }
     if (enabled) {
         await g.handleEnabledWrite(true);
@@ -131,9 +137,9 @@ describe('WebServer', () => {
         const built = createMockAdapter();
         store = built.store;
         registry = new ClientRegistry(built.adapter as never);
-        globalConfig = await buildGlobalConfig(built.adapter, 'http://example.com/vis', true);
+        // global.mode = direct URL; new client default mode='global' delegates here
+        globalConfig = await buildGlobalConfig(built.adapter, 'http://example.com/vis', null, true);
         server = new WebServer(built.adapter as never, baseConfig, registry, globalConfig, crypto.randomUUID());
-        // ready() instead of listen() — we use inject(), not a real socket
         await server['app'].register((await import('@fastify/cookie')).default);
         server['setupErrorHandler']();
         server['setupRoutes']();
@@ -231,11 +237,7 @@ describe('WebServer', () => {
         });
 
         it('POST /auth/login_flow binds flow to the client cookie', async () => {
-            const res1 = await server.inject({
-                method: 'POST',
-                url: '/auth/login_flow',
-                payload: {},
-            });
+            const res1 = await server.inject({ method: 'POST', url: '/auth/login_flow', payload: {} });
             const cookie = extractCookie(res1.headers['set-cookie']);
             expect(cookie).to.not.be.null;
             const client = registry.getByCookie(cookie!);
@@ -252,12 +254,8 @@ describe('WebServer', () => {
             expect((res.json() as { reason: string }).reason).to.equal('unknown_flow');
         });
 
-        it('completes full auth flow end-to-end', async () => {
-            const r1 = await server.inject({
-                method: 'POST',
-                url: '/auth/login_flow',
-                payload: {},
-            });
+        it('completes full auth flow end-to-end and stores refresh token', async () => {
+            const r1 = await server.inject({ method: 'POST', url: '/auth/login_flow', payload: {} });
             const cookie = extractCookie(r1.headers['set-cookie'])!;
             const flowId = (r1.json() as { flow_id: string }).flow_id;
 
@@ -278,19 +276,62 @@ describe('WebServer', () => {
             });
             const tokens = r3.json() as { access_token: string; refresh_token: string };
             expect(tokens.access_token).to.match(/^[0-9a-f-]{36}$/);
+            expect(tokens.refresh_token).to.match(/^[0-9a-f-]{36}$/);
 
             const client = registry.getByCookie(cookie);
             expect(client?.token).to.equal(tokens.access_token);
+
+            // Refresh token must be stored — security fix v1.2.0
+            expect(server.refreshTokens.has(tokens.refresh_token)).to.be.true;
+            expect(server.refreshTokens.get(tokens.refresh_token)).to.equal(client!.id);
         });
 
-        it('POST /auth/token with refresh_token returns new token', async () => {
+        it('POST /auth/token with VALID refresh_token issues a new access token', async () => {
+            // First do a real login to get a valid refresh token
+            const r1 = await server.inject({ method: 'POST', url: '/auth/login_flow', payload: {} });
+            const cookie = extractCookie(r1.headers['set-cookie'])!;
+            const flowId = (r1.json() as { flow_id: string }).flow_id;
+            const r2 = await server.inject({
+                method: 'POST',
+                url: `/auth/login_flow/${flowId}`,
+                headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
+                payload: { username: 'admin', password: 'secret' },
+            });
+            const code = (r2.json() as { result: string }).result;
+            const r3 = await server.inject({
+                method: 'POST',
+                url: '/auth/token',
+                payload: { grant_type: 'authorization_code', code },
+            });
+            const refreshToken = (r3.json() as { refresh_token: string }).refresh_token;
+
+            // Use the valid refresh token to mint a new access token
+            const r4 = await server.inject({
+                method: 'POST',
+                url: '/auth/token',
+                payload: { grant_type: 'refresh_token', refresh_token: refreshToken },
+            });
+            expect(r4.statusCode).to.equal(200);
+            expect((r4.json() as { access_token: string }).access_token).to.match(/^[0-9a-f-]{36}$/);
+        });
+
+        it('POST /auth/token with UNKNOWN refresh_token returns 400 (security fix v1.2.0)', async () => {
             const res = await server.inject({
                 method: 'POST',
                 url: '/auth/token',
-                payload: { grant_type: 'refresh_token', refresh_token: 'any' },
+                payload: { grant_type: 'refresh_token', refresh_token: crypto.randomUUID() },
             });
-            expect(res.statusCode).to.equal(200);
-            expect((res.json() as { access_token: string }).access_token).to.match(/^[0-9a-f-]{36}$/);
+            expect(res.statusCode).to.equal(400);
+            expect((res.json() as { error: string }).error).to.equal('invalid_grant');
+        });
+
+        it('POST /auth/token with missing refresh_token returns 400', async () => {
+            const res = await server.inject({
+                method: 'POST',
+                url: '/auth/token',
+                payload: { grant_type: 'refresh_token' },
+            });
+            expect(res.statusCode).to.equal(400);
         });
 
         it('POST /auth/token rejects unknown code', async () => {
@@ -303,10 +344,9 @@ describe('WebServer', () => {
         });
 
         it('rejects invalid credentials when authRequired is true', async () => {
-            // rebuild with authRequired = true
             const built = createMockAdapter();
             const reg = new ClientRegistry(built.adapter as never);
-            const g = await buildGlobalConfig(built.adapter, 'http://example.com/vis', true);
+            const g = await buildGlobalConfig(built.adapter, 'http://example.com/vis', null, true);
             const s = new WebServer(
                 built.adapter as never,
                 { ...baseConfig, authRequired: true },
@@ -327,19 +367,75 @@ describe('WebServer', () => {
                 payload: { username: 'wrong', password: 'wrong' },
             });
             expect(r2.statusCode).to.equal(400);
-            const body = r2.json() as { errors: { base: string } };
-            expect(body.errors.base).to.equal('invalid_auth');
+            expect((r2.json() as { errors: { base: string } }).errors.base).to.equal('invalid_auth');
 
+            await s['app'].close();
+        });
+
+        it('accepts correct credentials via timing-safe compare (security fix v1.2.0)', async () => {
+            const built = createMockAdapter();
+            const reg = new ClientRegistry(built.adapter as never);
+            const g = await buildGlobalConfig(built.adapter, 'http://example.com/vis', null, true);
+            const s = new WebServer(
+                built.adapter as never,
+                { ...baseConfig, authRequired: true },
+                reg,
+                g,
+                crypto.randomUUID(),
+            );
+            await s['app'].register((await import('@fastify/cookie')).default);
+            s['setupErrorHandler']();
+            s['setupRoutes']();
+            await s['app'].ready();
+
+            const r1 = await s.inject({ method: 'POST', url: '/auth/login_flow', payload: {} });
+            const flowId = (r1.json() as { flow_id: string }).flow_id;
+            const r2 = await s.inject({
+                method: 'POST',
+                url: `/auth/login_flow/${flowId}`,
+                payload: { username: 'admin', password: 'secret' },
+            });
+            expect((r2.json() as { result?: string }).result).to.match(/^[0-9a-f-]{36}$/);
+            await s['app'].close();
+        });
+
+        it('rejects username with mismatched length (timing-safe handles both branches)', async () => {
+            const built = createMockAdapter();
+            const reg = new ClientRegistry(built.adapter as never);
+            const g = await buildGlobalConfig(built.adapter, 'http://example.com/vis', null, true);
+            const s = new WebServer(
+                built.adapter as never,
+                { ...baseConfig, authRequired: true },
+                reg,
+                g,
+                crypto.randomUUID(),
+            );
+            await s['app'].register((await import('@fastify/cookie')).default);
+            s['setupErrorHandler']();
+            s['setupRoutes']();
+            await s['app'].ready();
+
+            const r1 = await s.inject({ method: 'POST', url: '/auth/login_flow', payload: {} });
+            const flowId = (r1.json() as { flow_id: string }).flow_id;
+            const r2 = await s.inject({
+                method: 'POST',
+                url: `/auth/login_flow/${flowId}`,
+                payload: { username: 'short', password: 'doesnotmatter' },
+            });
+            expect((r2.json() as { errors: { base: string } }).errors.base).to.equal('invalid_auth');
             await s['app'].close();
         });
     });
 
     describe('misc endpoints', () => {
-        it('GET /health returns health status', async () => {
+        it('GET /health returns liveness without leaking redirect URL (security fix v1.2.0)', async () => {
             const res = await server.inject({ method: 'GET', url: '/health' });
-            const body = res.json() as { status: string; version: string };
+            const body = res.json() as Record<string, unknown>;
             expect(body.status).to.equal('ok');
             expect(body.version).to.equal(HA_VERSION);
+            expect(body).to.not.have.property('config.globalRedirect');
+            const cfg = body.config as Record<string, unknown>;
+            expect(cfg).to.not.have.property('globalRedirect');
         });
 
         it('GET /manifest.json returns PWA manifest with service name', async () => {
@@ -348,7 +444,7 @@ describe('WebServer', () => {
             expect(body.name).to.equal('TestServer');
         });
 
-        it('GET / redirects to global URL for new clients when global override is on', async () => {
+        it("GET / redirects to global URL when client default mode='global'", async () => {
             const res = await server.inject({ method: 'GET', url: '/' });
             expect(res.statusCode).to.equal(302);
             expect(res.headers.location).to.equal('http://example.com/vis');
@@ -367,51 +463,41 @@ describe('WebServer', () => {
                 url: '/',
                 headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
             });
-            // No new cookie set when the sent one is valid
             expect(r2.headers['set-cookie']).to.be.undefined;
             expect(registry.getByCookie(cookie)).to.not.be.null;
         });
 
-        it('GET / uses per-client visUrl when global override is off', async () => {
-            // rebuild with global.enabled = false so the client URL wins
-            const built = createMockAdapter();
-            const reg = new ClientRegistry(built.adapter as never);
-            const g = await buildGlobalConfig(built.adapter);
-            const s = new WebServer(built.adapter as never, baseConfig, reg, g, crypto.randomUUID());
-            await s['app'].register((await import('@fastify/cookie')).default);
-            s['setupErrorHandler']();
-            s['setupRoutes']();
-            await s['app'].ready();
-
-            const r1 = await s.inject({ method: 'GET', url: '/' });
-            const cookie = extractCookie(r1.headers['set-cookie'])!;
-            const client = reg.getByCookie(cookie)!;
-            client.visUrl = 'http://override.local/ui';
-            const r2 = await s.inject({
-                method: 'GET',
-                url: '/',
-                headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
-            });
-            expect(r2.headers.location).to.equal('http://override.local/ui');
-            await s['app'].close();
-        });
-
-        it('GET / prefers global URL over per-client when override is enabled', async () => {
+        it("GET / uses client.mode='manual' + manualUrl", async () => {
             const r1 = await server.inject({ method: 'GET', url: '/' });
             const cookie = extractCookie(r1.headers['set-cookie'])!;
             const client = registry.getByCookie(cookie)!;
-            client.visUrl = 'http://individual.local/ui';
+            client.mode = MODE_MANUAL;
+            client.manualUrl = 'http://override.local/ui';
             const r2 = await server.inject({
                 method: 'GET',
                 url: '/',
                 headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
             });
-            expect(r2.headers.location).to.equal('http://example.com/vis');
+            expect(r2.headers.location).to.equal('http://override.local/ui');
         });
 
-        it('GET / serves the setup page when nothing is configured', async () => {
+        it('GET / uses client.mode when it is a direct URL', async () => {
+            const r1 = await server.inject({ method: 'GET', url: '/' });
+            const cookie = extractCookie(r1.headers['set-cookie'])!;
+            const client = registry.getByCookie(cookie)!;
+            client.mode = 'http://direct.local/ui';
+            const r2 = await server.inject({
+                method: 'GET',
+                url: '/',
+                headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
+            });
+            expect(r2.headers.location).to.equal('http://direct.local/ui');
+        });
+
+        it('GET / serves the landing page when nothing is configured', async () => {
             const built = createMockAdapter();
             const reg = new ClientRegistry(built.adapter as never);
+            // global empty + no client mode set after creation
             const g = await buildGlobalConfig(built.adapter);
             const s = new WebServer(built.adapter as never, baseConfig, reg, g, crypto.randomUUID());
             await s['app'].register((await import('@fastify/cookie')).default);
@@ -419,18 +505,26 @@ describe('WebServer', () => {
             s['setupRoutes']();
             await s['app'].ready();
 
-            const res = await s.inject({ method: 'GET', url: '/' });
+            // First clear the default 'global' mode so the resolver returns null
+            const r0 = await s.inject({ method: 'GET', url: '/' });
+            const cookie = extractCookie(r0.headers['set-cookie'])!;
+            const client = reg.getByCookie(cookie)!;
+            client.mode = ''; // user has not picked anything
+            const res = await s.inject({
+                method: 'GET',
+                url: '/',
+                headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
+            });
             expect(res.statusCode).to.equal(200);
             expect(res.headers['content-type']).to.match(/^text\/html/);
             expect(res.body).to.include('Device ID');
             expect(res.body).to.include('clients.');
-            // OK-banner — visual "everything is connected" signal
             expect(res.body).to.include('banner');
             expect(res.body).to.include('✓');
             await s['app'].close();
         });
 
-        it('GET / setup page honours the ioBroker system language (de)', async () => {
+        it('GET / landing page honours the ioBroker system language (de)', async () => {
             const built = createMockAdapter();
             const reg = new ClientRegistry(built.adapter as never);
             const g = await buildGlobalConfig(built.adapter);
@@ -440,30 +534,38 @@ describe('WebServer', () => {
             s['setupRoutes']();
             await s['app'].ready();
 
-            const res = await s.inject({ method: 'GET', url: '/' });
+            // Force an empty-mode client so the landing page is served
+            const r0 = await s.inject({ method: 'GET', url: '/' });
+            const cookie = extractCookie(r0.headers['set-cookie'])!;
+            reg.getByCookie(cookie)!.mode = '';
+            const res = await s.inject({
+                method: 'GET',
+                url: '/',
+                headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
+            });
             expect(res.body).to.include('Display verbunden');
             expect(res.body).to.include('lang="de"');
             await s['app'].close();
         });
 
-        it('GET / setup page falls back to English for unknown language', async () => {
+        it('GET / landing page falls back to English for unknown language', async () => {
             const built = createMockAdapter();
             const reg = new ClientRegistry(built.adapter as never);
             const g = await buildGlobalConfig(built.adapter);
-            const s = new WebServer(
-                built.adapter as never,
-                baseConfig,
-                reg,
-                g,
-                crypto.randomUUID(),
-                'eo', // Esperanto — not in our translation table
-            );
+            const s = new WebServer(built.adapter as never, baseConfig, reg, g, crypto.randomUUID(), 'eo');
             await s['app'].register((await import('@fastify/cookie')).default);
             s['setupErrorHandler']();
             s['setupRoutes']();
             await s['app'].ready();
 
-            const res = await s.inject({ method: 'GET', url: '/' });
+            const r0 = await s.inject({ method: 'GET', url: '/' });
+            const cookie = extractCookie(r0.headers['set-cookie'])!;
+            reg.getByCookie(cookie)!.mode = '';
+            const res = await s.inject({
+                method: 'GET',
+                url: '/',
+                headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
+            });
             expect(res.body).to.include('Display connected');
             await s['app'].close();
         });
@@ -482,12 +584,14 @@ describe('WebServer', () => {
             expect(registry.listAll().length).to.equal(2);
         });
 
-        it('creates client state objects in ioBroker', async () => {
+        it('creates client state objects in ioBroker (mode + manualUrl)', async () => {
             await server.inject({ method: 'GET', url: '/' });
             const clientIds = registry.listAll().map(c => c.id);
             expect(clientIds.length).to.equal(1);
             expect(store.objects.has(`hassemu.0.clients.${clientIds[0]}`)).to.be.true;
-            expect(store.objects.has(`hassemu.0.clients.${clientIds[0]}.visUrl`)).to.be.true;
+            expect(store.objects.has(`hassemu.0.clients.${clientIds[0]}.mode`)).to.be.true;
+            expect(store.objects.has(`hassemu.0.clients.${clientIds[0]}.manualUrl`)).to.be.true;
+            expect(store.objects.has(`hassemu.0.clients.${clientIds[0]}.visUrl`)).to.be.false;
         });
 
         it('unknown cookie from another adapter instance creates a new client', async () => {
@@ -542,13 +646,23 @@ describe('WebServer', () => {
             expect(server.sessions.size).to.equal(1);
         });
     });
+
+    describe('sessions cap (security fix v1.2.0)', () => {
+        it('drops the oldest session when cap is exceeded', async () => {
+            // Fire 105 login_flow calls — cap is 100
+            for (let i = 0; i < 105; i++) {
+                await server.inject({ method: 'POST', url: '/auth/login_flow', payload: {} });
+            }
+            expect(server.sessions.size).to.be.at.most(100);
+        });
+    });
 });
 
 describe('WebServer bindAddress / start-stop', () => {
     it('defaults to 0.0.0.0 when bindAddress is falsy', async () => {
         const built = createMockAdapter();
         const reg = new ClientRegistry(built.adapter as never);
-        const g = await buildGlobalConfig(built.adapter, 'http://x/', true);
+        const g = await buildGlobalConfig(built.adapter, 'http://x/');
         const s = new WebServer(
             built.adapter as never,
             { ...baseConfig, port: 0, bindAddress: '' },
@@ -566,7 +680,7 @@ describe('WebServer bindAddress / start-stop', () => {
     it('binds to 127.0.0.1 when configured', async () => {
         const built = createMockAdapter();
         const reg = new ClientRegistry(built.adapter as never);
-        const g = await buildGlobalConfig(built.adapter, 'http://x/', true);
+        const g = await buildGlobalConfig(built.adapter, 'http://x/');
         const s = new WebServer(
             built.adapter as never,
             { ...baseConfig, port: 0, bindAddress: '127.0.0.1' },
@@ -582,7 +696,7 @@ describe('WebServer bindAddress / start-stop', () => {
     it('returns null for boundAddress when server not running', async () => {
         const built = createMockAdapter();
         const reg = new ClientRegistry(built.adapter as never);
-        const g = await buildGlobalConfig(built.adapter, 'http://x/', true);
+        const g = await buildGlobalConfig(built.adapter, 'http://x/');
         const s = new WebServer(built.adapter as never, baseConfig, reg, g, crypto.randomUUID());
         expect(s.boundAddress).to.be.null;
     });

@@ -1,6 +1,7 @@
 import { expect } from 'chai';
 import crypto from 'node:crypto';
 import { ClientRegistry, parseClientStateId } from './client-registry';
+import { MODE_GLOBAL, MODE_MANUAL } from './global-config';
 import type { ClientRecord } from './types';
 
 interface ObjEntry {
@@ -123,23 +124,43 @@ describe('ClientRegistry', () => {
     describe('identifyOrCreate', () => {
         it('creates a new client when cookie is missing', async () => {
             const rec = await registry.identifyOrCreate(null, '192.168.1.5', 'tablet.local');
-            expect(rec.id).to.match(/^[a-z0-9]{6}$/);
+            expect(rec.id).to.match(/^[0-9a-f]{6}$/);
             expect(rec.cookie).to.match(/^[0-9a-f-]{36}$/);
             expect(rec.ip).to.equal('192.168.1.5');
             expect(rec.hostname).to.equal('tablet.local');
+            expect(rec.mode).to.equal(MODE_GLOBAL); // Default provider returns MODE_GLOBAL
+            expect(rec.manualUrl).to.be.null;
         });
 
-        it('creates ioBroker channel + states on new client', async () => {
+        it('creates ioBroker channel + mode/manualUrl/ip/remove states on new client', async () => {
             const rec = await registry.identifyOrCreate(null, '192.168.1.5', null);
             expect(store.objects.has(`hassemu.0.clients.${rec.id}`)).to.be.true;
-            expect(store.objects.has(`hassemu.0.clients.${rec.id}.visUrl`)).to.be.true;
+            expect(store.objects.has(`hassemu.0.clients.${rec.id}.mode`)).to.be.true;
+            expect(store.objects.has(`hassemu.0.clients.${rec.id}.manualUrl`)).to.be.true;
             expect(store.objects.has(`hassemu.0.clients.${rec.id}.ip`)).to.be.true;
             expect(store.objects.has(`hassemu.0.clients.${rec.id}.remove`)).to.be.true;
+        });
+
+        it('mode state has type "mixed" (future-proof against strict-type cast)', async () => {
+            const rec = await registry.identifyOrCreate(null, null, null);
+            const obj = store.objects.get(`hassemu.0.clients.${rec.id}.mode`);
+            expect(obj?.common?.type).to.equal('mixed');
+        });
+
+        it('manualUrl state has role "url"', async () => {
+            const rec = await registry.identifyOrCreate(null, null, null);
+            const obj = store.objects.get(`hassemu.0.clients.${rec.id}.manualUrl`);
+            expect(obj?.common?.role).to.equal('url');
         });
 
         it('does not create a legacy hostname state', async () => {
             const rec = await registry.identifyOrCreate(null, '192.168.1.5', 'tablet.local');
             expect(store.objects.has(`hassemu.0.clients.${rec.id}.hostname`)).to.be.false;
+        });
+
+        it('does not create a legacy visUrl state', async () => {
+            const rec = await registry.identifyOrCreate(null, '192.168.1.5', null);
+            expect(store.objects.has(`hassemu.0.clients.${rec.id}.visUrl`)).to.be.false;
         });
 
         it('sets common.name to ip when hostname is unknown', async () => {
@@ -186,6 +207,11 @@ describe('ClientRegistry', () => {
             expect(store.states.get(`hassemu.0.clients.${rec.id}.ip`)?.val).to.equal('10.0.0.1');
         });
 
+        it('persists initial mode value to state', async () => {
+            const rec = await registry.identifyOrCreate(null, null, null);
+            expect(store.states.get(`hassemu.0.clients.${rec.id}.mode`)?.val).to.equal(rec.mode);
+        });
+
         it('returns existing record when cookie matches', async () => {
             const rec1 = await registry.identifyOrCreate(null, '192.168.1.5', null);
             const rec2 = await registry.identifyOrCreate(rec1.cookie, '192.168.1.5', null);
@@ -206,9 +232,7 @@ describe('ClientRegistry', () => {
         });
 
         // Regression: v1.1.2 and earlier registered a separate client for each
-        // parallel cookieless request from the same display on initial connect,
-        // leaving orphan clients behind (seen in the log as two "New client
-        // registered" lines within 100 ms from the same IP).
+        // parallel cookieless request from the same display on initial connect.
         it('returns the same record for parallel cookieless requests from the same IP', async () => {
             const promises = [
                 registry.identifyOrCreate(null, '192.168.77.10', null),
@@ -234,8 +258,6 @@ describe('ClientRegistry', () => {
 
         it('clears the pending-lock after creation so sequential cookieless visits create new clients', async () => {
             const rec1 = await registry.identifyOrCreate(null, '192.168.77.20', null);
-            // Sequential — the first promise has resolved and been cleared from
-            // pendingByIp; a new cookieless visit is a new display session.
             const rec2 = await registry.identifyOrCreate(null, '192.168.77.20', null);
             expect(rec1.id).to.not.equal(rec2.id);
         });
@@ -269,6 +291,28 @@ describe('ClientRegistry', () => {
                 seen.add(rec.id);
             }
             expect(seen.size).to.equal(20);
+        });
+
+        it('writes lastSeen native on first identify', async () => {
+            const before = Date.now();
+            const rec = await registry.identifyOrCreate(null, '1.1.1.1', null);
+            const channel = store.objects.get(`hassemu.0.clients.${rec.id}`);
+            const lastSeen = (channel?.native as { lastSeen?: number })?.lastSeen;
+            expect(typeof lastSeen).to.equal('number');
+            expect(lastSeen!).to.be.at.least(before);
+        });
+    });
+
+    describe('setNewClientModeProvider', () => {
+        it('uses the provider value as default mode for new clients', async () => {
+            registry.setNewClientModeProvider(() => 'http://override.local/');
+            const rec = await registry.identifyOrCreate(null, null, null);
+            expect(rec.mode).to.equal('http://override.local/');
+        });
+
+        it("falls back to 'global' when no provider was wired", async () => {
+            const rec = await registry.identifyOrCreate(null, null, null);
+            expect(rec.mode).to.equal(MODE_GLOBAL);
         });
     });
 
@@ -347,50 +391,145 @@ describe('ClientRegistry', () => {
         });
     });
 
-    describe('handleVisUrlWrite', () => {
+    describe('handleModeWrite', () => {
         let rec: ClientRecord;
 
         beforeEach(async () => {
             rec = await registry.identifyOrCreate(null, null, null);
         });
 
-        it('accepts safe http URL', async () => {
-            await registry.handleVisUrlWrite(rec.id, 'http://tablet.local/ui');
-            expect(rec.visUrl).to.equal('http://tablet.local/ui');
+        it("accepts 'global' sentinel", async () => {
+            await registry.handleModeWrite(rec.id, MODE_GLOBAL);
+            expect(rec.mode).to.equal(MODE_GLOBAL);
+            expect(store.states.get(`hassemu.0.clients.${rec.id}.mode`)?.val).to.equal(MODE_GLOBAL);
         });
 
-        it('accepts safe https URL', async () => {
-            await registry.handleVisUrlWrite(rec.id, 'https://example.com/dash');
-            expect(rec.visUrl).to.equal('https://example.com/dash');
+        it("accepts 'manual' sentinel", async () => {
+            await registry.handleModeWrite(rec.id, MODE_MANUAL);
+            expect(rec.mode).to.equal(MODE_MANUAL);
         });
 
-        it('clears override on empty string', async () => {
-            rec.visUrl = 'http://old.local/';
-            await registry.handleVisUrlWrite(rec.id, '');
-            expect(rec.visUrl).to.be.null;
+        it("warns when 'manual' is set but manualUrl is empty", async () => {
+            await registry.handleModeWrite(rec.id, MODE_MANUAL);
+            const warn = store.logs.find(l => l.level === 'warn' && l.msg.includes('manualUrl is empty'));
+            expect(warn).to.not.be.undefined;
+        });
+
+        it('accepts a safe URL string', async () => {
+            await registry.handleModeWrite(rec.id, 'http://tablet.local/ui');
+            expect(rec.mode).to.equal('http://tablet.local/ui');
+        });
+
+        it('accepts empty string (clears mode)', async () => {
+            rec.mode = MODE_GLOBAL;
+            await registry.handleModeWrite(rec.id, '');
+            expect(rec.mode).to.equal('');
         });
 
         it('rejects javascript: URL and restores previous value', async () => {
-            rec.visUrl = 'http://safe.local/';
-            await registry.handleVisUrlWrite(rec.id, 'javascript:alert(1)');
-            expect(rec.visUrl).to.equal('http://safe.local/');
-            const warn = store.logs.find(l => l.level === 'warn');
-            expect(warn?.msg).to.include('rejected unsafe visUrl');
+            rec.mode = 'http://safe.local/';
+            await registry.handleModeWrite(rec.id, 'javascript:alert(1)');
+            expect(rec.mode).to.equal('http://safe.local/');
+            const warn = store.logs.find(l => l.level === 'warn' && l.msg.includes('rejected unsafe'));
+            expect(warn).to.not.be.undefined;
         });
 
         it('rejects ftp:// URL', async () => {
-            await registry.handleVisUrlWrite(rec.id, 'ftp://server/');
-            expect(rec.visUrl).to.be.null;
+            await registry.handleModeWrite(rec.id, 'ftp://server/');
+            // mode unchanged (was the provider default)
+            expect(rec.mode).to.equal(MODE_GLOBAL);
         });
 
         it('rejects URLs with embedded credentials', async () => {
-            await registry.handleVisUrlWrite(rec.id, 'http://user:pass@host/');
-            expect(rec.visUrl).to.be.null;
+            await registry.handleModeWrite(rec.id, 'http://user:pass@host/');
+            expect(rec.mode).to.equal(MODE_GLOBAL);
+        });
+
+        it('rejects non-string values', async () => {
+            await registry.handleModeWrite(rec.id, 42 as unknown);
+            expect(rec.mode).to.equal(MODE_GLOBAL);
+            const warn = store.logs.find(l => l.level === 'warn' && l.msg.includes('non-string'));
+            expect(warn).to.not.be.undefined;
         });
 
         it('no-op when id is unknown', async () => {
-            await registry.handleVisUrlWrite('xxxxxx', 'http://ok/');
-            // no throw, no state
+            await registry.handleModeWrite('xxxxxx', 'http://ok/');
+        });
+    });
+
+    describe('handleManualUrlWrite', () => {
+        let rec: ClientRecord;
+
+        beforeEach(async () => {
+            rec = await registry.identifyOrCreate(null, null, null);
+        });
+
+        it('accepts a safe URL', async () => {
+            await registry.handleManualUrlWrite(rec.id, 'http://manual.local/');
+            expect(rec.manualUrl).to.equal('http://manual.local/');
+        });
+
+        it('accepts empty string (clears value)', async () => {
+            rec.manualUrl = 'http://old/';
+            await registry.handleManualUrlWrite(rec.id, '');
+            expect(rec.manualUrl).to.be.null;
+        });
+
+        it('rejects unsafe URL', async () => {
+            await registry.handleManualUrlWrite(rec.id, 'javascript:alert(1)');
+            expect(rec.manualUrl).to.be.null;
+        });
+
+        it("warns when manualUrl is cleared while mode='manual'", async () => {
+            rec.mode = MODE_MANUAL;
+            rec.manualUrl = 'http://x/';
+            await registry.handleManualUrlWrite(rec.id, '');
+            const warn = store.logs.find(l => l.level === 'warn' && l.msg.includes("manualUrl cleared"));
+            expect(warn).to.not.be.undefined;
+        });
+
+        it('no-op when id is unknown', async () => {
+            await registry.handleManualUrlWrite('xxxxxx', 'http://ok/');
+        });
+    });
+
+    describe('bulkSetMode', () => {
+        it('sets mode on every client', async () => {
+            const r1 = await registry.identifyOrCreate(null, '1.1.1.1', null);
+            const r2 = await registry.identifyOrCreate(null, '1.1.1.2', null);
+            await registry.bulkSetMode('http://target/');
+            expect(r1.mode).to.equal('http://target/');
+            expect(r2.mode).to.equal('http://target/');
+        });
+
+        it('persists each new mode value to state with ack=true', async () => {
+            const r1 = await registry.identifyOrCreate(null, '1.1.1.1', null);
+            await registry.bulkSetMode(MODE_GLOBAL);
+            const stored = store.states.get(`hassemu.0.clients.${r1.id}.mode`);
+            expect(stored?.val).to.equal(MODE_GLOBAL);
+            expect(stored?.ack).to.be.true;
+        });
+
+        it("skips clients whose mode already matches (no spurious writes)", async () => {
+            const r1 = await registry.identifyOrCreate(null, '1.1.1.1', null);
+            r1.mode = 'same';
+            store.logs.length = 0;
+            await registry.bulkSetMode('same');
+            const info = store.logs.find(l => l.level === 'info' && l.msg.includes('bulk-set'));
+            expect(info).to.be.undefined;
+        });
+
+        it('logs info with count on actual changes', async () => {
+            await registry.identifyOrCreate(null, '1.1.1.1', null);
+            await registry.identifyOrCreate(null, '1.1.1.2', null);
+            store.logs.length = 0;
+            await registry.bulkSetMode('http://new/');
+            const info = store.logs.find(l => l.level === 'info' && l.msg.includes('bulk-set'));
+            expect(info?.msg).to.match(/2 client/);
+        });
+
+        it('is a no-op with no clients', async () => {
+            await registry.bulkSetMode(MODE_GLOBAL);
         });
     });
 
@@ -406,7 +545,8 @@ describe('ClientRegistry', () => {
             const rec = await registry.identifyOrCreate(null, '1.2.3.4', null);
             await registry.remove(rec.id);
             expect(store.objects.has(`hassemu.0.clients.${rec.id}`)).to.be.false;
-            expect(store.objects.has(`hassemu.0.clients.${rec.id}.visUrl`)).to.be.false;
+            expect(store.objects.has(`hassemu.0.clients.${rec.id}.mode`)).to.be.false;
+            expect(store.objects.has(`hassemu.0.clients.${rec.id}.manualUrl`)).to.be.false;
         });
 
         it('unregisters token so it cannot be reused', async () => {
@@ -439,11 +579,13 @@ describe('ClientRegistry', () => {
     });
 
     describe('syncUrlDropdown', () => {
-        it('updates common.states on existing visUrl datapoints', async () => {
+        it('updates common.states on existing mode datapoints with sentinels + URLs', async () => {
             const rec = await registry.identifyOrCreate(null, null, null);
             await registry.syncUrlDropdown({ 'http://a.local/': 'A', 'http://b.local/': 'B' });
-            const obj = store.objects.get(`hassemu.0.clients.${rec.id}.visUrl`);
+            const obj = store.objects.get(`hassemu.0.clients.${rec.id}.mode`);
             expect(obj?.common?.states).to.deep.equal({
+                [MODE_GLOBAL]: 'Global URL',
+                [MODE_MANUAL]: 'Manual URL',
                 'http://a.local/': 'A',
                 'http://b.local/': 'B',
             });
@@ -452,8 +594,12 @@ describe('ClientRegistry', () => {
         it('uses synced dropdown for newly created clients', async () => {
             await registry.syncUrlDropdown({ 'http://a.local/': 'A' });
             const rec = await registry.identifyOrCreate(null, null, null);
-            const obj = store.objects.get(`hassemu.0.clients.${rec.id}.visUrl`);
-            expect(obj?.common?.states).to.deep.equal({ 'http://a.local/': 'A' });
+            const obj = store.objects.get(`hassemu.0.clients.${rec.id}.mode`);
+            expect(obj?.common?.states).to.deep.equal({
+                [MODE_GLOBAL]: 'Global URL',
+                [MODE_MANUAL]: 'Manual URL',
+                'http://a.local/': 'A',
+            });
         });
 
         it('is a no-op when there are no clients', async () => {
@@ -462,8 +608,7 @@ describe('ClientRegistry', () => {
     });
 
     describe('restore', () => {
-        it('loads existing clients from ioBroker objects', async () => {
-            // Pre-populate store as if adapter was restarted
+        it('loads existing clients with mode + manualUrl from state', async () => {
             const id = 'abc123';
             const cookie = crypto.randomUUID();
             store.objects.set(`hassemu.0.clients.${id}`, {
@@ -471,16 +616,30 @@ describe('ClientRegistry', () => {
                 common: { name: 'tablet.local' },
                 native: { cookie, token: null },
             });
-            store.states.set(`hassemu.0.clients.${id}.visUrl`, { val: 'http://preserved.local/', ack: true });
+            store.states.set(`hassemu.0.clients.${id}.mode`, { val: MODE_MANUAL, ack: true });
+            store.states.set(`hassemu.0.clients.${id}.manualUrl`, { val: 'http://saved/', ack: true });
             store.states.set(`hassemu.0.clients.${id}.ip`, { val: '192.168.1.20', ack: true });
 
             await registry.restore();
             const rec = registry.getById(id);
             expect(rec).to.not.be.null;
             expect(rec!.cookie).to.equal(cookie);
-            expect(rec!.visUrl).to.equal('http://preserved.local/');
+            expect(rec!.mode).to.equal(MODE_MANUAL);
+            expect(rec!.manualUrl).to.equal('http://saved/');
             expect(rec!.ip).to.equal('192.168.1.20');
             expect(rec!.hostname).to.equal('tablet.local');
+        });
+
+        it('loads URL-mode (direct URL value)', async () => {
+            const id = 'urlmode';
+            const cookie = crypto.randomUUID();
+            store.objects.set(`hassemu.0.clients.${id}`, {
+                type: 'channel',
+                native: { cookie },
+            });
+            store.states.set(`hassemu.0.clients.${id}.mode`, { val: 'http://direct/', ack: true });
+            await registry.restore();
+            expect(registry.getById(id)?.mode).to.equal('http://direct/');
         });
 
         it('treats common.name = ip as "no hostname known"', async () => {
@@ -555,16 +714,33 @@ describe('ClientRegistry', () => {
             await registry.restore();
             expect(registry.listAll().length).to.equal(0);
         });
+
+        it('rejects unsafe persisted manualUrl (treats as null)', async () => {
+            const id = 'unsafe';
+            const cookie = crypto.randomUUID();
+            store.objects.set(`hassemu.0.clients.${id}`, { type: 'channel', native: { cookie } });
+            store.states.set(`hassemu.0.clients.${id}.mode`, { val: MODE_MANUAL, ack: true });
+            store.states.set(`hassemu.0.clients.${id}.manualUrl`, { val: 'javascript:bad', ack: true });
+            await registry.restore();
+            expect(registry.getById(id)?.manualUrl).to.be.null;
+        });
     });
 });
 
 describe('parseClientStateId', () => {
     const ns = 'hassemu.0';
 
-    it('parses visUrl writes', () => {
-        expect(parseClientStateId('hassemu.0.clients.abc123.visUrl', ns)).to.deep.equal({
+    it('parses mode writes', () => {
+        expect(parseClientStateId('hassemu.0.clients.abc123.mode', ns)).to.deep.equal({
             id: 'abc123',
-            kind: 'visUrl',
+            kind: 'mode',
+        });
+    });
+
+    it('parses manualUrl writes', () => {
+        expect(parseClientStateId('hassemu.0.clients.abc123.manualUrl', ns)).to.deep.equal({
+            id: 'abc123',
+            kind: 'manualUrl',
         });
     });
 
@@ -576,11 +752,15 @@ describe('parseClientStateId', () => {
     });
 
     it('returns null for foreign state IDs', () => {
-        expect(parseClientStateId('other.0.clients.abc123.visUrl', ns)).to.be.null;
+        expect(parseClientStateId('other.0.clients.abc123.mode', ns)).to.be.null;
     });
 
     it('returns null for non-client states', () => {
         expect(parseClientStateId('hassemu.0.info.connection', ns)).to.be.null;
+    });
+
+    it('returns null for the now-removed visUrl path', () => {
+        expect(parseClientStateId('hassemu.0.clients.abc123.visUrl', ns)).to.be.null;
     });
 
     it('returns null for read-only ip/hostname', () => {
@@ -593,6 +773,6 @@ describe('parseClientStateId', () => {
     });
 
     it('returns null for too-deep IDs', () => {
-        expect(parseClientStateId('hassemu.0.clients.abc.123.visUrl', ns)).to.be.null;
+        expect(parseClientStateId('hassemu.0.clients.abc.123.mode', ns)).to.be.null;
     });
 });

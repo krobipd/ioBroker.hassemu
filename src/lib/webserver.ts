@@ -6,8 +6,28 @@ import { HA_VERSION, SESSION_TTL_MS, CLEANUP_INTERVAL_MS, LOGIN_SCHEMA } from '.
 import { coerceString, coerceUuid } from './coerce';
 import type { ClientRegistry } from './client-registry';
 import type { GlobalConfig } from './global-config';
-import { renderSetupPage } from './setup-page';
+import { renderLandingPage } from './landing-page';
 import type { AdapterConfig, AdapterInterface, ClientRecord, SessionData } from './types';
+
+/** Hard cap on in-flight auth flow sessions. Older entries are dropped FIFO when full. */
+const SESSIONS_CAP = 100;
+/** Hard cap on remembered refresh tokens. Older entries are dropped FIFO when full. */
+const REFRESH_TOKENS_CAP = 200;
+
+/**
+ * Constant-time string comparison for credential checks. Returns false for length mismatch.
+ *
+ * @param a First string to compare.
+ * @param b Second string to compare.
+ */
+function safeStringEqual(a: string, b: string): boolean {
+    const ab = Buffer.from(a, 'utf8');
+    const bb = Buffer.from(b, 'utf8');
+    if (ab.length !== bb.length) {
+        return false;
+    }
+    return crypto.timingSafeEqual(ab, bb);
+}
 
 /** Adapter surface the WebServer depends on — adds `namespace` for the setup page. */
 export type WebServerAdapter = AdapterInterface & Pick<ioBroker.Adapter, 'namespace'>;
@@ -31,6 +51,11 @@ export class WebServer {
     private readonly globalConfig: GlobalConfig;
     private readonly app: FastifyInstance;
     public readonly sessions: Map<string, SessionData> = new Map();
+    /**
+     * Issued refresh tokens → owning clientId. Validated on every refresh-grant —
+     * unknown tokens are rejected (was: any string accepted).
+     */
+    public readonly refreshTokens: Map<string, string> = new Map();
     private cleanupTimer: ioBroker.Interval | null = null;
     public readonly instanceUuid: string;
     /** ioBroker system language for the setup page — resolved on startup. */
@@ -132,6 +157,39 @@ export class WebServer {
         if (cleaned > 0) {
             this.adapter.log.debug(`Session cleanup: removed ${cleaned} expired sessions`);
         }
+    }
+
+    /**
+     * Inserts a session, dropping the oldest entry if {@link SESSIONS_CAP} is exceeded.
+     * Map iteration order is insertion order, so the first key is the oldest.
+     *
+     * @param key  Session key (flow id or auth code).
+     * @param data Session payload.
+     */
+    private storeSession(key: string, data: SessionData): void {
+        if (this.sessions.size >= SESSIONS_CAP) {
+            const oldest = this.sessions.keys().next().value;
+            if (oldest !== undefined) {
+                this.sessions.delete(oldest);
+            }
+        }
+        this.sessions.set(key, data);
+    }
+
+    /**
+     * Inserts a refresh token mapping, dropping the oldest if cap exceeded.
+     *
+     * @param token    Refresh token issued in `/auth/token`.
+     * @param clientId Owning client id.
+     */
+    private storeRefreshToken(token: string, clientId: string): void {
+        if (this.refreshTokens.size >= REFRESH_TOKENS_CAP) {
+            const oldest = this.refreshTokens.keys().next().value;
+            if (oldest !== undefined) {
+                this.refreshTokens.delete(oldest);
+            }
+        }
+        this.refreshTokens.set(token, clientId);
     }
 
     // --- client identification ---
@@ -250,7 +308,7 @@ export class WebServer {
         this.app.post('/auth/login_flow', async (req, reply) => {
             const client = await this.identify(req, reply);
             const flowId = crypto.randomUUID();
-            this.sessions.set(flowId, { created: Date.now(), clientId: client.id });
+            this.storeSession(flowId, { created: Date.now(), clientId: client.id });
             this.adapter.log.debug(`Auth flow created: ${flowId} for client ${client.id}`);
 
             return {
@@ -289,7 +347,9 @@ export class WebServer {
 
                 if (this.config.authRequired) {
                     const { username, password } = req.body ?? {};
-                    if (username !== this.config.username || password !== this.config.password) {
+                    const userOk = typeof username === 'string' && safeStringEqual(username, this.config.username);
+                    const passOk = typeof password === 'string' && safeStringEqual(password, this.config.password);
+                    if (!userOk || !passOk) {
                         this.adapter.log.warn('Invalid credentials');
                         reply.status(400);
                         return {
@@ -306,7 +366,7 @@ export class WebServer {
 
                 this.sessions.delete(flowId);
                 const code = crypto.randomUUID();
-                this.sessions.set(code, { created: Date.now(), clientId: session.clientId });
+                this.storeSession(code, { created: Date.now(), clientId: session.clientId });
                 this.adapter.log.debug('Auth flow completed — code issued');
 
                 return {
@@ -324,27 +384,40 @@ export class WebServer {
         this.app.post<{ Body: { code?: string; grant_type?: string; refresh_token?: string } }>(
             '/auth/token',
             async (req, reply) => {
-                const { code, grant_type } = req.body ?? {};
+                const { code, grant_type, refresh_token } = req.body ?? {};
 
                 if (grant_type === 'authorization_code' && code && this.sessions.has(code)) {
                     const session = this.sessions.get(code)!;
                     this.sessions.delete(code);
                     const token = crypto.randomUUID();
+                    const refreshToken = crypto.randomUUID();
                     if (session.clientId) {
                         await this.registry.setToken(session.clientId, token);
+                        this.storeRefreshToken(refreshToken, session.clientId);
                         this.adapter.log.debug(`Display authenticated — client ${session.clientId}`);
                     }
                     return {
                         access_token: token,
                         token_type: 'Bearer',
-                        refresh_token: crypto.randomUUID(),
+                        refresh_token: refreshToken,
                         expires_in: 1800,
                     };
                 }
 
                 if (grant_type === 'refresh_token') {
+                    // Validate the refresh token against issued ones — was previously
+                    // accepting any string and minting a new access_token (security fix v1.2.0).
+                    const incoming = typeof refresh_token === 'string' ? refresh_token : '';
+                    const ownerId = incoming ? this.refreshTokens.get(incoming) : undefined;
+                    if (!ownerId) {
+                        this.adapter.log.warn('Refresh token rejected — unknown or missing');
+                        reply.status(400);
+                        return { error: 'invalid_grant', error_description: 'Invalid refresh token' };
+                    }
+                    const newAccess = crypto.randomUUID();
+                    await this.registry.setToken(ownerId, newAccess);
                     return {
-                        access_token: crypto.randomUUID(),
+                        access_token: newAccess,
                         token_type: 'Bearer',
                         expires_in: 1800,
                     };
@@ -358,6 +431,8 @@ export class WebServer {
     }
 
     private setupMiscRoutes(): void {
+        // Liveness only — no config leak. Earlier versions exposed the global
+        // redirect URL via /health which is unauthenticated; removed in v1.2.0.
         this.app.get('/health', () => ({
             status: 'ok',
             adapter: 'hassemu',
@@ -365,7 +440,6 @@ export class WebServer {
             config: {
                 mdns: this.config.mdnsEnabled,
                 auth: this.config.authRequired,
-                globalRedirect: this.globalConfig.isEnabled() ? this.globalConfig.getGlobalUrl() : null,
             },
         }));
 
@@ -378,16 +452,16 @@ export class WebServer {
             theme_color: '#03a9f4',
         }));
 
-        // Root — 302 redirect, or setup page when no URL is configured
+        // Root — 302 redirect, or landing page when no URL is configured
         this.app.get('/', async (req, reply) => {
             const client = await this.identify(req, reply);
             const url = this.globalConfig.resolveUrlFor(client);
             if (!url) {
-                this.adapter.log.debug(`No redirect URL for client ${client.id} — serving setup page`);
+                this.adapter.log.debug(`No redirect URL for client ${client.id} — serving landing page`);
                 return reply
                     .status(200)
                     .type('text/html; charset=utf-8')
-                    .send(renderSetupPage(client.id, this.adapter.namespace, this.systemLanguage, client.ip));
+                    .send(renderLandingPage(client.id, this.adapter.namespace, this.systemLanguage, client.ip));
             }
             this.adapter.log.debug(`Redirecting client ${client.id} → ${url}`);
             return reply.redirect(url, 302);

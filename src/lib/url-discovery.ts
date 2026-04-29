@@ -54,6 +54,18 @@ export class UrlDiscovery {
     }
 
     /**
+     * Returns the first discovered URL (insertion order), or null if the cache
+     * is empty. Used by the global-config bulk-sync when the master switch is
+     * flipped off — clients fall back to a sensible default URL.
+     */
+    getFirstDiscoveredUrl(): string | null {
+        for (const url of Object.keys(this.cached)) {
+            return url;
+        }
+        return null;
+    }
+
+    /**
      * Schedules a refresh after `debounceMs`. Multiple calls within the window coalesce into one.
      *
      * @param debounceMs Debounce window in milliseconds.

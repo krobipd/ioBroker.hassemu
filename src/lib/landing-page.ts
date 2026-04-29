@@ -1,5 +1,5 @@
 /**
- * Setup page served to a display whose redirect URL is not yet configured.
+ * Landing page served to a display whose redirect URL is not yet configured.
  *
  * Goal: give the end-user a strong visual "everything is connected, now just
  * pick a URL" signal — big green check, three clear steps, adapter-local copy
@@ -8,10 +8,10 @@
  */
 
 /** Supported languages — matches the 11 io-package.json translations. */
-export type SetupLanguage = 'en' | 'de' | 'ru' | 'pt' | 'nl' | 'fr' | 'it' | 'es' | 'pl' | 'uk' | 'zh-cn';
+export type LandingLanguage = 'en' | 'de' | 'ru' | 'pt' | 'nl' | 'fr' | 'it' | 'es' | 'pl' | 'uk' | 'zh-cn';
 
-/** One translation bundle for the setup page. */
-interface SetupStrings {
+/** One translation bundle for the landing page. */
+interface LandingStrings {
     htmlLang: string;
     pageTitle: string;
     heading: string;
@@ -27,7 +27,7 @@ interface SetupStrings {
 }
 
 /** Translation table — EN is the fallback for any missing language. */
-const STRINGS: Record<SetupLanguage, SetupStrings> = {
+const STRINGS: Record<LandingLanguage, LandingStrings> = {
     en: {
         htmlLang: 'en',
         pageTitle: 'Connected · ioBroker',
@@ -187,23 +187,23 @@ const STRINGS: Record<SetupLanguage, SetupStrings> = {
 };
 
 /**
- * Render the setup page.
+ * Render the landing page.
  *
  * @param clientId  Short client id of this display.
  * @param namespace Adapter namespace (e.g. `hassemu.0`).
  * @param language  Desired UI language, resolved from `system.config.language`.
  * @param ip        Optional remote IP of the display, shown next to the ID.
  */
-export function renderSetupPage(
+export function renderLandingPage(
     clientId: string,
     namespace: string,
     language: string = 'en',
     ip: string | null = null,
 ): string {
-    const s = STRINGS[language as SetupLanguage] ?? STRINGS.en;
+    const s = STRINGS[language as LandingLanguage] ?? STRINGS.en;
     const id = escapeHtml(clientId);
     const ns = escapeHtml(namespace);
-    const datapoint = `${ns}.clients.${id}.visUrl`;
+    const datapoint = `${ns}.clients.${id}.mode`;
     const ipLine =
         ip && ip.trim() ? `<tr><th scope="row">${escapeHtml(s.ipLabel)}</th><td>${escapeHtml(ip)}</td></tr>` : '';
 

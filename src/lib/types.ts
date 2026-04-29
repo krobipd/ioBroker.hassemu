@@ -20,6 +20,19 @@ export interface AdapterConfig {
     serviceName: string;
 }
 
+/**
+ * Mode value for `clients.<id>.mode` and `global.mode`.
+ *
+ * - `'global'` (clients only) — delegate to the global mode/manualUrl.
+ * - `'manual'` — use the corresponding manualUrl datapoint.
+ * - any URL string — redirect there directly. Validated via {@link coerceSafeUrl}.
+ *
+ * Stored as a plain string state with `common.states` populated by the URL
+ * discovery (plus the sentinels above). Empty string / null = no choice yet,
+ * resolver returns null which triggers the setup page.
+ */
+export type ModeValue = string;
+
 /** In-memory record for a known client. Mirrors the clients.<id>.* channel. */
 export interface ClientRecord {
     /** Short client ID — used as datapoint segment (e.g. "a4b9c2"). */
@@ -28,8 +41,13 @@ export interface ClientRecord {
     cookie: string;
     /** Currently active OAuth2 access token, or null if not authenticated. */
     token: string | null;
-    /** Per-client visUrl (null = use global override or setup page). */
-    visUrl: string | null;
+    /**
+     * Mode dropdown value: `'global'`, `'manual'` or a concrete URL.
+     * See {@link ModeValue}. Empty string until first user choice.
+     */
+    mode: ModeValue;
+    /** Free-text URL used when {@link mode} is `'manual'`. */
+    manualUrl: string | null;
     /** Last observed client IP. */
     ip: string | null;
     /** Reverse-DNS hostname of last observed IP (null if lookup failed). */
