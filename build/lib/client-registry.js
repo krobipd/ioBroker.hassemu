@@ -113,6 +113,10 @@ class ClientRegistry {
       const record = { id, cookie, token, mode, manualUrl, ip, hostname };
       this.trackInMemory(record);
       await this.ensureObjects(record);
+      const modeStateRaw = await this.readState(`${id}.mode`);
+      if (modeStateRaw === "" || modeStateRaw === null || modeStateRaw === void 0) {
+        await this.adapter.setStateAsync(`clients.${id}.mode`, { val: 0, ack: true });
+      }
     }
     this.adapter.log.debug(`client-registry: restored ${this.byId.size} client(s)`);
   }
@@ -397,20 +401,18 @@ class ClientRegistry {
     var _a;
     const { id, cookie, ip, hostname } = record;
     const mergedStates = this.buildModeStates();
+    await this.adapter.setObjectNotExistsAsync(`clients.${id}`, {
+      type: "channel",
+      common: { name: (_a = hostname != null ? hostname : ip) != null ? _a : id },
+      native: { cookie, token: null }
+    });
     await Promise.all([
-      this.adapter.setObjectNotExistsAsync(`clients.${id}`, {
-        type: "channel",
-        common: { name: (_a = hostname != null ? hostname : ip) != null ? _a : id },
-        native: { cookie, token: null }
-      }),
-      this.adapter.setObjectNotExistsAsync(`clients.${id}.mode`, {
+      this.adapter.extendObjectAsync(`clients.${id}.mode`, {
         type: "state",
         common: {
           name: "Redirect mode",
           // 'mixed' future-proofs against the upcoming js-controller
-          // strict-type cast (see govee-smart v1.11.0 pattern). User
-          // can write Number/String/Sentinel from Blockly/scripts
-          // without "expects type X but received Y" warnings.
+          // strict-type cast (see govee-smart v1.11.0 pattern).
           type: "mixed",
           role: "value",
           read: true,
@@ -420,7 +422,7 @@ class ClientRegistry {
         },
         native: {}
       }),
-      this.adapter.setObjectNotExistsAsync(`clients.${id}.manualUrl`, {
+      this.adapter.extendObjectAsync(`clients.${id}.manualUrl`, {
         type: "state",
         common: {
           name: "Manual URL",

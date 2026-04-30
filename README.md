@@ -147,7 +147,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.3.2 (2026-04-30)
 
 - Hotfix for v1.3.1: `setObjectNotExistsAsync` is a no-op on objects that already exist as partial-formed leftovers from the v1.2.0 migration bug. v1.3.2 uses `extendObjectAsync` for `clients.<id>.mode` + `clients.<id>.manualUrl` so the missing properties (top-level `type`, name, role, read, write, def) are merged into the existing partial object — js-controller's "obj.type has to exist" warning goes away and the dropdown renders the labels.
 - New `repairGlobalSchemas()` in main.ts does the same defensive merge for `global.mode` + `global.manualUrl`. Runs unconditionally on every start so users upgrading from v1.2.0/v1.3.0/v1.3.1 (where the legacy `visUrl` is already gone) also get the schema repaired.
@@ -182,14 +182,6 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
     - Dependabot now ignores major bumps for `@types/node`, `typescript`, `eslint`, `actions/checkout`, `actions/setup-node`
     - `nyc` config + `coverage` script added
     - Orphan `.github/auto-merge.yml` removed (active workflow is `automerge-dependabot.yml` using `gh pr merge`)
-
-### 1.1.5 (2026-04-26)
-
-- Process-level `unhandledRejection` / `uncaughtException` handlers added as last-line-of-defence against fire-and-forget rejections.
-- Stop shipping the `manual-review` release-script plugin — adapter-only consequence.
-- Audit-driven boilerplate sync with the other krobi adapters (`.vscode` json5 schemas, `tsconfig.test` looser test rules).
-- Min js-controller correction: was `>=7.0.0`, restored to repochecker-recommended `>=6.0.11` (Source: `ioBroker.repochecker/lib/M1000_IOPackageJson.js`).
-- `@types/iobroker` bumped to `^7.1.1`.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
