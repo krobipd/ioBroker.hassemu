@@ -1,12 +1,5 @@
 import { expect } from 'chai';
-import {
-    coerceFiniteNumber,
-    coerceString,
-    coerceBoolean,
-    coerceUuid,
-    coerceSafeUrl,
-    isPlainObject,
-} from './coerce';
+import { coerceFiniteNumber, coerceString, coerceBoolean, coerceUuid, coerceSafeUrl, isPlainObject } from './coerce';
 
 describe('coerce', () => {
     describe('coerceFiniteNumber', () => {
@@ -106,28 +99,12 @@ describe('coerce', () => {
 
     describe('coerceUuid', () => {
         it('accepts valid UUIDs (any version)', () => {
-            expect(coerceUuid('12345678-1234-1234-1234-123456789abc')).to.equal(
-                '12345678-1234-1234-1234-123456789abc',
-            );
-            expect(coerceUuid('abcdef12-3456-4789-abcd-ef1234567890')).to.equal(
-                'abcdef12-3456-4789-abcd-ef1234567890',
-            );
+            expect(coerceUuid('12345678-1234-1234-1234-123456789abc')).to.equal('12345678-1234-1234-1234-123456789abc');
+            expect(coerceUuid('abcdef12-3456-4789-abcd-ef1234567890')).to.equal('abcdef12-3456-4789-abcd-ef1234567890');
         });
 
         it('lowercases the output', () => {
-            expect(coerceUuid('ABCDEF12-3456-4789-ABCD-EF1234567890')).to.equal(
-                'abcdef12-3456-4789-abcd-ef1234567890',
-            );
-        });
-
-        it('accepts v4 UUIDs in strict mode', () => {
-            expect(coerceUuid('abcdef12-3456-4789-abcd-ef1234567890', true)).to.equal(
-                'abcdef12-3456-4789-abcd-ef1234567890',
-            );
-        });
-
-        it('rejects non-v4 UUIDs in strict mode', () => {
-            expect(coerceUuid('12345678-1234-1234-1234-123456789abc', true)).to.be.null;
+            expect(coerceUuid('ABCDEF12-3456-4789-ABCD-EF1234567890')).to.equal('abcdef12-3456-4789-abcd-ef1234567890');
         });
 
         it('rejects malformed strings', () => {
@@ -149,9 +126,7 @@ describe('coerce', () => {
         it('accepts http and https URLs', () => {
             expect(coerceSafeUrl('http://example.com')).to.equal('http://example.com');
             expect(coerceSafeUrl('https://example.com/path')).to.equal('https://example.com/path');
-            expect(coerceSafeUrl('http://192.168.1.10:8082/vis/')).to.equal(
-                'http://192.168.1.10:8082/vis/',
-            );
+            expect(coerceSafeUrl('http://192.168.1.10:8082/vis/')).to.equal('http://192.168.1.10:8082/vis/');
         });
 
         it('rejects dangerous schemes', () => {

@@ -1,191 +1,193 @@
-import { expect } from "chai";
-import crypto from "node:crypto";
-import { MDNSService } from "./mdns";
-import type { AdapterConfig } from "./types";
+import { expect } from 'chai';
+import crypto from 'node:crypto';
+import { MDNSService } from './mdns';
+import type { AdapterConfig } from './types';
 
 interface LogEntry {
-  level: string;
-  msg: string;
+    level: string;
+    msg: string;
 }
 
 interface MockAdapter {
-  log: {
-    debug: (msg: string) => void;
-    info: (msg: string) => void;
-    warn: (msg: string) => void;
-    error: (msg: string) => void;
-  };
-  _logs: LogEntry[];
+    log: {
+        debug: (msg: string) => void;
+        info: (msg: string) => void;
+        warn: (msg: string) => void;
+        error: (msg: string) => void;
+    };
+    _logs: LogEntry[];
 }
 
 // Mock adapter for testing
 function createMockAdapter(): MockAdapter {
-  const logs: LogEntry[] = [];
-  return {
-    log: {
-      debug: (msg: string): void => {
-        logs.push({ level: "debug", msg });
-      },
-      info: (msg: string): void => {
-        logs.push({ level: "info", msg });
-      },
-      warn: (msg: string): void => {
-        logs.push({ level: "warn", msg });
-      },
-      error: (msg: string): void => {
-        logs.push({ level: "error", msg });
-      },
-    },
-    _logs: logs,
-  };
+    const logs: LogEntry[] = [];
+    return {
+        log: {
+            debug: (msg: string): void => {
+                logs.push({ level: 'debug', msg });
+            },
+            info: (msg: string): void => {
+                logs.push({ level: 'info', msg });
+            },
+            warn: (msg: string): void => {
+                logs.push({ level: 'warn', msg });
+            },
+            error: (msg: string): void => {
+                logs.push({ level: 'error', msg });
+            },
+        },
+        _logs: logs,
+    };
 }
 
-describe("MDNSService", () => {
-  let service: MDNSService;
-  let adapter: MockAdapter;
-  const config: AdapterConfig = {
-    port: 8123,
-    bindAddress: "0.0.0.0",
-    authRequired: false,
-    username: "admin",
-    password: "secret",
-    mdnsEnabled: true,
-    serviceName: "TestService",
-  };
+describe('MDNSService', () => {
+    let service: MDNSService;
+    let adapter: MockAdapter;
+    const config: AdapterConfig = {
+        port: 8123,
+        bindAddress: '0.0.0.0',
+        authRequired: false,
+        username: 'admin',
+        password: 'secret',
+        mdnsEnabled: true,
+        serviceName: 'TestService',
+    };
 
-  beforeEach(() => {
-    adapter = createMockAdapter();
-    service = new MDNSService(adapter as never, config, crypto.randomUUID());
-  });
-
-  afterEach(() => {
-    service.stop();
-  });
-
-  describe("constructor", () => {
-    it("should use the provided UUID", () => {
-      expect(service.uuid).to.match(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
-      );
+    beforeEach(() => {
+        adapter = createMockAdapter();
+        service = new MDNSService(adapter as never, config, crypto.randomUUID());
     });
 
-    it("should not be active initially", () => {
-      expect(service.active).to.be.false;
+    afterEach(() => {
+        service.stop();
     });
 
-    it("should use different UUIDs when different UUIDs are provided", () => {
-      const service2 = new MDNSService(adapter as never, config, crypto.randomUUID());
-      expect(service.uuid).to.not.equal(service2.uuid);
-    });
-  });
+    describe('constructor', () => {
+        it('should use the provided UUID', () => {
+            expect(service.uuid).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+        });
 
-  describe("getLocalIP", () => {
-    it("should return an IP address string", () => {
-      const ip = service.getLocalIP();
-      expect(ip).to.be.a("string");
-      // Should be either a valid IPv4 or fallback 127.0.0.1
-      expect(ip).to.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/);
-    });
-  });
+        it('should not be active initially', () => {
+            expect(service.active).to.be.false;
+        });
 
-  describe("start/stop lifecycle", () => {
-    it("should not throw on start", () => {
-      expect(() => service.start()).to.not.throw();
+        it('should use different UUIDs when different UUIDs are provided', () => {
+            const service2 = new MDNSService(adapter as never, config, crypto.randomUUID());
+            expect(service.uuid).to.not.equal(service2.uuid);
+        });
     });
 
-    it("should be active after start", () => {
-      service.start();
-      expect(service.active).to.be.true;
+    describe('getLocalIP', () => {
+        it('should return an IP address string', () => {
+            const ip = service.getLocalIP();
+            expect(ip).to.be.a('string');
+            // Should be either a valid IPv4 or fallback 127.0.0.1
+            expect(ip).to.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/);
+        });
     });
 
-    it("should log debug on start", () => {
-      service.start();
-      const debugLogs = adapter._logs.filter((l) => l.level === "debug");
-      const broadcastLog = debugLogs.find((l) => l.msg.includes("mDNS: Broadcasting"));
-      expect(broadcastLog).to.not.be.undefined;
-      expect(broadcastLog!.msg).to.include("TestService");
+    describe('start/stop lifecycle', () => {
+        it('should not throw on start', () => {
+            expect(() => service.start()).to.not.throw();
+        });
+
+        it('should be active after start', () => {
+            service.start();
+            expect(service.active).to.be.true;
+        });
+
+        it('should log debug on start', () => {
+            service.start();
+            const debugLogs = adapter._logs.filter(l => l.level === 'debug');
+            const broadcastLog = debugLogs.find(l => l.msg.includes('mDNS: Broadcasting'));
+            expect(broadcastLog).to.not.be.undefined;
+            expect(broadcastLog!.msg).to.include('TestService');
+        });
+
+        it('should include port in start log', () => {
+            service.start();
+            const debugLogs = adapter._logs.filter(l => l.level === 'debug');
+            const broadcastLog = debugLogs.find(l => l.msg.includes('mDNS: Broadcasting'));
+            expect(broadcastLog!.msg).to.include('8123');
+        });
+
+        it('should not be active after stop', () => {
+            service.start();
+            expect(service.active).to.be.true;
+            service.stop();
+            expect(service.active).to.be.false;
+        });
+
+        it('should handle stop when not active', () => {
+            expect(service.active).to.be.false;
+            expect(() => service.stop()).to.not.throw();
+        });
+
+        it('should handle multiple stop calls', () => {
+            service.start();
+            service.stop();
+            expect(() => service.stop()).to.not.throw();
+        });
+
+        it('should handle start-stop-start cycle', () => {
+            service.start();
+            expect(service.active).to.be.true;
+            service.stop();
+            expect(service.active).to.be.false;
+            service.start();
+            expect(service.active).to.be.true;
+        });
     });
 
-    it("should include port in start log", () => {
-      service.start();
-      const debugLogs = adapter._logs.filter((l) => l.level === "debug");
-      const broadcastLog = debugLogs.find((l) => l.msg.includes("mDNS: Broadcasting"));
-      expect(broadcastLog!.msg).to.include("8123");
-    });
+    describe('service name', () => {
+        it('should use configured service name', () => {
+            service.start();
+            const debugLogs = adapter._logs.filter(l => l.level === 'debug');
+            const broadcastLog = debugLogs.find(l => l.msg.includes('mDNS: Broadcasting'));
+            expect(broadcastLog!.msg).to.include('TestService._home-assistant._tcp');
+        });
 
-    it("should not be active after stop", () => {
-      service.start();
-      expect(service.active).to.be.true;
-      service.stop();
-      expect(service.active).to.be.false;
+        it('should use ioBroker as default service name', () => {
+            const defaultConfig: AdapterConfig = {
+                ...config,
+                serviceName: '',
+            };
+            const defaultService = new MDNSService(adapter as never, defaultConfig, crypto.randomUUID());
+            defaultService.start();
+            const debugLogs = adapter._logs.filter(l => l.level === 'debug');
+            const broadcastLog = debugLogs.find(l => l.msg.includes('mDNS: Broadcasting'));
+            expect(broadcastLog!.msg).to.include('ioBroker._home-assistant._tcp');
+            defaultService.stop();
+        });
     });
-
-    it("should handle stop when not active", () => {
-      expect(service.active).to.be.false;
-      expect(() => service.stop()).to.not.throw();
-    });
-
-    it("should handle multiple stop calls", () => {
-      service.start();
-      service.stop();
-      expect(() => service.stop()).to.not.throw();
-    });
-
-    it("should handle start-stop-start cycle", () => {
-      service.start();
-      expect(service.active).to.be.true;
-      service.stop();
-      expect(service.active).to.be.false;
-      service.start();
-      expect(service.active).to.be.true;
-    });
-  });
-
-  describe("service name", () => {
-    it("should use configured service name", () => {
-      service.start();
-      const debugLogs = adapter._logs.filter((l) => l.level === "debug");
-      const broadcastLog = debugLogs.find((l) => l.msg.includes("mDNS: Broadcasting"));
-      expect(broadcastLog!.msg).to.include("TestService._home-assistant._tcp");
-    });
-
-    it("should use ioBroker as default service name", () => {
-      const defaultConfig: AdapterConfig = {
-        ...config,
-        serviceName: "",
-      };
-      const defaultService = new MDNSService(adapter as never, defaultConfig, crypto.randomUUID());
-      defaultService.start();
-      const debugLogs = adapter._logs.filter((l) => l.level === "debug");
-      const broadcastLog = debugLogs.find((l) => l.msg.includes("mDNS: Broadcasting"));
-      expect(broadcastLog!.msg).to.include("ioBroker._home-assistant._tcp");
-      defaultService.stop();
-    });
-  });
 });
 
-describe("MDNSService cross-platform", () => {
-  it("should work without avahi (cross-platform)", () => {
-    // bonjour-service works on all platforms — no avahi needed
-    const adapter = createMockAdapter();
-    const service = new MDNSService(adapter as never, {
-      port: 8123,
-      bindAddress: "0.0.0.0",
-      authRequired: false,
-      username: "",
-      password: "",
-      mdnsEnabled: true,
-      serviceName: "CrossPlatformTest",
-    }, crypto.randomUUID());
+describe('MDNSService cross-platform', () => {
+    it('should work without avahi (cross-platform)', () => {
+        // bonjour-service works on all platforms — no avahi needed
+        const adapter = createMockAdapter();
+        const service = new MDNSService(
+            adapter as never,
+            {
+                port: 8123,
+                bindAddress: '0.0.0.0',
+                authRequired: false,
+                username: '',
+                password: '',
+                mdnsEnabled: true,
+                serviceName: 'CrossPlatformTest',
+            },
+            crypto.randomUUID(),
+        );
 
-    service.start();
-    expect(service.active).to.be.true;
+        service.start();
+        expect(service.active).to.be.true;
 
-    // No error logs — bonjour-service works everywhere
-    const errorLogs = adapter._logs.filter((l) => l.level === "error");
-    expect(errorLogs.length).to.equal(0);
+        // No error logs — bonjour-service works everywhere
+        const errorLogs = adapter._logs.filter(l => l.level === 'error');
+        expect(errorLogs.length).to.equal(0);
 
-    service.stop();
-    expect(service.active).to.be.false;
-  });
+        service.stop();
+        expect(service.active).to.be.false;
+    });
 });

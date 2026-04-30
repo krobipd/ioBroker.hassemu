@@ -152,9 +152,7 @@ describe('WebServer', () => {
 
     describe('constructor', () => {
         it('generates a valid UUID', () => {
-            expect(server.instanceUuid).to.match(
-                /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
-            );
+            expect(server.instanceUuid).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
         });
 
         it('uses configured service name', () => {
@@ -654,6 +652,128 @@ describe('WebServer', () => {
                 await server.inject({ method: 'POST', url: '/auth/login_flow', payload: {} });
             }
             expect(server.sessions.size).to.be.at.most(100);
+        });
+    });
+
+    describe('brute-force lockout (security fix v1.3.0)', () => {
+        async function buildAuthServer(): Promise<WebServer> {
+            const built = createMockAdapter();
+            const reg = new ClientRegistry(built.adapter as never);
+            const g = await buildGlobalConfig(built.adapter, 'http://example.com/vis', null, true);
+            const s = new WebServer(
+                built.adapter as never,
+                { ...baseConfig, authRequired: true },
+                reg,
+                g,
+                crypto.randomUUID(),
+            );
+            await s['app'].register((await import('@fastify/cookie')).default);
+            s['setupErrorHandler']();
+            s['setupRoutes']();
+            await s['app'].ready();
+            return s;
+        }
+
+        async function loginWith(s: WebServer, password: string, remoteAddress = '10.0.0.5'): Promise<number> {
+            const r1 = await s.inject({
+                method: 'POST',
+                url: '/auth/login_flow',
+                payload: {},
+                remoteAddress,
+            });
+            const flowId = (r1.json() as { flow_id: string }).flow_id;
+            const r2 = await s.inject({
+                method: 'POST',
+                url: `/auth/login_flow/${flowId}`,
+                payload: { username: 'admin', password },
+                remoteAddress,
+            });
+            return r2.statusCode;
+        }
+
+        it('locks an IP after 5 failed attempts (returns 429)', async () => {
+            const s = await buildAuthServer();
+            try {
+                for (let i = 0; i < 5; i++) {
+                    expect(await loginWith(s, 'wrong')).to.equal(400);
+                }
+                // 6th attempt should be locked out
+                expect(await loginWith(s, 'wrong')).to.equal(429);
+                expect(await loginWith(s, 'secret')).to.equal(429); // even right password locked
+            } finally {
+                await s['app'].close();
+            }
+        });
+
+        it('clears the failure counter on a successful login', async () => {
+            const s = await buildAuthServer();
+            try {
+                for (let i = 0; i < 4; i++) {
+                    expect(await loginWith(s, 'wrong')).to.equal(400);
+                }
+                // 5th attempt: correct password — should succeed AND reset counter
+                expect(await loginWith(s, 'secret')).to.equal(200);
+                // Now we can fail again without immediate lock
+                expect(await loginWith(s, 'wrong')).to.equal(400);
+                expect(s.loginAttempts.get('10.0.0.5')?.failedCount).to.equal(1);
+            } finally {
+                await s['app'].close();
+            }
+        });
+
+        it('tracks lockouts per IP independently', async () => {
+            const s = await buildAuthServer();
+            try {
+                for (let i = 0; i < 5; i++) {
+                    await loginWith(s, 'wrong', '10.0.0.5');
+                }
+                expect(await loginWith(s, 'wrong', '10.0.0.5')).to.equal(429);
+                // Different IP should still be allowed
+                expect(await loginWith(s, 'wrong', '10.0.0.6')).to.equal(400);
+            } finally {
+                await s['app'].close();
+            }
+        });
+
+        it('does not track failures when authRequired is disabled', async () => {
+            const built = createMockAdapter();
+            const reg = new ClientRegistry(built.adapter as never);
+            const g = await buildGlobalConfig(built.adapter, 'http://example.com/vis', null, true);
+            const s = new WebServer(
+                built.adapter as never,
+                { ...baseConfig, authRequired: false },
+                reg,
+                g,
+                crypto.randomUUID(),
+            );
+            await s['app'].register((await import('@fastify/cookie')).default);
+            s['setupErrorHandler']();
+            s['setupRoutes']();
+            await s['app'].ready();
+            try {
+                // Even with wrong password, no auth check happens at all → no failures recorded
+                for (let i = 0; i < 10; i++) {
+                    await loginWith(s, 'wrong');
+                }
+                expect(s.loginAttempts.size).to.equal(0);
+            } finally {
+                await s['app'].close();
+            }
+        });
+
+        it('cleanupSessions() prunes expired lockouts', async () => {
+            const s = await buildAuthServer();
+            try {
+                // Inject an expired lockout entry directly
+                s.loginAttempts.set('10.0.0.99', { failedCount: 5, lockedUntil: Date.now() - 1000 });
+                s.loginAttempts.set('10.0.0.100', { failedCount: 2, lockedUntil: 0 }); // not locked
+                expect(s.loginAttempts.size).to.equal(2);
+                s.cleanupSessions();
+                expect(s.loginAttempts.has('10.0.0.99')).to.be.false; // pruned
+                expect(s.loginAttempts.has('10.0.0.100')).to.be.true; // still tracked
+            } finally {
+                await s['app'].close();
+            }
         });
     });
 });

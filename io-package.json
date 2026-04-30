@@ -1,265 +1,226 @@
 {
-  "common": {
-    "name": "hassemu",
-    "version": "1.2.0",
-    "news": {
-      "1.2.0": {
-        "en": "Redirect target now configured via `mode` (dropdown) + `manualUrl` (free text) instead of the old `visUrl`. Migration runs automatically.\nMaster switch `global.enabled` syncs every display: on → all follow the global URL, off → each display picks up its own again.\nIdle displays without auth token are auto-removed after 30 days.\nSecurity hardening of the auth flow.\n`web` adapter declared as dependency.",
-        "de": "Redirect-Ziel jetzt über `mode` (Dropdown) + `manualUrl` (Freitext) statt des alten `visUrl`. Migration läuft automatisch.\nMaster-Switch `global.enabled` synct jedes Display: an → alle folgen der globalen URL, aus → jedes Display nutzt wieder seine eigene.\nDisplay-Channels ohne Auth-Token werden nach 30 Tagen Leerlauf automatisch entfernt.\nAuth-Flow gehärtet.\n`web`-Adapter als Abhängigkeit eingetragen.",
-        "ru": "Цель перенаправления теперь настраивается через `mode` (выпадающий список) + `manualUrl` (свободный текст) вместо старого `visUrl`. Миграция выполняется автоматически.\nГлавный переключатель `global.enabled` синхронизирует все дисплеи: вкл → все следуют глобальному URL, выкл → каждый дисплей использует свой.\nПростаивающие дисплеи без токена авторизации удаляются автоматически через 30 дней.\nУсилена безопасность потока авторизации.\nАдаптер `web` объявлен как зависимость.",
-        "pt": "Destino do redirecionamento agora configurado via `mode` (dropdown) + `manualUrl` (texto livre) em vez do antigo `visUrl`. Migração executa automaticamente.\nInterruptor mestre `global.enabled` sincroniza cada display: ligado → todos seguem o URL global, desligado → cada display usa o seu próprio.\nDisplays inativos sem token de autenticação são removidos automaticamente após 30 dias.\nFluxo de autenticação reforçado.\nAdaptador `web` declarado como dependência.",
-        "nl": "Redirect-doel wordt nu geconfigureerd via `mode` (dropdown) + `manualUrl` (vrije tekst) in plaats van de oude `visUrl`. Migratie verloopt automatisch.\nHoofdschakelaar `global.enabled` synchroniseert elk display: aan → allemaal volgen de globale URL, uit → elk display gebruikt zijn eigen.\nInactieve displays zonder auth-token worden na 30 dagen automatisch verwijderd.\nAuth-flow versterkt.\n`web`-adapter als afhankelijkheid gedeclareerd.",
-        "fr": "Cible de redirection désormais configurée via `mode` (liste déroulante) + `manualUrl` (texte libre) au lieu de l'ancien `visUrl`. La migration est automatique.\nL'interrupteur principal `global.enabled` synchronise chaque écran : activé → tous suivent l'URL globale, désactivé → chaque écran utilise la sienne.\nLes écrans inactifs sans jeton d'authentification sont supprimés automatiquement après 30 jours.\nFlux d'authentification renforcé.\nAdaptateur `web` déclaré comme dépendance.",
-        "it": "Destinazione del redirect ora configurata tramite `mode` (menu a discesa) + `manualUrl` (testo libero) invece del vecchio `visUrl`. La migrazione è automatica.\nInterruttore principale `global.enabled` sincronizza ogni display: on → tutti seguono l'URL globale, off → ogni display usa il proprio.\nI display inattivi senza token di autenticazione vengono rimossi automaticamente dopo 30 giorni.\nFlusso di autenticazione rafforzato.\nAdattatore `web` dichiarato come dipendenza.",
-        "es": "Destino de redirección ahora configurado vía `mode` (desplegable) + `manualUrl` (texto libre) en lugar del antiguo `visUrl`. La migración es automática.\nInterruptor principal `global.enabled` sincroniza cada pantalla: activado → todas siguen la URL global, desactivado → cada pantalla usa la suya.\nPantallas inactivas sin token de autenticación se eliminan automáticamente tras 30 días.\nFlujo de autenticación reforzado.\nAdaptador `web` declarado como dependencia.",
-        "pl": "Cel przekierowania jest teraz konfigurowany przez `mode` (lista rozwijana) + `manualUrl` (tekst dowolny) zamiast starego `visUrl`. Migracja przebiega automatycznie.\nGłówny przełącznik `global.enabled` synchronizuje każdy wyświetlacz: wł → wszystkie podążają za globalnym URL, wył → każdy używa własnego.\nNieaktywne wyświetlacze bez tokena uwierzytelniania są usuwane automatycznie po 30 dniach.\nWzmocniono bezpieczeństwo procesu uwierzytelniania.\nAdapter `web` zadeklarowany jako zależność.",
-        "uk": "Ціль перенаправлення тепер налаштовується через `mode` (випадаючий список) + `manualUrl` (вільний текст) замість старого `visUrl`. Міграція виконується автоматично.\nГоловний перемикач `global.enabled` синхронізує кожен дисплей: увімк → усі слідують глобальній URL, вимк → кожен дисплей використовує власну.\nНеактивні дисплеї без токена автентифікації автоматично видаляються через 30 днів.\nПотік автентифікації посилено.\nАдаптер `web` оголошено залежністю.",
-        "zh-cn": "重定向目标现在通过 `mode`（下拉菜单）+ `manualUrl`（自由文本）配置，取代旧的 `visUrl`。迁移自动运行。\n主开关 `global.enabled` 同步每个显示器：开 → 全部跟随全局 URL，关 → 每个显示器使用自己的。\n无认证令牌且闲置 30 天的显示器会自动移除。\n认证流程已加固。\n`web` 适配器已声明为依赖。"
-      },
-      "1.1.6": {
-        "en": "Audit cleanup against the upstream `ioBroker.example/TypeScript` full standard:\nTest setup migrated: tests now live next to source as `src/lib/*.test.ts` and run directly via `ts-node/register`. Removed `tsconfig.test.json` + `build-test/`, added `test/mocharc.custom.json` + `test/mocha.setup.js` + `test/tsconfig.json` + `test/.eslintrc.json`\n`@types/node` rolled back from `^25.6.0` to `^20.19.24` so type defs match `engines.node: \">=20\"`\nDependabot now ignores major bumps for `@types/node`, `typescript`, `eslint`, `actions/checkout`, `actions/setup-node`\n`nyc` config + `coverage` script added\nOrphan `.github/auto-merge.yml` removed (active workflow is `automerge-dependabot.yml` using `gh pr merge`)",
-        "de": "Audit-Aufräumung gegen den vorgeschalteten `ioBroker.example/TypeScript` Vollstandard:\nTest-Setup migriert: Tests leben jetzt neben der Quelle als `src/lib/*.test.ts` und laufen direkt über `ts-node/register`. Entfernen `tsconfig.test.json` + `build-test/`, add `test/mocharc.custom.json` + `test/mocha.setup.js` + `test/tsconfig.json` + `test/.eslintrc.json`\n`@types/node` rollte zurück von `^25.6.0` zu `^20.19.24` so type defs match `engines.node: \">=20\"``\nDependabot ignoriert nun wichtige Beulen für `@types/node`, `typescript`, `eslint`, `actions/checkout`, `actions/setup-node`\n`nyc` config + `coverage` skript hinzugefügt\nOrphan `.github/auto-merge.yml` entfernt (aktiver Workflow ist `automerge-dependabot.yml` mit `gh pr merge`)",
-        "ru": "Очистка аудита по полному стандарту «ioBroker.example/TypeScript»:\nНастройка теста мигрировала: тесты теперь живут рядом с источником как «src/lib/*.test.ts» и запускаются непосредственно через «ts-узел/регистр». Снято \"tsconfig.test.json\" + \"build-test/\", добавлено \"test/mocharc.custom.json\" + \"test/mocha.setup.js\" + \"test/tsconfig.json\" + \"test/.eslintrc.json\"\n'@types/node' откатился от '^25.6.0' к '^20.19.24', так что type defs соответствуют 'engines.node: '>=20'\nDependabot теперь игнорирует основные проблемы для «@types/node», «typescript», «eslint», «actions/checkout», «actions/setup-node»\n«nyc» config + скрипт «coverage»\nOrphan '.github/auto-merge.yml' removed (активный рабочий процесс - 'automerge-dependabot.yml' using 'gh pr merge')",
-        "pt": "Limpeza de auditoria contra o padrão completo 'ioBroker.example/TypeScript` upstream:\nTest setup migrated: tests now live next to source as `src/lib/*.test.ts` e execute diretamente via `ts-node/register`. Removido `tsconfig.test.json` + `build-test/`, adicionado `test/mocharc.custom.json` + `test/mocha.setup.js` + `test/tsconfig.json` + `test/.eslintrc.json'\n`@types/node` rolled back from `^25.6.0` to `^20.19.24` então tipo defs match `engines.node: \">=20\"`\nDependabot agora ignora grandes saliências para `@types/node`, `typescript`, `eslint`, `actions/checkout`, `actions/setup-node'\n'nyc' config + 'coverage' script adicionado\nÓrfão `.github/auto-merge.yml` removido (fluxo de trabalho ativo é `automerge-dependabot.yml` usando `gh pr merge`)",
-        "nl": "Audit cleanup tegen de upstream .example/TypeScript\nTestopstelling gemigreerd: de tests leven nu naast de bron als  Verwijderd \nhet type defs komt overeen met de motors.node: \">=20\"\nDependabot negeert nu de grote hobbels voor \n`nyc` config + `coverage` script added\nOrphan ",
-        "fr": "Nettoyage de l'audit par rapport à la norme en amont `ioBroker.example/TypeScript`:\nConfiguration de test migrée: teste maintenant en direct à côté de source comme `src/lib/*.test.ts` et fonctionne directement via `ts-node/register`. Supprimé `tsconfig.test.json` + `build-test/`, ajouté `test/mocharc.custom.json` + `test/mocha.setup.js` + `test/tsconfig.json` + `test/.estintrc.json`\n`@types/node` retourné de `^25.6.0` à `^20.19.24` de sorte que le type defs correspond `moteurs.node: \">=20\"`\nDependabot ignore maintenant les principales bosses pour `@types/node`, `typescript`, `estint`, `actions/checkout`, `actions/setup-node`\nscript `nyc` config + `coverage` ajouté\nOrphan `.github/auto-merge.yml` supprimé (le workflow actif est `automerge-dependabot.yml` en utilisant `gh pr merge`)",
-        "it": "Audit cleanup contro il `ioBroker.example/TypeScript` standard completo:\nConfigurazione del test migrata: i test ora vivono accanto alla sorgente come `src/lib/*.test.ts` e vengono eseguiti direttamente tramite `ts-node/register`. `tsconfig.test.json` + `build-test/`, aggiunto `test/mocharc.custom.json` + `test/mocha.setup.js` + `test/tsconfig.json` + `test/.eslintrc.json`\n`@types/node` rotolato indietro da `^25.6.0` a `^20.19.24` così tipo defs match `engines.node: \">=20\"`\nDependabot ora ignora urti principali per `@types/node`, `typescript`, `eslint`, `actions/checkout`, `actions/setup-node`\n`nyc` config + `coverage` script aggiunto\nOrphan `.github/auto-merge.yml` rimosso (il flusso di lavoro attivo è `automerge-dependabot.yml` utilizzando `gh pr merge`)",
-        "es": "Limpieza de auditorías contra el estándar completo del `ioBroker.example/TypeScript`:\nSe migraron las pruebas: las pruebas ahora viven al lado de la fuente como `src/lib/*.test.ts` y se ejecutan directamente a través de `ts-node/register`. Removed `tsconfig.test.json` + `build-test/`, added `test/mocharc.custom.json` + `test/mocha.setup.js` + `test/tsconfig.json` + `test/.eslintrc.json`\n`@types/node` rolled back from `^25.6.0` to `^20.19.24` so type defs match `engines.node: \"consign=20\"\nDependabot hace caso omiso de los principales golpes de `@tipos/nodo`, `tiposcript`, `eslint`, `actions/checkout`, `actions/setup-node`\n`nyc` config + `coverage` script añadido\nOrphan `.github/auto-merge.yml` removed (active workflow is `automerge-dependabot.yml` using `gh pr merge`)",
-        "pl": "Oczyszczanie audytów w stosunku do pełnego standardu 'iBroker.example / TypeScript':\nUstawienie testowe migrowane: testy są teraz dostępne obok źródła jako 'src / lib / * .test.ts' i uruchamiane bezpośrednio przez 'ts- node / register'. Usunięto 'tsconfig.test.json' + 'build- test /', dodano 'test / mocharc.customi.json' + 'test / mocha.setup.js' + 'test / tsconfig.json' + 'test / .eslintrc.json'\n'@ types / node' rolled back from '^ 25.6.0' to '^ 20.19.24' so type defs match 'engins.node: \"> = 20\"'\nDependabot ignoruje teraz główne przeszkody dla '@ types / node', 'typescript', 'eslint', 'actions / checkout', 'actions / setup-node'\ndodano skrypt 'nyc' config + 'cover'\nUsunięty Orphan '.github / auto- merge.yml' (aktywny przepływ pracy to 'automaterge- dependiabot.yml' przy użyciu 'gh pr merge')",
-        "uk": "Аудиторське очищення від потоку `ioBroker.example/TypeScript`\nТестові налаштування мігровані: тести тепер живуть поруч з джерелом як `src/lib/*.test.ts` і запустити безпосередньо через `ts-node/register`. Вилучено `tsconfig.test.json` + `build-test/``, додано `test/mocharc.custom.json` + `test/mocha.setup.js` +`test/tsconfig.json` + `test/.eslintrc.json`\n`@types/node` від `^25.6.0`` до `^20.19.24` так типу defs match `engines.node: \">=20\"`\nВ залежності від того, як `slint`, `slint`, `actions/checkout`, `actions/setup-node`\n`nyc` config + скрипт `coverage` додано\nOrphan `.github/auto-merge.yml` вилучено (активний робочий процес `automerge-залежніabot.yml` за допомогою `gh pr злиття`)",
-        "zh-cn": "对照上游`ioBroker.example/TypeScript ' 全面标准进行审计清理:\n测试设置迁移:现在测试作为`src/lib/*.test.ts ' 在源头旁边进行,直接通过`ts-node/register ' 运行。 删除`tsconfig.test.json ' +`building-test/ ' ,增加`test/mocharc.custom.json ' +`test/mocha.setup.js ' +`test/tsconfig.json ' +`test/.eslintrac.json'\n`@型/节点`从`^25.6.0`回滚至`^20.19.24`,因此 type型与 型相同\n现在,依赖忽略了`Q ' 类型/节点 ' 、`字典 ' 、`slint ' 、`行动/检查 ' 、`行动/设置节点 ' 的重大颠峰\n添加了 \" nyc \" 配置 + \" 覆盖 \" 文字\n孤儿`.github/自动合并.yml ' 被删除(使用`gh pr 合并 ' 的主动工作流程为`自动合并-依赖.yml')"
-      },
-      "1.1.5": {
-        "en": "Process-level unhandledRejection/uncaughtException handlers added as last-line-of-defence. Stop shipping the manual-review release-script plugin. Audit-driven boilerplate sync with the other krobi adapters. Min js-controller correction: was >=7.0.0, restored to repochecker-recommended >=6.0.11 (Source: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker bumped to ^7.1.1.",
-        "de": "Process-level unhandledRejection/uncaughtException-Handler als Last-Line-of-Defence hinzugefügt. Das manual-review-Release-Script-Plugin entfällt. Audit-getriebener Boilerplate-Sync gegenüber den anderen krobi-Adaptern. js-controller-Korrektur: war >=7.0.0, korrigiert auf Repochecker-recommended >=6.0.11 (Quelle: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker auf ^7.1.1 angehoben.",
-        "ru": "Process-level обробники unhandledRejection/uncaughtException додано як last-line-of-defence. Manual-review release-script plugin більше не постачається. Audit-керована синхронізація boilerplate з іншими krobi-адаптерами. Корекція js-controller: було >=7.0.0, відновлено на repochecker-recommended >=6.0.11 (Джерело: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker оновлено до ^7.1.1.",
-        "pt": "Handlers process-level unhandledRejection/uncaughtException adicionados como last-line-of-defence. O plugin manual-review do release-script foi removido. Sincronização de boilerplate orientada por audit com os outros adaptadores krobi. Correção js-controller: era >=7.0.0, restaurada para repochecker-recommended >=6.0.11 (Fonte: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker atualizado para ^7.1.1.",
-        "nl": "Process-level unhandledRejection/uncaughtException-handlers toegevoegd als last-line-of-defence. Het manual-review release-script plugin wordt niet meer meegeleverd. Audit-gestuurde boilerplate-sync met de andere krobi-adapters. js-controller-correctie: was >=7.0.0, hersteld naar repochecker-recommended >=6.0.11 (Bron: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker verhoogd naar ^7.1.1.",
-        "fr": "Handlers process-level unhandledRejection/uncaughtException ajoutés en last-line-of-defence. Le plugin manual-review du release-script n'est plus livré. Synchronisation boilerplate audit-driven avec les autres adaptateurs krobi. Correction js-controller: était >=7.0.0, restaurée à repochecker-recommended >=6.0.11 (Source: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker porté à ^7.1.1.",
-        "it": "Handler process-level unhandledRejection/uncaughtException aggiunti come last-line-of-defence. Il plugin manual-review del release-script non viene più distribuito. Sincronizzazione boilerplate audit-driven con gli altri adapter krobi. Correzione js-controller: era >=7.0.0, ripristinata a repochecker-recommended >=6.0.11 (Fonte: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker alzato a ^7.1.1.",
-        "es": "Handlers process-level unhandledRejection/uncaughtException añadidos como last-line-of-defence. El plugin manual-review del release-script ya no se incluye. Sincronización de boilerplate guiada por audit con los demás adaptadores krobi. Corrección js-controller: era >=7.0.0, restaurada a repochecker-recommended >=6.0.11 (Fuente: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker elevado a ^7.1.1.",
-        "pl": "Handlery process-level unhandledRejection/uncaughtException dodane jako last-line-of-defence. Plugin manual-review release-script nie jest już dostarczany. Synchronizacja boilerplate'u audit-driven z pozostałymi adapterami krobi. Korekcja js-controller: było >=7.0.0, przywrócono do repochecker-recommended >=6.0.11 (Źródło: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker podniesione do ^7.1.1.",
-        "uk": "Process-level обробники unhandledRejection/uncaughtException додано як last-line-of-defence. Manual-review release-script plugin більше не постачається. Audit-керована синхронізація boilerplate з іншими krobi-адаптерами. js-controller-корекція: було >=7.0.0, відновлено на repochecker-recommended >=6.0.11 (Джерело: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker оновлено до ^7.1.1.",
-        "zh-cn": "新增进程级 unhandledRejection/uncaughtException 处理器作为 last-line-of-defence。manual-review release-script 插件不再随包发布。与其他 krobi 适配器进行 audit 驱动的 boilerplate 同步。js-controller 更正：从 >=7.0.0 恢复为 repochecker 推荐的 >=6.0.11（来源：ioBroker.repochecker/lib/M1000_IOPackageJson.js）。@types/iobroker 升级至 ^7.1.1。"
-      },
-      "1.1.4": {
-        "en": "Separate test-build output (`build-test/`) from production `build/` — `npm test` no longer risks leaving duplicated `build/src` + `build/test` trees in the published package. No runtime change.",
-        "de": "Separate Test-Building-Ausgang (`Building-Test/`) von der Produktion `Building/` — `npm-Test` nicht mehr Risiken verlassen duplizierte `Building/Src` + `Building/test` Bäume im veröffentlichten Paket. Keine Laufzeitänderung.",
-        "ru": "Отдельная продукция испытательной постройки (‘build-test/’) от производства ‘build/’ — ‘npm test’ больше не рискует оставить дублированные деревья ‘build/src’ + ‘build/test’ в опубликованном пакете. Никаких изменений.",
-        "pt": "Saída de construção de teste separada (`build-test/`) da produção `build/` — `npm test` já não corre o risco de deixar árvores duplicadas `build/src` + `build/test` no pacote publicado. Nenhuma mudança de tempo de execução.",
-        "nl": "Aparte test-build output van de productie Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build- Geen verandering in de looptijd.",
-        "fr": "La sortie séparée de la construction d'essai (`build-test/`) de la production `build/` — `npm test` ne risque plus de laisser des arbres dupliqués `build/src` + `build/test` dans le paquet publié. Pas de changement d'exécution.",
-        "it": "Uscita separata di test-build (`build-test/`) dalla produzione `build/` — `npm test` non rischia più di lasciare duplicati `build/src` + `build/test` alberi nel pacchetto pubblicato. Nessun cambiamento di runtime.",
-        "es": "La producción separada de la producción de pruebas ( \" pruebas impresas \" ) de la producción \" , \" prueba npm \" ya no corre el riesgo de dejar árboles duplicados \" construidos/src \" + \" construidos/test \" en el paquete publicado. No hay cambio de horario.",
-        "pl": "Oddzielna produkcja testowa (\"build-test /\") z produkcji \"build /\" - \"npm test\" nie może już pozostawiać powielonych \"build / src\" + \"build / test\" drzew w opublikowanym pakiecie. Bez zmian.",
-        "uk": "Окремий тестово-будівельний вихід (`build-test/``) від виробництва `build/`` — `npm test’ не більше ризиків, що залишають дублікатом `build/src` + `build/test` дерев у опублікованому пакеті. Немає змін робочого часу.",
-        "zh-cn": "将试验-建设产出(`建设-测试/')与生产`建设/'——`npm测试 ' 分开,不再有将`建设/src ' +`建设/测试 ' 树木复制到已公布的成套材料的风险。 无运行时间变化 ."
-      },
-      "1.1.3": {
-        "en": "Fix duplicate client registration on initial connect — HA displays fire several parallel cookieless requests, each used to create a separate client record. Now locked per IP so the first create wins and the rest of the burst attach to the same client. Setup page redesigned: big green OK banner, localized into all 11 adapter languages (auto-picked from the ioBroker system language), IP shown alongside the device ID, responsive layout with dark-mode support.",
-        "de": "Doppelte Client-Registrierung beim ersten Verbinden behoben — HA-Displays feuern mehrere parallele Requests ohne Cookie, jeder legte bisher einen eigenen Client an. Jetzt pro IP gesperrt: der erste Create gewinnt, die restlichen Parallel-Requests werden dem gleichen Client zugeordnet. Setup-Seite überarbeitet: großes grünes OK-Banner, Lokalisierung in alle 11 Adapter-Sprachen (automatisch nach ioBroker-Systemsprache), IP wird neben der Device-ID angezeigt, responsive Layout mit Dark-Mode.",
-        "ru": "Исправлено дублирование регистрации клиента при первом подключении — HA-дисплеи шлют несколько параллельных запросов без cookie. Теперь блокировка по IP. Страница настройки переработана, локализована, показана IP.",
-        "pt": "Corrigido registro duplicado de cliente na conexão inicial — displays HA enviam várias requisições paralelas sem cookie. Agora bloqueadas por IP. Página de configuração redesenhada, traduzida, com IP.",
-        "nl": "Dubbele client-registratie bij eerste verbinding opgelost — HA-displays sturen meerdere parallelle requests zonder cookie. Nu vergrendeld per IP. Setup-pagina vernieuwd, gelokaliseerd, met IP.",
-        "fr": "Correction de l'enregistrement client dupliqué à la première connexion — les écrans HA envoient plusieurs requêtes parallèles sans cookie. Verrouillé par IP désormais. Page de configuration redessinée, traduite, IP affichée.",
-        "it": "Corretta la registrazione duplicata del client alla prima connessione — i display HA inviano più richieste parallele senza cookie. Ora bloccato per IP. Pagina di setup ridisegnata, localizzata, con IP.",
-        "es": "Corregido el registro duplicado de cliente en la conexión inicial — los displays HA envían varias solicitudes paralelas sin cookie. Ahora bloqueado por IP. Página de configuración rediseñada, traducida, con IP.",
-        "pl": "Naprawiono zduplikowaną rejestrację klienta przy pierwszym połączeniu — wyświetlacze HA wysyłają kilka równoległych żądań bez cookie. Teraz blokada per IP. Strona konfiguracji przeprojektowana, przetłumaczona, z IP.",
-        "uk": "Виправлено дублювання реєстрації клієнта при першому підключенні — HA-дисплеї надсилають кілька паралельних запитів без cookie. Тепер блокування за IP. Сторінка налаштування перероблена, перекладена, з IP.",
-        "zh-cn": "修复首次连接时客户端重复注册 — HA 显示器并行发送多个无 cookie 请求，之前每个都会创建独立客户端记录。现在按 IP 加锁。设置页面重新设计，已本地化，显示 IP。"
-      },
-      "1.1.2": {
-        "en": "Client channel name in the object browser now shows the reverse-DNS hostname as soon as it resolves (previously stuck at the IP). The clients.<id>.hostname datapoint was removed and its value migrated into the channel name on first start. Client creation parallelised — new displays register noticeably faster.",
-        "de": "Der Channel-Name eines Clients im Objektbrowser zeigt jetzt den Reverse-DNS-Hostnamen, sobald dieser aufgelöst wurde (vorher blieb die IP stehen). Der Datenpunkt clients.<id>.hostname wurde entfernt, der Wert beim ersten Start in den Channel-Namen übernommen. Anlage eines neuen Clients parallelisiert — neue Displays werden spürbar schneller registriert.",
-        "ru": "Имя канала клиента в браузере объектов теперь показывает имя по обратному DNS, как только оно разрешено (раньше оставался IP). Точка данных clients.<id>.hostname удалена, её значение переносится в имя канала при первом запуске. Создание клиента распараллелено — новые дисплеи регистрируются заметно быстрее.",
-        "pt": "O nome do canal do cliente no navegador de objetos agora mostra o hostname via DNS reverso assim que resolvido (antes permanecia o IP). O ponto de dados clients.<id>.hostname foi removido e seu valor migrado para o nome do canal no primeiro início. Criação de cliente paralelizada — novos displays são registrados visivelmente mais rápido.",
-        "nl": "De kanaalnaam van een client in de objectbrowser toont nu de reverse-DNS hostname zodra die is opgelost (voorheen bleef het IP staan). Het datapunt clients.<id>.hostname is verwijderd en de waarde gemigreerd naar de kanaalnaam bij de eerste start. Aanmaken van een client geparallelliseerd — nieuwe displays registreren merkbaar sneller.",
-        "fr": "Le nom du canal client dans le navigateur d'objets affiche désormais le nom DNS inverse dès qu'il est résolu (l'IP restait auparavant). Le point de données clients.<id>.hostname a été supprimé et sa valeur migrée dans le nom du canal au premier démarrage. Création de client parallélisée — les nouveaux affichages s'enregistrent sensiblement plus vite.",
-        "it": "Il nome del canale del client nel browser degli oggetti ora mostra l'hostname via DNS inverso non appena risolto (prima rimaneva l'IP). Il datapoint clients.<id>.hostname è stato rimosso e il valore migrato nel nome del canale al primo avvio. Creazione del client parallelizzata — i nuovi display si registrano visibilmente più velocemente.",
-        "es": "El nombre del canal del cliente en el explorador de objetos ahora muestra el nombre DNS inverso en cuanto se resuelve (antes se quedaba la IP). El datapoint clients.<id>.hostname se eliminó y su valor se migra al nombre del canal en el primer inicio. Creación de cliente paralelizada — los nuevos displays se registran notablemente más rápido.",
-        "pl": "Nazwa kanału klienta w przeglądarce obiektów pokazuje teraz nazwę z odwrotnego DNS zaraz po rozwiązaniu (wcześniej zostawało IP). Datapoint clients.<id>.hostname został usunięty, a jego wartość przeniesiona do nazwy kanału przy pierwszym starcie. Tworzenie klienta zrównoleglone — nowe wyświetlacze rejestrują się zauważalnie szybciej.",
-        "uk": "Назва каналу клієнта в браузері об'єктів тепер показує ім'я зворотного DNS, щойно воно розв'язане (раніше лишалося IP). Датапоінт clients.<id>.hostname видалено, його значення перенесено у назву каналу при першому старті. Створення клієнта розпаралелено — нові дисплеї реєструються помітно швидше.",
-        "zh-cn": "对象浏览器中客户端频道的名称现在在反向 DNS 解析完成后立即显示主机名（之前一直停留在 IP）。已移除 clients.<id>.hostname 数据点，其值在首次启动时迁移到频道名称。客户端创建已并行化——新显示端注册明显更快。"
-      },
-      "1.1.1": {
-        "en": "Redirect target moved from adapter config to datapoints: global.visUrl + global.enabled as an optional override, otherwise each clients.<id>.visUrl applies. Unconfigured displays see a small setup page instead of an error. web adapter declared as dependency.",
-        "de": "Redirect-Ziel aus den Adapter-Einstellungen in Datenpunkte verschoben: global.visUrl + global.enabled als optionales Override, sonst gilt jeweils clients.<id>.visUrl. Nicht konfigurierte Displays bekommen eine kleine Setup-Seite statt Fehlermeldung. web-Adapter als Abhängigkeit hinterlegt.",
-        "ru": "Цель перенаправления перенесена из настроек адаптера в точки данных: global.visUrl + global.enabled как опциональное переопределение, иначе действует clients.<id>.visUrl. Ненастроенные дисплеи видят страницу настройки вместо ошибки. Адаптер web объявлен как зависимость.",
-        "pt": "Destino do redirecionamento movido das configurações do adaptador para pontos de dados: global.visUrl + global.enabled como substituição opcional, caso contrário aplica-se clients.<id>.visUrl. Displays não configurados veem uma página de configuração em vez de erro. Adaptador web declarado como dependência.",
-        "nl": "Redirect-doel verplaatst van adapterinstellingen naar datapunten: global.visUrl + global.enabled als optionele override, anders geldt clients.<id>.visUrl. Niet-geconfigureerde displays zien een setup-pagina in plaats van een fout. web-adapter gedeclareerd als afhankelijkheid.",
-        "fr": "Cible de redirection déplacée des paramètres de l'adaptateur vers des points de données : global.visUrl + global.enabled comme surcharge optionnelle, sinon clients.<id>.visUrl s'applique. Les écrans non configurés affichent une page de configuration au lieu d'une erreur. Adaptateur web déclaré en dépendance.",
-        "it": "Destinazione del redirect spostata dalle impostazioni dell'adattatore ai datapoint: global.visUrl + global.enabled come override opzionale, altrimenti vale clients.<id>.visUrl. I display non configurati mostrano una pagina di setup invece di un errore. Adattatore web dichiarato come dipendenza.",
-        "es": "Destino de redirección movido de la configuración del adaptador a datapoints: global.visUrl + global.enabled como sobrescritura opcional, de lo contrario se aplica clients.<id>.visUrl. Los displays no configurados muestran una página de configuración en lugar de un error. Adaptador web declarado como dependencia.",
-        "pl": "Cel przekierowania przeniesiony z ustawień adaptera do datapointów: global.visUrl + global.enabled jako opcjonalne nadpisanie, w przeciwnym razie obowiązuje clients.<id>.visUrl. Nieskonfigurowane wyświetlacze widzą stronę konfiguracji zamiast błędu. Adapter web zadeklarowany jako zależność.",
-        "uk": "Ціль перенаправлення перенесено з налаштувань адаптера в точки даних: global.visUrl + global.enabled як опціональне перевизначення, інакше діє clients.<id>.visUrl. Ненастроєні дисплеї бачать сторінку налаштування замість помилки. Адаптер web оголошено залежністю.",
-        "zh-cn": "重定向目标从适配器配置移至数据点：global.visUrl + global.enabled 作为可选覆盖，否则按各个 clients.<id>.visUrl 生效。未配置的显示器会看到一个小型设置页面而非错误。web 适配器已声明为依赖。"
-      }
+    "common": {
+        "name": "hassemu",
+        "version": "1.2.0",
+        "news": {
+            "1.2.0": {
+                "en": "Redirect target now configured via `mode` (dropdown) + `manualUrl` (free text) instead of the old `visUrl`. Migration runs automatically.\nMaster switch `global.enabled` syncs every display: on → all follow the global URL, off → each display picks up its own again.\nIdle displays without auth token are auto-removed after 30 days.\nSecurity hardening of the auth flow.\n`web` adapter declared as dependency.",
+                "de": "Redirect-Ziel jetzt über `mode` (Dropdown) + `manualUrl` (Freitext) statt des alten `visUrl`. Migration läuft automatisch.\nMaster-Switch `global.enabled` synct jedes Display: an → alle folgen der globalen URL, aus → jedes Display nutzt wieder seine eigene.\nDisplay-Channels ohne Auth-Token werden nach 30 Tagen Leerlauf automatisch entfernt.\nAuth-Flow gehärtet.\n`web`-Adapter als Abhängigkeit eingetragen.",
+                "ru": "Цель перенаправления теперь настраивается через `mode` (выпадающий список) + `manualUrl` (свободный текст) вместо старого `visUrl`. Миграция выполняется автоматически.\nГлавный переключатель `global.enabled` синхронизирует все дисплеи: вкл → все следуют глобальному URL, выкл → каждый дисплей использует свой.\nПростаивающие дисплеи без токена авторизации удаляются автоматически через 30 дней.\nУсилена безопасность потока авторизации.\nАдаптер `web` объявлен как зависимость.",
+                "pt": "Destino do redirecionamento agora configurado via `mode` (dropdown) + `manualUrl` (texto livre) em vez do antigo `visUrl`. Migração executa automaticamente.\nInterruptor mestre `global.enabled` sincroniza cada display: ligado → todos seguem o URL global, desligado → cada display usa o seu próprio.\nDisplays inativos sem token de autenticação são removidos automaticamente após 30 dias.\nFluxo de autenticação reforçado.\nAdaptador `web` declarado como dependência.",
+                "nl": "Redirect-doel wordt nu geconfigureerd via `mode` (dropdown) + `manualUrl` (vrije tekst) in plaats van de oude `visUrl`. Migratie verloopt automatisch.\nHoofdschakelaar `global.enabled` synchroniseert elk display: aan → allemaal volgen de globale URL, uit → elk display gebruikt zijn eigen.\nInactieve displays zonder auth-token worden na 30 dagen automatisch verwijderd.\nAuth-flow versterkt.\n`web`-adapter als afhankelijkheid gedeclareerd.",
+                "fr": "Cible de redirection désormais configurée via `mode` (liste déroulante) + `manualUrl` (texte libre) au lieu de l'ancien `visUrl`. La migration est automatique.\nL'interrupteur principal `global.enabled` synchronise chaque écran : activé → tous suivent l'URL globale, désactivé → chaque écran utilise la sienne.\nLes écrans inactifs sans jeton d'authentification sont supprimés automatiquement après 30 jours.\nFlux d'authentification renforcé.\nAdaptateur `web` déclaré comme dépendance.",
+                "it": "Destinazione del redirect ora configurata tramite `mode` (menu a discesa) + `manualUrl` (testo libero) invece del vecchio `visUrl`. La migrazione è automatica.\nInterruttore principale `global.enabled` sincronizza ogni display: on → tutti seguono l'URL globale, off → ogni display usa il proprio.\nI display inattivi senza token di autenticazione vengono rimossi automaticamente dopo 30 giorni.\nFlusso di autenticazione rafforzato.\nAdattatore `web` dichiarato come dipendenza.",
+                "es": "Destino de redirección ahora configurado vía `mode` (desplegable) + `manualUrl` (texto libre) en lugar del antiguo `visUrl`. La migración es automática.\nInterruptor principal `global.enabled` sincroniza cada pantalla: activado → todas siguen la URL global, desactivado → cada pantalla usa la suya.\nPantallas inactivas sin token de autenticación se eliminan automáticamente tras 30 días.\nFlujo de autenticación reforzado.\nAdaptador `web` declarado como dependencia.",
+                "pl": "Cel przekierowania jest teraz konfigurowany przez `mode` (lista rozwijana) + `manualUrl` (tekst dowolny) zamiast starego `visUrl`. Migracja przebiega automatycznie.\nGłówny przełącznik `global.enabled` synchronizuje każdy wyświetlacz: wł → wszystkie podążają za globalnym URL, wył → każdy używa własnego.\nNieaktywne wyświetlacze bez tokena uwierzytelniania są usuwane automatycznie po 30 dniach.\nWzmocniono bezpieczeństwo procesu uwierzytelniania.\nAdapter `web` zadeklarowany jako zależność.",
+                "uk": "Ціль перенаправлення тепер налаштовується через `mode` (випадаючий список) + `manualUrl` (вільний текст) замість старого `visUrl`. Міграція виконується автоматично.\nГоловний перемикач `global.enabled` синхронізує кожен дисплей: увімк → усі слідують глобальній URL, вимк → кожен дисплей використовує власну.\nНеактивні дисплеї без токена автентифікації автоматично видаляються через 30 днів.\nПотік автентифікації посилено.\nАдаптер `web` оголошено залежністю.",
+                "zh-cn": "重定向目标现在通过 `mode`（下拉菜单）+ `manualUrl`（自由文本）配置，取代旧的 `visUrl`。迁移自动运行。\n主开关 `global.enabled` 同步每个显示器：开 → 全部跟随全局 URL，关 → 每个显示器使用自己的。\n无认证令牌且闲置 30 天的显示器会自动移除。\n认证流程已加固。\n`web` 适配器已声明为依赖。"
+            },
+            "1.1.6": {
+                "en": "Audit cleanup against the upstream `ioBroker.example/TypeScript` full standard:\nTest setup migrated: tests now live next to source as `src/lib/*.test.ts` and run directly via `ts-node/register`. Removed `tsconfig.test.json` + `build-test/`, added `test/mocharc.custom.json` + `test/mocha.setup.js` + `test/tsconfig.json` + `test/.eslintrc.json`\n`@types/node` rolled back from `^25.6.0` to `^20.19.24` so type defs match `engines.node: \">=20\"`\nDependabot now ignores major bumps for `@types/node`, `typescript`, `eslint`, `actions/checkout`, `actions/setup-node`\n`nyc` config + `coverage` script added\nOrphan `.github/auto-merge.yml` removed (active workflow is `automerge-dependabot.yml` using `gh pr merge`)",
+                "de": "Audit-Aufräumung gegen den vorgeschalteten `ioBroker.example/TypeScript` Vollstandard:\nTest-Setup migriert: Tests leben jetzt neben der Quelle als `src/lib/*.test.ts` und laufen direkt über `ts-node/register`. Entfernen `tsconfig.test.json` + `build-test/`, add `test/mocharc.custom.json` + `test/mocha.setup.js` + `test/tsconfig.json` + `test/.eslintrc.json`\n`@types/node` rollte zurück von `^25.6.0` zu `^20.19.24` so type defs match `engines.node: \">=20\"``\nDependabot ignoriert nun wichtige Beulen für `@types/node`, `typescript`, `eslint`, `actions/checkout`, `actions/setup-node`\n`nyc` config + `coverage` skript hinzugefügt\nOrphan `.github/auto-merge.yml` entfernt (aktiver Workflow ist `automerge-dependabot.yml` mit `gh pr merge`)",
+                "ru": "Очистка аудита по полному стандарту «ioBroker.example/TypeScript»:\nНастройка теста мигрировала: тесты теперь живут рядом с источником как «src/lib/*.test.ts» и запускаются непосредственно через «ts-узел/регистр». Снято \"tsconfig.test.json\" + \"build-test/\", добавлено \"test/mocharc.custom.json\" + \"test/mocha.setup.js\" + \"test/tsconfig.json\" + \"test/.eslintrc.json\"\n'@types/node' откатился от '^25.6.0' к '^20.19.24', так что type defs соответствуют 'engines.node: '>=20'\nDependabot теперь игнорирует основные проблемы для «@types/node», «typescript», «eslint», «actions/checkout», «actions/setup-node»\n«nyc» config + скрипт «coverage»\nOrphan '.github/auto-merge.yml' removed (активный рабочий процесс - 'automerge-dependabot.yml' using 'gh pr merge')",
+                "pt": "Limpeza de auditoria contra o padrão completo 'ioBroker.example/TypeScript` upstream:\nTest setup migrated: tests now live next to source as `src/lib/*.test.ts` e execute diretamente via `ts-node/register`. Removido `tsconfig.test.json` + `build-test/`, adicionado `test/mocharc.custom.json` + `test/mocha.setup.js` + `test/tsconfig.json` + `test/.eslintrc.json'\n`@types/node` rolled back from `^25.6.0` to `^20.19.24` então tipo defs match `engines.node: \">=20\"`\nDependabot agora ignora grandes saliências para `@types/node`, `typescript`, `eslint`, `actions/checkout`, `actions/setup-node'\n'nyc' config + 'coverage' script adicionado\nÓrfão `.github/auto-merge.yml` removido (fluxo de trabalho ativo é `automerge-dependabot.yml` usando `gh pr merge`)",
+                "nl": "Audit cleanup tegen de upstream .example/TypeScript\nTestopstelling gemigreerd: de tests leven nu naast de bron als  Verwijderd \nhet type defs komt overeen met de motors.node: \">=20\"\nDependabot negeert nu de grote hobbels voor \n`nyc` config + `coverage` script added\nOrphan ",
+                "fr": "Nettoyage de l'audit par rapport à la norme en amont `ioBroker.example/TypeScript`:\nConfiguration de test migrée: teste maintenant en direct à côté de source comme `src/lib/*.test.ts` et fonctionne directement via `ts-node/register`. Supprimé `tsconfig.test.json` + `build-test/`, ajouté `test/mocharc.custom.json` + `test/mocha.setup.js` + `test/tsconfig.json` + `test/.estintrc.json`\n`@types/node` retourné de `^25.6.0` à `^20.19.24` de sorte que le type defs correspond `moteurs.node: \">=20\"`\nDependabot ignore maintenant les principales bosses pour `@types/node`, `typescript`, `estint`, `actions/checkout`, `actions/setup-node`\nscript `nyc` config + `coverage` ajouté\nOrphan `.github/auto-merge.yml` supprimé (le workflow actif est `automerge-dependabot.yml` en utilisant `gh pr merge`)",
+                "it": "Audit cleanup contro il `ioBroker.example/TypeScript` standard completo:\nConfigurazione del test migrata: i test ora vivono accanto alla sorgente come `src/lib/*.test.ts` e vengono eseguiti direttamente tramite `ts-node/register`. `tsconfig.test.json` + `build-test/`, aggiunto `test/mocharc.custom.json` + `test/mocha.setup.js` + `test/tsconfig.json` + `test/.eslintrc.json`\n`@types/node` rotolato indietro da `^25.6.0` a `^20.19.24` così tipo defs match `engines.node: \">=20\"`\nDependabot ora ignora urti principali per `@types/node`, `typescript`, `eslint`, `actions/checkout`, `actions/setup-node`\n`nyc` config + `coverage` script aggiunto\nOrphan `.github/auto-merge.yml` rimosso (il flusso di lavoro attivo è `automerge-dependabot.yml` utilizzando `gh pr merge`)",
+                "es": "Limpieza de auditorías contra el estándar completo del `ioBroker.example/TypeScript`:\nSe migraron las pruebas: las pruebas ahora viven al lado de la fuente como `src/lib/*.test.ts` y se ejecutan directamente a través de `ts-node/register`. Removed `tsconfig.test.json` + `build-test/`, added `test/mocharc.custom.json` + `test/mocha.setup.js` + `test/tsconfig.json` + `test/.eslintrc.json`\n`@types/node` rolled back from `^25.6.0` to `^20.19.24` so type defs match `engines.node: \"consign=20\"\nDependabot hace caso omiso de los principales golpes de `@tipos/nodo`, `tiposcript`, `eslint`, `actions/checkout`, `actions/setup-node`\n`nyc` config + `coverage` script añadido\nOrphan `.github/auto-merge.yml` removed (active workflow is `automerge-dependabot.yml` using `gh pr merge`)",
+                "pl": "Oczyszczanie audytów w stosunku do pełnego standardu 'iBroker.example / TypeScript':\nUstawienie testowe migrowane: testy są teraz dostępne obok źródła jako 'src / lib / * .test.ts' i uruchamiane bezpośrednio przez 'ts- node / register'. Usunięto 'tsconfig.test.json' + 'build- test /', dodano 'test / mocharc.customi.json' + 'test / mocha.setup.js' + 'test / tsconfig.json' + 'test / .eslintrc.json'\n'@ types / node' rolled back from '^ 25.6.0' to '^ 20.19.24' so type defs match 'engins.node: \"> = 20\"'\nDependabot ignoruje teraz główne przeszkody dla '@ types / node', 'typescript', 'eslint', 'actions / checkout', 'actions / setup-node'\ndodano skrypt 'nyc' config + 'cover'\nUsunięty Orphan '.github / auto- merge.yml' (aktywny przepływ pracy to 'automaterge- dependiabot.yml' przy użyciu 'gh pr merge')",
+                "uk": "Аудиторське очищення від потоку `ioBroker.example/TypeScript`\nТестові налаштування мігровані: тести тепер живуть поруч з джерелом як `src/lib/*.test.ts` і запустити безпосередньо через `ts-node/register`. Вилучено `tsconfig.test.json` + `build-test/``, додано `test/mocharc.custom.json` + `test/mocha.setup.js` +`test/tsconfig.json` + `test/.eslintrc.json`\n`@types/node` від `^25.6.0`` до `^20.19.24` так типу defs match `engines.node: \">=20\"`\nВ залежності від того, як `slint`, `slint`, `actions/checkout`, `actions/setup-node`\n`nyc` config + скрипт `coverage` додано\nOrphan `.github/auto-merge.yml` вилучено (активний робочий процес `automerge-залежніabot.yml` за допомогою `gh pr злиття`)",
+                "zh-cn": "对照上游`ioBroker.example/TypeScript ' 全面标准进行审计清理:\n测试设置迁移:现在测试作为`src/lib/*.test.ts ' 在源头旁边进行,直接通过`ts-node/register ' 运行。 删除`tsconfig.test.json ' +`building-test/ ' ,增加`test/mocharc.custom.json ' +`test/mocha.setup.js ' +`test/tsconfig.json ' +`test/.eslintrac.json'\n`@型/节点`从`^25.6.0`回滚至`^20.19.24`,因此 type型与 型相同\n现在,依赖忽略了`Q ' 类型/节点 ' 、`字典 ' 、`slint ' 、`行动/检查 ' 、`行动/设置节点 ' 的重大颠峰\n添加了 \" nyc \" 配置 + \" 覆盖 \" 文字\n孤儿`.github/自动合并.yml ' 被删除(使用`gh pr 合并 ' 的主动工作流程为`自动合并-依赖.yml')"
+            },
+            "1.1.5": {
+                "en": "Process-level unhandledRejection/uncaughtException handlers added as last-line-of-defence. Stop shipping the manual-review release-script plugin. Audit-driven boilerplate sync with the other krobi adapters. Min js-controller correction: was >=7.0.0, restored to repochecker-recommended >=6.0.11 (Source: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker bumped to ^7.1.1.",
+                "de": "Process-level unhandledRejection/uncaughtException-Handler als Last-Line-of-Defence hinzugefügt. Das manual-review-Release-Script-Plugin entfällt. Audit-getriebener Boilerplate-Sync gegenüber den anderen krobi-Adaptern. js-controller-Korrektur: war >=7.0.0, korrigiert auf Repochecker-recommended >=6.0.11 (Quelle: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker auf ^7.1.1 angehoben.",
+                "ru": "Process-level обробники unhandledRejection/uncaughtException додано як last-line-of-defence. Manual-review release-script plugin більше не постачається. Audit-керована синхронізація boilerplate з іншими krobi-адаптерами. Корекція js-controller: було >=7.0.0, відновлено на repochecker-recommended >=6.0.11 (Джерело: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker оновлено до ^7.1.1.",
+                "pt": "Handlers process-level unhandledRejection/uncaughtException adicionados como last-line-of-defence. O plugin manual-review do release-script foi removido. Sincronização de boilerplate orientada por audit com os outros adaptadores krobi. Correção js-controller: era >=7.0.0, restaurada para repochecker-recommended >=6.0.11 (Fonte: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker atualizado para ^7.1.1.",
+                "nl": "Process-level unhandledRejection/uncaughtException-handlers toegevoegd als last-line-of-defence. Het manual-review release-script plugin wordt niet meer meegeleverd. Audit-gestuurde boilerplate-sync met de andere krobi-adapters. js-controller-correctie: was >=7.0.0, hersteld naar repochecker-recommended >=6.0.11 (Bron: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker verhoogd naar ^7.1.1.",
+                "fr": "Handlers process-level unhandledRejection/uncaughtException ajoutés en last-line-of-defence. Le plugin manual-review du release-script n'est plus livré. Synchronisation boilerplate audit-driven avec les autres adaptateurs krobi. Correction js-controller: était >=7.0.0, restaurée à repochecker-recommended >=6.0.11 (Source: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker porté à ^7.1.1.",
+                "it": "Handler process-level unhandledRejection/uncaughtException aggiunti come last-line-of-defence. Il plugin manual-review del release-script non viene più distribuito. Sincronizzazione boilerplate audit-driven con gli altri adapter krobi. Correzione js-controller: era >=7.0.0, ripristinata a repochecker-recommended >=6.0.11 (Fonte: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker alzato a ^7.1.1.",
+                "es": "Handlers process-level unhandledRejection/uncaughtException añadidos como last-line-of-defence. El plugin manual-review del release-script ya no se incluye. Sincronización de boilerplate guiada por audit con los demás adaptadores krobi. Corrección js-controller: era >=7.0.0, restaurada a repochecker-recommended >=6.0.11 (Fuente: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker elevado a ^7.1.1.",
+                "pl": "Handlery process-level unhandledRejection/uncaughtException dodane jako last-line-of-defence. Plugin manual-review release-script nie jest już dostarczany. Synchronizacja boilerplate'u audit-driven z pozostałymi adapterami krobi. Korekcja js-controller: było >=7.0.0, przywrócono do repochecker-recommended >=6.0.11 (Źródło: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker podniesione do ^7.1.1.",
+                "uk": "Process-level обробники unhandledRejection/uncaughtException додано як last-line-of-defence. Manual-review release-script plugin більше не постачається. Audit-керована синхронізація boilerplate з іншими krobi-адаптерами. js-controller-корекція: було >=7.0.0, відновлено на repochecker-recommended >=6.0.11 (Джерело: ioBroker.repochecker/lib/M1000_IOPackageJson.js). @types/iobroker оновлено до ^7.1.1.",
+                "zh-cn": "新增进程级 unhandledRejection/uncaughtException 处理器作为 last-line-of-defence。manual-review release-script 插件不再随包发布。与其他 krobi 适配器进行 audit 驱动的 boilerplate 同步。js-controller 更正：从 >=7.0.0 恢复为 repochecker 推荐的 >=6.0.11（来源：ioBroker.repochecker/lib/M1000_IOPackageJson.js）。@types/iobroker 升级至 ^7.1.1。"
+            },
+            "1.1.4": {
+                "en": "Separate test-build output (`build-test/`) from production `build/` — `npm test` no longer risks leaving duplicated `build/src` + `build/test` trees in the published package. No runtime change.",
+                "de": "Separate Test-Building-Ausgang (`Building-Test/`) von der Produktion `Building/` — `npm-Test` nicht mehr Risiken verlassen duplizierte `Building/Src` + `Building/test` Bäume im veröffentlichten Paket. Keine Laufzeitänderung.",
+                "ru": "Отдельная продукция испытательной постройки (‘build-test/’) от производства ‘build/’ — ‘npm test’ больше не рискует оставить дублированные деревья ‘build/src’ + ‘build/test’ в опубликованном пакете. Никаких изменений.",
+                "pt": "Saída de construção de teste separada (`build-test/`) da produção `build/` — `npm test` já não corre o risco de deixar árvores duplicadas `build/src` + `build/test` no pacote publicado. Nenhuma mudança de tempo de execução.",
+                "nl": "Aparte test-build output van de productie Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build-Build- Geen verandering in de looptijd.",
+                "fr": "La sortie séparée de la construction d'essai (`build-test/`) de la production `build/` — `npm test` ne risque plus de laisser des arbres dupliqués `build/src` + `build/test` dans le paquet publié. Pas de changement d'exécution.",
+                "it": "Uscita separata di test-build (`build-test/`) dalla produzione `build/` — `npm test` non rischia più di lasciare duplicati `build/src` + `build/test` alberi nel pacchetto pubblicato. Nessun cambiamento di runtime.",
+                "es": "La producción separada de la producción de pruebas ( \" pruebas impresas \" ) de la producción \" , \" prueba npm \" ya no corre el riesgo de dejar árboles duplicados \" construidos/src \" + \" construidos/test \" en el paquete publicado. No hay cambio de horario.",
+                "pl": "Oddzielna produkcja testowa (\"build-test /\") z produkcji \"build /\" - \"npm test\" nie może już pozostawiać powielonych \"build / src\" + \"build / test\" drzew w opublikowanym pakiecie. Bez zmian.",
+                "uk": "Окремий тестово-будівельний вихід (`build-test/``) від виробництва `build/`` — `npm test’ не більше ризиків, що залишають дублікатом `build/src` + `build/test` дерев у опублікованому пакеті. Немає змін робочого часу.",
+                "zh-cn": "将试验-建设产出(`建设-测试/')与生产`建设/'——`npm测试 ' 分开,不再有将`建设/src ' +`建设/测试 ' 树木复制到已公布的成套材料的风险。 无运行时间变化 ."
+            },
+            "1.1.3": {
+                "en": "Fix duplicate client registration on initial connect — HA displays fire several parallel cookieless requests, each used to create a separate client record. Now locked per IP so the first create wins and the rest of the burst attach to the same client. Setup page redesigned: big green OK banner, localized into all 11 adapter languages (auto-picked from the ioBroker system language), IP shown alongside the device ID, responsive layout with dark-mode support.",
+                "de": "Doppelte Client-Registrierung beim ersten Verbinden behoben — HA-Displays feuern mehrere parallele Requests ohne Cookie, jeder legte bisher einen eigenen Client an. Jetzt pro IP gesperrt: der erste Create gewinnt, die restlichen Parallel-Requests werden dem gleichen Client zugeordnet. Setup-Seite überarbeitet: großes grünes OK-Banner, Lokalisierung in alle 11 Adapter-Sprachen (automatisch nach ioBroker-Systemsprache), IP wird neben der Device-ID angezeigt, responsive Layout mit Dark-Mode.",
+                "ru": "Исправлено дублирование регистрации клиента при первом подключении — HA-дисплеи шлют несколько параллельных запросов без cookie. Теперь блокировка по IP. Страница настройки переработана, локализована, показана IP.",
+                "pt": "Corrigido registro duplicado de cliente na conexão inicial — displays HA enviam várias requisições paralelas sem cookie. Agora bloqueadas por IP. Página de configuração redesenhada, traduzida, com IP.",
+                "nl": "Dubbele client-registratie bij eerste verbinding opgelost — HA-displays sturen meerdere parallelle requests zonder cookie. Nu vergrendeld per IP. Setup-pagina vernieuwd, gelokaliseerd, met IP.",
+                "fr": "Correction de l'enregistrement client dupliqué à la première connexion — les écrans HA envoient plusieurs requêtes parallèles sans cookie. Verrouillé par IP désormais. Page de configuration redessinée, traduite, IP affichée.",
+                "it": "Corretta la registrazione duplicata del client alla prima connessione — i display HA inviano più richieste parallele senza cookie. Ora bloccato per IP. Pagina di setup ridisegnata, localizzata, con IP.",
+                "es": "Corregido el registro duplicado de cliente en la conexión inicial — los displays HA envían varias solicitudes paralelas sin cookie. Ahora bloqueado por IP. Página de configuración rediseñada, traducida, con IP.",
+                "pl": "Naprawiono zduplikowaną rejestrację klienta przy pierwszym połączeniu — wyświetlacze HA wysyłają kilka równoległych żądań bez cookie. Teraz blokada per IP. Strona konfiguracji przeprojektowana, przetłumaczona, z IP.",
+                "uk": "Виправлено дублювання реєстрації клієнта при першому підключенні — HA-дисплеї надсилають кілька паралельних запитів без cookie. Тепер блокування за IP. Сторінка налаштування перероблена, перекладена, з IP.",
+                "zh-cn": "修复首次连接时客户端重复注册 — HA 显示器并行发送多个无 cookie 请求，之前每个都会创建独立客户端记录。现在按 IP 加锁。设置页面重新设计，已本地化，显示 IP。"
+            }
+        },
+        "titleLang": {
+            "en": "Home Assistant Emulator",
+            "de": "Home Assistant Emulator",
+            "ru": "Эмулятор Home Assistant",
+            "pt": "Emulador de Home Assistant",
+            "nl": "Home Assistant Emulator",
+            "fr": "Émulateur Home Assistant",
+            "it": "Emulatore Home Assistant",
+            "es": "Emulador de Home Assistant",
+            "pl": "Emulator Home Assistant",
+            "uk": "Емулятор Home Assistant",
+            "zh-cn": "Home Assistant模拟器"
+        },
+        "desc": {
+            "en": "Emulates a minimal Home Assistant server so devices expecting a Home Assistant dashboard can display any custom web URL.",
+            "de": "Emuliert einen minimalen Home Assistant Server, sodass Geräte mit Home-Assistant-Dashboard-Unterstützung beliebige Web-URLs anzeigen können.",
+            "ru": "Эмулирует минимальный сервер Home Assistant, чтобы устройства, ожидающие панель управления Home Assistant, могли отображать любой пользовательский URL.",
+            "pt": "Emula um servidor Home Assistant mínimo para que dispositivos que esperam um painel do Home Assistant possam exibir qualquer URL web personalizado.",
+            "nl": "Emuleert een minimale Home Assistant server zodat apparaten die een Home Assistant dashboard verwachten elke aangepaste web-URL kunnen weergeven.",
+            "fr": "Émule un serveur Home Assistant minimal pour que les appareils attendant un tableau de bord Home Assistant puissent afficher n'importe quelle URL web personnalisée.",
+            "it": "Emula un server Home Assistant minimale in modo che i dispositivi che si aspettano una dashboard Home Assistant possano visualizzare qualsiasi URL web personalizzato.",
+            "es": "Emula un servidor Home Assistant mínimo para que los dispositivos que esperan un panel de Home Assistant puedan mostrar cualquier URL web personalizada.",
+            "pl": "Emuluje minimalny serwer Home Assistant, dzięki czemu urządzenia oczekujące pulpitu nawigacyjnego Home Assistant mogą wyświetlać dowolny niestandardowy adres URL.",
+            "uk": "Емулює мінімальний сервер Home Assistant, щоб пристрої, що очікують панель Home Assistant, могли відображати будь-яку користувацьку URL-адресу.",
+            "zh-cn": "模拟一个最小的Home Assistant服务器，使期望Home Assistant仪表板的设备能够显示任何自定义网址。"
+        },
+        "authors": ["krobi <krobi@power-dreams.com>"],
+        "keywords": ["homeassistant", "hass", "emulator", "dashboard", "redirect", "vis"],
+        "licenseInformation": {
+            "license": "MIT",
+            "type": "free"
+        },
+        "platform": "Javascript/Node.js",
+        "icon": "hassemu.svg",
+        "extIcon": "https://raw.githubusercontent.com/krobipd/ioBroker.hassemu/main/admin/hassemu.svg",
+        "readme": "https://github.com/krobipd/ioBroker.hassemu/blob/main/README.md",
+        "enabled": true,
+        "tier": 3,
+        "loglevel": "info",
+        "mode": "daemon",
+        "type": "infrastructure",
+        "compact": true,
+        "connectionType": "local",
+        "dataSource": "push",
+        "adminUI": {
+            "config": "json"
+        },
+        "supportedMessages": {
+            "stopInstance": true
+        },
+        "dependencies": [
+            {
+                "js-controller": ">=7.0.7"
+            }
+        ],
+        "globalDependencies": [
+            {
+                "admin": ">=7.7.22"
+            },
+            {
+                "web": ">=8.0.0"
+            }
+        ]
     },
-    "titleLang": {
-      "en": "Home Assistant Emulator",
-      "de": "Home Assistant Emulator",
-      "ru": "Эмулятор Home Assistant",
-      "pt": "Emulador de Home Assistant",
-      "nl": "Home Assistant Emulator",
-      "fr": "Émulateur Home Assistant",
-      "it": "Emulatore Home Assistant",
-      "es": "Emulador de Home Assistant",
-      "pl": "Emulator Home Assistant",
-      "uk": "Емулятор Home Assistant",
-      "zh-cn": "Home Assistant模拟器"
+    "encryptedNative": ["password"],
+    "protectedNative": ["password"],
+    "native": {
+        "port": 8123,
+        "bindAddress": "0.0.0.0",
+        "authRequired": false,
+        "username": "admin",
+        "password": "",
+        "mdnsEnabled": true,
+        "serviceName": "ioBroker"
     },
-    "desc": {
-      "en": "Emulates a minimal Home Assistant server so devices expecting a Home Assistant dashboard can display any custom web URL.",
-      "de": "Emuliert einen minimalen Home Assistant Server, sodass Geräte mit Home-Assistant-Dashboard-Unterstützung beliebige Web-URLs anzeigen können.",
-      "ru": "Эмулирует минимальный сервер Home Assistant, чтобы устройства, ожидающие панель управления Home Assistant, могли отображать любой пользовательский URL.",
-      "pt": "Emula um servidor Home Assistant mínimo para que dispositivos que esperam um painel do Home Assistant possam exibir qualquer URL web personalizado.",
-      "nl": "Emuleert een minimale Home Assistant server zodat apparaten die een Home Assistant dashboard verwachten elke aangepaste web-URL kunnen weergeven.",
-      "fr": "Émule un serveur Home Assistant minimal pour que les appareils attendant un tableau de bord Home Assistant puissent afficher n'importe quelle URL web personnalisée.",
-      "it": "Emula un server Home Assistant minimale in modo che i dispositivi che si aspettano una dashboard Home Assistant possano visualizzare qualsiasi URL web personalizzato.",
-      "es": "Emula un servidor Home Assistant mínimo para que los dispositivos que esperan un panel de Home Assistant puedan mostrar cualquier URL web personalizada.",
-      "pl": "Emuluje minimalny serwer Home Assistant, dzięki czemu urządzenia oczekujące pulpitu nawigacyjnego Home Assistant mogą wyświetlać dowolny niestandardowy adres URL.",
-      "uk": "Емулює мінімальний сервер Home Assistant, щоб пристрої, що очікують панель Home Assistant, могли відображати будь-яку користувацьку URL-адресу.",
-      "zh-cn": "模拟一个最小的Home Assistant服务器，使期望Home Assistant仪表板的设备能够显示任何自定义网址。"
-    },
-    "authors": [
-      "krobi <krobi@power-dreams.com>"
-    ],
-    "keywords": [
-      "homeassistant",
-      "hass",
-      "emulator",
-      "dashboard",
-      "redirect",
-      "vis"
-    ],
-    "licenseInformation": {
-      "license": "MIT",
-      "type": "free"
-    },
-    "platform": "Javascript/Node.js",
-    "icon": "hassemu.svg",
-    "extIcon": "https://raw.githubusercontent.com/krobipd/ioBroker.hassemu/main/admin/hassemu.svg",
-    "readme": "https://github.com/krobipd/ioBroker.hassemu/blob/main/README.md",
-    "enabled": true,
-    "tier": 3,
-    "loglevel": "info",
-    "mode": "daemon",
-    "type": "infrastructure",
-    "compact": true,
-    "connectionType": "local",
-    "dataSource": "push",
-    "adminUI": {
-      "config": "json"
-    },
-    "supportedMessages": {
-      "stopInstance": true
-    },
-    "dependencies": [
-      {
-        "js-controller": ">=7.0.7"
-      }
-    ],
-    "globalDependencies": [
-      {
-        "admin": ">=7.7.22"
-      },
-      {
-        "web": ">=8.0.0"
-      }
+    "objects": [],
+    "instanceObjects": [
+        {
+            "_id": "info",
+            "type": "channel",
+            "common": {
+                "name": "Information"
+            },
+            "native": {}
+        },
+        {
+            "_id": "info.connection",
+            "type": "state",
+            "common": {
+                "role": "indicator.connected",
+                "name": "Server is running",
+                "type": "boolean",
+                "read": true,
+                "write": false,
+                "def": false
+            },
+            "native": {}
+        },
+        {
+            "_id": "clients",
+            "type": "folder",
+            "common": {
+                "name": "Known display clients"
+            },
+            "native": {}
+        },
+        {
+            "_id": "global",
+            "type": "channel",
+            "common": {
+                "name": "Global redirect override"
+            },
+            "native": {}
+        },
+        {
+            "_id": "global.enabled",
+            "type": "state",
+            "common": {
+                "name": "Apply global URL to all clients",
+                "type": "boolean",
+                "role": "switch",
+                "read": true,
+                "write": true,
+                "def": false
+            },
+            "native": {}
+        },
+        {
+            "_id": "global.mode",
+            "type": "state",
+            "common": {
+                "name": "Global redirect mode",
+                "type": "mixed",
+                "role": "value",
+                "read": true,
+                "write": true,
+                "def": ""
+            },
+            "native": {}
+        },
+        {
+            "_id": "global.manualUrl",
+            "type": "state",
+            "common": {
+                "name": "Global manual URL (used when mode='manual')",
+                "type": "string",
+                "role": "url",
+                "read": true,
+                "write": true,
+                "def": ""
+            },
+            "native": {}
+        }
     ]
-  },
-  "encryptedNative": [
-    "password"
-  ],
-  "protectedNative": [
-    "password"
-  ],
-  "native": {
-    "port": 8123,
-    "bindAddress": "0.0.0.0",
-    "authRequired": false,
-    "username": "admin",
-    "password": "",
-    "mdnsEnabled": true,
-    "serviceName": "ioBroker"
-  },
-  "objects": [],
-  "instanceObjects": [
-    {
-      "_id": "info",
-      "type": "channel",
-      "common": {
-        "name": "Information"
-      },
-      "native": {}
-    },
-    {
-      "_id": "info.connection",
-      "type": "state",
-      "common": {
-        "role": "indicator.connected",
-        "name": "Server is running",
-        "type": "boolean",
-        "read": true,
-        "write": false,
-        "def": false
-      },
-      "native": {}
-    },
-    {
-      "_id": "clients",
-      "type": "folder",
-      "common": {
-        "name": "Known display clients"
-      },
-      "native": {}
-    },
-    {
-      "_id": "global",
-      "type": "channel",
-      "common": {
-        "name": "Global redirect override"
-      },
-      "native": {}
-    },
-    {
-      "_id": "global.enabled",
-      "type": "state",
-      "common": {
-        "name": "Apply global URL to all clients",
-        "type": "boolean",
-        "role": "switch",
-        "read": true,
-        "write": true,
-        "def": false
-      },
-      "native": {}
-    },
-    {
-      "_id": "global.mode",
-      "type": "state",
-      "common": {
-        "name": "Global redirect mode",
-        "type": "mixed",
-        "role": "value",
-        "read": true,
-        "write": true,
-        "def": ""
-      },
-      "native": {}
-    },
-    {
-      "_id": "global.manualUrl",
-      "type": "state",
-      "common": {
-        "name": "Global manual URL (used when mode='manual')",
-        "type": "string",
-        "role": "url",
-        "read": true,
-        "write": true,
-        "def": ""
-      },
-      "native": {}
-    }
-  ]
 }

@@ -30,15 +30,6 @@ export function isWildcardBind(bindAddress: string | undefined | null): boolean 
 }
 
 /**
- * Resolves a bind address to a reachable IP: if wildcard, falls back to getLocalIp().
- *
- * @param bindAddress The configured bind address.
- */
-export function resolveBindToReachable(bindAddress: string | undefined | null): string {
-    return isWildcardBind(bindAddress) ? getLocalIp() : bindAddress!;
-}
-
-/**
  * Generates a short (6-char), URL-safe, lowercase hex client ID.
  * 16^6 = 16.7 million combinations — sufficient for home networks, readable as
  * a datapoint segment. Uses `crypto.randomBytes` for consistency with the rest

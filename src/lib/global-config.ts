@@ -11,7 +11,7 @@
  * The resolver delegates: a client whose `mode === 'global'` ends up here.
  */
 
-import { coerceBoolean, coerceSafeUrl } from './coerce';
+import { coerceBoolean, coerceSafeUrl, parseManualUrlWrite } from './coerce';
 import type { AdapterInterface, ClientRecord, UrlStates } from './types';
 
 /** Extended adapter interface — needs state I/O and object extend. */
@@ -81,16 +81,6 @@ export class GlobalConfig {
         return coerceSafeUrl(this.mode);
     }
 
-    /** Returns the stored global mode (raw string — sentinel or URL). */
-    getMode(): string {
-        return this.mode;
-    }
-
-    /** Returns the stored global manualUrl. */
-    getManualUrl(): string | null {
-        return this.manualUrl;
-    }
-
     /** Returns whether the master switch is currently active. */
     isEnabled(): boolean {
         return this.enabled;
@@ -146,16 +136,15 @@ export class GlobalConfig {
      * @param rawValue Value written to the state.
      */
     async handleManualUrlWrite(rawValue: unknown): Promise<void> {
-        const empty = rawValue === '' || rawValue === null || rawValue === undefined;
-        const safe = empty ? null : coerceSafeUrl(rawValue);
-        if (!empty && !safe) {
+        const result = parseManualUrlWrite(rawValue);
+        if (!result.ok) {
             this.adapter.log.warn('global-config: rejected unsafe global.manualUrl');
             await this.adapter.setStateAsync('global.manualUrl', { val: this.manualUrl ?? '', ack: true });
             return;
         }
-        this.manualUrl = safe;
-        await this.adapter.setStateAsync('global.manualUrl', { val: safe ?? '', ack: true });
-        if (this.mode === MODE_MANUAL && !safe) {
+        this.manualUrl = result.safe;
+        await this.adapter.setStateAsync('global.manualUrl', { val: result.safe ?? '', ack: true });
+        if (this.mode === MODE_MANUAL && !result.safe) {
             this.adapter.log.warn(
                 "global-config: global.manualUrl cleared while global.mode='manual' — clients delegating to global will hit the setup page",
             );

@@ -42,10 +42,10 @@ ioBroker adapter that emulates a [Home Assistant](https://www.home-assistant.io)
 
 ## Ports
 
-| Port | Protocol | Purpose                                      | Configurable |
-| ---- | -------- | -------------------------------------------- | ------------ |
-| 8123 | TCP/HTTP | Home Assistant emulation (HA standard port)  | No — fixed   |
-| 5353 | UDP      | mDNS service broadcast (only if mDNS enabled)| No           |
+| Port | Protocol | Purpose                                       | Configurable |
+| ---- | -------- | --------------------------------------------- | ------------ |
+| 8123 | TCP/HTTP | Home Assistant emulation (HA standard port)   | No — fixed   |
+| 5353 | UDP      | mDNS service broadcast (only if mDNS enabled) | No           |
 
 ---
 
@@ -53,13 +53,13 @@ ioBroker adapter that emulates a [Home Assistant](https://www.home-assistant.io)
 
 The Admin UI configures the server. Redirect URLs are set via the state tree (see below).
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| **Bind to Interface** | Network interface to listen on | 0.0.0.0 (all) |
-| **Service Name** | Name broadcast via mDNS, shown as the server name on the display | `ioBroker` |
-| **mDNS Enabled** | Broadcast `_home-assistant._tcp` on the LAN | `true` |
-| **Auth Required** | Check credentials the display sends during login | `false` |
-| **Username / Password** | Used when *Auth Required* is on (password encrypted at rest) | `admin` / — |
+| Option                  | Description                                                      | Default       |
+| ----------------------- | ---------------------------------------------------------------- | ------------- |
+| **Bind to Interface**   | Network interface to listen on                                   | 0.0.0.0 (all) |
+| **Service Name**        | Name broadcast via mDNS, shown as the server name on the display | `ioBroker`    |
+| **mDNS Enabled**        | Broadcast `_home-assistant._tcp` on the LAN                      | `true`        |
+| **Auth Required**       | Check credentials the display sends during login                 | `false`       |
+| **Username / Password** | Used when _Auth Required_ is on (password encrypted at rest)     | `admin` / —   |
 
 ---
 
@@ -84,11 +84,11 @@ hassemu.0.
 
 The adapter reads `clients.<id>.mode` on every visit:
 
-| `mode` value | redirect target |
-|--------------|----------------|
-| `global` | `global.mode` / `global.manualUrl` (same rules, one level up) |
-| `manual` | `clients.<id>.manualUrl` |
-| a URL | that URL |
+| `mode` value    | redirect target                                                |
+| --------------- | -------------------------------------------------------------- |
+| `global`        | `global.mode` / `global.manualUrl` (same rules, one level up)  |
+| `manual`        | `clients.<id>.manualUrl`                                       |
+| a URL           | that URL                                                       |
 | empty / unknown | landing page (small HTML with device ID, refreshes every 15 s) |
 
 ### Master switch
@@ -105,12 +105,12 @@ The adapter broadcasts `_home-assistant._tcp` via mDNS. If the display does not 
 
 1. Check the adapter log for `mDNS: Broadcasting`.
 2. Verify the service is visible from another host:
-   ```bash
-   # macOS
-   dns-sd -B _home-assistant._tcp
-   # Linux (with avahi-utils)
-   avahi-browse _home-assistant._tcp -r -t
-   ```
+    ```bash
+    # macOS
+    dns-sd -B _home-assistant._tcp
+    # Linux (with avahi-utils)
+    avahi-browse _home-assistant._tcp -r -t
+    ```
 3. Make sure UDP 5353 is not blocked by a firewall.
 4. If mDNS is not usable on your LAN, set the URL manually on the display: `http://<ioBroker-IP>:8123`.
 
@@ -147,6 +147,15 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
+
+### **WORK IN PROGRESS**
+
+- Security: brute-force lockout on `/auth/login_flow/:flowId` — after 5 failed credential attempts an IP is rejected with HTTP 429 for 15 min. Successful login resets the counter.
+- DRY refactor: shared `parseManualUrlWrite` helper between client + global config; FIFO-cap helper in WebServer; OAuth access-token TTL + lockout window/threshold are now named constants instead of magic numbers.
+- Dead-code cleanup: `resolveBindToReachable`, `coerceUuid` strict-V4 parameter, `DEFAULT_REFRESH_DEBOUNCE_MS` export, internal `getMode`/`getManualUrl` test affordances — all removed; tests rewritten to assert observable behaviour.
+- New `landing-page` test suite with XSS-escape coverage and 11-language fallback verification.
+- Emulated Home Assistant version bumped from 2026.3.1 to 2026.4.0.
+
 ### 1.2.0 (2026-04-29)
 
 - Redirect target now configured via `mode` (dropdown) + `manualUrl` (free text) instead of the old `visUrl`. Migration runs automatically.
@@ -156,14 +165,16 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 - `web` adapter declared as dependency.
 
 ### 1.1.6 (2026-04-28)
+
 - Audit cleanup against the upstream `ioBroker.example/TypeScript` full standard:
-  - Test setup migrated: tests now live next to source as `src/lib/*.test.ts` and run directly via `ts-node/register`. Removed `tsconfig.test.json` + `build-test/`, added `test/mocharc.custom.json` + `test/mocha.setup.js` + `test/tsconfig.json` + `test/.eslintrc.json`
-  - `@types/node` rolled back from `^25.6.0` to `^20.19.24` so type defs match `engines.node: ">=20"`
-  - Dependabot now ignores major bumps for `@types/node`, `typescript`, `eslint`, `actions/checkout`, `actions/setup-node`
-  - `nyc` config + `coverage` script added
-  - Orphan `.github/auto-merge.yml` removed (active workflow is `automerge-dependabot.yml` using `gh pr merge`)
+    - Test setup migrated: tests now live next to source as `src/lib/*.test.ts` and run directly via `ts-node/register`. Removed `tsconfig.test.json` + `build-test/`, added `test/mocharc.custom.json` + `test/mocha.setup.js` + `test/tsconfig.json` + `test/.eslintrc.json`
+    - `@types/node` rolled back from `^25.6.0` to `^20.19.24` so type defs match `engines.node: ">=20"`
+    - Dependabot now ignores major bumps for `@types/node`, `typescript`, `eslint`, `actions/checkout`, `actions/setup-node`
+    - `nyc` config + `coverage` script added
+    - Orphan `.github/auto-merge.yml` removed (active workflow is `automerge-dependabot.yml` using `gh pr merge`)
 
 ### 1.1.5 (2026-04-26)
+
 - Process-level `unhandledRejection` / `uncaughtException` handlers added as last-line-of-defence against fire-and-forget rejections.
 - Stop shipping the `manual-review` release-script plugin — adapter-only consequence.
 - Audit-driven boilerplate sync with the other krobi adapters (`.vscode` json5 schemas, `tsconfig.test` looser test rules).
@@ -171,6 +182,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 - `@types/iobroker` bumped to `^7.1.1`.
 
 ### 1.1.4 (2026-04-23)
+
 - Separate test-build output (`build-test/`) from production `build/` — `npm test` no longer risks leaving duplicated `build/src` + `build/test` trees in the published package. No runtime change.
 
 ### 1.1.3 (2026-04-19)

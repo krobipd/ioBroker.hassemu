@@ -6,7 +6,7 @@
 
 **ioBroker HASS Emulator** — emuliert einen minimalen HA-Server für Geräte, die ein HA-Dashboard erwarten → leitet auf beliebige URL um.
 
-- **Version:** 1.2.0 (in progress — Datenmodell-Rework: visUrl → mode/manualUrl + Master-Switch + Sicherheits-Härtung)
+- **Version:** 1.3.0 (in progress — Brute-Force-Lockout + tote Exports raus + DRY-Helper + landing-page Unit-Tests + Token-TTL/Lockout-Konstanten)
 - **GitHub:** https://github.com/krobipd/ioBroker.hassemu
 - **npm:** https://www.npmjs.com/package/iobroker.hassemu
 - **Repository PR:** ioBroker/ioBroker.repositories#5793
@@ -18,12 +18,12 @@
 
 ## HA-kompatible Geräte — Limitationen
 
-| Aspekt     | Typisches Verhalten                                  |
-| ---------- | ---------------------------------------------------- |
-| Protokoll  | **Nur HTTP** — kein HTTPS für HA-Verbindungen        |
-| Discovery  | mDNS (`_home-assistant._tcp`) oder manuelle IP       |
-| Auth       | Erwartet vollständigen HA OAuth2-Flow                |
-| Nach Auth  | Folgt 302-Redirects nativ im WebView                 |
+| Aspekt    | Typisches Verhalten                            |
+| --------- | ---------------------------------------------- |
+| Protokoll | **Nur HTTP** — kein HTTPS für HA-Verbindungen  |
+| Discovery | mDNS (`_home-assistant._tcp`) oder manuelle IP |
+| Auth      | Erwartet vollständigen HA OAuth2-Flow          |
+| Nach Auth | Folgt 302-Redirects nativ im WebView           |
 
 ## Architektur
 
@@ -67,39 +67,46 @@ src/lib/webserver.ts         → Fastify HTTP Server + HA API Emulation + Cookie
 4. POST `/auth/token` mit `grant_type=authorization_code` → Access Token + Refresh Token. Refresh Token wird in `webserver.refreshTokens` gespeichert (FIFO-capped 200), Access Token am Client-Record persistiert.
 5. POST `/auth/token` mit `grant_type=refresh_token` → Refresh Token wird in der Map gelookupped; unbekannt → 400 invalid_grant; bekannt → neuer Access Token wird ausgestellt.
 6. GET `/` → Resolver-Reihenfolge (kein Master-Branch — der Master-Switch wird beim Toggle in `bulkSetMode` umgesetzt):
-   1. `clients.<id>.mode = 'global'` → delegate `global.mode` (`'manual'` → `global.manualUrl`; URL → URL)
-   2. `clients.<id>.mode = 'manual'` → `clients.<id>.manualUrl`
-   3. `clients.<id>.mode = <URL>` → diese URL
-   4. sonst → 200 HTML mit der Landing-Seite
+    1. `clients.<id>.mode = 'global'` → delegate `global.mode` (`'manual'` → `global.manualUrl`; URL → URL)
+    2. `clients.<id>.mode = 'manual'` → `clients.<id>.manualUrl`
+    3. `clients.<id>.mode = <URL>` → diese URL
+    4. sonst → 200 HTML mit der Landing-Seite
 
-## Tests (215 + 57 package)
+## Tests (287 unit + 57 package + 1 integration)
+
+Tests leben seit v1.1.6 neben dem Source als `src/lib/*.test.ts` und laufen direkt via `ts-node/register` (offizieller `ioBroker.example/TypeScript`-Standard).
 
 ```
-test/testConstants.ts         → Shared Constants
-test/testCoerce.ts            → Boundary-Validator
-test/testMdns.ts              → mDNS Lifecycle
-test/testUrlDiscovery.ts      → URL Discovery (Intro-Tiles + VIS-Projekte)
-test/testClientRegistry.ts    → Multi-Client Registry
-test/testGlobalConfig.ts      → global.visUrl + global.enabled Handler
-test/testWebServer.ts         → HTTP-Endpoints, Cookie-Flow, Setup-Page, Global-Override
-test/package.js               → @iobroker/testing Package-Tests
-test/integration.js           → @iobroker/testing Integration-Tests
+src/lib/constants.test.ts        → Shared Konstanten + neue Token-TTL/Lockout-Werte
+src/lib/coerce.test.ts           → Boundary-Validator + parseManualUrlWrite
+src/lib/mdns.test.ts             → mDNS Lifecycle
+src/lib/url-discovery.test.ts    → URL Discovery (Intro-Tiles + VIS-Projekte)
+src/lib/client-registry.test.ts  → Multi-Client Registry
+src/lib/global-config.test.ts    → global.mode + global.manualUrl + global.enabled Handler
+src/lib/landing-page.test.ts     → Landing-Page Rendering + XSS-Escaping (seit v1.3.0)
+src/lib/webserver.test.ts        → HTTP-Endpoints, Cookie-Flow, Auth-Härtung, Brute-Force-Lockout
+test/package.js                  → @iobroker/testing Package-Tests
+test/integration.js              → @iobroker/testing Integration-Tests
 ```
 
 ## Versionshistorie
 
-| Version | Highlights                                                                                           |
-| ------- | ---------------------------------------------------------------------------------------------------- |
-| 1.1.4 | tsconfig.test.json → outDir `./build-test` (verhindert `build/src`+`build/test` Duplikate im veröffentlichten Paket), prebuild:test + .gitignore + eslint-ignore. Kein Runtime-Change. |
-| 1.1.3   | Race-Fix: parallele cookieless Requests desselben Displays landen bei einem Client (Pending-Lock per IP). Setup-Seite neu: grünes OK-Banner, Dark-Mode, i18n in allen 11 Adapter-Sprachen via `system.config.language` |
-| 1.1.2   | Hostname als Channel-Name (kein eigener Datenpunkt mehr), createObjects parallelisiert, Legacy-Migration |
-| 1.1.1   | Redirect-URL raus aus Admin → global.visUrl/enabled + Setup-Seite, web als Dependency                |
-| 1.1.0   | Multi-Client, Cookie-Identifikation, visUrl-Dropdown, Fastify, Boundary-Härtung, Config-Migration    |
-| 1.0.4   | DRY: NativeConfig + Config-Mapping entfernt, Log-Spam-Fix, createSession private                     |
-| 1.0.3   | Unused Deps entfernt, no-floating-promises, CI checkout entfernt                                     |
-| 1.0.2   | build/ aus Git entfernt, .gitignore fix, Keywords bereinigt                                          |
-| 1.0.0   | Umbenannt von homeassistant-bridge zu hassemu                                                        |
-| 0.9.3   | Review-Fixes: Standard-Tests (plain JS), CHANGELOG.md entfernt                                       |
+| Version | Highlights                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.3.0   | Hardening + Cleanup: Brute-Force-Lockout (5 fehlgeschlagene Logins → 15 min IP-Sperre, 429), `parseManualUrlWrite`-Helper für DRY zwischen Client-Registry und Global-Config, FIFO-Cap-Helper im WebServer, Token-TTL + Lockout-Werte als benannte Konstanten, tote Exports raus (`resolveBindToReachable`, `coerceUuid:strictV4`-Param, `DEFAULT_REFRESH_DEBOUNCE_MS`-Export), neue Unit-Tests für `landing-page.ts` inkl. XSS-Escaping, HA-Version-Bump auf 2026.4.0 |
+| 1.2.0   | Datenmodell-Rework: `visUrl` → `mode/manualUrl` + Master-Switch via Bulk-Sync, Migration `migrateVisUrlToMode`, Stale-Client-GC (30 d ohne Token → entfernen), Refresh-Token-Validierung gegen Map (vorher: jeder String akzeptiert), timing-safe Credential-Vergleich, `web` als globalDependency, `clients.<id>.mode`/`manualUrl`-Channel mit `type:'mixed'` für Dropdown                                                                                            |
+| 1.1.6   | Audit-Cleanup gegen `ioBroker.example/TypeScript`-Vollstandard: Test-Setup migriert (Tests neben Source als `src/lib/*.test.ts` via `ts-node/register`, alte `tsconfig.test.json` + `build-test/` raus), `@types/node` zurück auf `^20.19.24` (matched `engines.node: ">=20"`), Dependabot ignoriert Major-Bumps für `@types/node`/`typescript`/`eslint`/`actions/checkout`/`actions/setup-node`, `nyc` + `coverage`-Script, verwaiste `.github/auto-merge.yml` raus   |
+| 1.1.5   | Process-level `unhandledRejection` + `uncaughtException`-Handler als Last-Line-of-Defence, `manual-review`-Release-Plugin raus, Audit-getriebene Boilerplate-Sync, `js-controller`-Korrektur auf `>=6.0.11` (Repochecker-Quelle), `@types/iobroker` auf `^7.1.1`                                                                                                                                                                                                       |
+| 1.1.4   | Separater Test-Build-Output (`build-test/`) — kein `build/src`+`build/test` mehr im veröffentlichten Paket. Kein Runtime-Change. (In v1.1.6 obsolet — Test-Setup migriert.)                                                                                                                                                                                                                                                                                            |
+| 1.1.3   | Race-Fix: parallele cookieless Requests desselben Displays landen bei einem Client (Pending-Lock per IP). Setup-Seite: grünes OK-Banner, Dark-Mode, i18n in allen 11 Adapter-Sprachen via `system.config.language`                                                                                                                                                                                                                                                     |
+| 1.1.2   | Hostname als Channel-Name (kein eigener Datenpunkt mehr), `createObjects` parallelisiert, Legacy-Migration                                                                                                                                                                                                                                                                                                                                                             |
+| 1.1.1   | Redirect-URL raus aus Admin → `global.visUrl/enabled` + Setup-Seite, `web` als Dependency                                                                                                                                                                                                                                                                                                                                                                              |
+| 1.1.0   | Multi-Client, Cookie-Identifikation, `visUrl`-Dropdown, Fastify, Boundary-Härtung, Config-Migration                                                                                                                                                                                                                                                                                                                                                                    |
+| 1.0.4   | DRY: NativeConfig + Config-Mapping entfernt, Log-Spam-Fix, `createSession` private                                                                                                                                                                                                                                                                                                                                                                                     |
+| 1.0.3   | Unused Deps entfernt, `no-floating-promises`, CI checkout entfernt                                                                                                                                                                                                                                                                                                                                                                                                     |
+| 1.0.2   | `build/` aus Git entfernt, `.gitignore` fix, Keywords bereinigt                                                                                                                                                                                                                                                                                                                                                                                                        |
+| 1.0.0   | Umbenannt von `homeassistant-bridge` zu `hassemu`                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| 0.9.3   | Review-Fixes: Standard-Tests (plain JS), `CHANGELOG.md` entfernt                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 ## Befehle
 

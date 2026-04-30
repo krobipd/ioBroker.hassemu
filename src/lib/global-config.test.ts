@@ -27,7 +27,12 @@ function createMockAdapter(namespace = 'hassemu.0'): {
 
     function build(): {
         namespace: string;
-        log: { debug: (m: string) => void; info: (m: string) => void; warn: (m: string) => void; error: (m: string) => void };
+        log: {
+            debug: (m: string) => void;
+            info: (m: string) => void;
+            warn: (m: string) => void;
+            error: (m: string) => void;
+        };
         setInterval: () => undefined;
         clearInterval: () => undefined;
         setTimeout: () => undefined;
@@ -94,10 +99,14 @@ describe('GlobalConfig', () => {
     });
 
     describe('restore', () => {
+        // restore() reads broker-state into private fields; we verify via the
+        // public surface (resolveUrlFor + isEnabled) — no getter leakage.
+
         it('defaults to empty mode, null manualUrl, disabled', async () => {
             await g.restore();
-            expect(g.getMode()).to.equal('');
-            expect(g.getManualUrl()).to.be.null;
+            const rec = makeRecord({ mode: MODE_GLOBAL });
+            // empty global.mode → resolveGlobalMode returns null
+            expect(g.resolveUrlFor(rec)).to.be.null;
             expect(g.isEnabled()).to.be.false;
         });
 
@@ -106,21 +115,26 @@ describe('GlobalConfig', () => {
             store.states.set('hassemu.0.global.manualUrl', { val: 'http://vis.local/', ack: true });
             store.states.set('hassemu.0.global.enabled', { val: true, ack: true });
             await g.restore();
-            expect(g.getMode()).to.equal(MODE_MANUAL);
-            expect(g.getManualUrl()).to.equal('http://vis.local/');
+            const rec = makeRecord({ mode: MODE_GLOBAL });
+            // global.mode='manual' delegates to global.manualUrl
+            expect(g.resolveUrlFor(rec)).to.equal('http://vis.local/');
             expect(g.isEnabled()).to.be.true;
         });
 
         it('loads URL-mode (direct URL value)', async () => {
             store.states.set('hassemu.0.global.mode', { val: 'http://direct/', ack: true });
             await g.restore();
-            expect(g.getMode()).to.equal('http://direct/');
+            const rec = makeRecord({ mode: MODE_GLOBAL });
+            expect(g.resolveUrlFor(rec)).to.equal('http://direct/');
         });
 
         it('ignores unsafe persisted manualUrl', async () => {
+            // Mode='manual' to force the global manualUrl branch in resolveGlobalMode
+            store.states.set('hassemu.0.global.mode', { val: MODE_MANUAL, ack: true });
             store.states.set('hassemu.0.global.manualUrl', { val: 'javascript:alert(1)', ack: true });
             await g.restore();
-            expect(g.getManualUrl()).to.be.null;
+            const rec = makeRecord({ mode: MODE_GLOBAL });
+            expect(g.resolveUrlFor(rec)).to.be.null;
         });
 
         it('treats non-boolean enabled as false', async () => {
@@ -176,10 +190,11 @@ describe('GlobalConfig', () => {
     });
 
     describe('handleModeWrite', () => {
+        const modeVal = (): unknown => store.states.get('hassemu.0.global.mode')?.val ?? '';
+
         it("accepts 'manual' sentinel", async () => {
             await g.handleModeWrite(MODE_MANUAL);
-            expect(g.getMode()).to.equal(MODE_MANUAL);
-            expect(store.states.get('hassemu.0.global.mode')?.val).to.equal(MODE_MANUAL);
+            expect(modeVal()).to.equal(MODE_MANUAL);
         });
 
         it("warns when 'manual' is set but global.manualUrl is empty", async () => {
@@ -190,53 +205,56 @@ describe('GlobalConfig', () => {
 
         it("rejects 'global' (self-referential)", async () => {
             await g.handleModeWrite(MODE_GLOBAL);
-            expect(g.getMode()).to.equal(''); // unchanged
+            expect(modeVal()).to.equal(''); // unchanged
             const warn = store.logs.find(l => l.level === 'warn' && l.msg.includes('self-referential'));
             expect(warn).to.not.be.undefined;
         });
 
         it('accepts a safe URL', async () => {
             await g.handleModeWrite('http://ok.local/');
-            expect(g.getMode()).to.equal('http://ok.local/');
+            expect(modeVal()).to.equal('http://ok.local/');
         });
 
         it('accepts empty string (clears mode)', async () => {
             await g.handleModeWrite('http://x/');
             await g.handleModeWrite('');
-            expect(g.getMode()).to.equal('');
+            expect(modeVal()).to.equal('');
         });
 
         it('rejects javascript: URL and keeps previous value', async () => {
             await g.handleModeWrite('http://safe/');
             await g.handleModeWrite('javascript:alert(1)');
-            expect(g.getMode()).to.equal('http://safe/');
+            expect(modeVal()).to.equal('http://safe/');
             const warn = store.logs.find(l => l.level === 'warn' && l.msg.includes('unsafe'));
             expect(warn).to.not.be.undefined;
         });
 
         it('rejects non-string', async () => {
             await g.handleModeWrite(42 as unknown);
-            expect(g.getMode()).to.equal('');
+            expect(modeVal()).to.equal('');
             const warn = store.logs.find(l => l.level === 'warn' && l.msg.includes('non-string'));
             expect(warn).to.not.be.undefined;
         });
     });
 
     describe('handleManualUrlWrite', () => {
+        const manualUrlVal = (): unknown => store.states.get('hassemu.0.global.manualUrl')?.val ?? '';
+
         it('accepts safe URL', async () => {
             await g.handleManualUrlWrite('http://m/');
-            expect(g.getManualUrl()).to.equal('http://m/');
+            expect(manualUrlVal()).to.equal('http://m/');
         });
 
         it('clears on empty string', async () => {
             await g.handleManualUrlWrite('http://m/');
             await g.handleManualUrlWrite('');
-            expect(g.getManualUrl()).to.be.null;
+            expect(manualUrlVal()).to.equal('');
         });
 
         it('rejects unsafe URL', async () => {
             await g.handleManualUrlWrite('javascript:alert(1)');
-            expect(g.getManualUrl()).to.be.null;
+            // unsafe input → reverted to previous (null → '' in state)
+            expect(manualUrlVal()).to.equal('');
         });
 
         it("warns when manualUrl cleared while mode='manual'", async () => {
@@ -271,8 +289,8 @@ describe('GlobalConfig', () => {
     describe('migrationSet', () => {
         it('sets mode + manualUrl in one call without validation', async () => {
             await g.migrationSet(MODE_MANUAL, 'http://from-legacy/');
-            expect(g.getMode()).to.equal(MODE_MANUAL);
-            expect(g.getManualUrl()).to.equal('http://from-legacy/');
+            expect(store.states.get('hassemu.0.global.mode')?.val).to.equal(MODE_MANUAL);
+            expect(store.states.get('hassemu.0.global.manualUrl')?.val).to.equal('http://from-legacy/');
         });
 
         it('persists both states with ack=true', async () => {

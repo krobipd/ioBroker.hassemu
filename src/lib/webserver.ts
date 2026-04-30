@@ -2,7 +2,15 @@ import crypto from 'node:crypto';
 import dns from 'node:dns/promises';
 import fastifyCookie from '@fastify/cookie';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
-import { HA_VERSION, SESSION_TTL_MS, CLEANUP_INTERVAL_MS, LOGIN_SCHEMA } from './constants';
+import {
+    HA_VERSION,
+    SESSION_TTL_MS,
+    CLEANUP_INTERVAL_MS,
+    LOGIN_SCHEMA,
+    OAUTH_ACCESS_TOKEN_TTL_S,
+    LOGIN_LOCKOUT_THRESHOLD,
+    LOGIN_LOCKOUT_WINDOW_MS,
+} from './constants';
 import { coerceString, coerceUuid } from './coerce';
 import type { ClientRegistry } from './client-registry';
 import type { GlobalConfig } from './global-config';
@@ -56,6 +64,13 @@ export class WebServer {
      * unknown tokens are rejected (was: any string accepted).
      */
     public readonly refreshTokens: Map<string, string> = new Map();
+    /**
+     * Brute-force lockout state per remote IP. Each entry tracks failed login
+     * attempts; once {@link LOGIN_LOCKOUT_THRESHOLD} is reached, `lockedUntil`
+     * is set and further attempts from that IP are rejected with HTTP 429
+     * until the window passes. Expired entries are pruned in {@link cleanupSessions}.
+     */
+    public readonly loginAttempts: Map<string, { failedCount: number; lockedUntil: number }> = new Map();
     private cleanupTimer: ioBroker.Interval | null = null;
     public readonly instanceUuid: string;
     /** ioBroker system language for the setup page — resolved on startup. */
@@ -144,35 +159,56 @@ export class WebServer {
         return this.app.inject.bind(this.app);
     }
 
-    /** Periodic cleanup of expired in-flight auth sessions. */
+    /** Periodic cleanup of expired in-flight auth sessions and stale lockouts. */
     public cleanupSessions(): void {
         const now = Date.now();
-        let cleaned = 0;
+        let cleanedSessions = 0;
         for (const [key, session] of this.sessions) {
             if (now - session.created > SESSION_TTL_MS) {
                 this.sessions.delete(key);
-                cleaned++;
+                cleanedSessions++;
             }
         }
-        if (cleaned > 0) {
-            this.adapter.log.debug(`Session cleanup: removed ${cleaned} expired sessions`);
+        if (cleanedSessions > 0) {
+            this.adapter.log.debug(`Session cleanup: removed ${cleanedSessions} expired sessions`);
+        }
+        let cleanedLockouts = 0;
+        for (const [ip, entry] of this.loginAttempts) {
+            if (entry.lockedUntil > 0 && entry.lockedUntil <= now) {
+                this.loginAttempts.delete(ip);
+                cleanedLockouts++;
+            }
+        }
+        if (cleanedLockouts > 0) {
+            this.adapter.log.debug(`Lockout cleanup: cleared ${cleanedLockouts} expired IP lockouts`);
+        }
+    }
+
+    /**
+     * Drops the oldest entry of a Map if it would exceed `cap` after the next insert.
+     * Map iteration order in JS is insertion order, so `keys().next()` is the oldest.
+     *
+     * @param map Map to evict from.
+     * @param cap Hard cap; when `map.size >= cap`, the oldest entry is removed.
+     */
+    private static evictOldest<V>(map: Map<string, V>, cap: number): void {
+        if (map.size < cap) {
+            return;
+        }
+        const oldest = map.keys().next().value;
+        if (oldest !== undefined) {
+            map.delete(oldest);
         }
     }
 
     /**
      * Inserts a session, dropping the oldest entry if {@link SESSIONS_CAP} is exceeded.
-     * Map iteration order is insertion order, so the first key is the oldest.
      *
      * @param key  Session key (flow id or auth code).
      * @param data Session payload.
      */
     private storeSession(key: string, data: SessionData): void {
-        if (this.sessions.size >= SESSIONS_CAP) {
-            const oldest = this.sessions.keys().next().value;
-            if (oldest !== undefined) {
-                this.sessions.delete(oldest);
-            }
-        }
+        WebServer.evictOldest(this.sessions, SESSIONS_CAP);
         this.sessions.set(key, data);
     }
 
@@ -183,13 +219,66 @@ export class WebServer {
      * @param clientId Owning client id.
      */
     private storeRefreshToken(token: string, clientId: string): void {
-        if (this.refreshTokens.size >= REFRESH_TOKENS_CAP) {
-            const oldest = this.refreshTokens.keys().next().value;
-            if (oldest !== undefined) {
-                this.refreshTokens.delete(oldest);
-            }
-        }
+        WebServer.evictOldest(this.refreshTokens, REFRESH_TOKENS_CAP);
         this.refreshTokens.set(token, clientId);
+    }
+
+    /**
+     * Brute-force lockout: returns true if `ip` is currently in the timeout window.
+     * Lazy-resets entries whose lockout already expired (caller can immediately try again).
+     *
+     * @param ip Remote IP, or null when unavailable.
+     */
+    private isIpLocked(ip: string | null): boolean {
+        if (!ip) {
+            return false;
+        }
+        const entry = this.loginAttempts.get(ip);
+        if (!entry || entry.lockedUntil === 0) {
+            return false;
+        }
+        if (entry.lockedUntil > Date.now()) {
+            return true;
+        }
+        // Lockout window passed — drop the entry, IP gets a fresh budget.
+        this.loginAttempts.delete(ip);
+        return false;
+    }
+
+    /**
+     * Records a failed login attempt for `ip`. When the running count reaches
+     * {@link LOGIN_LOCKOUT_THRESHOLD}, the IP is locked for
+     * {@link LOGIN_LOCKOUT_WINDOW_MS}.
+     *
+     * @param ip Remote IP that failed authentication.
+     */
+    private recordLoginFailure(ip: string | null): void {
+        if (!ip) {
+            return;
+        }
+        const entry = this.loginAttempts.get(ip) ?? { failedCount: 0, lockedUntil: 0 };
+        entry.failedCount += 1;
+        if (entry.failedCount >= LOGIN_LOCKOUT_THRESHOLD) {
+            entry.lockedUntil = Date.now() + LOGIN_LOCKOUT_WINDOW_MS;
+            this.adapter.log.warn(
+                `Login lockout: IP ${ip} reached ${LOGIN_LOCKOUT_THRESHOLD} failed attempts — ` +
+                    `locked for ${Math.round(LOGIN_LOCKOUT_WINDOW_MS / 60000)} min`,
+            );
+        }
+        this.loginAttempts.set(ip, entry);
+    }
+
+    /**
+     * Resets the failure counter and any active lockout for `ip`. Called after
+     * a successful credential check so legit clients don't accumulate counts
+     * across long-lived sessions.
+     *
+     * @param ip Remote IP that just authenticated successfully.
+     */
+    private clearLoginAttempts(ip: string | null): void {
+        if (ip) {
+            this.loginAttempts.delete(ip);
+        }
     }
 
     // --- client identification ---
@@ -346,10 +435,17 @@ export class WebServer {
                 }
 
                 if (this.config.authRequired) {
+                    const ip = coerceString(req.ip);
+                    if (this.isIpLocked(ip)) {
+                        this.adapter.log.warn(`Login rejected: IP ${ip} is currently locked out`);
+                        reply.status(429);
+                        return { type: 'abort', flow_id: flowId, reason: 'too_many_failed_attempts' };
+                    }
                     const { username, password } = req.body ?? {};
                     const userOk = typeof username === 'string' && safeStringEqual(username, this.config.username);
                     const passOk = typeof password === 'string' && safeStringEqual(password, this.config.password);
                     if (!userOk || !passOk) {
+                        this.recordLoginFailure(ip);
                         this.adapter.log.warn('Invalid credentials');
                         reply.status(400);
                         return {
@@ -362,6 +458,7 @@ export class WebServer {
                             description_placeholders: null,
                         };
                     }
+                    this.clearLoginAttempts(ip);
                 }
 
                 this.sessions.delete(flowId);
@@ -400,7 +497,7 @@ export class WebServer {
                         access_token: token,
                         token_type: 'Bearer',
                         refresh_token: refreshToken,
-                        expires_in: 1800,
+                        expires_in: OAUTH_ACCESS_TOKEN_TTL_S,
                     };
                 }
 
@@ -419,7 +516,7 @@ export class WebServer {
                     return {
                         access_token: newAccess,
                         token_type: 'Bearer',
-                        expires_in: 1800,
+                        expires_in: OAUTH_ACCESS_TOKEN_TTL_S,
                     };
                 }
 
