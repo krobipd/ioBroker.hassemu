@@ -147,7 +147,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.3.1 (2026-04-30)
 
 - Hotfix for legacy v1.1.x clients: their `visUrl` channel did not have `mode` / `manualUrl` objects. The v1.2.0 migration wrote states without the matching objects, which the broker logged as `State has no existing object` and rendered the `mode` datapoint without a name or dropdown in the object browser. `ClientRegistry.restore()` now calls an idempotent `ensureObjects()` for every client, so the v1.2.0+ object shapes exist before any migration writes happen.
 - Mode dropdown gains a numeric `0 = "---"` no-choice fallback (analogous to govee-smart's pattern). Existing displays keep their setting; new displays start at `0` and the resolver falls back to the landing page until a real choice is made.
@@ -184,10 +184,6 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 - Audit-driven boilerplate sync with the other krobi adapters (`.vscode` json5 schemas, `tsconfig.test` looser test rules).
 - Min js-controller correction: was `>=7.0.0`, restored to repochecker-recommended `>=6.0.11` (Source: `ioBroker.repochecker/lib/M1000_IOPackageJson.js`).
 - `@types/iobroker` bumped to `^7.1.1`.
-
-### 1.1.4 (2026-04-23)
-
-- Separate test-build output (`build-test/`) from production `build/` — `npm test` no longer risks leaving duplicated `build/src` + `build/test` trees in the published package. No runtime change.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 

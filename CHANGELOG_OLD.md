@@ -1,4 +1,8 @@
 # Older Changes
+## 1.1.4 (2026-04-23)
+
+- Separate test-build output (`build-test/`) from production `build/` — `npm test` no longer risks leaving duplicated `build/src` + `build/test` trees in the published package. No runtime change.
+
 ## 1.1.3 (2026-04-19)
 
 - **Fix duplicate client registration on first connect** — HA displays fire several parallel cookieless requests (`GET /`, `GET /api/`, `POST /auth/login_flow`) within milliseconds of each other. Each used to create a separate client record, leaving orphans behind. The registry now locks per IP while the first client is being created, so parallel burst requests from the same display attach to the same client and cookie.
