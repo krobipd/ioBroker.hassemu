@@ -118,6 +118,11 @@ export class ClientRegistry {
 
             const record: ClientRecord = { id, cookie, token, mode, manualUrl, ip, hostname };
             this.trackInMemory(record);
+            // Legacy clients (v1.1.x) only had `visUrl` + `ip` + `remove` objects;
+            // ensure the v1.2.0+ objects (`mode`, `manualUrl`) exist before any
+            // state writes from migration land — otherwise js-controller logs
+            // "State has no existing object" warnings.
+            await this.ensureObjects(record);
         }
         this.adapter.log.debug(`client-registry: restored ${this.byId.size} client(s)`);
     }
@@ -228,14 +233,16 @@ export class ClientRegistry {
         if (!record) {
             return;
         }
-        if (typeof rawValue !== 'string') {
-            this.adapter.log.warn(`client-registry: rejected non-string mode for ${id}`);
-            await this.adapter.setStateAsync(`clients.${id}.mode`, { val: record.mode, ack: true });
+        // No-choice marker: numeric 0 (default), string '0', or empty string —
+        // all clear the choice and trigger the landing page.
+        if (rawValue === 0 || rawValue === '0' || rawValue === '') {
+            record.mode = '';
+            await this.adapter.setStateAsync(`clients.${id}.mode`, { val: 0, ack: true });
             return;
         }
-        if (rawValue === '') {
-            record.mode = '';
-            await this.adapter.setStateAsync(`clients.${id}.mode`, { val: '', ack: true });
+        if (typeof rawValue !== 'string') {
+            this.adapter.log.warn(`client-registry: rejected non-string mode for ${id}`);
+            await this.adapter.setStateAsync(`clients.${id}.mode`, { val: record.mode || 0, ack: true });
             return;
         }
         if (rawValue === MODE_GLOBAL || rawValue === MODE_MANUAL) {
@@ -340,11 +347,7 @@ export class ClientRegistry {
      */
     async syncUrlDropdown(states: UrlStates): Promise<void> {
         this.currentUrlStates = states;
-        const merged: UrlStates = {
-            [MODE_GLOBAL]: 'Global URL',
-            [MODE_MANUAL]: 'Manual URL',
-            ...states,
-        };
+        const merged = this.buildModeStates();
         for (const id of this.byId.keys()) {
             await this.adapter.extendObjectAsync(`clients.${id}.mode`, {
                 common: { states: merged },
@@ -398,13 +401,31 @@ export class ClientRegistry {
             .catch(err => this.adapter.log.debug(`touchLastSeen failed for ${record.id}: ${String(err)}`));
     }
 
-    private async createObjects(record: ClientRecord): Promise<void> {
-        const { id, cookie, mode, ip, hostname } = record;
-        const mergedStates: UrlStates = {
+    /**
+     * Builds the dropdown-states map for `clients.<id>.mode`. Includes the
+     * `0='---'` no-choice fallback (analogous to the govee-smart pattern), the
+     * `'global'` + `'manual'` sentinels, and all currently discovered URLs.
+     */
+    private buildModeStates(): UrlStates {
+        return {
+            0: '---',
             [MODE_GLOBAL]: 'Global URL',
             [MODE_MANUAL]: 'Manual URL',
             ...this.currentUrlStates,
         };
+    }
+
+    /**
+     * Idempotently creates all per-client objects (channel + states). Safe to
+     * call repeatedly — uses `setObjectNotExistsAsync` everywhere. Called from
+     * both `restore()` (so legacy v1.1.x clients gain the new mode/manualUrl
+     * objects before migration writes states) and `createClient()`.
+     *
+     * @param record Client to create or ensure objects for.
+     */
+    private async ensureObjects(record: ClientRecord): Promise<void> {
+        const { id, cookie, ip, hostname } = record;
+        const mergedStates = this.buildModeStates();
 
         await Promise.all([
             this.adapter.setObjectNotExistsAsync(`clients.${id}`, {
@@ -424,7 +445,7 @@ export class ClientRegistry {
                     role: 'value',
                     read: true,
                     write: true,
-                    def: '',
+                    def: 0,
                     states: mergedStates,
                 },
                 native: {},
@@ -459,7 +480,11 @@ export class ClientRegistry {
                 native: {},
             }),
         ]);
+    }
 
+    private async createObjects(record: ClientRecord): Promise<void> {
+        await this.ensureObjects(record);
+        const { id, mode, ip } = record;
         await Promise.all([
             this.adapter.setStateAsync(`clients.${id}.ip`, { val: ip ?? '', ack: true }),
             this.adapter.setStateAsync(`clients.${id}.mode`, { val: mode, ack: true }),

@@ -231,7 +231,7 @@
         "role": "value",
         "read": true,
         "write": true,
-        "def": ""
+        "def": 0
       },
       "native": {}
     },

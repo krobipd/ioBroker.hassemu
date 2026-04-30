@@ -62,6 +62,9 @@ class GlobalConfig {
   resolveClientMode(record) {
     var _a;
     const m = record.mode;
+    if (m === 0 || m === "0" || m === "") {
+      return null;
+    }
     if (m === MODE_GLOBAL) {
       return this.resolveGlobalMode();
     }
@@ -71,6 +74,10 @@ class GlobalConfig {
     return (0, import_coerce.coerceSafeUrl)(m);
   }
   resolveGlobalMode() {
+    const m = this.mode;
+    if (m === 0 || m === "0" || m === "") {
+      return null;
+    }
     if (this.mode === MODE_MANUAL) {
       return this.manualUrl;
     }
@@ -88,14 +95,14 @@ class GlobalConfig {
    * @param rawValue Value written to the state.
    */
   async handleModeWrite(rawValue) {
-    if (typeof rawValue !== "string") {
-      this.adapter.log.warn("global-config: rejected non-string global.mode");
-      await this.adapter.setStateAsync("global.mode", { val: this.mode, ack: true });
+    if (rawValue === 0 || rawValue === "0" || rawValue === "") {
+      this.mode = "";
+      await this.adapter.setStateAsync("global.mode", { val: 0, ack: true });
       return;
     }
-    if (rawValue === "") {
-      this.mode = "";
-      await this.adapter.setStateAsync("global.mode", { val: "", ack: true });
+    if (typeof rawValue !== "string") {
+      this.adapter.log.warn("global-config: rejected non-string global.mode");
+      await this.adapter.setStateAsync("global.mode", { val: this.mode || 0, ack: true });
       return;
     }
     if (rawValue === MODE_GLOBAL) {
@@ -163,7 +170,7 @@ class GlobalConfig {
    * @param states Discovered URL → label map.
    */
   async syncUrlDropdown(states) {
-    const merged = { ...states, [MODE_MANUAL]: "Manual URL" };
+    const merged = { 0: "---", [MODE_MANUAL]: "Manual URL", ...states };
     await this.adapter.extendObjectAsync("global.mode", {
       common: { states: merged }
     });

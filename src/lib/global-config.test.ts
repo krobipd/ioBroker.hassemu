@@ -215,10 +215,23 @@ describe('GlobalConfig', () => {
             expect(modeVal()).to.equal('http://ok.local/');
         });
 
-        it('accepts empty string (clears mode)', async () => {
+        it('accepts empty string (clears mode → numeric 0)', async () => {
             await g.handleModeWrite('http://x/');
             await g.handleModeWrite('');
-            expect(modeVal()).to.equal('');
+            // Cleared modes are persisted as numeric 0 (matches the dropdown's '---' option).
+            expect(modeVal()).to.equal(0);
+        });
+
+        it('accepts numeric 0 (no-choice marker)', async () => {
+            await g.handleModeWrite('http://x/');
+            await g.handleModeWrite(0);
+            expect(modeVal()).to.equal(0);
+        });
+
+        it("accepts string '0' (dropdown selection of '---')", async () => {
+            await g.handleModeWrite('http://x/');
+            await g.handleModeWrite('0');
+            expect(modeVal()).to.equal(0);
         });
 
         it('rejects javascript: URL and keeps previous value', async () => {
@@ -229,9 +242,10 @@ describe('GlobalConfig', () => {
             expect(warn).to.not.be.undefined;
         });
 
-        it('rejects non-string', async () => {
+        it('rejects non-string non-zero numbers', async () => {
             await g.handleModeWrite(42 as unknown);
-            expect(modeVal()).to.equal('');
+            // mode stays unchanged → state is reverted to current value (0 by default)
+            expect(modeVal()).to.equal(0);
             const warn = store.logs.find(l => l.level === 'warn' && l.msg.includes('non-string'));
             expect(warn).to.not.be.undefined;
         });
@@ -301,10 +315,11 @@ describe('GlobalConfig', () => {
     });
 
     describe('syncUrlDropdown', () => {
-        it("writes common.states to global.mode with 'manual' sentinel added", async () => {
+        it("writes common.states to global.mode with 0='---' + 'manual' sentinel added", async () => {
             await g.syncUrlDropdown({ 'http://a/': 'A', 'http://b/': 'B' });
             const obj = store.objects.get('hassemu.0.global.mode');
             expect(obj?.common?.states).to.deep.equal({
+                0: '---',
                 'http://a/': 'A',
                 'http://b/': 'B',
                 [MODE_MANUAL]: 'Manual URL',

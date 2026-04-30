@@ -147,6 +147,11 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
+### **WORK IN PROGRESS**
+
+- Hotfix for legacy v1.1.x clients: their `visUrl` channel did not have `mode` / `manualUrl` objects. The v1.2.0 migration wrote states without the matching objects, which the broker logged as `State has no existing object` and rendered the `mode` datapoint without a name or dropdown in the object browser. `ClientRegistry.restore()` now calls an idempotent `ensureObjects()` for every client, so the v1.2.0+ object shapes exist before any migration writes happen.
+- Mode dropdown gains a numeric `0 = "---"` no-choice fallback (analogous to govee-smart's pattern). Existing displays keep their setting; new displays start at `0` and the resolver falls back to the landing page until a real choice is made.
+
 ### 1.3.0 (2026-04-30)
 
 - Security: brute-force lockout on `/auth/login_flow/:flowId` — after 5 failed credential attempts an IP is rejected with HTTP 429 for 15 min. Successful login resets the counter.
