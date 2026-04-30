@@ -10,7 +10,7 @@
  */
 
 import crypto from 'node:crypto';
-import { coerceString, coerceUuid, coerceSafeUrl, isPlainObject } from './coerce';
+import { coerceString, coerceUuid, coerceSafeUrl, isPlainObject, parseManualUrlWrite } from './coerce';
 import { MODE_GLOBAL, MODE_MANUAL } from './global-config';
 import { generateClientId } from './network';
 import type { AdapterInterface, ClientRecord, UrlStates } from './types';
@@ -270,16 +270,15 @@ export class ClientRegistry {
         if (!record) {
             return;
         }
-        const empty = rawValue === '' || rawValue === null || rawValue === undefined;
-        const safe = empty ? null : coerceSafeUrl(rawValue);
-        if (!empty && !safe) {
+        const result = parseManualUrlWrite(rawValue);
+        if (!result.ok) {
             this.adapter.log.warn(`client-registry: rejected unsafe manualUrl for ${id}`);
             await this.adapter.setStateAsync(`clients.${id}.manualUrl`, { val: record.manualUrl ?? '', ack: true });
             return;
         }
-        record.manualUrl = safe;
-        await this.adapter.setStateAsync(`clients.${id}.manualUrl`, { val: safe ?? '', ack: true });
-        if (record.mode === MODE_MANUAL && !safe) {
+        record.manualUrl = result.safe;
+        await this.adapter.setStateAsync(`clients.${id}.manualUrl`, { val: result.safe ?? '', ack: true });
+        if (record.mode === MODE_MANUAL && !result.safe) {
             this.adapter.log.warn(
                 `client-registry: ${id} manualUrl cleared while mode='manual' — display will hit the setup page`,
             );

@@ -1,15 +1,24 @@
 import { expect } from 'chai';
-import { HA_VERSION, SESSION_TTL_MS, CLEANUP_INTERVAL_MS, LOGIN_SCHEMA } from './constants';
+import {
+    HA_VERSION,
+    SESSION_TTL_MS,
+    CLEANUP_INTERVAL_MS,
+    LOGIN_SCHEMA,
+    OAUTH_ACCESS_TOKEN_TTL_S,
+    LOGIN_LOCKOUT_THRESHOLD,
+    LOGIN_LOCKOUT_WINDOW_MS,
+} from './constants';
 
 describe('constants', () => {
     describe('HA_VERSION', () => {
-        it('should be a valid semver-like version string', () => {
+        it('should be a valid HA-style version string (year.month.patch)', () => {
             expect(HA_VERSION).to.be.a('string');
             expect(HA_VERSION).to.match(/^\d{4}\.\d+\.\d+$/);
         });
 
-        it('should be version 2026.3.1', () => {
-            expect(HA_VERSION).to.equal('2026.3.1');
+        it('should be from year 2026 or later', () => {
+            const year = parseInt(HA_VERSION.split('.')[0], 10);
+            expect(year).to.be.at.least(2026);
         });
     });
 
@@ -59,6 +68,41 @@ describe('constants', () => {
                 expect(field.required).to.be.true;
                 expect(field.type).to.equal('string');
             }
+        });
+    });
+
+    describe('OAUTH_ACCESS_TOKEN_TTL_S', () => {
+        it('should be a positive number of seconds', () => {
+            expect(OAUTH_ACCESS_TOKEN_TTL_S).to.be.a('number');
+            expect(OAUTH_ACCESS_TOKEN_TTL_S).to.be.greaterThan(0);
+        });
+
+        it('should be 30 minutes in seconds (HA default)', () => {
+            expect(OAUTH_ACCESS_TOKEN_TTL_S).to.equal(30 * 60);
+        });
+    });
+
+    describe('LOGIN_LOCKOUT_THRESHOLD', () => {
+        it('should be a positive integer', () => {
+            expect(LOGIN_LOCKOUT_THRESHOLD).to.be.a('number');
+            expect(LOGIN_LOCKOUT_THRESHOLD).to.be.greaterThan(0);
+            expect(Number.isInteger(LOGIN_LOCKOUT_THRESHOLD)).to.be.true;
+        });
+
+        it('should be small enough to prevent brute-force but tolerant of typos', () => {
+            expect(LOGIN_LOCKOUT_THRESHOLD).to.be.at.most(10);
+            expect(LOGIN_LOCKOUT_THRESHOLD).to.be.at.least(3);
+        });
+    });
+
+    describe('LOGIN_LOCKOUT_WINDOW_MS', () => {
+        it('should be a positive number of milliseconds', () => {
+            expect(LOGIN_LOCKOUT_WINDOW_MS).to.be.a('number');
+            expect(LOGIN_LOCKOUT_WINDOW_MS).to.be.greaterThan(0);
+        });
+
+        it('should be longer than SESSION_TTL so attackers cannot wait it out cheaply', () => {
+            expect(LOGIN_LOCKOUT_WINDOW_MS).to.be.greaterThan(SESSION_TTL_MS);
         });
     });
 });

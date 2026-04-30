@@ -55,21 +55,43 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const UUID_ANY_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Coerce to a UUID string, or null. Accepts any UUID variant by default.
+ * Coerce to a UUID string, or null. Accepts any UUID variant.
  *
- * @param value    Untrusted input.
- * @param strictV4 If true, only RFC 4122 v4 UUIDs are accepted.
+ * @param value Untrusted input.
  */
-export function coerceUuid(value: unknown, strictV4 = false): string | null {
+export function coerceUuid(value: unknown): string | null {
     if (typeof value !== 'string') {
         return null;
     }
-    const regex = strictV4 ? UUID_V4_REGEX : UUID_ANY_REGEX;
-    return regex.test(value) ? value.toLowerCase() : null;
+    return UUID_REGEX.test(value) ? value.toLowerCase() : null;
+}
+
+/** Result of {@link parseManualUrlWrite}. */
+export type ManualUrlWriteResult = { ok: true; safe: string | null } | { ok: false };
+
+/**
+ * Validates a write to a `manualUrl` state. Empty / null / undefined → clear
+ * (`safe: null`). Otherwise must pass {@link coerceSafeUrl}; if not → `ok: false`
+ * so the caller can reject + revert. Centralises the validation that both
+ * `ClientRegistry.handleManualUrlWrite` and `GlobalConfig.handleManualUrlWrite`
+ * share — caller still owns logging + setState because the prefixes/state-IDs
+ * differ.
+ *
+ * @param rawValue Value written to the state.
+ */
+export function parseManualUrlWrite(rawValue: unknown): ManualUrlWriteResult {
+    const empty = rawValue === '' || rawValue === null || rawValue === undefined;
+    if (empty) {
+        return { ok: true, safe: null };
+    }
+    const safe = coerceSafeUrl(rawValue);
+    if (!safe) {
+        return { ok: false };
+    }
+    return { ok: true, safe };
 }
 
 /**

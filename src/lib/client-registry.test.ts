@@ -35,7 +35,12 @@ function createMockAdapter(namespace = 'hassemu.0'): {
 
     function buildAdapter(): {
         namespace: string;
-        log: { debug: (m: string) => void; info: (m: string) => void; warn: (m: string) => void; error: (m: string) => void };
+        log: {
+            debug: (m: string) => void;
+            info: (m: string) => void;
+            warn: (m: string) => void;
+            error: (m: string) => void;
+        };
         setInterval: () => undefined;
         clearInterval: () => undefined;
         setTimeout: () => undefined;
@@ -484,7 +489,7 @@ describe('ClientRegistry', () => {
             rec.mode = MODE_MANUAL;
             rec.manualUrl = 'http://x/';
             await registry.handleManualUrlWrite(rec.id, '');
-            const warn = store.logs.find(l => l.level === 'warn' && l.msg.includes("manualUrl cleared"));
+            const warn = store.logs.find(l => l.level === 'warn' && l.msg.includes('manualUrl cleared'));
             expect(warn).to.not.be.undefined;
         });
 
@@ -510,7 +515,7 @@ describe('ClientRegistry', () => {
             expect(stored?.ack).to.be.true;
         });
 
-        it("skips clients whose mode already matches (no spurious writes)", async () => {
+        it('skips clients whose mode already matches (no spurious writes)', async () => {
             const r1 = await registry.identifyOrCreate(null, '1.1.1.1', null);
             r1.mode = 'same';
             store.logs.length = 0;

@@ -9,7 +9,7 @@ updates:
     directory: '/'
     schedule:
       interval: 'weekly'
-      day: 'thursday'
+      day: '__DAY__'
     open-pull-requests-limit: 15
     assignees:
       - 'krobipd'
@@ -34,7 +34,7 @@ updates:
     directory: '/'
     schedule:
       interval: 'weekly'
-      day: 'thursday'
+      day: '__DAY__'
     open-pull-requests-limit: 15
     assignees:
       - 'krobipd'
