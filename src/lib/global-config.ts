@@ -46,6 +46,15 @@ export class GlobalConfig {
         this.mode = typeof modeState?.val === 'string' ? modeState.val : '';
         this.manualUrl = coerceSafeUrl(manualState?.val);
         this.enabled = coerceBoolean(enabledState?.val) === true;
+
+        // Promote a blank state-value (`''`/null/undefined) to numeric `0` so
+        // the admin dropdown renders the `0='---'` option as selected. v1.2.0
+        // installs left the value as `''` which doesn't match any common.states
+        // entry, so the dropdown showed an empty selection.
+        const v = modeState?.val;
+        if (v === '' || v === null || v === undefined) {
+            await this.adapter.setStateAsync('global.mode', { val: 0, ack: true });
+        }
     }
 
     /**
