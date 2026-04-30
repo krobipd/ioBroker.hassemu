@@ -589,6 +589,7 @@ describe('ClientRegistry', () => {
             await registry.syncUrlDropdown({ 'http://a.local/': 'A', 'http://b.local/': 'B' });
             const obj = store.objects.get(`hassemu.0.clients.${rec.id}.mode`);
             expect(obj?.common?.states).to.deep.equal({
+                0: '---',
                 [MODE_GLOBAL]: 'Global URL',
                 [MODE_MANUAL]: 'Manual URL',
                 'http://a.local/': 'A',
@@ -601,6 +602,7 @@ describe('ClientRegistry', () => {
             const rec = await registry.identifyOrCreate(null, null, null);
             const obj = store.objects.get(`hassemu.0.clients.${rec.id}.mode`);
             expect(obj?.common?.states).to.deep.equal({
+                0: '---',
                 [MODE_GLOBAL]: 'Global URL',
                 [MODE_MANUAL]: 'Manual URL',
                 'http://a.local/': 'A',

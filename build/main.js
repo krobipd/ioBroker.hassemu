@@ -223,19 +223,11 @@ class HassEmu extends utils.Adapter {
     }
     try {
       await this.extendObjectAsync("global.mode", {
+        type: "state",
         common: { type: "mixed" }
       });
     } catch (err) {
       this.log.debug(`Migration: extend global.mode failed: ${String(err)}`);
-    }
-    for (const record of records) {
-      try {
-        await this.extendObjectAsync(`clients.${record.id}.mode`, {
-          common: { type: "mixed" }
-        });
-      } catch (err) {
-        this.log.debug(`Migration: extend clients.${record.id}.mode failed: ${String(err)}`);
-      }
     }
   }
   /**

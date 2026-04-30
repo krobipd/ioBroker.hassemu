@@ -6,7 +6,7 @@
 
 **ioBroker HASS Emulator** — emuliert einen minimalen HA-Server für Geräte, die ein HA-Dashboard erwarten → leitet auf beliebige URL um.
 
-- **Version:** 1.3.0 (in progress — Brute-Force-Lockout + tote Exports raus + DRY-Helper + landing-page Unit-Tests + Token-TTL/Lockout-Konstanten)
+- **Version:** 1.3.1 (in progress — Hotfix für legacy v1.1.x Client-Migration: `ensureObjects` legt `clients.<id>.mode`/`.manualUrl` Objects in `restore()` an, bevor Migration States schreibt. Plus `0='---'`-Fallback im Mode-Dropdown analog govee-smart.)
 - **GitHub:** https://github.com/krobipd/ioBroker.hassemu
 - **npm:** https://www.npmjs.com/package/iobroker.hassemu
 - **Repository PR:** ioBroker/ioBroker.repositories#5793

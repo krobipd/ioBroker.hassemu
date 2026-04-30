@@ -64,7 +64,11 @@ export class GlobalConfig {
     }
 
     private resolveClientMode(record: ClientRecord): string | null {
-        const m = record.mode;
+        const m: unknown = record.mode;
+        // No-choice markers: numeric 0, string '0', empty string — all → null
+        if (m === 0 || m === '0' || m === '') {
+            return null;
+        }
         if (m === MODE_GLOBAL) {
             return this.resolveGlobalMode();
         }
@@ -75,6 +79,10 @@ export class GlobalConfig {
     }
 
     private resolveGlobalMode(): string | null {
+        const m: unknown = this.mode;
+        if (m === 0 || m === '0' || m === '') {
+            return null;
+        }
         if (this.mode === MODE_MANUAL) {
             return this.manualUrl;
         }
@@ -94,14 +102,15 @@ export class GlobalConfig {
      * @param rawValue Value written to the state.
      */
     async handleModeWrite(rawValue: unknown): Promise<void> {
-        if (typeof rawValue !== 'string') {
-            this.adapter.log.warn('global-config: rejected non-string global.mode');
-            await this.adapter.setStateAsync('global.mode', { val: this.mode, ack: true });
+        // No-choice markers: numeric 0, string '0', empty string — all clear the choice
+        if (rawValue === 0 || rawValue === '0' || rawValue === '') {
+            this.mode = '';
+            await this.adapter.setStateAsync('global.mode', { val: 0, ack: true });
             return;
         }
-        if (rawValue === '') {
-            this.mode = '';
-            await this.adapter.setStateAsync('global.mode', { val: '', ack: true });
+        if (typeof rawValue !== 'string') {
+            this.adapter.log.warn('global-config: rejected non-string global.mode');
+            await this.adapter.setStateAsync('global.mode', { val: this.mode || 0, ack: true });
             return;
         }
         if (rawValue === MODE_GLOBAL) {
@@ -171,7 +180,9 @@ export class GlobalConfig {
      * @param states Discovered URL → label map.
      */
     async syncUrlDropdown(states: UrlStates): Promise<void> {
-        const merged: UrlStates = { ...states, [MODE_MANUAL]: 'Manual URL' };
+        // 0='---' is the no-choice fallback (analogous to govee-smart pattern).
+        // 'global' is intentionally NOT in this map — it would be self-referential.
+        const merged: UrlStates = { 0: '---', [MODE_MANUAL]: 'Manual URL', ...states };
         await this.adapter.extendObjectAsync('global.mode', {
             common: { states: merged },
         });

@@ -247,24 +247,19 @@ class HassEmu extends utils.Adapter {
             }
         }
 
-        // 3) Upgrade existing mode-state objects to type:'mixed' (instanceObjects
-        // only initialise on first install — running adapters keep the old type).
+        // 3) Upgrade existing global.mode object to type:'mixed' + ensure
+        // top-level type:'state' (instanceObjects only initialise on first
+        // install — older adapters may have a partial object).
         try {
             await this.extendObjectAsync('global.mode', {
+                type: 'state',
                 common: { type: 'mixed' as ioBroker.CommonType },
             });
         } catch (err) {
             this.log.debug(`Migration: extend global.mode failed: ${String(err)}`);
         }
-        for (const record of records) {
-            try {
-                await this.extendObjectAsync(`clients.${record.id}.mode`, {
-                    common: { type: 'mixed' as ioBroker.CommonType },
-                });
-            } catch (err) {
-                this.log.debug(`Migration: extend clients.${record.id}.mode failed: ${String(err)}`);
-            }
-        }
+        // Per-client mode objects are already created with the right shape via
+        // ClientRegistry.ensureObjects() during restore() — no extend needed here.
     }
 
     /**
