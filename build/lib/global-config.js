@@ -44,6 +44,10 @@ class GlobalConfig {
     this.mode = typeof (modeState == null ? void 0 : modeState.val) === "string" ? modeState.val : "";
     this.manualUrl = (0, import_coerce.coerceSafeUrl)(manualState == null ? void 0 : manualState.val);
     this.enabled = (0, import_coerce.coerceBoolean)(enabledState == null ? void 0 : enabledState.val) === true;
+    const v = modeState == null ? void 0 : modeState.val;
+    if (v === "" || v === null || v === void 0) {
+      await this.adapter.setStateAsync("global.mode", { val: 0, ack: true });
+    }
   }
   /**
    * Resolves the redirect URL for `record`.
