@@ -147,8 +147,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-
-### **WORK IN PROGRESS**
+### 1.3.0 (2026-04-30)
 
 - Security: brute-force lockout on `/auth/login_flow/:flowId` — after 5 failed credential attempts an IP is rejected with HTTP 429 for 15 min. Successful login resets the counter.
 - DRY refactor: shared `parseManualUrlWrite` helper between client + global config; FIFO-cap helper in WebServer; OAuth access-token TTL + lockout window/threshold are now named constants instead of magic numbers.
@@ -184,12 +183,6 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ### 1.1.4 (2026-04-23)
 
 - Separate test-build output (`build-test/`) from production `build/` — `npm test` no longer risks leaving duplicated `build/src` + `build/test` trees in the published package. No runtime change.
-
-### 1.1.3 (2026-04-19)
-
-- **Fix duplicate client registration on first connect** — HA displays fire several parallel cookieless requests (`GET /`, `GET /api/`, `POST /auth/login_flow`) within milliseconds of each other. Each used to create a separate client record, leaving orphans behind. The registry now locks per IP while the first client is being created, so parallel burst requests from the same display attach to the same client and cookie.
-- **Setup page redesigned** — big green OK banner so "everything's connected" is visible at a glance, responsive layout with dark-mode support, IP shown alongside the device ID, clearer step-by-step instructions.
-- **Setup page localized into all 11 adapter languages** — automatically picks the ioBroker system language (set in Admin → Main Settings), falls back to English for unknown languages.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
