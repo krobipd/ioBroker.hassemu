@@ -123,6 +123,13 @@ export class ClientRegistry {
             // state writes from migration land — otherwise js-controller logs
             // "State has no existing object" warnings.
             await this.ensureObjects(record);
+            // Promote blank state-value to numeric 0 so the dropdown renders
+            // the `0='---'` option as selected. v1.2.0 installs left the value
+            // as `''` which doesn't match any common.states entry.
+            const modeStateRaw = await this.readState(`${id}.mode`);
+            if (modeStateRaw === '' || modeStateRaw === null || modeStateRaw === undefined) {
+                await this.adapter.setStateAsync(`clients.${id}.mode`, { val: 0, ack: true });
+            }
         }
         this.adapter.log.debug(`client-registry: restored ${this.byId.size} client(s)`);
     }
@@ -427,20 +434,27 @@ export class ClientRegistry {
         const { id, cookie, ip, hostname } = record;
         const mergedStates = this.buildModeStates();
 
+        // Channel: setObjectNotExistsAsync — common.name is updated dynamically
+        // by updateIpHostname() when reverse-DNS resolves; we must not clobber it.
+        await this.adapter.setObjectNotExistsAsync(`clients.${id}`, {
+            type: 'channel',
+            common: { name: hostname ?? ip ?? id },
+            native: { cookie, token: null },
+        });
+
+        // States: extendObjectAsync — REPAIRS partial objects from the v1.2.0
+        // migration bug (extendObjectAsync was called with only common.type:'mixed',
+        // creating an object without top-level type/name/role/read/write/def).
+        // Using extend instead of setObjectNotExists merges missing properties
+        // onto the existing partial object so js-controller stops warning
+        // "obj.type has to exist" and the dropdown renders correctly.
         await Promise.all([
-            this.adapter.setObjectNotExistsAsync(`clients.${id}`, {
-                type: 'channel',
-                common: { name: hostname ?? ip ?? id },
-                native: { cookie, token: null },
-            }),
-            this.adapter.setObjectNotExistsAsync(`clients.${id}.mode`, {
+            this.adapter.extendObjectAsync(`clients.${id}.mode`, {
                 type: 'state',
                 common: {
                     name: 'Redirect mode',
                     // 'mixed' future-proofs against the upcoming js-controller
-                    // strict-type cast (see govee-smart v1.11.0 pattern). User
-                    // can write Number/String/Sentinel from Blockly/scripts
-                    // without "expects type X but received Y" warnings.
+                    // strict-type cast (see govee-smart v1.11.0 pattern).
                     type: 'mixed',
                     role: 'value',
                     read: true,
@@ -450,7 +464,7 @@ export class ClientRegistry {
                 },
                 native: {},
             }),
-            this.adapter.setObjectNotExistsAsync(`clients.${id}.manualUrl`, {
+            this.adapter.extendObjectAsync(`clients.${id}.manualUrl`, {
                 type: 'state',
                 common: {
                     name: 'Manual URL',

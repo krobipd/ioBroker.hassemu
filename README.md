@@ -147,6 +147,12 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
+### **WORK IN PROGRESS**
+
+- Hotfix for v1.3.1: `setObjectNotExistsAsync` is a no-op on objects that already exist as partial-formed leftovers from the v1.2.0 migration bug. v1.3.2 uses `extendObjectAsync` for `clients.<id>.mode` + `clients.<id>.manualUrl` so the missing properties (top-level `type`, name, role, read, write, def) are merged into the existing partial object — js-controller's "obj.type has to exist" warning goes away and the dropdown renders the labels.
+- New `repairGlobalSchemas()` in main.ts does the same defensive merge for `global.mode` + `global.manualUrl`. Runs unconditionally on every start so users upgrading from v1.2.0/v1.3.0/v1.3.1 (where the legacy `visUrl` is already gone) also get the schema repaired.
+- Restore step now promotes a blank state-value (`''` left over from v1.2.0) to numeric `0`, so the dropdown actually shows the `0='---'` option as selected on first start after the upgrade.
+
 ### 1.3.1 (2026-04-30)
 
 - Hotfix for legacy v1.1.x clients: their `visUrl` channel did not have `mode` / `manualUrl` objects. The v1.2.0 migration wrote states without the matching objects, which the broker logged as `State has no existing object` and rendered the `mode` datapoint without a name or dropdown in the object browser. `ClientRegistry.restore()` now calls an idempotent `ensureObjects()` for every client, so the v1.2.0+ object shapes exist before any migration writes happen.

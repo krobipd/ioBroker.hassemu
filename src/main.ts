@@ -60,9 +60,13 @@ class HassEmu extends utils.Adapter {
         await this.registry.restore();
 
         // Migrations run before subscriptions / webserver — first the legacy
-        // 1.0.x-style native config, then the visUrl → mode/manualUrl move.
+        // 1.0.x-style native config, then the visUrl → mode/manualUrl move,
+        // then a defensive schema repair for users upgrading from v1.2.0+
+        // (where the partial-formed mode-object from the v1.2.0 extend-bug
+        // persists since `legacy.visUrl` is already gone and migrate doesn't trigger).
         await this.migrateLegacyDefaultVisUrl();
         await this.migrateVisUrlToMode();
+        await this.repairGlobalSchemas();
 
         // Garbage-collect stale clients (no token + lastSeen older than 30 days).
         await this.gcStaleClients();
@@ -247,19 +251,55 @@ class HassEmu extends utils.Adapter {
             }
         }
 
-        // 3) Upgrade existing global.mode object to type:'mixed' + ensure
-        // top-level type:'state' (instanceObjects only initialise on first
-        // install — older adapters may have a partial object).
+        // 3) global.mode + global.manualUrl repair handled by repairGlobalSchemas()
+        // (called separately in onReady so it ALSO runs for users upgrading from
+        // v1.2.0/v1.3.0/v1.3.1 where the legacy visUrl is already gone but the
+        // partial-formed mode-object from the v1.2.0 extendObject-bug persists).
+    }
+
+    /**
+     * Repairs partial-formed `global.mode` / `global.manualUrl` objects from
+     * the v1.2.0 migration bug (extendObjectAsync was called with only
+     * `common.type:'mixed'` — leaving the object without top-level `type`,
+     * name, role, read, write, def). `extendObjectAsync` here merges the full
+     * instanceObjects schema onto the existing partial object so js-controller
+     * stops warning "obj.type has to exist" and the dropdown renders correctly.
+     *
+     * Idempotent — extending an already-complete object is a no-op write.
+     */
+    private async repairGlobalSchemas(): Promise<void> {
         try {
             await this.extendObjectAsync('global.mode', {
                 type: 'state',
-                common: { type: 'mixed' as ioBroker.CommonType },
+                common: {
+                    name: 'Global redirect mode',
+                    type: 'mixed',
+                    role: 'value',
+                    read: true,
+                    write: true,
+                    def: 0,
+                },
+                native: {},
             });
         } catch (err) {
-            this.log.debug(`Migration: extend global.mode failed: ${String(err)}`);
+            this.log.debug(`repair global.mode failed: ${String(err)}`);
         }
-        // Per-client mode objects are already created with the right shape via
-        // ClientRegistry.ensureObjects() during restore() — no extend needed here.
+        try {
+            await this.extendObjectAsync('global.manualUrl', {
+                type: 'state',
+                common: {
+                    name: "Global manual URL (used when mode='manual')",
+                    type: 'string',
+                    role: 'url',
+                    read: true,
+                    write: true,
+                    def: '',
+                },
+                native: {},
+            });
+        } catch (err) {
+            this.log.debug(`repair global.manualUrl failed: ${String(err)}`);
+        }
     }
 
     /**
