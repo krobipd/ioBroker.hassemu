@@ -1,149 +1,85 @@
 # Older Changes
 ## 1.1.5 (2026-04-26)
-
-- Process-level `unhandledRejection` / `uncaughtException` handlers added as last-line-of-defence against fire-and-forget rejections.
-- Stop shipping the `manual-review` release-script plugin — adapter-only consequence.
-- Audit-driven boilerplate sync with the other krobi adapters (`.vscode` json5 schemas, `tsconfig.test` looser test rules).
-- Min js-controller correction: was `>=7.0.0`, restored to repochecker-recommended `>=6.0.11` (Source: `ioBroker.repochecker/lib/M1000_IOPackageJson.js`).
-- `@types/iobroker` bumped to `^7.1.1`.
+- Crash defense: process-level error handlers.
+- Min `js-controller` restored to `>=6.0.11` (was incorrectly `>=7.0.0`).
 
 ## 1.1.4 (2026-04-23)
-
-- Separate test-build output (`build-test/`) from production `build/` — `npm test` no longer risks leaving duplicated `build/src` + `build/test` trees in the published package. No runtime change.
+- Internal cleanup. No user-facing changes.
 
 ## 1.1.3 (2026-04-19)
-
-- **Fix duplicate client registration on first connect** — HA displays fire several parallel cookieless requests (`GET /`, `GET /api/`, `POST /auth/login_flow`) within milliseconds of each other. Each used to create a separate client record, leaving orphans behind. The registry now locks per IP while the first client is being created, so parallel burst requests from the same display attach to the same client and cookie.
-- **Setup page redesigned** — big green OK banner so "everything's connected" is visible at a glance, responsive layout with dark-mode support, IP shown alongside the device ID, clearer step-by-step instructions.
-- **Setup page localized into all 11 adapter languages** — automatically picks the ioBroker system language (set in Admin → Main Settings), falls back to English for unknown languages.
+- Fix: parallel cookieless requests on first connect no longer create duplicate client records.
+- Setup page redesigned with status banner, dark mode, and translations into all 11 languages.
 
 ## 1.1.2 (2026-04-18)
-
-- Client name in the object browser now shows the reverse-DNS hostname instead of the IP as soon as it's resolved
-- `clients.<id>.hostname` datapoint removed — the value moved into the channel name; existing entries are migrated on first start
-- Client-channel creation parallelised — new displays register noticeably faster
+- Hostname is now shown as the channel name (instead of a separate datapoint).
+- Faster client registration on first connect.
 
 ## 1.1.1 (2026-04-18)
-
-- Redirect URL moved from Admin config to datapoints: `global.visUrl` + `global.enabled`, otherwise each `clients.<id>.visUrl`
-- Setup page served when no URL is configured (shows device ID + datapoint path)
-- `web` adapter declared as dependency
-- Legacy `defaultVisUrl` migrates to `global.visUrl` + `global.enabled=true` on first start
+- Redirect URL moved from Admin config to datapoints (`global.visUrl` + `global.enabled`).
+- Setup page served when no URL is configured.
+- `web` adapter declared as dependency.
 
 ## 1.1.0 (2026-04-18)
-
-- **Multi-client support** — each connecting display gets its own channel in `clients.*` with an individual `visUrl`, `ip` and `remove` button
-- **URL dropdown** — `clients.<id>.visUrl` is populated from all known ioBroker URLs (VIS-2, VIS, Admin intro tiles, Jarvis, …) — pick from the list or enter custom
-- **Cookie-based identification** — displays are recognised across adapter restarts and IP changes
-- **Fastify web server** — Express was replaced by Fastify for first-party cookie support, schema validation and a lighter runtime
-- **Input hardening** — all external URLs go through a coercion layer (http/https only, length-limited, no credentials); foreign adapter metadata is fully type-guarded
-- **Config migration** — `visUrl` → `defaultVisUrl` is applied automatically on first start
-- **Reverse DNS** — clients are labelled with their LAN hostname when resolvable (shown as the channel name in the object browser)
+- **Multi-client support** — each display gets its own channel under `clients.*` with individual `visUrl`, IP, and remove button.
+- URL dropdown populated from all known ioBroker URLs (VIS-2, VIS, Admin intro tiles).
+- Cookie-based identification: displays are recognised across restarts and IP changes.
+- Switched to Fastify, hardened all external URL inputs.
 
 ## 1.0.4 (2026-04-12)
-
-- DRY: remove duplicate NativeConfig interface and redundant config mapping
-- Fix: log spam when redirect URL is not configured (now logged once at startup)
-- Tighten `createSession` visibility to private
+- Internal cleanup. No user-facing changes.
 
 ## 1.0.3 (2026-04-12)
-
-- Remove unused devDependencies, add `no-floating-promises` lint rule, remove redundant CI checkout
+- Internal cleanup. No user-facing changes.
 
 ## 1.0.2 (2026-04-08)
-
-- Remove `build/` from git tracking, fix `.gitignore`, clean up keywords and metadata
+- Internal cleanup. No user-facing changes.
 
 ## 1.0.0 (2026-04-08)
-
-- Renamed from homeassistant-bridge to hassemu
+- Renamed from `homeassistant-bridge` to `hassemu`.
 
 ---
 
 ## 0.8.11 (2026-03-28)
-
-- Add error middleware for malformed JSON requests (returns 400 instead of 500)
+- Fix: malformed JSON requests now return 400 instead of 500.
 
 ## 0.8.10 (2026-03-28)
-
-- Consistent admin UI i18n keys (supportHeader)
-- Add PayPal to FUNDING.yml
+- Internal cleanup.
 
 ## 0.8.9 (2026-03-28)
-
-- Use adapter timer methods (setInterval/clearInterval) instead of native timers
-- Add Windows and macOS to CI test matrix
-- README: standard license format with full MIT text
-- Split old changelog entries into CHANGELOG_OLD.md
+- Adapter-managed timers; Windows + macOS in CI.
 
 ## 0.8.8 (2026-03-25)
-
-- Simplified admin UI from tabs to single page layout
-- Fixed onUnload to be synchronous (prevents SIGKILL on shutdown)
-- Removed broken Ko-fi icon from donation button
-- Added translate script
+- Admin UI simplified to single page. Fix: synchronous `onUnload` (prevents SIGKILL on shutdown).
 
 ## 0.6.2 (2026-03-15)
-
-- Full JSDoc documentation for all TypeScript interfaces, classes and methods
-- ESLint runs without warnings (0 errors, 0 warnings)
+- Internal: JSDoc complete, ESLint clean.
 
 ## 0.6.1 (2026-03-15)
-
-- Add GitHub Actions CI (Node.js 20, 22, 24)
-- Add GitHub Actions Release (automatic release on tag push)
+- Internal: GitHub Actions CI + automatic release on tag push.
 
 ## 0.6.0 (2026-03-15)
-
-- Full TypeScript migration (src/ and tests)
-- Strict mode enabled
-- Separate tsconfig for build and test
+- Internal: full TypeScript migration with strict mode.
 
 ## 0.5.2 (2026-03-14)
-
-- Migrate to @iobroker/eslint-config
-- Prettier code formatting
-- ESM module configs (.mjs)
+- Internal: migrated to @iobroker/eslint-config + Prettier.
 
 ## 0.5.1 (2026-03-14)
-
-- Update HA_VERSION from 2024.12.0 to 2026.3.1
+- Emulated Home Assistant version updated from 2024.12.0 to 2026.3.1.
 
 ## 0.5.0 (2026-03-14)
-
-- Express 4.x to 5.2.1
-- ESLint 9.x to 10.0.3
-- All dependencies updated to March 2026 versions
+- Internal: Express 5, ESLint 10, all dependencies updated.
 
 ## 0.4.0 (2026-03-14)
-
-- **Breaking:** Node.js 20+ required (was 18+)
-- **Breaking:** js-controller 7.0.0+ required (was 5.0.0+)
-- **Breaking:** Admin 7.0.0+ required (was 6.0.0+)
-- jsonConfig Admin UI (replaces Materialize)
-- Encrypted password storage (encryptedNative/protectedNative)
-- SVG adapter icon
+- **Breaking:** Node.js 20+, js-controller 7.0.0+, Admin 7.0.0+ required.
+- jsonConfig Admin UI (replaces Materialize). Encrypted password storage.
 
 ## 0.3.0 (2026-02-18)
-
-- Fix mdns.js XML closing tag (`</n>` → `</name>`) — mDNS discovery was broken
-- Fix `requires_api_password` in /api/discovery_info (was dynamic instead of hardcoded true)
-- Fix token refresh (grant_type: refresh_token was not supported)
-- Remove `uuid` and `body-parser` dependencies (use Node.js built-ins)
-- Extract constants (HA_VERSION, LOGIN_SCHEMA, SESSION_TTL_MS)
-- Session cleanup timer (every 5 min)
-- Request logging moved to debug level
+- Fix: mDNS discovery (XML tag bug).
+- Fix: token refresh (grant_type=refresh_token).
+- Internal: session cleanup timer.
 
 ## 0.2.0 (2026-02-01)
-
-- Remove proxy function
-- Use Avahi only for mDNS
-- Remove CORS
+- Removed proxy function. Avahi-only for mDNS. CORS removed.
 
 ## 0.1.0 (2026-02-01)
-
-- Initial release
-- Home Assistant API emulation
-- OAuth2-like authentication flow
-- mDNS service discovery
-- Redirect to configurable URL
+- Initial release. Home Assistant API emulation, OAuth2-like auth flow, mDNS service discovery.
