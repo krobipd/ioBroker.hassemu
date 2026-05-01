@@ -147,7 +147,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.3.3 (2026-05-01)
 - Documentation: rewrote release notes for v1.1.4–v1.3.2 in user-friendly style across all languages.
 
 ### 1.3.2 (2026-04-30)
@@ -167,9 +167,6 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 - Idle displays without auth token are auto-removed after 30 days.
 - Security hardening of the auth flow.
 - `web` adapter declared as dependency.
-
-### 1.1.6 (2026-04-28)
-- Internal cleanup. No user-facing changes.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
