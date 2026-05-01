@@ -147,41 +147,29 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-### 1.3.2 (2026-04-30)
+### **WORK IN PROGRESS**
+- Documentation: rewrote release notes for v1.1.4–v1.3.2 in user-friendly style across all languages.
 
-- Hotfix for v1.3.1: `setObjectNotExistsAsync` is a no-op on objects that already exist as partial-formed leftovers from the v1.2.0 migration bug. v1.3.2 uses `extendObjectAsync` for `clients.<id>.mode` + `clients.<id>.manualUrl` so the missing properties (top-level `type`, name, role, read, write, def) are merged into the existing partial object — js-controller's "obj.type has to exist" warning goes away and the dropdown renders the labels.
-- New `repairGlobalSchemas()` in main.ts does the same defensive merge for `global.mode` + `global.manualUrl`. Runs unconditionally on every start so users upgrading from v1.2.0/v1.3.0/v1.3.1 (where the legacy `visUrl` is already gone) also get the schema repaired.
-- Restore step now promotes a blank state-value (`''` left over from v1.2.0) to numeric `0`, so the dropdown actually shows the `0='---'` option as selected on first start after the upgrade.
+### 1.3.2 (2026-04-30)
+- Fix: dropdown default `---` now applied correctly on upgrades from older v1.1.x clients (was empty after migration).
 
 ### 1.3.1 (2026-04-30)
-
-- Hotfix for legacy v1.1.x clients: their `visUrl` channel did not have `mode` / `manualUrl` objects. The v1.2.0 migration wrote states without the matching objects, which the broker logged as `State has no existing object` and rendered the `mode` datapoint without a name or dropdown in the object browser. `ClientRegistry.restore()` now calls an idempotent `ensureObjects()` for every client, so the v1.2.0+ object shapes exist before any migration writes happen.
-- Mode dropdown gains a numeric `0 = "---"` no-choice fallback (analogous to govee-smart's pattern). Existing displays keep their setting; new displays start at `0` and the resolver falls back to the landing page until a real choice is made.
+- Fix: legacy v1.1.x clients without `mode`/`manualUrl` objects now get migrated correctly on first start.
+- Mode dropdown gains a `0 = "---"` no-choice fallback — new displays start without a target until a real choice is made.
 
 ### 1.3.0 (2026-04-30)
-
-- Security: brute-force lockout on `/auth/login_flow/:flowId` — after 5 failed credential attempts an IP is rejected with HTTP 429 for 15 min. Successful login resets the counter.
-- DRY refactor: shared `parseManualUrlWrite` helper between client + global config; FIFO-cap helper in WebServer; OAuth access-token TTL + lockout window/threshold are now named constants instead of magic numbers.
-- Dead-code cleanup: `resolveBindToReachable`, `coerceUuid` strict-V4 parameter, `DEFAULT_REFRESH_DEBOUNCE_MS` export, internal `getMode`/`getManualUrl` test affordances — all removed; tests rewritten to assert observable behaviour.
-- New `landing-page` test suite with XSS-escape coverage and 11-language fallback verification.
-- Emulated Home Assistant version bumped from 2026.3.1 to 2026.4.0.
+- Security: brute-force lockout on login (5 failed attempts → IP blocked for 15 min, successful login resets the counter).
+- Emulated Home Assistant version bumped to 2026.4.0.
 
 ### 1.2.0 (2026-04-29)
-
-- Redirect target now configured via `mode` (dropdown) + `manualUrl` (free text) instead of the old `visUrl`. Migration runs automatically.
-- Master switch `global.enabled` syncs every display: on → all follow the global URL, off → each display picks up its own again.
+- **Breaking:** Redirect target now configured via `mode` (dropdown) + `manualUrl` (free text) instead of the old `visUrl`. Existing setups auto-migrated.
+- Master switch `global.enabled` syncs every display (on → all follow global URL, off → each display picks up its own).
 - Idle displays without auth token are auto-removed after 30 days.
 - Security hardening of the auth flow.
 - `web` adapter declared as dependency.
 
 ### 1.1.6 (2026-04-28)
-
-- Audit cleanup against the upstream `ioBroker.example/TypeScript` full standard:
-    - Test setup migrated: tests now live next to source as `src/lib/*.test.ts` and run directly via `ts-node/register`. Removed `tsconfig.test.json` + `build-test/`, added `test/mocharc.custom.json` + `test/mocha.setup.js` + `test/tsconfig.json` + `test/.eslintrc.json`
-    - `@types/node` rolled back from `^25.6.0` to `^20.19.24` so type defs match `engines.node: ">=20"`
-    - Dependabot now ignores major bumps for `@types/node`, `typescript`, `eslint`, `actions/checkout`, `actions/setup-node`
-    - `nyc` config + `coverage` script added
-    - Orphan `.github/auto-merge.yml` removed (active workflow is `automerge-dependabot.yml` using `gh pr merge`)
+- Internal cleanup. No user-facing changes.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
