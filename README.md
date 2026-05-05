@@ -147,7 +147,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.7.0 (2026-05-05)
 
 - **VIS-2-Views** stehen jetzt als eigene Einträge im Mode-Dropdown — nicht nur das Top-Level-Projekt. Pro Projekt-Folder liest der Adapter `vis-views.json` und legt für jede View eine URL `?<projekt>/<view>` an. Bei fehlender oder kaputter Datei bleibt der Top-Level-Eintrag funktional.
 - **Display-Reload bei Redirect-Edit**: das Adapter-Root liefert kein 302 mehr, sondern eine kleine HTML-Seite mit `<iframe>` zum Ziel + 30-Sekunden-Polling auf den neuen Endpunkt `/api/redirect_check`. Wenn du die Mode-/manualUrl-Konfiguration änderst, lädt das Display von selbst neu — kein Soft-Reboot mehr nötig.
@@ -173,9 +173,6 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 - `/auth/token` akzeptiert jetzt auch `application/x-www-form-urlencoded` Bodies (OAuth2-Spec) — manche HA-Clients senden den Token-Request urlencoded statt JSON, das Login lief sonst ins Leere.
 - mDNS: Bei einem Bonjour-Startfehler wird die Service-Instanz jetzt sauber freigegeben (vorher leakte der UDP-Socket über die Adapter-Lifetime).
 - Legacy-Migration (1.0.x/1.1.0 → 1.1.1) härter: ungültige Legacy-URLs werden nicht mehr durchgereicht, und Native-Cleanup passiert nur nach erfolgreichem State-Write — verhindert silent URL-Verlust auf Edge-Cases.
-
-### 1.3.3 (2026-05-01)
-- Documentation: rewrote release notes for v1.1.4–v1.3.2 in user-friendly style across all languages.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 

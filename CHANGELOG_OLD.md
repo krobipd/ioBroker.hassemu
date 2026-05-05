@@ -1,4 +1,7 @@
 # Older Changes
+## 1.3.3 (2026-05-01)
+- Documentation: rewrote release notes for v1.1.4–v1.3.2 in user-friendly style across all languages.
+
 ## 1.3.2 (2026-04-30)
 - Fix: dropdown default `---` now applied correctly on upgrades from older v1.1.x clients (was empty after migration).
 
