@@ -1052,4 +1052,55 @@ describe('WebServer bindAddress / start-stop', () => {
         const s = new WebServer(built.adapter as never, baseConfig, reg, g, crypto.randomUUID());
         expect(s.boundAddress).to.be.null;
     });
+
+    // --- D6: Request-error log cooldown (v1.9.x) ---
+
+    describe('shouldEmitRequestErrorWarn — 5xx log dedup (D6 v1.9.x)', () => {
+        const buildServer = async (): Promise<WebServer> => {
+            const built = createMockAdapter();
+            const reg = new ClientRegistry(built.adapter as never);
+            const g = await buildGlobalConfig(built.adapter, 'http://x/');
+            return new WebServer(built.adapter as never, baseConfig, reg, g, crypto.randomUUID());
+        };
+
+        it('returns true on first occurrence of a message', async () => {
+            const s = await buildServer();
+            expect(s.shouldEmitRequestErrorWarn('boom', 1000)).to.be.true;
+        });
+
+        it('returns false within cooldown window for same message', async () => {
+            const s = await buildServer();
+            s.shouldEmitRequestErrorWarn('boom', 1000);
+            // 59s later — still in cooldown (< REQUEST_ERROR_COOLDOWN_MS=60000)
+            expect(s.shouldEmitRequestErrorWarn('boom', 60_000)).to.be.false;
+        });
+
+        it('returns true after cooldown elapsed for same message', async () => {
+            const s = await buildServer();
+            s.shouldEmitRequestErrorWarn('boom', 1000);
+            // 61s later — outside cooldown window
+            expect(s.shouldEmitRequestErrorWarn('boom', 62_000)).to.be.true;
+        });
+
+        it('different messages have independent cooldowns', async () => {
+            const s = await buildServer();
+            expect(s.shouldEmitRequestErrorWarn('a', 1000)).to.be.true;
+            expect(s.shouldEmitRequestErrorWarn('b', 1001)).to.be.true; // 1ms later, but different key
+            expect(s.shouldEmitRequestErrorWarn('a', 1002)).to.be.false; // a is in cooldown
+        });
+
+        it('FIFO-caps the cooldown map (E9 + D6 consistency)', async () => {
+            const s = await buildServer();
+            for (let i = 0; i < 250; i++) {
+                s.shouldEmitRequestErrorWarn(`err-${i}`, 1000 + i);
+            }
+            const cooldown = (s as unknown as { errorLogCooldown: Map<string, number> }).errorLogCooldown;
+            expect(cooldown.size).to.equal(200); // REQUEST_ERROR_COOLDOWN_CAP
+            // oldest 50 (err-0..err-49) should be evicted, newest 200 (err-50..err-249) survive
+            expect(cooldown.has('err-0')).to.be.false;
+            expect(cooldown.has('err-49')).to.be.false;
+            expect(cooldown.has('err-50')).to.be.true;
+            expect(cooldown.has('err-249')).to.be.true;
+        });
+    });
 });

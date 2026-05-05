@@ -43,6 +43,8 @@ export const LOGIN_ATTEMPTS_CAP = 1000;
  * traffic / malformed request attacks.
  */
 export const REQUEST_ERROR_COOLDOWN_MS = 60 * 1000;
+/** Hard cap on tracked unique error-message keys for cooldown deduplication. */
+export const REQUEST_ERROR_COOLDOWN_CAP = 200;
 
 /**
  * Resolver-Sentinels für `client.mode` und `global.mode`. `'global'` heißt:
