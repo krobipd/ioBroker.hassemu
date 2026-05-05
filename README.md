@@ -153,7 +153,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.16.0 (2026-05-05)
 
 - **Sicherheit Credentials-Vergleich**: `safeStringEqual` hashed beide Seiten via SHA-256 vor dem timing-safe Vergleich — vorher waren Username-/Password-Längen über Response-Timing leakbar.
 - **Landing-Page versteckt Loopback-IPs**: `127.0.0.1` / `::1` / `0.0.0.0` werden nicht mehr als Display-IP angezeigt — verwirrte User bei Reverse-Proxy-Setups.
@@ -183,11 +183,6 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 
 - **Brute-Force-Lockout-Härtung**: IPv6-mapped IPv4 (`::ffff:1.2.3.4`) und `null`-IP teilen jetzt einen Bucket mit raw IPv4 — vorher konnten Angreifer durch Adress-Form-Wechsel den Counter umgehen.
 - **Legacy-URL-Migration validiert** via `coerceSafeUrl`: alte `javascript:`/`data:`-URLs aus v1.0.x-Config fallen auf Manual-Mode statt unsafe geschrieben zu werden.
-
-### 1.11.0 (2026-05-05)
-
-- **Sicherheit Refresh-Token-Brute-Force**: `/auth/token` mit `grant_type=refresh_token` hat jetzt denselben Brute-Force-Lockout wie `/auth/login_flow` — 5 ungültige Grants pro IP → 15min HTTP 429.
-- **Stale-Client-GC erfasst auch Token-Clients**: Clients mit `lastSeen > 30 Tage` werden jetzt entfernt, auch wenn sie einen Token haben (vorher übersprungen).
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
