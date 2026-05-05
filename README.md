@@ -155,7 +155,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.21.0 (2026-05-05)
 
 - **Pending-Create-Errors diagnostizierbar**: schlägt das parallele Erst-Anlegen eines Clients fehl, kommt der Fehler jetzt einmalig im Log statt als unhandled rejection.
 - **Docker-Bridge-IPs nicht mehr ins mDNS**: `getLocalIp` deprioritisiert `172.17.x.x`/`172.18.x.x` gegenüber LAN-IPs — kein unreachable Container-Advertise mehr.
@@ -179,12 +179,6 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 - **Logging-Hygiene Login-Floods**: `Invalid credentials` kommt pro IP nur bis zur Lockout-Schwelle als `warn` ins Log, danach auf `debug`. Brute-Force füllt das Log nicht mehr.
 - **Stop-Error nicht mehr doppelt**: bei intended shutdown loggt `webServer.stop()` selbst auf `debug`, der Caller in `onUnload` cleant silent. Vorher zwei Einträge im Log.
 - **`non-string mode`-Rejection auf `debug`**: das ist UI-Echo (Dropdown-Klicks o.ä.) und kein Server-Concern — vorher fälschlich als `warn`.
-
-### 1.17.0 (2026-05-05)
-
-- **NAT-Cookie-Schutz**: zwei Displays hinter derselben NAT-IP teilten sich beim parallelen Erst-Connect Cookie + Token + Mode. Jetzt: Bucket-Key kombiniert IP + User-Agent-Hash.
-- **`/api/discovery_info` nutzt bind-Address**, nicht den `Host`-Header. Vorher konnte ein Angreifer mit `Host: attacker.lan` andere HA-Clients zur falschen URL umleiten.
-- **VIS-Discovery iteriert alle `web.*`-Instances**: User mit `web.1` (zweite Web-Instance) hatten vorher keine VIS-Projekte im Mode-Dropdown.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 

@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.20.0",
+    "version": "1.21.0",
     "news": {
-      "NEXT": {
+      "1.21.0": {
         "en": "Robustness: pending-create rejections logged once + rethrown. getLocalIp deprioritises Docker-bridge IPs (172.17/172.18) — mDNS no longer advertises a container address.",
         "de": "Robustheit: Pending-Create-Rejections einmalig geloggt + rethrown. getLocalIp deprioritisiert Docker-Bridge-IPs (172.17/172.18) — mDNS broadcastet keine Container-Adresse mehr.",
         "ru": "Robustness: pending-create rejections теперь логируются один раз и rethrown. Plus: getLocalIp deprioritises Docker-bridge IPs (172.17/172.18) — mDNS не advertise unreachable container address.",
@@ -93,19 +93,6 @@
         "pl": "Bezpieczenstwo: porownanie credentials via SHA-256 digest (bez length-leak przez response timing). Plus: loopback IPs ukryte na landing page, mDNS-disabled ma config hint.",
         "uk": "Безпека: порівняння credentials через SHA-256 digest (без length-leak через response timing). Plus: loopback IPs приховані на landing page, mDNS-disabled має config hint.",
         "zh-cn": "安全：凭证比较改为 SHA-256 摘要比较（不再通过响应时序泄漏长度信息）。另：着陆页隐藏 loopback IP，mDNS 关闭时 Config 表有提示，README upgrading 覆盖到 v1.15.x。"
-      },
-      "1.15.0": {
-        "en": "Robustness: getLocalIp falls back to non-internal IPv6 before 127.0.0.1 — pure-IPv6 LANs no longer advertise loopback via mDNS. Plus mDNS catches async dgram-bind errors.",
-        "de": "Robustheit: getLocalIp fällt auf non-internal IPv6 zurück bevor 127.0.0.1 — IPv6-only-LANs broadcasten nicht mehr Loopback via mDNS. Plus mDNS fängt async dgram-Bind-Fehler via 'error'-Event.",
-        "ru": "Robustness: getLocalIp возвращается к non-internal IPv6 перед 127.0.0.1 — pure-IPv6-LANs не advertise loopback через mDNS. Plus mDNS ловит async dgram-bind errors через 'error'-event listener.",
-        "pt": "Robustness: getLocalIp recorre a non-internal IPv6 antes de 127.0.0.1 — LANs pure-IPv6 nao anunciam mais loopback via mDNS. Plus mDNS captura async dgram-bind errors via 'error' event listener.",
-        "nl": "Robustness: getLocalIp valt terug op non-internal IPv6 voor 127.0.0.1 — pure-IPv6-LANs adverteren geen loopback meer via mDNS. Plus mDNS vangt async dgram-bind fouten via 'error'-event.",
-        "fr": "Robustness : getLocalIp retombe sur non-internal IPv6 avant 127.0.0.1 — LANs pure-IPv6 n'annoncent plus loopback via mDNS. Plus mDNS attrape async dgram-bind errors via 'error'-event.",
-        "it": "Robustness: getLocalIp ricade su non-internal IPv6 prima di 127.0.0.1 — pure-IPv6-LAN non annunciano piu loopback via mDNS. Plus mDNS cattura async dgram-bind errors via 'error'-event.",
-        "es": "Robustness: getLocalIp recurre a non-internal IPv6 antes de 127.0.0.1 — LANs pure-IPv6 no anuncian loopback via mDNS. Plus mDNS captura async dgram-bind errors via 'error'-event.",
-        "pl": "Robustness: getLocalIp przechodzi na non-internal IPv6 przed 127.0.0.1 — pure-IPv6-LANs nie ogłaszaja loopback przez mDNS. Plus mDNS lapie async dgram-bind errors przez 'error'-event.",
-        "uk": "Robustness: getLocalIp повертається до non-internal IPv6 перед 127.0.0.1 — pure-IPv6-LANs не advertise loopback через mDNS. Plus mDNS ловить async dgram-bind errors через 'error'-event.",
-        "zh-cn": "稳健性：getLocalIp 在 127.0.0.1 之前回退到非内部 IPv6 — 纯 IPv6 局域网不再通过 mDNS 广播 loopback。另：mDNS 通过 'error' 事件监听捕获异步 dgram bind 错误。"
       }
     },
     "titleLang": {
