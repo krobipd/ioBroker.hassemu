@@ -155,6 +155,11 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
+### **WORK IN PROGRESS**
+
+- **Pending-Create-Errors diagnostizierbar**: schlägt das parallele Erst-Anlegen eines Clients fehl, kommt der Fehler jetzt einmalig im Log statt als unhandled rejection.
+- **Docker-Bridge-IPs nicht mehr ins mDNS**: `getLocalIp` deprioritisiert `172.17.x.x`/`172.18.x.x` gegenüber LAN-IPs — kein unreachable Container-Advertise mehr.
+
 ### 1.20.0 (2026-05-05)
 
 - **Interne Aufräumung**: drei Helpers nach `coerce.ts` extrahiert — `buildDropdownStates`, `parseAdapterStateId`, `safeGetState`. `client-registry` und `global-config` teilen sie statt zu duplizieren.
