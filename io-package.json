@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.3.3",
+    "version": "1.4.0",
     "news": {
-      "NEXT": {
+      "1.4.0": {
         "en": "New `info.refresh_urls` button reloads the VIS/Admin URL dropdown without an adapter restart. Plus: `/auth/token` now accepts form-urlencoded bodies (OAuth2 spec), mDNS no longer leaks sockets on start failure, and legacy URL migration drops unsafe values cleanly.",
         "de": "Neuer Button `info.refresh_urls` lädt das VIS-/Admin-URL-Dropdown ohne Adapter-Neustart neu. Plus: `/auth/token` akzeptiert form-urlencoded Bodies (OAuth2-Spec), mDNS leakt keine Sockets mehr bei Startfehler, Legacy-URL-Migration verwirft unsichere Werte sauber.",
         "ru": "Новая кнопка `info.refresh_urls` перезагружает VIS/Admin URL-dropdown без перезапуска адаптера. Plus: `/auth/token` принимает form-urlencoded body (OAuth2), mDNS не утекает сокеты при ошибке старта, legacy URL-migration корректно отклоняет небезопасные значения.",
@@ -93,19 +93,6 @@
         "pl": "Wewnętrzne porządki. Brak zmian widocznych dla użytkownika.",
         "uk": "Внутрішнє прибирання. Без помітних для користувача змін.",
         "zh-cn": "内部清理。对用户无可见变化。"
-      },
-      "1.1.5": {
-        "en": "Crash defense: process-level error handlers. Min js-controller restored to >=6.0.11.",
-        "de": "Crash-Schutz: process-level Error-Handler. Min js-controller zurück auf >=6.0.11.",
-        "ru": "Защита от сбоев: process-level обработчики ошибок. Мин. js-controller восстановлен на >=6.0.11.",
-        "pt": "Proteção contra falhas: handlers de erro process-level. Mín. js-controller restaurado para >=6.0.11.",
-        "nl": "Crashbescherming: process-level error-handlers. Min. js-controller hersteld op >=6.0.11.",
-        "fr": "Défense contre les crashs : handlers d'erreur process-level. Min js-controller rétabli à >=6.0.11.",
-        "it": "Difesa anti-crash: handler di errore process-level. Min js-controller ripristinato a >=6.0.11.",
-        "es": "Defensa contra fallos: handlers de error process-level. Mín. js-controller restaurado a >=6.0.11.",
-        "pl": "Ochrona przed crashem: handlery błędów process-level. Min. js-controller przywrócony do >=6.0.11.",
-        "uk": "Захист від збоїв: process-level обробники помилок. Мін. js-controller повернено на >=6.0.11.",
-        "zh-cn": "崩溃防护：process-level 错误处理器。最低 js-controller 恢复为 >=6.0.11。"
       }
     },
     "titleLang": {

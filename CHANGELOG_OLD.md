@@ -1,4 +1,13 @@
 # Older Changes
+## 1.2.0 (2026-04-29)
+- **Breaking:** Redirect target now configured via `mode` (dropdown) + `manualUrl` (free text) instead of the old `visUrl`. Existing setups auto-migrated.
+- Master switch `global.enabled` syncs every display (on → all follow global URL, off → each display picks up its own).
+- Idle displays without auth token are auto-removed after 30 days.
+- Security hardening of the auth flow.
+- `web` adapter declared as dependency.
+
+Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
+
 ## 1.1.6 (2026-04-28)
 - Internal cleanup. No user-facing changes.
 
