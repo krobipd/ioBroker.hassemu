@@ -556,6 +556,11 @@ class WebServer {
       async (req, reply) => {
         var _a;
         const { code, grant_type, refresh_token } = (_a = req.body) != null ? _a : {};
+        const ip = (0, import_coerce.coerceString)(req.ip);
+        if (this.isIpLocked(ip)) {
+          reply.status(429);
+          return { error: "rate_limited", error_description: "Too many failures, try again later" };
+        }
         if (grant_type === "authorization_code" && code && this.sessions.has(code)) {
           const session = this.sessions.get(code);
           this.sessions.delete(code);
@@ -578,6 +583,7 @@ class WebServer {
           const ownerId = incoming ? this.refreshTokens.get(incoming) : void 0;
           if (!ownerId) {
             this.adapter.log.debug("Refresh token rejected \u2014 unknown or missing");
+            this.recordLoginFailure(ip);
             reply.status(400);
             return { error: "invalid_grant", error_description: "Invalid refresh token" };
           }

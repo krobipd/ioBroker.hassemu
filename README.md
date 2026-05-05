@@ -152,7 +152,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.11.0 (2026-05-05)
 
 - **Sicherheit Refresh-Token-Brute-Force**: `/auth/token` mit `grant_type=refresh_token` hat jetzt denselben Brute-Force-Lockout wie `/auth/login_flow` — 5 ungültige Grants pro IP → 15min HTTP 429.
 - **Stale-Client-GC erfasst auch Token-Clients**: Clients mit `lastSeen > 30 Tage` werden jetzt entfernt, auch wenn sie einen Token haben (vorher übersprungen).
@@ -180,11 +180,6 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 - **Master-Switch schneller**: `global.enabled`-Toggle schreibt das `mode` aller Clients jetzt parallel statt sequenziell (vorher N Broker-Round-Trips). Spürbar auf Instanzen mit vielen Displays.
 - **Mode-Dropdown bleibt gefüllt** wenn der Broker beim Lesen der `vis-2.0`/`web.0`-Objekte kurz nicht antwortet — der zuletzt funktionierende Stand wird gehalten statt mit `{}` überschrieben.
 - **Reverse-DNS-Lookup hat 5s-Timeout**: ein langsamer/blockierter LAN-Nameserver hängt den HA-Auth-Flow nicht mehr.
-
-### 1.8.0 (2026-05-05)
-
-- **Code-Aufräumen**: Konstanten (Cookie-TTL, Map-Caps, Mode-Sentinels, Stale-TTL) liegen jetzt zentral in `lib/constants.ts`. Verhalten unverändert.
-- **Logging weniger laut**: Token-Endpunkt-Fehler (unbekannter `flow_id`, ungültiger Refresh-Token, falscher `grant_type`) jetzt `debug` statt `warn`.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
