@@ -1,4 +1,8 @@
 # Older Changes
+## 1.7.1 (2026-05-05)
+
+- Hotfix: drei Prettier-Format-Fehler aus v1.7.0 behoben (CI-Lint-Gate war rot, deploy hat v1.7.0 nicht auf npm gebracht). v1.7.0-Änderungen erreichen npm jetzt mit dieser Version.
+
 ## 1.7.0 (2026-05-05)
 
 - **VIS-2-Views** stehen jetzt als eigene Einträge im Mode-Dropdown — nicht nur das Top-Level-Projekt. Pro Projekt-Folder liest der Adapter `vis-views.json` und legt für jede View eine URL `?<projekt>/<view>` an. Bei fehlender oder kaputter Datei bleibt der Top-Level-Eintrag funktional.
