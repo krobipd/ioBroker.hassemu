@@ -1,4 +1,7 @@
 # Older Changes
+## 1.3.2 (2026-04-30)
+- Fix: dropdown default `---` now applied correctly on upgrades from older v1.1.x clients (was empty after migration).
+
 ## 1.3.1 (2026-04-30)
 - Fix: legacy v1.1.x clients without `mode`/`manualUrl` objects now get migrated correctly on first start.
 - Mode dropdown gains a `0 = "---"` no-choice fallback — new displays start without a target until a real choice is made.

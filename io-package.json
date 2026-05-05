@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "news": {
-      "NEXT": {
+      "1.6.0": {
         "en": "Security: HA-API endpoints (/api/states, /api/services, etc.) now require a Bearer token when `Auth Required` is enabled (were unauthenticated, info-disclosure). Public probes (/api/, /api/discovery_info, /health, /manifest.json, /auth/*) stay open. Plus: stable server UUID across restarts (`info.serverUuid` state) — HA-Clients no longer treat each restart as a new server.",
         "de": "Sicherheit: HA-API-Endpunkte (/api/states, /api/services, ...) erfordern jetzt einen Bearer-Token bei aktivem `Auth Required` (vorher unauthenticated, Info-Disclosure). Public probes bleiben offen. Plus: stabile Server-UUID über Restarts (`info.serverUuid`-State) — HA-Clients behandeln jeden Restart nicht mehr als neuen Server.",
         "ru": "Безопасность: HA-API endpoints требуют Bearer-token при `Auth Required` (раньше unauthenticated). Plus: стабильная server UUID через рестарты (`info.serverUuid`).",
@@ -93,19 +93,6 @@
         "pl": "Fix: starsze klienty v1.1.x bez obiektów mode/manualUrl są teraz poprawnie migrowane przy pierwszym uruchomieniu.",
         "uk": "Fix: застарілі клієнти v1.1.x без об'єктів mode/manualUrl тепер коректно мігрують при першому запуску.",
         "zh-cn": "修复：缺少 mode/manualUrl 对象的旧版 v1.1.x 客户端现在能在首次启动时正确迁移。"
-      },
-      "1.3.0": {
-        "en": "Security: brute-force lockout on login (5 failed attempts → IP blocked for 15 min). Emulated Home Assistant version bumped to 2026.4.0.",
-        "de": "Sicherheit: Brute-Force-Sperre beim Login (5 Fehlversuche → IP für 15 Min gesperrt). Emulierte Home-Assistant-Version auf 2026.4.0 erhöht.",
-        "ru": "Безопасность: блокировка от brute-force при входе (5 неудачных попыток → IP блокируется на 15 мин). Версия эмулируемого Home Assistant повышена до 2026.4.0.",
-        "pt": "Segurança: bloqueio brute-force no login (5 tentativas falhadas → IP bloqueado por 15 min). Versão emulada do Home Assistant atualizada para 2026.4.0.",
-        "nl": "Beveiliging: brute-force-blokkering bij login (5 mislukte pogingen → IP 15 min geblokkeerd). Geëmuleerde Home Assistant-versie naar 2026.4.0.",
-        "fr": "Sécurité : verrouillage brute-force sur la connexion (5 tentatives échouées → IP bloquée 15 min). Version Home Assistant émulée portée à 2026.4.0.",
-        "it": "Sicurezza: blocco brute-force al login (5 tentativi falliti → IP bloccato per 15 min). Versione Home Assistant emulata aggiornata a 2026.4.0.",
-        "es": "Seguridad: bloqueo brute-force al iniciar sesión (5 intentos fallidos → IP bloqueada 15 min). Versión emulada de Home Assistant actualizada a 2026.4.0.",
-        "pl": "Bezpieczeństwo: blokada brute-force przy logowaniu (5 nieudanych prób → IP zablokowane na 15 min). Wersja emulowanego Home Assistant podniesiona do 2026.4.0.",
-        "uk": "Безпека: блокування brute-force при вході (5 невдалих спроб → IP заблоковано на 15 хв). Версія емульованого Home Assistant оновлена до 2026.4.0.",
-        "zh-cn": "安全：登录暴力破解防护（5 次失败 → IP 阻断 15 分钟）。模拟的 Home Assistant 版本提升至 2026.4.0。"
       }
     },
     "titleLang": {
