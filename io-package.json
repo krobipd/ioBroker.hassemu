@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.21.0",
+    "version": "1.22.0",
     "news": {
-      "NEXT": {
+      "1.22.0": {
         "en": "Internal cleanup: safeStringEqual moved from webserver.ts into coerce.ts (generic crypto helper). Plus 5 new unit tests covering identical/different/length-mismatch/empty/UTF-8 cases.",
         "de": "Interne Aufräumung: safeStringEqual von webserver.ts nach coerce.ts verschoben (generischer Crypto-Helper). Plus 5 neue Unit-Tests für identisch/unterschiedlich/length-mismatch/leer/UTF-8.",
         "ru": "Внутренняя уборка: safeStringEqual перенесен из webserver.ts в coerce.ts (generic crypto helper). Plus 5 новых unit-tests.",
@@ -93,19 +93,6 @@
         "pl": "Bezpieczenstwo: pendingByIp uzywa bucket IP+UA-hash — dwa displays za NAT nie wspoldzielca cookie/token. discovery_info uzywa bind-address. Plus: VIS discovery iteruje wszystkie web.* instances.",
         "uk": "Безпека: pendingByIp використовує bucket IP+UA-hash — два displays за NAT не ділять cookie/token. discovery_info використовує bind-address. Plus: VIS discovery ітерує всі web.* instances.",
         "zh-cn": "安全：pendingByIp 改用 IP+UA-hash 桶 — NAT 后的两个显示器不再共享 cookie/token。discovery_info 使用绑定地址（而非客户端可控的 Host 头）。另：VIS 发现遍历所有 web.* 实例（之前仅 web.0）。"
-      },
-      "1.16.0": {
-        "en": "Security: credentials compare via SHA-256 digest (no length-leak). Plus: loopback IPs hidden from landing page, mDNS-disabled has config hint.",
-        "de": "Sicherheit: Credentials-Vergleich via SHA-256-Digest (kein Längen-Leak). Plus: Loopback-IPs nicht in Landing-Page, mDNS-disabled mit Config-Hinweis.",
-        "ru": "Безопасность: credentials compare via SHA-256 digest (no length-leak). Plus: loopback IPs скрыты на landing page, mDNS-disabled с config hint.",
-        "pt": "Seguranca: comparacao de credenciais via SHA-256 digest (sem length-leak por response timing). Plus: IPs loopback ocultos da landing page, mDNS-disabled tem config hint, README upgrading ate v1.15.x.",
-        "nl": "Beveiliging: credentials-vergelijking via SHA-256 digest (geen length-leak via response timing). Plus: loopback IPs verborgen op landing page, mDNS-disabled heeft config hint.",
-        "fr": "Securite : comparaison des credentials via SHA-256 digest (pas de length-leak via response timing). Plus : IPs loopback cachees de la landing page, mDNS-disabled a config hint.",
-        "it": "Sicurezza: confronto credenziali via SHA-256 digest (no length-leak via response timing). Plus: IP loopback nascosti dalla landing page, mDNS-disabled ha config hint.",
-        "es": "Seguridad: comparacion de credenciales via SHA-256 digest (sin length-leak via response timing). Plus: IPs loopback ocultos en la landing page, mDNS-disabled tiene config hint.",
-        "pl": "Bezpieczenstwo: porownanie credentials via SHA-256 digest (bez length-leak przez response timing). Plus: loopback IPs ukryte na landing page, mDNS-disabled ma config hint.",
-        "uk": "Безпека: порівняння credentials через SHA-256 digest (без length-leak через response timing). Plus: loopback IPs приховані на landing page, mDNS-disabled має config hint.",
-        "zh-cn": "安全：凭证比较改为 SHA-256 摘要比较（不再通过响应时序泄漏长度信息）。另：着陆页隐藏 loopback IP，mDNS 关闭时 Config 表有提示，README upgrading 覆盖到 v1.15.x。"
       }
     },
     "titleLang": {

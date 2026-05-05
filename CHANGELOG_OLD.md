@@ -1,4 +1,10 @@
 # Older Changes
+## 1.18.0 (2026-05-05)
+
+- **Logging-Hygiene Login-Floods**: `Invalid credentials` kommt pro IP nur bis zur Lockout-Schwelle als `warn` ins Log, danach auf `debug`. Brute-Force füllt das Log nicht mehr.
+- **Stop-Error nicht mehr doppelt**: bei intended shutdown loggt `webServer.stop()` selbst auf `debug`, der Caller in `onUnload` cleant silent. Vorher zwei Einträge im Log.
+- **`non-string mode`-Rejection auf `debug`**: das ist UI-Echo (Dropdown-Klicks o.ä.) und kein Server-Concern — vorher fälschlich als `warn`.
+
 ## 1.17.0 (2026-05-05)
 
 - **NAT-Cookie-Schutz**: zwei Displays hinter derselben NAT-IP teilten sich beim parallelen Erst-Connect Cookie + Token + Mode. Jetzt: Bucket-Key kombiniert IP + User-Agent-Hash.

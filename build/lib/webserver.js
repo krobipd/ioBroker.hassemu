@@ -41,11 +41,6 @@ var import_constants = require("./constants");
 var import_coerce = require("./coerce");
 var import_landing_page = require("./landing-page");
 var import_network = require("./network");
-function safeStringEqual(a, b) {
-  const ah = import_node_crypto.default.createHash("sha256").update(a, "utf8").digest();
-  const bh = import_node_crypto.default.createHash("sha256").update(b, "utf8").digest();
-  return import_node_crypto.default.timingSafeEqual(ah, bh);
-}
 function renderRedirectWrapper(target) {
   const escAttr = target.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
   const escJs = JSON.stringify(target);
@@ -549,8 +544,8 @@ class WebServer {
             return { type: "abort", flow_id: flowId, reason: "too_many_failed_attempts" };
           }
           const { username, password } = (_a = req.body) != null ? _a : {};
-          const userOk = typeof username === "string" && safeStringEqual(username, this.config.username);
-          const passOk = typeof password === "string" && safeStringEqual(password, this.config.password);
+          const userOk = typeof username === "string" && (0, import_coerce.safeStringEqual)(username, this.config.username);
+          const passOk = typeof password === "string" && (0, import_coerce.safeStringEqual)(password, this.config.password);
           if (!userOk || !passOk) {
             this.recordLoginFailure(ip);
             const entry = this.loginAttempts.get(WebServer.normalizeLockoutKey(ip));
