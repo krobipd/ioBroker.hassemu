@@ -147,7 +147,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.7.1 (2026-05-05)
 
 - Hotfix: drei Prettier-Format-Fehler aus v1.7.0 behoben (CI-Lint-Gate war rot, deploy hat v1.7.0 nicht auf npm gebracht). v1.7.0-Änderungen erreichen npm jetzt mit dieser Version.
 
@@ -170,13 +170,6 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ### 1.4.1 (2026-05-05)
 
 - CI: Deploy-Schritt nutzt jetzt Node 24 (Node 22 + `npm@latest` hatte einen `MODULE_NOT_FOUND`-Bug für `promise-retry`, dadurch kam v1.4.0 nicht auf npm).
-
-### 1.4.0 (2026-05-05)
-
-- Neuer Datenpunkt `info.refresh_urls` (Button) — auf `true` setzen lädt VIS/VIS-2-Projekte und Admin-Tile-URLs neu, ohne den Adapter neu zu starten. Praktisch nach einer neuen VIS-Seite, die im Mode-Dropdown erscheinen soll.
-- `/auth/token` akzeptiert jetzt auch `application/x-www-form-urlencoded` Bodies (OAuth2-Spec) — manche HA-Clients senden den Token-Request urlencoded statt JSON, das Login lief sonst ins Leere.
-- mDNS: Bei einem Bonjour-Startfehler wird die Service-Instanz jetzt sauber freigegeben (vorher leakte der UDP-Socket über die Adapter-Lifetime).
-- Legacy-Migration (1.0.x/1.1.0 → 1.1.1) härter: ungültige Legacy-URLs werden nicht mehr durchgereicht, und Native-Cleanup passiert nur nach erfolgreichem State-Write — verhindert silent URL-Verlust auf Edge-Cases.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
