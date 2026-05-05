@@ -93,15 +93,23 @@ export class ClientRegistry {
             if (!cookie) {
                 continue;
             }
-            const modeRaw = await this.readState(`${id}.mode`);
+            // v1.9.0 (D8): vier readState-Calls parallel statt sequenziell.
+            // Mit 50 Clients waren das vorher 200 sequenzielle Round-Trips
+            // bevor der WebServer up war; jetzt 50 parallele 4er-Gruppen.
+            const [modeRaw, manualUrlRaw, ipRaw, hostnameRaw] = await Promise.all([
+                this.readState(`${id}.mode`),
+                this.readState(`${id}.manualUrl`),
+                this.readState(`${id}.ip`),
+                this.readState(`${id}.hostname`),
+            ]);
             const mode = typeof modeRaw === 'string' ? modeRaw : '';
-            const manualUrl = coerceSafeUrl(await this.readState(`${id}.manualUrl`));
-            const ip = coerceString(await this.readState(`${id}.ip`));
+            const manualUrl = coerceSafeUrl(manualUrlRaw);
+            const ip = coerceString(ipRaw);
             const token = coerceUuid(native.token);
 
             // Legacy migration (<=1.1.1): hostname lived in its own state. If present,
             // move the value into common.name and drop the state.
-            const legacyHostname = coerceString(await this.readState(`${id}.hostname`));
+            const legacyHostname = coerceString(hostnameRaw);
             let channelName = coerceString(obj.common?.name);
             if (legacyHostname) {
                 if (legacyHostname !== channelName) {
@@ -309,7 +317,7 @@ export class ClientRegistry {
      * @param value New mode value (sentinel or URL).
      */
     async bulkSetMode(value: string): Promise<void> {
-        // v1.9.0 (D7): parallele setStateAsync statt sequenziell. Mit 50 Displays
+        // v1.8.1 (D7): parallele setStateAsync statt sequenziell. Mit 50 Displays
         // war das vorher 50 Broker-Round-Trips. setStateAsync ist Broker-internal,
         // Parallelism ist safe.
         const writes: Array<Promise<unknown>> = [];
@@ -345,7 +353,7 @@ export class ClientRegistry {
         if (record.token) {
             this.byToken.delete(record.token);
         }
-        // v1.9.0 (D2): lastSeenFlushedAt war früher nicht aufgeräumt — bei
+        // v1.8.1 (D2): lastSeenFlushedAt war früher nicht aufgeräumt — bei
         // ID-Reuse (16M-Space, möglich nach 100+ Clients über Jahre) hätte
         // die alte Throttle-Entry den ersten lastSeen-Write des neuen Clients
         // inhibiert. Plus minimal Memory-Leak.
@@ -563,6 +571,10 @@ export function parseClientStateId(
         return null;
     }
     const [id, kind] = parts;
+    // v1.9.0 (E5): empty id rejection (`clients..mode` would parse to id='').
+    if (!id) {
+        return null;
+    }
     if (kind !== 'mode' && kind !== 'manualUrl' && kind !== 'remove') {
         return null;
     }

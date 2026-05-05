@@ -68,7 +68,7 @@ describe('MDNSService', () => {
         });
 
         it('should not be active initially', () => {
-            expect(service.active).to.be.false;
+            expect(service.isActive()).to.be.false;
         });
 
         it('should use different UUIDs when different UUIDs are provided', () => {
@@ -93,7 +93,7 @@ describe('MDNSService', () => {
 
         it('should be active after start', () => {
             service.start();
-            expect(service.active).to.be.true;
+            expect(service.isActive()).to.be.true;
         });
 
         it('should log debug on start', () => {
@@ -113,13 +113,13 @@ describe('MDNSService', () => {
 
         it('should not be active after stop', () => {
             service.start();
-            expect(service.active).to.be.true;
+            expect(service.isActive()).to.be.true;
             service.stop();
-            expect(service.active).to.be.false;
+            expect(service.isActive()).to.be.false;
         });
 
         it('should handle stop when not active', () => {
-            expect(service.active).to.be.false;
+            expect(service.isActive()).to.be.false;
             expect(() => service.stop()).to.not.throw();
         });
 
@@ -131,11 +131,11 @@ describe('MDNSService', () => {
 
         it('should handle start-stop-start cycle', () => {
             service.start();
-            expect(service.active).to.be.true;
+            expect(service.isActive()).to.be.true;
             service.stop();
-            expect(service.active).to.be.false;
+            expect(service.isActive()).to.be.false;
             service.start();
-            expect(service.active).to.be.true;
+            expect(service.isActive()).to.be.true;
         });
     });
 
@@ -181,13 +181,13 @@ describe('MDNSService cross-platform', () => {
         );
 
         service.start();
-        expect(service.active).to.be.true;
+        expect(service.isActive()).to.be.true;
 
         // No error logs — bonjour-service works everywhere
         const errorLogs = adapter._logs.filter(l => l.level === 'error');
         expect(errorLogs.length).to.equal(0);
 
         service.stop();
-        expect(service.active).to.be.false;
+        expect(service.isActive()).to.be.false;
     });
 });

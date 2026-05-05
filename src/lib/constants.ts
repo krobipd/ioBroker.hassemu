@@ -36,6 +36,13 @@ export const SESSIONS_CAP = 100;
 export const REFRESH_TOKENS_CAP = 200;
 /** Hard cap on tracked login-attempt entries (FIFO-eviction when full). */
 export const LOGIN_ATTEMPTS_CAP = 1000;
+/**
+ * Cooldown window between repeated `warn`-level logs of the same 5xx error
+ * message — first occurrence pro unique message comes through at warn, all
+ * repeats within this window fall to debug. Prevents log-spam under probe
+ * traffic / malformed request attacks.
+ */
+export const REQUEST_ERROR_COOLDOWN_MS = 60 * 1000;
 
 /**
  * Resolver-Sentinels für `client.mode` und `global.mode`. `'global'` heißt:

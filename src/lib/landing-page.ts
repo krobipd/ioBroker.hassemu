@@ -27,7 +27,7 @@ interface LandingStrings {
 }
 
 /** Translation table — EN is the fallback for any missing language. */
-const STRINGS: Record<LandingLanguage, LandingStrings> = {
+const STRINGS = {
     en: {
         htmlLang: 'en',
         pageTitle: 'Connected · ioBroker',
@@ -184,7 +184,7 @@ const STRINGS: Record<LandingLanguage, LandingStrings> = {
         step3: '在此处输入所需的 URL（VIS 项目、Grafana、仪表板等）。',
         autoRefresh: '此页面每 15 秒自动刷新一次。',
     },
-};
+} as const satisfies Record<LandingLanguage, LandingStrings>;
 
 /**
  * Render the landing page.

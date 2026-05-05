@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.8.1",
     "news": {
+      "NEXT": {
+        "en": "Less log-spam: 5xx errors at warn only on first per-message (60s cooldown). Adapter-restart ~4x faster with many displays. Minor hardening (port fields reject hex).",
+        "de": "Weniger Log-Spam: 5xx-Fehler als warn nur beim ersten Auftritt pro Message (60s-Cooldown). Adapter-Restart ~4× schneller bei vielen Displays. Kleinere Härtung (Port ohne Hex).",
+        "ru": "Меньше log-spam: 5xx на warn только при первом появлении (60s cooldown). Adapter-restart ~4× быстрее с множеством displays. Минор-загартування (порт без hex).",
+        "pt": "Menos log-spam: 5xx em warn apenas primeira ocorrencia por mensagem (60s cooldown). Adapter-restart ~4x mais rapido com muitos displays. Hardening menor (porta sem hex).",
+        "nl": "Minder log-spam: 5xx op warn alleen bij eerste keer per bericht (60s cooldown). Adapter-restart ~4x sneller met veel displays. Kleinere hardening (poort zonder hex).",
+        "fr": "Moins de log-spam : 5xx a warn uniquement premiere occurrence par message (60s cooldown). Adapter-restart ~4x plus vite avec beaucoup de displays. Hardening mineur (port sans hex).",
+        "it": "Meno log-spam: 5xx a warn solo prima occorrenza per messaggio (60s cooldown). Adapter-restart ~4x piu veloce con molti display. Hardening minore (porta senza hex).",
+        "es": "Menos log-spam: 5xx en warn solo primera ocurrencia por mensaje (60s cooldown). Adapter-restart ~4x mas rapido con muchos displays. Hardening menor (puerto sin hex).",
+        "pl": "Mniej log-spam: 5xx na warn tylko pierwsze wystapienie per wiadomosc (60s cooldown). Adapter-restart ~4x szybszy z wieloma displayami. Minor hardening (port bez hex).",
+        "uk": "Менше log-spam: 5xx на warn лише при першій появі (60s cooldown). Adapter-restart ~4× швидший з багатьма displays. Мінор-загартування (порт без hex).",
+        "zh-cn": "日志垃圾减少：5xx 仅在每消息首次记 warn（60s cooldown）。多显示器适配器重启快约 4 倍。小幅加固（端口不接受 hex）。"
+      },
       "1.8.1": {
         "en": "Master-switch faster: bulk mode change writes parallel (was: N sequential broker calls). URL-dropdown survives transient broker hiccups. Reverse-DNS lookup has a 5s timeout.",
         "de": "Master-Switch schneller: Bulk-Mode-Wechsel schreibt parallel (vorher N sequenzielle Broker-Calls). URL-Dropdown übersteht kurze Broker-Hänger. Reverse-DNS-Lookup hat 5s-Timeout.",

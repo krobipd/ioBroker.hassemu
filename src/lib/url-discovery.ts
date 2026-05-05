@@ -110,7 +110,7 @@ export class UrlDiscovery {
             this.adapter.log.debug(`url-discovery: getForeignObjectsAsync failed: ${String(err)}`);
         }
 
-        // v1.9.0 (D4): bei transientem Broker-Fehler nicht den Cache mit `{}`
+        // v1.8.1 (D4): bei transientem Broker-Fehler nicht den Cache mit `{}`
         // wipen. Listeners würden sonst leere Dropdowns sehen, mode='global'
         // resolved-via-discovered-URL fiele in null durch. Beim nächsten Refresh
         // (debounce 2s) erholt es sich. Neue States werden NUR bei Erfolg

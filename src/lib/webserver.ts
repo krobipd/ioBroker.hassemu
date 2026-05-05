@@ -14,6 +14,7 @@ import {
     SESSIONS_CAP,
     REFRESH_TOKENS_CAP,
     LOGIN_ATTEMPTS_CAP,
+    REQUEST_ERROR_COOLDOWN_MS,
     COOKIE_MAX_AGE_S,
 } from './constants';
 import { coerceString, coerceUuid } from './coerce';
@@ -127,6 +128,12 @@ export class WebServer {
     public readonly systemLanguage: string;
     /** Set of IPs whose reverse DNS lookup is already in-flight — prevents duplicate work. */
     private readonly dnsInFlight = new Set<string>();
+    /**
+     * Per-message cooldown timestamps for 5xx error logging. First occurrence
+     * of a unique message logs at warn; repeats within {@link REQUEST_ERROR_COOLDOWN_MS}
+     * fall to debug to prevent log-spam under attack/probe traffic.
+     */
+    private readonly errorLogCooldown: Map<string, number> = new Map();
 
     /**
      * @param adapter        Adapter instance used for logging, timers and namespace.
@@ -259,11 +266,15 @@ export class WebServer {
      * @param cap Hard cap; when `map.size >= cap`, the oldest entry is removed.
      */
     private static evictOldest<V>(map: Map<string, V>, cap: number): void {
-        if (map.size < cap) {
-            return;
-        }
-        const oldest = map.keys().next().value;
-        if (oldest !== undefined) {
+        // v1.9.0 (E9): while-loop statt single if. Single Eviction reicht
+        // wenn der Caller VOR jedem Insert evictet (heute der Fall), aber
+        // ein while ist defensiv robust falls cap mal nachträglich gesenkt
+        // wird oder ein Caller bulk-inserts macht.
+        while (map.size >= cap) {
+            const oldest = map.keys().next().value;
+            if (oldest === undefined) {
+                return;
+            }
             map.delete(oldest);
         }
     }
@@ -381,7 +392,7 @@ export class WebServer {
             return;
         }
         this.dnsInFlight.add(ip);
-        // v1.9.0 (D5): DNS-Lookup mit hartem 5s-Timeout. Default-Node-DNS hat
+        // v1.8.1 (D5): DNS-Lookup mit hartem 5s-Timeout. Default-Node-DNS hat
         // KEIN Timeout — bei broken Resolver (Captive-Portal, Misconfig) blieb
         // der Promise unendlich pending → IP für Adapter-Lifetime in dnsInFlight
         // blockiert, hostname auf record.ip gefroren.
@@ -475,7 +486,25 @@ export class WebServer {
                 reply.status(code).send({ error: error.message });
                 return;
             }
-            this.adapter.log.warn(`Request error: ${error.message}`);
+            // 5xx: ein attacker kann mit malformed paths/oversized bodies viele
+            // 500er triggern. Per-Message-Dedup-Map mit 60s-Cooldown — das erste
+            // Auftreten pro unique message kommt als warn, alle Wiederholungen
+            // im 60s-Fenster auf debug. Memory `feedback_no_log_spam`.
+            const key = error.message || 'unknown';
+            const now = Date.now();
+            const lastSeen = this.errorLogCooldown.get(key) ?? 0;
+            if (now - lastSeen > REQUEST_ERROR_COOLDOWN_MS) {
+                this.adapter.log.warn(`Request error: ${error.message}`);
+                this.errorLogCooldown.set(key, now);
+                if (this.errorLogCooldown.size > 200) {
+                    const oldestKey = this.errorLogCooldown.keys().next().value;
+                    if (oldestKey !== undefined) {
+                        this.errorLogCooldown.delete(oldestKey);
+                    }
+                }
+            } else {
+                this.adapter.log.debug(`Request error (repeat): ${error.message}`);
+            }
             reply.status(500).send({ error: 'Internal server error' });
         });
     }

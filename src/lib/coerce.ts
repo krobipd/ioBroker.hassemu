@@ -26,11 +26,22 @@ export function isNoChoice(value: unknown): boolean {
  *
  * @param value Untrusted input.
  */
+// v1.9.0 (E8): nur dezimale Zahlen — `Number()` würde sonst auch
+// '0x1FBB' (HEX) und '8.123e3' (Exponential) akzeptieren. In url-discovery
+// für Port-Felder wäre HEX-Acceptance Schaden-Vektor.
+const DECIMAL_NUMBER_RE = /^-?\d+(\.\d+)?$/;
+
+/**
+ * Coerce to a finite number, or null. Rejects NaN, Infinity, non-decimal
+ * strings (HEX, exponential, scientific notation).
+ *
+ * @param value Untrusted input.
+ */
 export function coerceFiniteNumber(value: unknown): number | null {
     if (typeof value === 'number') {
         return Number.isFinite(value) ? value : null;
     }
-    if (typeof value === 'string' && value.length > 0) {
+    if (typeof value === 'string' && DECIMAL_NUMBER_RE.test(value)) {
         const n = Number(value);
         return Number.isFinite(n) ? n : null;
     }
