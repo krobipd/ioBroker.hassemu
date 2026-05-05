@@ -381,7 +381,14 @@ export class WebServer {
             return;
         }
         this.dnsInFlight.add(ip);
-        dns.reverse(ip)
+        // v1.9.0 (D5): DNS-Lookup mit hartem 5s-Timeout. Default-Node-DNS hat
+        // KEIN Timeout — bei broken Resolver (Captive-Portal, Misconfig) blieb
+        // der Promise unendlich pending → IP für Adapter-Lifetime in dnsInFlight
+        // blockiert, hostname auf record.ip gefroren.
+        const timeout = new Promise<string[]>((_, reject) =>
+            setTimeout(() => reject(new Error('dns reverse-lookup timeout')), 5_000),
+        );
+        Promise.race([dns.reverse(ip), timeout])
             .then(names => {
                 const name = names[0];
                 if (name) {
@@ -391,7 +398,7 @@ export class WebServer {
                 }
             })
             .catch(() => {
-                // Reverse DNS often fails on LAN — intentionally silent.
+                // Reverse DNS often fails on LAN or times out — intentionally silent.
             })
             .finally(() => {
                 this.dnsInFlight.delete(ip);

@@ -309,14 +309,21 @@ export class ClientRegistry {
      * @param value New mode value (sentinel or URL).
      */
     async bulkSetMode(value: string): Promise<void> {
+        // v1.9.0 (D7): parallele setStateAsync statt sequenziell. Mit 50 Displays
+        // war das vorher 50 Broker-Round-Trips. setStateAsync ist Broker-internal,
+        // Parallelism ist safe.
+        const writes: Array<Promise<unknown>> = [];
         let changed = 0;
         for (const record of this.byId.values()) {
             if (record.mode === value) {
                 continue;
             }
             record.mode = value;
-            await this.adapter.setStateAsync(`clients.${record.id}.mode`, { val: value, ack: true });
+            writes.push(this.adapter.setStateAsync(`clients.${record.id}.mode`, { val: value, ack: true }));
             changed++;
+        }
+        if (writes.length > 0) {
+            await Promise.all(writes);
         }
         if (changed > 0) {
             this.adapter.log.info(`client-registry: bulk-set mode='${value}' on ${changed} client(s)`);
@@ -338,6 +345,11 @@ export class ClientRegistry {
         if (record.token) {
             this.byToken.delete(record.token);
         }
+        // v1.9.0 (D2): lastSeenFlushedAt war früher nicht aufgeräumt — bei
+        // ID-Reuse (16M-Space, möglich nach 100+ Clients über Jahre) hätte
+        // die alte Throttle-Entry den ersten lastSeen-Write des neuen Clients
+        // inhibiert. Plus minimal Memory-Leak.
+        this.lastSeenFlushedAt.delete(id);
         try {
             await this.adapter.delObjectAsync(`clients.${id}`, { recursive: true });
         } catch (err) {

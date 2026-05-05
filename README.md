@@ -147,6 +147,12 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
+### **WORK IN PROGRESS**
+
+- **Master-Switch schneller**: `global.enabled`-Toggle schreibt das `mode` aller Clients jetzt parallel statt sequenziell (vorher N Broker-Round-Trips). Spürbar auf Instanzen mit vielen Displays.
+- **Mode-Dropdown bleibt gefüllt** wenn der Broker beim Lesen der `vis-2.0`/`web.0`-Objekte kurz nicht antwortet — der zuletzt funktionierende Stand wird gehalten statt mit `{}` überschrieben.
+- **Reverse-DNS-Lookup hat 5s-Timeout**: ein langsamer/blockierter LAN-Nameserver hängt den HA-Auth-Flow nicht mehr.
+
 ### 1.8.0 (2026-05-05)
 
 - **Code-Aufräumen**: Konstanten (Cookie-TTL, Map-Caps, Mode-Sentinels, Stale-TTL) liegen jetzt zentral in `lib/constants.ts`. Verhalten unverändert.

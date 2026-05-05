@@ -102,10 +102,21 @@ export class UrlDiscovery {
         const hostIp = getLocalIp();
 
         let instances: Record<string, unknown> = {};
+        let instancesOk = false;
         try {
             instances = (await this.adapter.getForeignObjectsAsync('system.adapter.*', 'instance')) ?? {};
+            instancesOk = true;
         } catch (err) {
             this.adapter.log.debug(`url-discovery: getForeignObjectsAsync failed: ${String(err)}`);
+        }
+
+        // v1.9.0 (D4): bei transientem Broker-Fehler nicht den Cache mit `{}`
+        // wipen. Listeners würden sonst leere Dropdowns sehen, mode='global'
+        // resolved-via-discovered-URL fiele in null durch. Beim nächsten Refresh
+        // (debounce 2s) erholt es sich. Neue States werden NUR bei Erfolg
+        // committed.
+        if (!instancesOk) {
+            return { ...this.cached };
         }
 
         const crossRefs = buildCrossRefs(instances);
