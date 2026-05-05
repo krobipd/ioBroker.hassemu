@@ -7,6 +7,7 @@ import {
     coerceSafeUrl,
     coerceSafeUrlReason,
     isPlainObject,
+    safeStringEqual,
 } from './coerce';
 
 describe('coerce', () => {
@@ -215,6 +216,30 @@ describe('coerce', () => {
             const r = coerceSafeUrlReason(42);
             expect(r.safe).to.be.null;
             expect(r.reason).to.equal('not-a-string');
+        });
+    });
+
+    describe('safeStringEqual (F5 v1.22.0)', () => {
+        it('returns true for identical strings', () => {
+            expect(safeStringEqual('admin', 'admin')).to.be.true;
+        });
+
+        it('returns false for different strings of same length', () => {
+            expect(safeStringEqual('admin', 'admit')).to.be.false;
+        });
+
+        it('returns false for different lengths (no length-leak via early-return)', () => {
+            expect(safeStringEqual('admin', 'administrator')).to.be.false;
+            expect(safeStringEqual('a', 'aaaaaaaaaa')).to.be.false;
+        });
+
+        it('returns true for empty strings', () => {
+            expect(safeStringEqual('', '')).to.be.true;
+        });
+
+        it('handles UTF-8 correctly', () => {
+            expect(safeStringEqual('Häuser', 'Häuser')).to.be.true;
+            expect(safeStringEqual('Häuser', 'Hauser')).to.be.false;
         });
     });
 });
