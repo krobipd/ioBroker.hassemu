@@ -147,7 +147,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-### 1.4.0 (2026-05-05)
+### **WORK IN PROGRESS**
 
 - Neuer Datenpunkt `info.refresh_urls` (Button) — auf `true` setzen lädt VIS/VIS-2-Projekte und Admin-Tile-URLs neu, ohne den Adapter neu zu starten. Praktisch nach einer neuen VIS-Seite, die im Mode-Dropdown erscheinen soll.
 - `/auth/token` akzeptiert jetzt auch `application/x-www-form-urlencoded` Bodies (OAuth2-Spec) — manche HA-Clients senden den Token-Request urlencoded statt JSON, das Login lief sonst ins Leere.

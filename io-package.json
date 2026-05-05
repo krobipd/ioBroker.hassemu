@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.4.0",
+    "version": "1.3.3",
     "news": {
-      "1.4.0": {
+      "NEXT": {
         "en": "New `info.refresh_urls` button reloads the VIS/Admin URL dropdown without an adapter restart. Plus: `/auth/token` now accepts form-urlencoded bodies (OAuth2 spec), mDNS no longer leaks sockets on start failure, and legacy URL migration drops unsafe values cleanly.",
         "de": "Neuer Button `info.refresh_urls` lädt das VIS-/Admin-URL-Dropdown ohne Adapter-Neustart neu. Plus: `/auth/token` akzeptiert form-urlencoded Bodies (OAuth2-Spec), mDNS leakt keine Sockets mehr bei Startfehler, Legacy-URL-Migration verwirft unsichere Werte sauber.",
         "ru": "Новая кнопка `info.refresh_urls` перезагружает VIS/Admin URL-dropdown без перезапуска адаптера. Plus: `/auth/token` принимает form-urlencoded body (OAuth2), mDNS не утекает сокеты при ошибке старта, legacy URL-migration корректно отклоняет небезопасные значения.",
