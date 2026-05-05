@@ -1,4 +1,12 @@
 # Older Changes
+## 1.16.0 (2026-05-05)
+
+- **Sicherheit Credentials-Vergleich**: `safeStringEqual` hashed beide Seiten via SHA-256 vor dem timing-safe Vergleich — vorher waren Username-/Password-Längen über Response-Timing leakbar.
+- **Landing-Page versteckt Loopback-IPs**: `127.0.0.1` / `::1` / `0.0.0.0` werden nicht mehr als Display-IP angezeigt — verwirrte User bei Reverse-Proxy-Setups.
+- **`coerceSafeUrlReason`-Helper**: rejected URLs liefern jetzt den Grund (`bad-scheme:javascript:`, `credentials-in-url`, `unparseable`, `too-long`, …) für gezielte Log-Nachvollziehbarkeit.
+- **README-Upgrading aktualisiert**: Eintrag „1.2.0 → 1.15.x" hinzugefügt, plus Hinweis auf den v1.3.2-Schema-Repair bei leerem Mode-Dropdown nach Upgrade.
+- **Config-Hinweis bei mDNS=off**: die Configuration-Tabelle erklärt jetzt explizit dass Displays manuell konfiguriert werden müssen wenn mDNS deaktiviert ist.
+
 ## 1.15.0 (2026-05-05)
 
 - **IPv6-LAN-Fallback**: `getLocalIp` nimmt jetzt die erste non-internal IPv6-Adresse statt `127.0.0.1` wenn keine IPv4 verfügbar ist. mDNS broadcastet damit eine reachable Adresse statt Loopback.
