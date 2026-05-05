@@ -13,9 +13,14 @@ interface MockAdapter {
     _timers: Map<number, { cb: TimerCallback; ms: number }>;
     _instances: Record<string, unknown>;
     _dirs: Record<string, unknown[] | Error>;
+    _files: Record<string, string | Buffer | Error>;
     _logs: string[];
     getForeignObjectsAsync: (pattern: string, type: 'instance') => Promise<Record<string, unknown>>;
     readDirAsync: (adapterName: string, path: string) => Promise<unknown[]>;
+    readFileAsync: (
+        adapterName: string,
+        path: string,
+    ) => Promise<{ file: Buffer | string; mimeType?: string } | string | Buffer>;
 }
 
 function createMockAdapter(): MockAdapter & DiscoveryAdapter {
@@ -26,6 +31,7 @@ function createMockAdapter(): MockAdapter & DiscoveryAdapter {
         _timers: timers,
         _instances: {} as Record<string, unknown>,
         _dirs: {} as Record<string, unknown[] | Error>,
+        _files: {} as Record<string, string | Buffer | Error>,
         _logs: logs,
         log: {
             debug: (m: string): void => {
@@ -58,6 +64,17 @@ function createMockAdapter(): MockAdapter & DiscoveryAdapter {
                 throw d;
             }
             return d ?? [];
+        },
+        readFileAsync: async (adapterName: string, path: string) => {
+            const key = `${adapterName}:${path}`;
+            const f = mock._files[key];
+            if (f instanceof Error) {
+                throw f;
+            }
+            if (f === undefined) {
+                throw new Error(`file not found: ${key}`);
+            }
+            return f;
         },
     };
     return mock as never;
@@ -390,6 +407,83 @@ describe('UrlDiscovery', () => {
             adapter._dirs['vis-2.0'] = [{ file: 'main', isDir: true }];
             const result = await discovery.collect();
             expect(Object.keys(result)).to.have.lengthOf(0);
+        });
+
+        it('adds VIS-2 sub-views from vis-views.json (v1.7.0 A2)', async () => {
+            adapter._instances = {
+                'system.adapter.web.0': enabledInstance({ native: { bind: '192.168.1.10', port: 8082 } }),
+            };
+            adapter._dirs['vis-2.0'] = [{ file: 'main', isDir: true }];
+            adapter._files['vis-2.0:main/vis-views.json'] = JSON.stringify({
+                views: {
+                    Lights: { widgets: {} },
+                    Kitchen: { widgets: {} },
+                },
+            });
+            const result = await discovery.collect();
+            // Top-level project still listed
+            expect(result['http://192.168.1.10:8082/vis-2/index.html?main']).to.equal('VIS-2: main');
+            // Plus per-view entries
+            expect(result['http://192.168.1.10:8082/vis-2/index.html?main/Lights']).to.equal('VIS-2: main / Lights');
+            expect(result['http://192.168.1.10:8082/vis-2/index.html?main/Kitchen']).to.equal('VIS-2: main / Kitchen');
+        });
+
+        it('handles vis-views.json without `views` wrapper (legacy VIS-2 layout)', async () => {
+            adapter._instances = {
+                'system.adapter.web.0': enabledInstance({ native: { bind: '192.168.1.10', port: 8082 } }),
+            };
+            adapter._dirs['vis-2.0'] = [{ file: 'home', isDir: true }];
+            // VIS-2 hat den `views`-Wrapper über die Versionen variiert — beide Layouts unterstützen
+            adapter._files['vis-2.0:home/vis-views.json'] = JSON.stringify({
+                MainView: { widgets: {} },
+                BedRoom: { widgets: {} },
+                __settings: { foo: 'bar' }, // Meta-Key, sollte gefiltert
+            });
+            const result = await discovery.collect();
+            expect(result['http://192.168.1.10:8082/vis-2/index.html?home/MainView']).to.equal(
+                'VIS-2: home / MainView',
+            );
+            expect(result['http://192.168.1.10:8082/vis-2/index.html?home/BedRoom']).to.equal('VIS-2: home / BedRoom');
+            // __settings should not become a view-URL
+            expect(Object.values(result).some(v => v.includes('__settings'))).to.be.false;
+        });
+
+        it('falls back to top-level project when vis-views.json is missing', async () => {
+            adapter._instances = {
+                'system.adapter.web.0': enabledInstance({ native: { bind: '192.168.1.10', port: 8082 } }),
+            };
+            adapter._dirs['vis-2.0'] = [{ file: 'minimal', isDir: true }];
+            // No file registered → readFileAsync throws → addVisViews skips silently
+            const result = await discovery.collect();
+            expect(result['http://192.168.1.10:8082/vis-2/index.html?minimal']).to.equal('VIS-2: minimal');
+            expect(Object.keys(result)).to.have.lengthOf(1); // only top-level
+        });
+
+        it('handles malformed vis-views.json gracefully', async () => {
+            adapter._instances = {
+                'system.adapter.web.0': enabledInstance({ native: { bind: '192.168.1.10', port: 8082 } }),
+            };
+            adapter._dirs['vis-2.0'] = [{ file: 'broken', isDir: true }];
+            adapter._files['vis-2.0:broken/vis-views.json'] = '{ this is not json';
+            const result = await discovery.collect();
+            // Top-level still works, but no view-entries because parse failed
+            expect(result['http://192.168.1.10:8082/vis-2/index.html?broken']).to.equal('VIS-2: broken');
+            expect(Object.keys(result)).to.have.lengthOf(1);
+        });
+
+        it('does NOT call readFileAsync for VIS-1 (only VIS-2 has views)', async () => {
+            adapter._instances = {
+                'system.adapter.web.0': enabledInstance({ native: { bind: '192.168.1.10', port: 8082 } }),
+            };
+            adapter._dirs['vis.0'] = [{ file: 'legacy', isDir: true }];
+            let readCalls = 0;
+            adapter.readFileAsync = async () => {
+                readCalls++;
+                throw new Error('should not be called for vis');
+            };
+            const result = await discovery.collect();
+            expect(result['http://192.168.1.10:8082/vis/index.html?legacy']).to.equal('VIS: legacy');
+            expect(readCalls).to.equal(0);
         });
 
         it('gracefully handles readDirAsync errors', async () => {

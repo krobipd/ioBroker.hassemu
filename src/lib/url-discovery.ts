@@ -17,6 +17,8 @@ export interface DiscoveryAdapter extends AdapterInterface {
     getForeignObjectsAsync: (pattern: string, type: 'instance') => Promise<Record<string, unknown>>;
     /** Mirrors `ioBroker.Adapter.readDirAsync`; returns an array of file entries. */
     readDirAsync: (adapterName: string, path: string) => Promise<unknown[]>;
+    /** Mirrors `ioBroker.Adapter.readFileAsync`; tests mock this to provide vis-views.json. */
+    readFileAsync: (adapterName: string, path: string) => Promise<{ file: Buffer | string; mimeType?: string } | string | Buffer>;
 }
 
 interface ResolveContext {
@@ -173,6 +175,92 @@ export class UrlDiscovery {
                 continue;
             }
             result[safe] = `${label}: ${name}`;
+
+            // VIS-2 hat sub-views in <project>/vis-views.json. Pro View einen
+            // zusätzlichen Dropdown-Eintrag mit `?<project>/<view>` (path-routing).
+            // Wenn die Datei fehlt oder malformed ist → silently skip,
+            // Top-level-Projekt-Eintrag bleibt funktional.
+            if (adapterName === 'vis-2.0') {
+                await this.addVisViews(result, adapterName, name, url, label);
+            }
+        }
+    }
+
+    /**
+     * Lese `<project>/vis-views.json` und füge pro View einen Dropdown-Eintrag
+     * `?<project>/<viewName>` ein. Defensive — alle Fehler silently caught.
+     *
+     * @param result Output-Map (mutated)
+     * @param adapterName VIS-Adapter (z.B. `vis-2.0`)
+     * @param projectName Top-level-Projekt-Folder
+     * @param projectUrl Bereits berechneter Projekt-URL (`...?projectName`)
+     * @param label Sprach-Label für Dropdown (`VIS-2`)
+     */
+    private async addVisViews(
+        result: UrlStates,
+        adapterName: string,
+        projectName: string,
+        projectUrl: string,
+        label: string,
+    ): Promise<void> {
+        let raw: unknown;
+        try {
+            raw = await this.adapter.readFileAsync(adapterName, `${projectName}/vis-views.json`);
+        } catch {
+            return; // file fehlt — kein VIS-2-Projekt mit Views, oder pre-VIS-2.x
+        }
+
+        // readFileAsync kann je nach js-controller-Version Buffer, string oder
+        // { file, mimeType } returnen — alle Varianten zu utf-8-string normalisieren.
+        let text: string;
+        if (typeof raw === 'string') {
+            text = raw;
+        } else if (Buffer.isBuffer(raw)) {
+            text = raw.toString('utf8');
+        } else if (isPlainObject(raw) && raw.file !== undefined) {
+            const f = raw.file;
+            text = typeof f === 'string' ? f : Buffer.isBuffer(f) ? f.toString('utf8') : '';
+        } else {
+            return;
+        }
+
+        if (!text) {
+            return;
+        }
+
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(text);
+        } catch {
+            return; // malformed JSON — Top-level-Projekt-Eintrag reicht
+        }
+
+        if (!isPlainObject(parsed)) {
+            return;
+        }
+
+        // VIS-2 vis-views.json hat optionalen Top-Key `views` (Object). Wenn der
+        // fehlt, sind die View-Keys direkt im Top-Level-Object. Beide Varianten
+        // unterstützen — VIS-2 hat sich da über Versionen verändert.
+        const viewsContainer = isPlainObject(parsed.views) ? parsed.views : parsed;
+
+        for (const viewName of Object.keys(viewsContainer)) {
+            // Skip Meta-Keys (typische VIS-2-Struktur: `views`, `settings`, `___settings`, `activeView`, ...)
+            if (viewName.startsWith('_') || viewName === 'settings' || viewName === 'activeView') {
+                continue;
+            }
+            // Skip wenn dazugehöriger Wert kein View-Object ist (View-Objects haben
+            // typische Felder wie `widgets` oder `name`).
+            const v = (viewsContainer as Record<string, unknown>)[viewName];
+            if (!isPlainObject(v)) {
+                continue;
+            }
+            const viewUrl = `${projectUrl}/${encodeURIComponent(viewName)}`;
+            const safe = coerceSafeUrl(viewUrl);
+            if (!safe) {
+                continue;
+            }
+            result[safe] = `${label}: ${projectName} / ${viewName}`;
         }
     }
 }

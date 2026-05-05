@@ -500,10 +500,12 @@ describe('WebServer', () => {
             expect(body.name).to.equal('TestServer');
         });
 
-        it("GET / redirects to global URL when client default mode='global'", async () => {
+        it("GET / serves wrapper HTML pointing at global URL when client default mode='global' (v1.7.0)", async () => {
             const res = await server.inject({ method: 'GET', url: '/' });
-            expect(res.statusCode).to.equal(302);
-            expect(res.headers.location).to.equal('http://example.com/vis');
+            expect(res.statusCode).to.equal(200);
+            expect(res.headers['content-type']).to.include('text/html');
+            expect(res.body).to.include('<iframe src="http://example.com/vis"');
+            expect(res.body).to.include('/api/redirect_check');
         });
 
         it('GET / sets cookie for new clients', async () => {
@@ -523,7 +525,7 @@ describe('WebServer', () => {
             expect(registry.getByCookie(cookie)).to.not.be.null;
         });
 
-        it("GET / uses client.mode='manual' + manualUrl", async () => {
+        it("GET / wrapper for client.mode='manual' uses manualUrl in iframe", async () => {
             const r1 = await server.inject({ method: 'GET', url: '/' });
             const cookie = extractCookie(r1.headers['set-cookie'])!;
             const client = registry.getByCookie(cookie)!;
@@ -534,10 +536,11 @@ describe('WebServer', () => {
                 url: '/',
                 headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
             });
-            expect(r2.headers.location).to.equal('http://override.local/ui');
+            expect(r2.statusCode).to.equal(200);
+            expect(r2.body).to.include('<iframe src="http://override.local/ui"');
         });
 
-        it('GET / uses client.mode when it is a direct URL', async () => {
+        it('GET / wrapper uses direct-URL mode in iframe', async () => {
             const r1 = await server.inject({ method: 'GET', url: '/' });
             const cookie = extractCookie(r1.headers['set-cookie'])!;
             const client = registry.getByCookie(cookie)!;
@@ -547,7 +550,34 @@ describe('WebServer', () => {
                 url: '/',
                 headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
             });
-            expect(r2.headers.location).to.equal('http://direct.local/ui');
+            expect(r2.statusCode).to.equal(200);
+            expect(r2.body).to.include('<iframe src="http://direct.local/ui"');
+        });
+
+        it('GET /api/redirect_check returns current target (v1.7.0)', async () => {
+            const r1 = await server.inject({ method: 'GET', url: '/' });
+            const cookie = extractCookie(r1.headers['set-cookie'])!;
+            const r2 = await server.inject({
+                method: 'GET',
+                url: '/api/redirect_check',
+                headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
+            });
+            expect(r2.statusCode).to.equal(200);
+            expect(r2.json()).to.deep.equal({ target: 'http://example.com/vis' });
+        });
+
+        it('GET /api/redirect_check reflects mode-changes for the same client', async () => {
+            const r1 = await server.inject({ method: 'GET', url: '/' });
+            const cookie = extractCookie(r1.headers['set-cookie'])!;
+            const client = registry.getByCookie(cookie)!;
+            client.mode = MODE_MANUAL;
+            client.manualUrl = 'http://newurl.local/dashboard';
+            const r2 = await server.inject({
+                method: 'GET',
+                url: '/api/redirect_check',
+                headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
+            });
+            expect(r2.json()).to.deep.equal({ target: 'http://newurl.local/dashboard' });
         });
 
         it('GET / serves the landing page when nothing is configured', async () => {
