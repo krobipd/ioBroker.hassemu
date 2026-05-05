@@ -733,6 +733,91 @@ describe('ClientRegistry', () => {
             expect(registry.getById(id)?.manualUrl).to.be.null;
         });
     });
+
+    // --- v1.19.0 (J-Phase Test-Coverage) ---
+
+    describe('seedLastSeen (F11 v1.19.0)', () => {
+        it('writes native.lastSeen for the given id', async () => {
+            const built = createMockAdapter();
+            const reg = new ClientRegistry(built.adapter as never);
+            built.store.objects.set('hassemu.0.clients.foo', { type: 'channel', native: {} });
+            await reg.seedLastSeen('foo', 1234567890);
+            const obj = built.store.objects.get('hassemu.0.clients.foo');
+            expect(obj?.native?.lastSeen).to.equal(1234567890);
+        });
+
+        it('updates throttle map so next touchLastSeen does not double-write', async () => {
+            const built = createMockAdapter();
+            const reg = new ClientRegistry(built.adapter as never);
+            built.store.objects.set('hassemu.0.clients.foo', { type: 'channel', native: {} });
+            const flushed = (reg as unknown as { lastSeenFlushedAt: Map<string, number> }).lastSeenFlushedAt;
+            expect(flushed.has('foo')).to.be.false;
+            await reg.seedLastSeen('foo', 9999);
+            expect(flushed.get('foo')).to.equal(9999);
+        });
+    });
+
+    describe('per-IP burst-detection for broken cookies (G5 v1.19.0)', () => {
+        const buildReg = (): { reg: ClientRegistry; store: MockStore } => {
+            const built = createMockAdapter();
+            const reg = new ClientRegistry(built.adapter as never);
+            return { reg, store: built.store };
+        };
+
+        it('does not warn on first 3 client creations from same IP', () => {
+            const { reg, store } = buildReg();
+            const access = reg as unknown as { recordNewClientIp: (ip: string) => void };
+            access.recordNewClientIp('1.2.3.4');
+            access.recordNewClientIp('1.2.3.4');
+            access.recordNewClientIp('1.2.3.4');
+            const warnings = store.logs.filter(l => l.level === 'warn');
+            expect(warnings).to.have.length(0);
+        });
+
+        it('emits one warn on the 4th client from same IP within 1h', () => {
+            const { reg, store } = buildReg();
+            const access = reg as unknown as { recordNewClientIp: (ip: string) => void };
+            for (let i = 0; i < 4; i++) {
+                access.recordNewClientIp('1.2.3.4');
+            }
+            const burstWarn = store.logs.filter(l => l.level === 'warn' && l.msg.includes('not persisting cookies'));
+            expect(burstWarn).to.have.length(1);
+            expect(burstWarn[0].msg).to.include('1.2.3.4');
+        });
+
+        it('does not double-warn within 1h cooldown', () => {
+            const { reg, store } = buildReg();
+            const access = reg as unknown as { recordNewClientIp: (ip: string) => void };
+            for (let i = 0; i < 10; i++) {
+                access.recordNewClientIp('1.2.3.4');
+            }
+            const burstWarn = store.logs.filter(l => l.level === 'warn' && l.msg.includes('not persisting cookies'));
+            expect(burstWarn).to.have.length(1);
+        });
+
+        it('tracks bursts per IP independently', () => {
+            const { reg, store } = buildReg();
+            const access = reg as unknown as { recordNewClientIp: (ip: string) => void };
+            for (let i = 0; i < 4; i++) access.recordNewClientIp('1.2.3.4');
+            for (let i = 0; i < 4; i++) access.recordNewClientIp('5.6.7.8');
+            const burstWarn = store.logs.filter(l => l.level === 'warn' && l.msg.includes('not persisting cookies'));
+            expect(burstWarn).to.have.length(2);
+        });
+
+        it('caps the burst-tracking map at 200 entries (FIFO)', () => {
+            const { reg } = buildReg();
+            const access = reg as unknown as {
+                recordNewClientIp: (ip: string) => void;
+                newClientBurst: Map<string, unknown>;
+            };
+            for (let i = 0; i < 250; i++) {
+                access.recordNewClientIp(`10.0.0.${i}`);
+            }
+            expect(access.newClientBurst.size).to.be.at.most(200);
+            // Newest entries survive
+            expect(access.newClientBurst.has('10.0.0.249')).to.be.true;
+        });
+    });
 });
 
 describe('parseClientStateId', () => {
