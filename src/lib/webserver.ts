@@ -124,6 +124,12 @@ export class WebServer {
     public readonly loginAttempts: Map<string, { failedCount: number; lockedUntil: number; lastSeen: number }> =
         new Map();
     private cleanupTimer: ioBroker.Interval | null = null;
+    /**
+     * v1.14.0 (H8): bind once im Constructor statt bei jedem Property-Access
+     * via getter — vorher allokierte jeder `s.inject({...})`-Call eine neue
+     * gebundene Funktion. Tests rufen das in Loops auf — unnötiger GC-Druck.
+     */
+    public readonly inject!: FastifyInstance['inject'];
     public readonly instanceUuid: string;
     /** ioBroker system language for the setup page — resolved on startup. */
     public readonly systemLanguage: string;
@@ -159,6 +165,8 @@ export class WebServer {
         this.instanceUuid = instanceUuid;
         this.systemLanguage = systemLanguage;
         this.app = Fastify({ logger: false, trustProxy: false });
+        // v1.14.0 (H8): inject einmal binden, nicht pro Getter-Access.
+        (this as { inject: FastifyInstance['inject'] }).inject = this.app.inject.bind(this.app);
     }
 
     /** Human-readable service name advertised in responses and mDNS. */
@@ -179,6 +187,13 @@ export class WebServer {
 
     /** Registers plugins and starts the HTTP listener. */
     async start(): Promise<void> {
+        // v1.14.0 (H9): defensive — wenn start() jemals doppelt gerufen wird
+        // (Refactor, Test-Setup-Bug), Timer aus dem Vorlauf clearen statt zu
+        // leaken.
+        if (this.cleanupTimer) {
+            this.adapter.clearInterval(this.cleanupTimer);
+            this.cleanupTimer = null;
+        }
         await this.app.register(fastifyCookie);
         // OAuth2-Spec verlangt `application/x-www-form-urlencoded` für `/auth/token`.
         // Echte HA-Reference-Clients (frontend/Wall Display SDK) folgen dem.
@@ -220,10 +235,9 @@ export class WebServer {
         }
     }
 
-    /** Exposed for testing — fires injected requests without a real socket. */
-    get inject(): FastifyInstance['inject'] {
-        return this.app.inject.bind(this.app);
-    }
+    // v1.14.0 (H8): `inject` ist jetzt ein readonly Field (oben deklariert,
+    // im Constructor einmalig gebunden). Der frühere Getter allokierte bei
+    // jedem Access eine neue Funktion.
 
     /** Periodic cleanup of expired in-flight auth sessions and stale lockouts. */
     public cleanupSessions(): void {

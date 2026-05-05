@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.13.0",
     "news": {
+      "NEXT": {
+        "en": "Lifecycle hardening: schema-repair skips check when objects are already correct (saves 2 broker round-trips per restart). Plus defensive cleanup on onReady re-run, smaller GC pressure on test injects.",
+        "de": "Lifecycle-Härtung: Schema-Repair überspringt Check wenn Objects schon ok sind (-2 Broker-Round-Trips). Plus defensives onReady-Re-Run-Cleanup, weniger GC-Druck bei Test-Injects.",
+        "ru": "Lifecycle hardening: schema-repair пропускает check если objects уже корректны (-2 broker round-trips). Plus defensive cleanup при onReady re-run, меньше GC-pressure на test injects.",
+        "pt": "Lifecycle hardening: schema-repair pula check quando objects ja estao corretos (-2 broker round-trips). Plus cleanup defensivo em onReady re-run, menos GC-pressure em test injects.",
+        "nl": "Lifecycle hardening: schema-repair slaat check over als objects al correct zijn (-2 broker round-trips). Plus defensieve cleanup bij onReady re-run, minder GC-druk op test injects.",
+        "fr": "Lifecycle hardening : schema-repair saute le check quand objects sont deja corrects (-2 broker round-trips). Plus cleanup defensif lors de onReady re-run, moins de GC-pressure sur test injects.",
+        "it": "Lifecycle hardening: schema-repair salta il check quando object sono gia corretti (-2 broker round-trip). Plus cleanup difensivo su onReady re-run, meno GC-pressure su test injects.",
+        "es": "Lifecycle hardening: schema-repair salta el check cuando objects ya son correctos (-2 broker round-trips). Plus cleanup defensivo en onReady re-run, menos GC-pressure en test injects.",
+        "pl": "Lifecycle hardening: schema-repair pomija check gdy objects sa juz poprawne (-2 broker round-trips). Plus defensywny cleanup przy onReady re-run, mniej GC-pressure na test injects.",
+        "uk": "Lifecycle hardening: schema-repair пропускає check коли objects вже коректні (-2 broker round-trips). Plus defensive cleanup при onReady re-run, менше GC-pressure на test injects.",
+        "zh-cn": "Lifecycle 加固：当对象已正确时跳过 schema-repair 检查（每次重启省 2 次 broker 往返）。另：onReady 重运行时防御性清理，测试注入减少 GC 压力。"
+      },
       "1.13.0": {
         "en": "URL-dropdown refresh now only triggers on adapter add/remove or admin/web/vis-changes (was: every system.adapter.*-change). Subscriptions wired after server-start to avoid race. Plus: smaller lifecycle hardening.",
         "de": "URL-Dropdown-Refresh feuert nur noch bei Adapter-Add/Remove oder admin/web/vis-Änderungen (vorher: jeder system.adapter.*-Change). Subscriptions erst nach Server-Start. Plus: kleinere Lifecycle-Härtung.",

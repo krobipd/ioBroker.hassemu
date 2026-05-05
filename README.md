@@ -152,6 +152,13 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
+### **WORK IN PROGRESS**
+
+- **Schema-Repair überspringt Check** wenn `global.mode`/`global.manualUrl` schon korrekt sind — spart 2 Broker-Round-Trips pro Start. Repair-Pfad bleibt für pre-v1.3.2-Bug.
+- **Defensives Cleanup bei `onReady`-Re-Run**: webServer/mDNS/urlDiscovery werden vorher sauber gestoppt falls js-controller `onReady` ohne `unload` zweimal triggert.
+- **Test-Injects schneller**: `inject` einmalig im Constructor gebunden statt pro Property-Access — weniger GC-Druck in Test-Loops.
+- **Cleanup-Timer defensive**: bei doppeltem `start()` (Refactor-Edge) wird der vorherige Timer gecleared statt zu leaken.
+
 ### 1.13.0 (2026-05-05)
 
 - **URL-Dropdown-Refresh schmaler**: feuert nur noch bei Adapter-Add/Remove oder Änderungen an `admin`/`web`/`vis`/`vis-2` — vorher bei jedem `system.adapter.*`-Object-Change im ganzen Host.

@@ -105,6 +105,12 @@ class WebServer {
    */
   loginAttempts = /* @__PURE__ */ new Map();
   cleanupTimer = null;
+  /**
+   * v1.14.0 (H8): bind once im Constructor statt bei jedem Property-Access
+   * via getter — vorher allokierte jeder `s.inject({...})`-Call eine neue
+   * gebundene Funktion. Tests rufen das in Loops auf — unnötiger GC-Druck.
+   */
+  inject;
   instanceUuid;
   /** ioBroker system language for the setup page — resolved on startup. */
   systemLanguage;
@@ -132,6 +138,7 @@ class WebServer {
     this.instanceUuid = instanceUuid;
     this.systemLanguage = systemLanguage;
     this.app = (0, import_fastify.default)({ logger: false, trustProxy: false });
+    this.inject = this.app.inject.bind(this.app);
   }
   /** Human-readable service name advertised in responses and mDNS. */
   get serviceName() {
@@ -149,6 +156,10 @@ class WebServer {
   /** Registers plugins and starts the HTTP listener. */
   async start() {
     var _a;
+    if (this.cleanupTimer) {
+      this.adapter.clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
     await this.app.register(import_cookie.default);
     await this.app.register(import_formbody.default);
     this.setupAuthGuard();
@@ -179,10 +190,9 @@ class WebServer {
       this.adapter.log.error(`Web server stop error: ${String(err)}`);
     }
   }
-  /** Exposed for testing — fires injected requests without a real socket. */
-  get inject() {
-    return this.app.inject.bind(this.app);
-  }
+  // v1.14.0 (H8): `inject` ist jetzt ein readonly Field (oben deklariert,
+  // im Constructor einmalig gebunden). Der frühere Getter allokierte bei
+  // jedem Access eine neue Funktion.
   /** Periodic cleanup of expired in-flight auth sessions and stale lockouts. */
   cleanupSessions() {
     const now = Date.now();

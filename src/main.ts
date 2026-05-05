@@ -79,6 +79,20 @@ class HassEmu extends utils.Adapter {
     }
 
     private async onReady(): Promise<void> {
+        // v1.14.0 (H7): defensive bei onReady-Re-Run ohne unload (sollte nicht
+        // passieren, aber js-controller-Edge-Cases). Vorhandene Refs sauber
+        // entsorgen, sonst orphaned Server + Listeners.
+        if (this.webServer) {
+            await this.webServer.stop().catch(() => {});
+            this.webServer = null;
+        }
+        if (this.mdnsService) {
+            this.mdnsService.stop();
+            this.mdnsService = null;
+        }
+        this.urlDiscovery?.cancelRefresh();
+        this.urlDiscovery = null;
+
         await this.setState('info.connection', { val: false, ack: true });
 
         this.globalConfig = new GlobalConfig(this);
@@ -412,37 +426,61 @@ class HassEmu extends utils.Adapter {
      * Idempotent — extending an already-complete object is a no-op write.
      */
     private async repairGlobalSchemas(): Promise<void> {
-        try {
-            await this.extendObjectAsync('global.mode', {
-                type: 'state',
-                common: {
-                    name: 'Global redirect mode',
-                    type: 'mixed',
-                    role: 'value',
-                    read: true,
-                    write: true,
-                    def: 0,
-                },
-                native: {},
-            });
-        } catch (err) {
-            this.log.debug(`repair global.mode failed: ${String(err)}`);
+        // v1.14.0 (H3): vor dem unconditional extendObjectAsync prüfen ob die
+        // Objects schon fully-formed sind. Spart 2 Round-Trips bei jedem Start
+        // für die ~99% der Installationen die das Object-Schema schon korrekt
+        // haben (nur Pre-v1.3.2 user mit dem partial-formed bug brauchen den
+        // repair-Pfad).
+        const needsRepair = async (id: string, expectedCommonType: string): Promise<boolean> => {
+            try {
+                const obj = await this.getObjectAsync(id);
+                if (!obj || obj.type !== 'state') {
+                    return true;
+                }
+                if (obj.common?.type !== expectedCommonType) {
+                    return true;
+                }
+                return false;
+            } catch {
+                return true;
+            }
+        };
+
+        if (await needsRepair('global.mode', 'mixed')) {
+            try {
+                await this.extendObjectAsync('global.mode', {
+                    type: 'state',
+                    common: {
+                        name: 'Global redirect mode',
+                        type: 'mixed',
+                        role: 'value',
+                        read: true,
+                        write: true,
+                        def: 0,
+                    },
+                    native: {},
+                });
+            } catch (err) {
+                this.log.debug(`repair global.mode failed: ${String(err)}`);
+            }
         }
-        try {
-            await this.extendObjectAsync('global.manualUrl', {
-                type: 'state',
-                common: {
-                    name: "Global manual URL (used when mode='manual')",
-                    type: 'string',
-                    role: 'url',
-                    read: true,
-                    write: true,
-                    def: '',
-                },
-                native: {},
-            });
-        } catch (err) {
-            this.log.debug(`repair global.manualUrl failed: ${String(err)}`);
+        if (await needsRepair('global.manualUrl', 'string')) {
+            try {
+                await this.extendObjectAsync('global.manualUrl', {
+                    type: 'state',
+                    common: {
+                        name: "Global manual URL (used when mode='manual')",
+                        type: 'string',
+                        role: 'url',
+                        read: true,
+                        write: true,
+                        def: '',
+                    },
+                    native: {},
+                });
+            } catch (err) {
+                this.log.debug(`repair global.manualUrl failed: ${String(err)}`);
+            }
         }
     }
 

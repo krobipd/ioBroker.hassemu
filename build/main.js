@@ -74,7 +74,18 @@ class HassEmu extends utils.Adapter {
     }
   }
   async onReady() {
-    var _a, _b;
+    var _a, _b, _c;
+    if (this.webServer) {
+      await this.webServer.stop().catch(() => {
+      });
+      this.webServer = null;
+    }
+    if (this.mdnsService) {
+      this.mdnsService.stop();
+      this.mdnsService = null;
+    }
+    (_a = this.urlDiscovery) == null ? void 0 : _a.cancelRefresh();
+    this.urlDiscovery = null;
     await this.setState("info.connection", { val: false, ack: true });
     this.globalConfig = new import_global_config.GlobalConfig(this);
     await this.globalConfig.restore();
@@ -108,7 +119,7 @@ class HassEmu extends utils.Adapter {
       await this.webServer.start();
     } catch (err) {
       this.log.error(`Web server failed to start: ${String(err)}`);
-      (_b = (_a = this.terminate) == null ? void 0 : _a.call(this, 11)) != null ? _b : process.exit(11);
+      (_c = (_b = this.terminate) == null ? void 0 : _b.call(this, 11)) != null ? _c : process.exit(11);
       return;
     }
     await this.subscribeForeignObjectsAsync("system.adapter.*");
@@ -319,37 +330,56 @@ class HassEmu extends utils.Adapter {
    * Idempotent — extending an already-complete object is a no-op write.
    */
   async repairGlobalSchemas() {
-    try {
-      await this.extendObjectAsync("global.mode", {
-        type: "state",
-        common: {
-          name: "Global redirect mode",
-          type: "mixed",
-          role: "value",
-          read: true,
-          write: true,
-          def: 0
-        },
-        native: {}
-      });
-    } catch (err) {
-      this.log.debug(`repair global.mode failed: ${String(err)}`);
+    const needsRepair = async (id, expectedCommonType) => {
+      var _a;
+      try {
+        const obj = await this.getObjectAsync(id);
+        if (!obj || obj.type !== "state") {
+          return true;
+        }
+        if (((_a = obj.common) == null ? void 0 : _a.type) !== expectedCommonType) {
+          return true;
+        }
+        return false;
+      } catch {
+        return true;
+      }
+    };
+    if (await needsRepair("global.mode", "mixed")) {
+      try {
+        await this.extendObjectAsync("global.mode", {
+          type: "state",
+          common: {
+            name: "Global redirect mode",
+            type: "mixed",
+            role: "value",
+            read: true,
+            write: true,
+            def: 0
+          },
+          native: {}
+        });
+      } catch (err) {
+        this.log.debug(`repair global.mode failed: ${String(err)}`);
+      }
     }
-    try {
-      await this.extendObjectAsync("global.manualUrl", {
-        type: "state",
-        common: {
-          name: "Global manual URL (used when mode='manual')",
-          type: "string",
-          role: "url",
-          read: true,
-          write: true,
-          def: ""
-        },
-        native: {}
-      });
-    } catch (err) {
-      this.log.debug(`repair global.manualUrl failed: ${String(err)}`);
+    if (await needsRepair("global.manualUrl", "string")) {
+      try {
+        await this.extendObjectAsync("global.manualUrl", {
+          type: "state",
+          common: {
+            name: "Global manual URL (used when mode='manual')",
+            type: "string",
+            role: "url",
+            read: true,
+            write: true,
+            def: ""
+          },
+          native: {}
+        });
+      } catch (err) {
+        this.log.debug(`repair global.manualUrl failed: ${String(err)}`);
+      }
     }
   }
   /**
