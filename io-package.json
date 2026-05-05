@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.4.1",
+    "version": "1.5.0",
     "news": {
-      "NEXT": {
+      "1.5.0": {
         "en": "Security: `/health` no longer leaks the `mdns`/`auth` config flags unauthenticated (reconnaissance risk on internet-exposed instances). `requires_api_password` (mDNS + /api/discovery_info) now mirrors the actual `authRequired` setting. Brute-force lockout map is FIFO-capped and prunes stale failure counts.",
         "de": "Sicherheit: `/health` leakt die `mdns`/`auth`-Config-Flags nicht mehr unauthenticated (Reconnaissance-Risiko bei netzexponierten Instanzen). `requires_api_password` (mDNS + /api/discovery_info) spiegelt jetzt das tatsächliche `authRequired`-Setting. Brute-Force-Lockout-Map ist FIFO-gedeckelt und prunt veraltete Fail-Counts.",
         "ru": "Безопасность: `/health` больше не утекает флаги `mdns`/`auth` без авторизации. `requires_api_password` теперь отражает фактический `authRequired`. Brute-force lockout map FIFO-ограничен и удаляет устаревшие записи.",
@@ -93,19 +93,6 @@
         "pl": "Bezpieczeństwo: blokada brute-force przy logowaniu (5 nieudanych prób → IP zablokowane na 15 min). Wersja emulowanego Home Assistant podniesiona do 2026.4.0.",
         "uk": "Безпека: блокування brute-force при вході (5 невдалих спроб → IP заблоковано на 15 хв). Версія емульованого Home Assistant оновлена до 2026.4.0.",
         "zh-cn": "安全：登录暴力破解防护（5 次失败 → IP 阻断 15 分钟）。模拟的 Home Assistant 版本提升至 2026.4.0。"
-      },
-      "1.2.0": {
-        "en": "Breaking: redirect target now configured via mode dropdown + manualUrl free text instead of the old visUrl. Existing setups auto-migrated.",
-        "de": "Breaking: Weiterleitungs-Ziel jetzt über mode-Dropdown + manualUrl-Freitext konfiguriert statt altem visUrl. Bestehende Setups werden automatisch migriert.",
-        "ru": "Breaking: цель перенаправления теперь настраивается через dropdown mode + свободный текст manualUrl вместо старого visUrl. Существующие настройки мигрируют автоматически.",
-        "pt": "Breaking: alvo de redirecionamento agora configurado via dropdown mode + texto livre manualUrl em vez do antigo visUrl. Configurações existentes são migradas automaticamente.",
-        "nl": "Breaking: redirect-doel nu via mode-dropdown + manualUrl-vrije tekst geconfigureerd in plaats van het oude visUrl. Bestaande setups worden automatisch gemigreerd.",
-        "fr": "Breaking : la cible de redirection se configure désormais via le dropdown mode + le texte libre manualUrl au lieu de l'ancien visUrl. Les configurations existantes sont migrées automatiquement.",
-        "it": "Breaking: obiettivo di redirect ora configurato tramite dropdown mode + testo libero manualUrl invece del vecchio visUrl. Le configurazioni esistenti vengono migrate automaticamente.",
-        "es": "Breaking: el destino de redirección ahora se configura mediante el dropdown mode + el texto libre manualUrl en lugar del antiguo visUrl. Las configuraciones existentes se migran automáticamente.",
-        "pl": "Breaking: cel przekierowania jest teraz konfigurowany przez dropdown mode + wolny tekst manualUrl zamiast starego visUrl. Istniejące konfiguracje są migrowane automatycznie.",
-        "uk": "Breaking: ціль перенаправлення тепер налаштовується через dropdown mode + вільний текст manualUrl замість старого visUrl. Існуючі налаштування мігрують автоматично.",
-        "zh-cn": "Breaking：重定向目标现在通过 mode 下拉框 + manualUrl 自由文本配置，取代旧的 visUrl。现有配置会自动迁移。"
       }
     },
     "titleLang": {

@@ -147,7 +147,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.5.0 (2026-05-05)
 
 - **Sicherheit**: `/health` liefert keine Konfigurations-Flags mehr (`mdns`/`auth` waren ohne Auth einsehbar — Reconnaissance-Risiko für netzexponierte Instanzen).
 - **Sicherheit**: `requires_api_password` in `/api/discovery_info` und im mDNS-TXT spiegelt jetzt die tatsächliche `authRequired`-Konfiguration (vorher hartkodiert auf `true` — strikte HA-Clients haben den Auth-Flow auch bei deaktivierter Auth ausgelöst).
@@ -169,10 +169,6 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 
 ### 1.3.2 (2026-04-30)
 - Fix: dropdown default `---` now applied correctly on upgrades from older v1.1.x clients (was empty after migration).
-
-### 1.3.1 (2026-04-30)
-- Fix: legacy v1.1.x clients without `mode`/`manualUrl` objects now get migrated correctly on first start.
-- Mode dropdown gains a `0 = "---"` no-choice fallback — new displays start without a target until a real choice is made.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
