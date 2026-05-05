@@ -270,23 +270,39 @@ class WebServer {
     this.refreshTokens.set(token, clientId);
   }
   /**
+   * v1.12.0 (C5): Map-Key für Lockout normalisieren — IPv6-Mapped-IPv4
+   * (`::ffff:1.2.3.4`) auf IPv4 strippen, damit derselbe Client nicht zwei
+   * Buckets bekommt. Bei `null` (Unix-Socket-Bind, Test-Inject ohne
+   * remoteAddress, Fastify IPv6-Edge) eindeutiger Sentinel-Bucket statt
+   * Lockout-Bypass.
+   *
+   * @param ip Raw IP from `req.ip` oder null.
+   */
+  static normalizeLockoutKey(ip) {
+    if (!ip) {
+      return "__no-ip__";
+    }
+    if (ip.startsWith("::ffff:")) {
+      return ip.substring(7);
+    }
+    return ip;
+  }
+  /**
    * Brute-force lockout: returns true if `ip` is currently in the timeout window.
    * Lazy-resets entries whose lockout already expired (caller can immediately try again).
    *
    * @param ip Remote IP, or null when unavailable.
    */
   isIpLocked(ip) {
-    if (!ip) {
-      return false;
-    }
-    const entry = this.loginAttempts.get(ip);
+    const key = WebServer.normalizeLockoutKey(ip);
+    const entry = this.loginAttempts.get(key);
     if (!entry || entry.lockedUntil === 0) {
       return false;
     }
     if (entry.lockedUntil > Date.now()) {
       return true;
     }
-    this.loginAttempts.delete(ip);
+    this.loginAttempts.delete(key);
     return false;
   }
   /**
@@ -298,11 +314,9 @@ class WebServer {
    */
   recordLoginFailure(ip) {
     var _a;
-    if (!ip) {
-      return;
-    }
+    const key = WebServer.normalizeLockoutKey(ip);
     const now = Date.now();
-    const entry = (_a = this.loginAttempts.get(ip)) != null ? _a : { failedCount: 0, lockedUntil: 0, lastSeen: now };
+    const entry = (_a = this.loginAttempts.get(key)) != null ? _a : { failedCount: 0, lockedUntil: 0, lastSeen: now };
     entry.failedCount += 1;
     entry.lastSeen = now;
     if (entry.failedCount >= import_constants.LOGIN_LOCKOUT_THRESHOLD) {
@@ -311,10 +325,10 @@ class WebServer {
         `Login lockout: IP ${ip} reached ${import_constants.LOGIN_LOCKOUT_THRESHOLD} failed attempts \u2014 locked for ${Math.round(import_constants.LOGIN_LOCKOUT_WINDOW_MS / 6e4)} min`
       );
     }
-    if (!this.loginAttempts.has(ip)) {
+    if (!this.loginAttempts.has(key)) {
       WebServer.evictOldest(this.loginAttempts, import_constants.LOGIN_ATTEMPTS_CAP);
     }
-    this.loginAttempts.set(ip, entry);
+    this.loginAttempts.set(key, entry);
   }
   /**
    * Resets the failure counter and any active lockout for `ip`. Called after
@@ -324,9 +338,7 @@ class WebServer {
    * @param ip Remote IP that just authenticated successfully.
    */
   clearLoginAttempts(ip) {
-    if (ip) {
-      this.loginAttempts.delete(ip);
-    }
+    this.loginAttempts.delete(WebServer.normalizeLockoutKey(ip));
   }
   // --- client identification ---
   async identify(req, reply) {
