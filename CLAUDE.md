@@ -6,7 +6,7 @@
 
 **ioBroker HASS Emulator** — emuliert einen minimalen HA-Server für Geräte, die ein HA-Dashboard erwarten → leitet auf beliebige URL um.
 
-- **Version:** 1.3.2 (in progress — Hotfix v1.3.1: `setObjectNotExistsAsync` ist No-Op auf existing partial-formed Object aus v1.2.0-Bug. v1.3.2 nutzt `extendObjectAsync` für mode/manualUrl, repariert auch `global.mode/manualUrl` über neue `repairGlobalSchemas()` in main.ts. Plus state-value `''` → `0` Promote in beiden restore()s damit Dropdown `'---'` als selected anzeigt.)
+- **Version:** 1.3.3 (2026-05-01 — Changelog-User-Sicht-Rewrite über alle 11 Sprachen + bestätigt v1.3.2 Schema-Repair-Hotfix erfolgreich beim User-Test)
 - **GitHub:** https://github.com/krobipd/ioBroker.hassemu
 - **npm:** https://www.npmjs.com/package/iobroker.hassemu
 - **Repository PR:** ioBroker/ioBroker.repositories#5793
