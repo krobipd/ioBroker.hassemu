@@ -19,12 +19,19 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var constants_exports = {};
 __export(constants_exports, {
   CLEANUP_INTERVAL_MS: () => CLEANUP_INTERVAL_MS,
+  COOKIE_MAX_AGE_S: () => COOKIE_MAX_AGE_S,
   HA_VERSION: () => HA_VERSION,
+  LOGIN_ATTEMPTS_CAP: () => LOGIN_ATTEMPTS_CAP,
   LOGIN_LOCKOUT_THRESHOLD: () => LOGIN_LOCKOUT_THRESHOLD,
   LOGIN_LOCKOUT_WINDOW_MS: () => LOGIN_LOCKOUT_WINDOW_MS,
   LOGIN_SCHEMA: () => LOGIN_SCHEMA,
+  MODE_GLOBAL: () => MODE_GLOBAL,
+  MODE_MANUAL: () => MODE_MANUAL,
   OAUTH_ACCESS_TOKEN_TTL_S: () => OAUTH_ACCESS_TOKEN_TTL_S,
-  SESSION_TTL_MS: () => SESSION_TTL_MS
+  REFRESH_TOKENS_CAP: () => REFRESH_TOKENS_CAP,
+  SESSIONS_CAP: () => SESSIONS_CAP,
+  SESSION_TTL_MS: () => SESSION_TTL_MS,
+  STALE_CLIENT_TTL_MS: () => STALE_CLIENT_TTL_MS
 });
 module.exports = __toCommonJS(constants_exports);
 const HA_VERSION = "2026.4.0";
@@ -33,6 +40,13 @@ const CLEANUP_INTERVAL_MS = 5 * 60 * 1e3;
 const OAUTH_ACCESS_TOKEN_TTL_S = 30 * 60;
 const LOGIN_LOCKOUT_THRESHOLD = 5;
 const LOGIN_LOCKOUT_WINDOW_MS = 15 * 60 * 1e3;
+const STALE_CLIENT_TTL_MS = 30 * 24 * 60 * 60 * 1e3;
+const COOKIE_MAX_AGE_S = 10 * 365 * 24 * 60 * 60;
+const SESSIONS_CAP = 100;
+const REFRESH_TOKENS_CAP = 200;
+const LOGIN_ATTEMPTS_CAP = 1e3;
+const MODE_GLOBAL = "global";
+const MODE_MANUAL = "manual";
 const LOGIN_SCHEMA = [
   { name: "username", required: true, type: "string" },
   { name: "password", required: true, type: "string" }
@@ -40,11 +54,18 @@ const LOGIN_SCHEMA = [
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   CLEANUP_INTERVAL_MS,
+  COOKIE_MAX_AGE_S,
   HA_VERSION,
+  LOGIN_ATTEMPTS_CAP,
   LOGIN_LOCKOUT_THRESHOLD,
   LOGIN_LOCKOUT_WINDOW_MS,
   LOGIN_SCHEMA,
+  MODE_GLOBAL,
+  MODE_MANUAL,
   OAUTH_ACCESS_TOKEN_TTL_S,
-  SESSION_TTL_MS
+  REFRESH_TOKENS_CAP,
+  SESSIONS_CAP,
+  SESSION_TTL_MS,
+  STALE_CLIENT_TTL_MS
 });
 //# sourceMappingURL=constants.js.map

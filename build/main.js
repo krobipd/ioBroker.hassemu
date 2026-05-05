@@ -25,11 +25,11 @@ var import_node_crypto = __toESM(require("node:crypto"));
 var utils = __toESM(require("@iobroker/adapter-core"));
 var import_client_registry = require("./lib/client-registry");
 var import_coerce = require("./lib/coerce");
+var import_constants = require("./lib/constants");
 var import_global_config = require("./lib/global-config");
 var import_mdns = require("./lib/mdns");
 var import_url_discovery = require("./lib/url-discovery");
 var import_webserver = require("./lib/webserver");
-const STALE_CLIENT_TTL_MS = 30 * 24 * 60 * 60 * 1e3;
 class HassEmu extends utils.Adapter {
   mdnsService = null;
   webServer = null;
@@ -146,10 +146,10 @@ class HassEmu extends utils.Adapter {
   computeNewClientMode() {
     var _a, _b;
     if ((_a = this.globalConfig) == null ? void 0 : _a.isEnabled()) {
-      return import_global_config.MODE_GLOBAL;
+      return import_constants.MODE_GLOBAL;
     }
     const first = (_b = this.urlDiscovery) == null ? void 0 : _b.getFirstDiscoveredUrl();
-    return first != null ? first : import_global_config.MODE_MANUAL;
+    return first != null ? first : import_constants.MODE_MANUAL;
   }
   /**
    * Read the ioBroker system language (set in Admin → Main Settings).
@@ -207,7 +207,7 @@ class HassEmu extends utils.Adapter {
     } catch {
       try {
         if (this.globalConfig) {
-          await this.globalConfig.migrationSet(import_global_config.MODE_MANUAL, safe);
+          await this.globalConfig.migrationSet(import_constants.MODE_MANUAL, safe);
           this.log.info(
             `Migration shortcut: global.visUrl-state missing \u2192 wrote directly to global.mode='manual', manualUrl='${safe}'`
           );
@@ -246,10 +246,10 @@ class HassEmu extends utils.Adapter {
       if (legacyGlobal && legacyGlobal.val !== void 0 && legacyGlobal.val !== null && legacyGlobal.val !== "") {
         const safe = (0, import_coerce.coerceSafeUrl)(legacyGlobal.val);
         if (safe) {
-          await this.globalConfig.migrationSet(import_global_config.MODE_MANUAL, safe);
+          await this.globalConfig.migrationSet(import_constants.MODE_MANUAL, safe);
           this.log.info(`Migration: global.visUrl \u2192 mode='manual', manualUrl='${safe}'`);
         } else {
-          await this.globalConfig.migrationSet(import_global_config.MODE_MANUAL, null);
+          await this.globalConfig.migrationSet(import_constants.MODE_MANUAL, null);
           this.log.warn(`Migration: legacy global.visUrl rejected as unsafe \u2014 set global.manualUrl manually`);
         }
       }
@@ -266,9 +266,9 @@ class HassEmu extends utils.Adapter {
         if (legacy && legacy.val !== void 0 && legacy.val !== null && legacy.val !== "") {
           const safe = (0, import_coerce.coerceSafeUrl)(legacy.val);
           if (safe) {
-            record.mode = import_global_config.MODE_MANUAL;
+            record.mode = import_constants.MODE_MANUAL;
             record.manualUrl = safe;
-            await this.setStateAsync(`clients.${record.id}.mode`, { val: import_global_config.MODE_MANUAL, ack: true });
+            await this.setStateAsync(`clients.${record.id}.mode`, { val: import_constants.MODE_MANUAL, ack: true });
             await this.setStateAsync(`clients.${record.id}.manualUrl`, { val: safe, ack: true });
             this.log.info(
               `Migration: client ${record.id} visUrl='${safe}' \u2192 mode='manual', manualUrl='${safe}'`
@@ -354,7 +354,7 @@ class HassEmu extends utils.Adapter {
           await this.extendObjectAsync(`clients.${record.id}`, { native: { lastSeen: now } });
           continue;
         }
-        if (now - lastSeen > STALE_CLIENT_TTL_MS) {
+        if (now - lastSeen > import_constants.STALE_CLIENT_TTL_MS) {
           await this.registry.remove(record.id);
           removed++;
         }
@@ -379,14 +379,14 @@ class HassEmu extends utils.Adapter {
       return;
     }
     if (enabled) {
-      await this.registry.bulkSetMode(import_global_config.MODE_GLOBAL);
+      await this.registry.bulkSetMode(import_constants.MODE_GLOBAL);
       return;
     }
     const first = (_a = this.urlDiscovery) == null ? void 0 : _a.getFirstDiscoveredUrl();
     if (first) {
       await this.registry.bulkSetMode(first);
     } else {
-      await this.registry.bulkSetMode(import_global_config.MODE_MANUAL);
+      await this.registry.bulkSetMode(import_constants.MODE_MANUAL);
       this.log.warn(
         "global.enabled=false but no discovered VIS URL \u2014 clients set to 'manual'; fill clients.<id>.manualUrl per client"
       );
@@ -401,7 +401,7 @@ class HassEmu extends utils.Adapter {
       if (clientParsed.kind === "mode") {
         await this.registry.handleModeWrite(clientParsed.id, state.val);
         const record = this.registry.getById(clientParsed.id);
-        if ((record == null ? void 0 : record.mode) === import_global_config.MODE_GLOBAL && this.globalConfig.resolveUrlFor(record) === null) {
+        if ((record == null ? void 0 : record.mode) === import_constants.MODE_GLOBAL && this.globalConfig.resolveUrlFor(record) === null) {
           this.log.warn(
             `Client ${record.id}: mode='global' but global has no resolvable URL \u2014 fill global.mode/manualUrl, or pick a different client mode`
           );

@@ -10,8 +10,8 @@
  */
 
 import crypto from 'node:crypto';
-import { coerceString, coerceUuid, coerceSafeUrl, isPlainObject, parseManualUrlWrite } from './coerce';
-import { MODE_GLOBAL, MODE_MANUAL } from './global-config';
+import { coerceString, coerceUuid, coerceSafeUrl, isNoChoice, isPlainObject, parseManualUrlWrite } from './coerce';
+import { MODE_GLOBAL, MODE_MANUAL } from './constants';
 import { generateClientId } from './network';
 import type { AdapterInterface, ClientRecord, UrlStates } from './types';
 
@@ -242,7 +242,7 @@ export class ClientRegistry {
         }
         // No-choice marker: numeric 0 (default), string '0', or empty string —
         // all clear the choice and trigger the landing page.
-        if (rawValue === 0 || rawValue === '0' || rawValue === '') {
+        if (isNoChoice(rawValue)) {
             record.mode = '';
             await this.adapter.setStateAsync(`clients.${id}.mode`, { val: 0, ack: true });
             return;

@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.7.1",
     "news": {
+      "NEXT": {
+        "en": "Code-cleanup: cookie TTL, map caps, mode-sentinels and stale-TTL now in `lib/constants.ts`. Plus: token-endpoint errors downgraded from warn to debug — scanners no longer flood the log.",
+        "de": "Code-Aufräumen: Cookie-TTL, Map-Caps, Mode-Sentinels und Stale-TTL jetzt zentral in `lib/constants.ts`. Plus: Token-Endpunkt-Fehler auf debug runtergestuft — Scanner füllen das Log nicht mehr.",
+        "ru": "Cleanup кода: cookie lifetime, map caps, mode-sentinels и stale-client TTL теперь в lib/constants.ts. Plus: token-endpoint errors понижены с warn до debug.",
+        "pt": "Cleanup de codigo: cookie lifetime, map caps, mode-sentinels e stale-client TTL agora em lib/constants.ts. Plus: erros do token-endpoint reduzidos de warn para debug.",
+        "nl": "Code-opruiming: cookie lifetime, map caps, mode-sentinels en stale-client TTL nu in lib/constants.ts. Plus: token-endpoint fouten van warn naar debug.",
+        "fr": "Nettoyage de code : cookie lifetime, map caps, mode-sentinels et stale-client TTL maintenant dans lib/constants.ts. Plus : erreurs du token-endpoint passees de warn a debug.",
+        "it": "Cleanup codice: cookie lifetime, map caps, mode-sentinels e stale-client TTL ora in lib/constants.ts. Plus: errori token-endpoint da warn a debug.",
+        "es": "Limpieza de codigo: cookie lifetime, map caps, mode-sentinels y stale-client TTL ahora en lib/constants.ts. Plus: errores de token-endpoint bajados de warn a debug.",
+        "pl": "Czyszczenie kodu: cookie lifetime, map caps, mode-sentinels i stale-client TTL teraz w lib/constants.ts. Plus: bledy token-endpoint z warn do debug.",
+        "uk": "Прибирання коду: cookie lifetime, map caps, mode-sentinels та stale-client TTL тепер у lib/constants.ts. Plus: помилки token-endpoint понижено з warn до debug.",
+        "zh-cn": "代码清理：cookie 生命周期、map 上限、mode-sentinels、stale-client TTL 现已统一在 lib/constants.ts。另：token-endpoint 错误从 warn 降级到 debug — 扫描器和过期浏览器标签页不再刷屏。"
+      },
       "1.7.1": {
         "en": "Hotfix: three prettier formatting errors from v1.7.0 fixed (CI lint gate was red, deploy never reached npm). v1.7.0 changes (VIS-2 sub-views, redirect-reload-wrapper) come to npm with this release.",
         "de": "Hotfix: drei Prettier-Format-Fehler aus v1.7.0 behoben (CI-Lint-Gate war rot, Deploy hat v1.7.0 nicht auf npm gebracht). Die v1.7.0-Änderungen (VIS-2-Sub-Views, Redirect-Reload-Wrapper) kommen mit diesem Release auf npm.",

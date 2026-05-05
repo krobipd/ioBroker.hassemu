@@ -40,9 +40,6 @@ var import_fastify = __toESM(require("fastify"));
 var import_constants = require("./constants");
 var import_coerce = require("./coerce");
 var import_landing_page = require("./landing-page");
-const SESSIONS_CAP = 100;
-const REFRESH_TOKENS_CAP = 200;
-const LOGIN_ATTEMPTS_CAP = 1e3;
 function safeStringEqual(a, b) {
   const ab = Buffer.from(a, "utf8");
   const bb = Buffer.from(b, "utf8");
@@ -84,7 +81,6 @@ function renderRedirectWrapper(target) {
 </html>`;
 }
 const CLIENT_COOKIE = "hassemu_client";
-const COOKIE_MAX_AGE_S = 10 * 365 * 24 * 60 * 60;
 class WebServer {
   adapter;
   config;
@@ -233,7 +229,7 @@ class WebServer {
    * @param data Session payload.
    */
   storeSession(key, data) {
-    WebServer.evictOldest(this.sessions, SESSIONS_CAP);
+    WebServer.evictOldest(this.sessions, import_constants.SESSIONS_CAP);
     this.sessions.set(key, data);
   }
   /**
@@ -243,7 +239,7 @@ class WebServer {
    * @param clientId Owning client id.
    */
   storeRefreshToken(token, clientId) {
-    WebServer.evictOldest(this.refreshTokens, REFRESH_TOKENS_CAP);
+    WebServer.evictOldest(this.refreshTokens, import_constants.REFRESH_TOKENS_CAP);
     this.refreshTokens.set(token, clientId);
   }
   /**
@@ -289,7 +285,7 @@ class WebServer {
       );
     }
     if (!this.loginAttempts.has(ip)) {
-      WebServer.evictOldest(this.loginAttempts, LOGIN_ATTEMPTS_CAP);
+      WebServer.evictOldest(this.loginAttempts, import_constants.LOGIN_ATTEMPTS_CAP);
     }
     this.loginAttempts.set(ip, entry);
   }
@@ -316,7 +312,7 @@ class WebServer {
         path: "/",
         httpOnly: true,
         sameSite: "lax",
-        maxAge: COOKIE_MAX_AGE_S
+        maxAge: import_constants.COOKIE_MAX_AGE_S
       });
     }
     if (ip) {
@@ -475,7 +471,7 @@ class WebServer {
         const flowId = req.params.flowId;
         const session = this.sessions.get(flowId);
         if (!session) {
-          this.adapter.log.warn(`Unknown flow_id: ${flowId}`);
+          this.adapter.log.debug(`Unknown flow_id: ${flowId}`);
           reply.status(400);
           return { type: "abort", flow_id: flowId, reason: "unknown_flow" };
         }
@@ -546,7 +542,7 @@ class WebServer {
           const incoming = typeof refresh_token === "string" ? refresh_token : "";
           const ownerId = incoming ? this.refreshTokens.get(incoming) : void 0;
           if (!ownerId) {
-            this.adapter.log.warn("Refresh token rejected \u2014 unknown or missing");
+            this.adapter.log.debug("Refresh token rejected \u2014 unknown or missing");
             reply.status(400);
             return { error: "invalid_grant", error_description: "Invalid refresh token" };
           }
@@ -558,7 +554,7 @@ class WebServer {
             expires_in: import_constants.OAUTH_ACCESS_TOKEN_TTL_S
           };
         }
-        this.adapter.log.warn(`Token exchange failed: grant_type=${String(grant_type)}`);
+        this.adapter.log.debug(`Token exchange failed: grant_type=${String(grant_type)}`);
         reply.status(400);
         return { error: "invalid_request", error_description: "Invalid or expired code" };
       }

@@ -23,10 +23,14 @@ __export(coerce_exports, {
   coerceSafeUrl: () => coerceSafeUrl,
   coerceString: () => coerceString,
   coerceUuid: () => coerceUuid,
+  isNoChoice: () => isNoChoice,
   isPlainObject: () => isPlainObject,
   parseManualUrlWrite: () => parseManualUrlWrite
 });
 module.exports = __toCommonJS(coerce_exports);
+function isNoChoice(value) {
+  return value === 0 || value === "0" || value === "";
+}
 function coerceFiniteNumber(value) {
   if (typeof value === "number") {
     return Number.isFinite(value) ? value : null;
@@ -95,6 +99,7 @@ function coerceSafeUrl(value) {
   coerceSafeUrl,
   coerceString,
   coerceUuid,
+  isNoChoice,
   isPlainObject,
   parseManualUrlWrite
 });
