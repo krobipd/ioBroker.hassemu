@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.10.0",
     "news": {
+      "NEXT": {
+        "en": "Security: refresh-token endpoint now has same brute-force lockout as login (5 invalid grants → 15min IP lock). Plus stale-client GC also removes idle token-clients (>30 days).",
+        "de": "Sicherheit: Refresh-Token-Endpoint hat jetzt denselben Brute-Force-Lockout wie Login (5 ungültige Grants → 15min IP-Sperre). Plus: Stale-Client-GC entfernt jetzt auch idle Token-Clients (>30 Tage).",
+        "ru": "Безопасность: refresh-token endpoint теперь имеет такой же brute-force lockout как login (5 неверных grants → 15min IP lock). Plus: stale-client GC удаляет idle token-clients (>30 дней).",
+        "pt": "Seguranca: refresh-token endpoint tem agora o mesmo lockout brute-force do login (5 grants invalidos → 15min IP lock). Plus: stale-client GC remove idle token-clients (>30 dias).",
+        "nl": "Beveiliging: refresh-token endpoint heeft nu dezelfde brute-force lockout als login (5 ongeldige grants → 15min IP lock). Plus: stale-client GC ruimt idle token-clients op (>30 dagen).",
+        "fr": "Securite : refresh-token endpoint a maintenant le meme lockout brute-force que login (5 grants invalides → 15min IP lock). Plus : stale-client GC supprime les idle token-clients (>30 jours).",
+        "it": "Sicurezza: refresh-token endpoint ha ora lo stesso lockout brute-force del login (5 grant invalidi → 15min IP lock). Plus: stale-client GC rimuove idle token-client (>30 giorni).",
+        "es": "Seguridad: refresh-token endpoint tiene ahora el mismo lockout brute-force que login (5 grants invalidos → 15min IP lock). Plus: stale-client GC elimina idle token-clients (>30 dias).",
+        "pl": "Bezpieczenstwo: refresh-token endpoint ma teraz ten sam brute-force lockout co login (5 nieprawidlowych grantow → 15min IP lock). Plus: stale-client GC usuwa idle token-clients (>30 dni).",
+        "uk": "Безпека: refresh-token endpoint тепер має той самий brute-force lockout що й login (5 невірних grants → 15min IP lock). Plus: stale-client GC видаляє idle token-clients (>30 днів).",
+        "zh-cn": "安全：refresh-token 端点现拥有与登录相同的暴力破解锁定（5 次无效 grant → 15 分钟 IP 锁）。另：stale-client GC 也清理 idle token-client (>30 天)。"
+      },
       "1.10.0": {
         "en": "Server-start failure (e.g. port in use) now terminates explicitly — js-controller restarts after backoff instead of zombie idle. Plus: mDNS broadcast failure visible as warn.",
         "de": "Server-Start-Fehler (z.B. Port belegt) terminiert jetzt explizit — js-controller restartet nach Backoff statt Zombie-Idle. Plus: mDNS-Broadcast-Fehler sichtbar als warn im Log.",
