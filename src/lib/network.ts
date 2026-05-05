@@ -1,20 +1,35 @@
 import crypto from 'node:crypto';
 import os from 'node:os';
 
-/** Returns the first non-internal IPv4 address, or `127.0.0.1` as fallback. */
+/**
+ * Returns the first non-internal IPv4 address, falls back to non-internal
+ * IPv6, finally `127.0.0.1`.
+ *
+ * v1.15.0 (D10): Pure-IPv6-LAN-Hosts hatten nur `127.0.0.1` als advertise-IP
+ * — mDNS broadcastete dann unbrauchbares Loopback. Jetzt: IPv6-Fallback
+ * vor Loopback. IPv4 hat weiterhin Vorrang weil HA-Clients (Wall Display
+ * etc.) traditionell IPv4 erwarten.
+ */
 export function getLocalIp(): string {
     const interfaces = os.networkInterfaces();
+    let ipv6Fallback: string | null = null;
     for (const ifaces of Object.values(interfaces)) {
         if (!ifaces) {
             continue;
         }
         for (const iface of ifaces) {
-            if (iface.family === 'IPv4' && !iface.internal) {
+            if (iface.internal) {
+                continue;
+            }
+            if (iface.family === 'IPv4') {
                 return iface.address;
+            }
+            if (iface.family === 'IPv6' && !ipv6Fallback) {
+                ipv6Fallback = iface.address;
             }
         }
     }
-    return '127.0.0.1';
+    return ipv6Fallback ?? '127.0.0.1';
 }
 
 /**

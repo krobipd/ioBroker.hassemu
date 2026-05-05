@@ -66,6 +66,21 @@ export class MDNSService {
                 txt,
             });
 
+            // v1.15.0 (D12): Bonjour wirft Bind-Fehler (z.B. Port 5353 belegt)
+            // ASYNCHRON in dgram-Sockets — der sync try/catch oben fängt das
+            // nicht. Listener auf 'error' anhängen, dann active=false zurücksetzen.
+            this.published.on?.('error', (err: Error) => {
+                this.adapter.log.warn(`mDNS: async publish error: ${err.message}`);
+                this.active = false;
+                try {
+                    this.bonjour?.destroy();
+                } catch {
+                    /* best effort */
+                }
+                this.bonjour = null;
+                this.published = null;
+            });
+
             this.active = true;
 
             this.adapter.log.debug(

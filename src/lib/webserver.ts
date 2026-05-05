@@ -419,9 +419,19 @@ export class WebServer {
 
     // --- client identification ---
 
+    /**
+     * v1.15.0 (F6): zentraler Extract `req.ip → coerced string|null`. Vorher
+     * 3× inline `coerceString(req.ip)` in identify/login/token-Handlern.
+     *
+     * @param req Fastify request (uses `req.ip`).
+     */
+    private static getClientIp(req: FastifyRequest): string | null {
+        return coerceString(req.ip);
+    }
+
     private async identify(req: FastifyRequest, reply: FastifyReply): Promise<ClientRecord> {
         const cookie = coerceUuid(req.cookies?.[CLIENT_COOKIE]);
-        const ip = coerceString(req.ip);
+        const ip = WebServer.getClientIp(req);
         const record = await this.registry.identifyOrCreate(cookie, ip, null);
         if (cookie !== record.cookie) {
             reply.setCookie(CLIENT_COOKIE, record.cookie, {
@@ -644,7 +654,7 @@ export class WebServer {
                 }
 
                 if (this.config.authRequired) {
-                    const ip = coerceString(req.ip);
+                    const ip = WebServer.getClientIp(req);
                     if (this.isIpLocked(ip)) {
                         this.adapter.log.warn(`Login rejected: IP ${ip} is currently locked out`);
                         reply.status(429);
@@ -691,7 +701,7 @@ export class WebServer {
             '/auth/token',
             async (req, reply) => {
                 const { code, grant_type, refresh_token } = req.body ?? {};
-                const ip = coerceString(req.ip);
+                const ip = WebServer.getClientIp(req);
 
                 // v1.11.0 (C7): /auth/token mit refresh_token-grant war vorher
                 // brute-force-frei — Login-Flow gelockt, Token-Endpoint nicht.
