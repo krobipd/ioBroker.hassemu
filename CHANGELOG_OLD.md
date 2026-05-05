@@ -1,4 +1,8 @@
 # Older Changes
+## 1.3.1 (2026-04-30)
+- Fix: legacy v1.1.x clients without `mode`/`manualUrl` objects now get migrated correctly on first start.
+- Mode dropdown gains a `0 = "---"` no-choice fallback — new displays start without a target until a real choice is made.
+
 ## 1.3.0 (2026-04-30)
 - Security: brute-force lockout on login (5 failed attempts → IP blocked for 15 min, successful login resets the counter).
 - Emulated Home Assistant version bumped to 2026.4.0.
