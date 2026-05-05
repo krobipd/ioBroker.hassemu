@@ -57,7 +57,7 @@ The Admin UI configures the server. Redirect URLs are set via the state tree (se
 | ----------------------- | ---------------------------------------------------------------- | ------------- |
 | **Bind to Interface**   | Network interface to listen on                                   | 0.0.0.0 (all) |
 | **Service Name**        | Name broadcast via mDNS, shown as the server name on the display | `ioBroker`    |
-| **mDNS Enabled**        | Broadcast `_home-assistant._tcp` on the LAN                      | `true`        |
+| **mDNS Enabled**        | Broadcast `_home-assistant._tcp` on the LAN. When **off**, displays must be configured manually with the adapter URL (`http://<ioBroker-IP>:8123`) — no auto-discovery. | `true`        |
 | **Auth Required**       | Check credentials the display sends during login                 | `false`       |
 | **Username / Password** | Used when _Auth Required_ is on (password encrypted at rest)     | `admin` / —   |
 
@@ -145,6 +145,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 
 ## Upgrading
 
+- **1.2.0 → 1.15.x** — no manual migration needed. New datapoints (`info.refresh_urls`, `info.serverUuid`) appear automatically. If the mode-dropdown is empty after upgrading from v1.2.x or v1.3.0/v1.3.1, restart the adapter once — the v1.3.2 schema-repair runs on every startup since v1.3.2.
 - **1.1.6 → 1.2.0** — `clients.<id>.visUrl` and `global.visUrl` replaced by `mode` (dropdown) + `manualUrl` (free text). Migration runs automatically. Scripts pointing at the old `visUrl` paths need to be updated to the new datapoints in the State Tree above.
 - **1.1.1 → 1.1.2** — `clients.<id>.hostname` datapoint dropped, value moves into the channel name. Migrates automatically.
 - **1.0.x / 1.1.0 → 1.1.1** — existing redirect URL is moved into the state tree. 1.2.0 then migrates further as above.
@@ -152,6 +153,14 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
+### **WORK IN PROGRESS**
+
+- **Sicherheit Credentials-Vergleich**: `safeStringEqual` hashed beide Seiten via SHA-256 vor dem timing-safe Vergleich — vorher waren Username-/Password-Längen über Response-Timing leakbar.
+- **Landing-Page versteckt Loopback-IPs**: `127.0.0.1` / `::1` / `0.0.0.0` werden nicht mehr als Display-IP angezeigt — verwirrte User bei Reverse-Proxy-Setups.
+- **`coerceSafeUrlReason`-Helper**: rejected URLs liefern jetzt den Grund (`bad-scheme:javascript:`, `credentials-in-url`, `unparseable`, `too-long`, …) für gezielte Log-Nachvollziehbarkeit.
+- **README-Upgrading aktualisiert**: Eintrag „1.2.0 → 1.15.x" hinzugefügt, plus Hinweis auf den v1.3.2-Schema-Repair bei leerem Mode-Dropdown nach Upgrade.
+- **Config-Hinweis bei mDNS=off**: die Configuration-Tabelle erklärt jetzt explizit dass Displays manuell konfiguriert werden müssen wenn mDNS deaktiviert ist.
+
 ### 1.15.0 (2026-05-05)
 
 - **IPv6-LAN-Fallback**: `getLocalIp` nimmt jetzt die erste non-internal IPv6-Adresse statt `127.0.0.1` wenn keine IPv4 verfügbar ist. mDNS broadcastet damit eine reachable Adresse statt Loopback.

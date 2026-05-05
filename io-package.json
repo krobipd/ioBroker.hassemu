@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.15.0",
     "news": {
+      "NEXT": {
+        "en": "Security: credentials compare via SHA-256 digest (no length-leak). Plus: loopback IPs hidden from landing page, mDNS-disabled has config hint.",
+        "de": "Sicherheit: Credentials-Vergleich via SHA-256-Digest (kein Längen-Leak). Plus: Loopback-IPs nicht in Landing-Page, mDNS-disabled mit Config-Hinweis.",
+        "ru": "Безопасность: credentials compare via SHA-256 digest (no length-leak). Plus: loopback IPs скрыты на landing page, mDNS-disabled с config hint.",
+        "pt": "Seguranca: comparacao de credenciais via SHA-256 digest (sem length-leak por response timing). Plus: IPs loopback ocultos da landing page, mDNS-disabled tem config hint, README upgrading ate v1.15.x.",
+        "nl": "Beveiliging: credentials-vergelijking via SHA-256 digest (geen length-leak via response timing). Plus: loopback IPs verborgen op landing page, mDNS-disabled heeft config hint.",
+        "fr": "Securite : comparaison des credentials via SHA-256 digest (pas de length-leak via response timing). Plus : IPs loopback cachees de la landing page, mDNS-disabled a config hint.",
+        "it": "Sicurezza: confronto credenziali via SHA-256 digest (no length-leak via response timing). Plus: IP loopback nascosti dalla landing page, mDNS-disabled ha config hint.",
+        "es": "Seguridad: comparacion de credenciales via SHA-256 digest (sin length-leak via response timing). Plus: IPs loopback ocultos en la landing page, mDNS-disabled tiene config hint.",
+        "pl": "Bezpieczenstwo: porownanie credentials via SHA-256 digest (bez length-leak przez response timing). Plus: loopback IPs ukryte na landing page, mDNS-disabled ma config hint.",
+        "uk": "Безпека: порівняння credentials через SHA-256 digest (без length-leak через response timing). Plus: loopback IPs приховані на landing page, mDNS-disabled має config hint.",
+        "zh-cn": "安全：凭证比较改为 SHA-256 摘要比较（不再通过响应时序泄漏长度信息）。另：着陆页隐藏 loopback IP，mDNS 关闭时 Config 表有提示，README upgrading 覆盖到 v1.15.x。"
+      },
       "1.15.0": {
         "en": "Robustness: getLocalIp falls back to non-internal IPv6 before 127.0.0.1 — pure-IPv6 LANs no longer advertise loopback via mDNS. Plus mDNS catches async dgram-bind errors.",
         "de": "Robustheit: getLocalIp fällt auf non-internal IPv6 zurück bevor 127.0.0.1 — IPv6-only-LANs broadcasten nicht mehr Loopback via mDNS. Plus mDNS fängt async dgram-Bind-Fehler via 'error'-Event.",

@@ -41,6 +41,20 @@ describe('landing-page', () => {
             expect(html).to.not.include('IP address');
         });
 
+        it('skips loopback IPs in landing page (E3 v1.16.0)', () => {
+            for (const loopback of ['127.0.0.1', '::1', '0.0.0.0', '127.0.0.5', '   ']) {
+                const html = renderLandingPage('abc', 'hassemu.0', 'en', loopback);
+                expect(html, `loopback ${loopback}`).to.not.include('IP address');
+                expect(html, `loopback ${loopback} value`).to.not.include(`<td>${loopback}`);
+            }
+        });
+
+        it('shows non-loopback IPs (E3 v1.16.0)', () => {
+            const html = renderLandingPage('abc', 'hassemu.0', 'en', '192.168.1.42');
+            expect(html).to.include('IP address');
+            expect(html).to.include('192.168.1.42');
+        });
+
         it('falls back to English on unknown language', () => {
             const enHtml = renderLandingPage('abc', 'hassemu.0', 'en');
             const unknownHtml = renderLandingPage('abc', 'hassemu.0', 'klingon');

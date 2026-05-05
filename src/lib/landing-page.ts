@@ -204,8 +204,20 @@ export function renderLandingPage(
     const id = escapeHtml(clientId);
     const ns = escapeHtml(namespace);
     const datapoint = `${ns}.clients.${id}.mode`;
-    const ipLine =
-        ip && ip.trim() ? `<tr><th scope="row">${escapeHtml(s.ipLabel)}</th><td>${escapeHtml(ip)}</td></tr>` : '';
+    // v1.16.0 (E3): Loopback-IPs nicht anzeigen — der End-User sieht sonst
+    // „localhost" / „127.0.0.1" / „::1" als sein Display-IP, was bei Proxy-
+    // Setups verwirrt (Display sitzt am Reverse-Proxy, nicht am Adapter).
+    // Ohne IP-Zeile fällt die Tabellen-Zeile einfach weg, alles andere bleibt.
+    const trimmedIp = ip?.trim() ?? '';
+    const isLoopback =
+        trimmedIp === '' ||
+        trimmedIp === '127.0.0.1' ||
+        trimmedIp === '::1' ||
+        trimmedIp === '0.0.0.0' ||
+        trimmedIp.startsWith('127.');
+    const ipLine = isLoopback
+        ? ''
+        : `<tr><th scope="row">${escapeHtml(s.ipLabel)}</th><td>${escapeHtml(trimmedIp)}</td></tr>`;
 
     return `<!DOCTYPE html>
 <html lang="${escapeHtml(s.htmlLang)}">
