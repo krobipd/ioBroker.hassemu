@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.19.0",
     "news": {
+      "NEXT": {
+        "en": "Test coverage: 7 new unit tests for v1.19.0 features — seedLastSeen path + per-IP burst-detection (4 cases: no-warn-under-3, warn-on-4th, no-double-warn, per-IP-independent, FIFO-cap).",
+        "de": "Test-Coverage: 7 neue Unit-Tests für v1.19.0-Features — seedLastSeen-Pfad + Per-IP-Burst-Erkennung (4 Cases: kein-warn-unter-3, warn-bei-4-tem, kein-double-warn, per-IP-unabhängig, FIFO-cap).",
+        "ru": "Test coverage: 7 новых unit-tests для v1.19.0 features — seedLastSeen path + per-IP burst-detection (4 cases).",
+        "pt": "Test coverage: 7 novos unit tests para features de v1.19.0 — caminho seedLastSeen + deteccao de burst per-IP (4 casos).",
+        "nl": "Test coverage: 7 nieuwe unit tests voor v1.19.0 features — seedLastSeen pad + per-IP burst-detectie (4 cases).",
+        "fr": "Test coverage : 7 nouveaux unit tests pour les features v1.19.0 — chemin seedLastSeen + detection burst par IP (4 cas).",
+        "it": "Test coverage: 7 nuovi unit test per le feature v1.19.0 — percorso seedLastSeen + rilevamento burst per IP (4 casi).",
+        "es": "Test coverage: 7 nuevos unit tests para features de v1.19.0 — ruta seedLastSeen + deteccion burst per-IP (4 casos).",
+        "pl": "Test coverage: 7 nowych unit tests dla funkcji v1.19.0 — sciezka seedLastSeen + detekcja burst per-IP (4 cases).",
+        "uk": "Test coverage: 7 нових unit-тестів для v1.19.0 features — seedLastSeen path + per-IP burst-detection (4 cases).",
+        "zh-cn": "测试覆盖：v1.19.0 特性新增 7 个单元测试 — seedLastSeen 路径 + 按 IP 突发检测（4 个用例）。"
+      },
       "1.19.0": {
         "en": "Diagnostics: per-IP burst-detection — display creating >3 clients in <1h (broken cookie) gets one warn with cause. Plus: README single-instance-per-host hint.",
         "de": "Diagnose: Per-IP-Burst-Erkennung — Display mit >3 Clients in <1h (kaputter Cookie) bekommt einen warn mit Ursache. Plus: README Single-Instance-pro-Host-Hinweis.",
