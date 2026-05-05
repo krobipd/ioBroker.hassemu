@@ -70,7 +70,7 @@ class HassEmu extends utils.Adapter {
     await this.migrateVisUrlToMode();
     await this.repairGlobalSchemas();
     await this.gcStaleClients();
-    const instanceUuid = import_node_crypto.default.randomUUID();
+    const instanceUuid = await this.getOrCreateServerUuid();
     this.log.debug(
       `Config: port=${this.config.port}, auth=${this.config.authRequired}, mdns=${this.config.mdnsEnabled}`
     );
@@ -111,6 +111,32 @@ class HassEmu extends utils.Adapter {
     this.log.info(
       `HA emulation running on ${bindAddr}:${this.config.port}${this.config.mdnsEnabled ? ", mDNS active" : ""}`
     );
+  }
+  /**
+   * Liefert die persistente Server-UUID. Beim ersten Start wird sie generiert und in
+   * `info.serverUuid` geschrieben; bei späteren Starts kommt der gleiche Wert raus.
+   *
+   * Warum nicht `extendForeignObjectAsync(system.adapter.X, native: { serverUuid })`?
+   * Schreibt man auf den eigenen `system.adapter.X`-Objekt, triggert js-controller
+   * einen Adapter-Restart — bei jedem Start ein Restart-Loop. govee-smart hatte das
+   * in v2.1.3 (`extendForeignObjectAsync` für `mqttCredentials`-native) und musste
+   * auf state-based persistence migrieren.
+   */
+  async getOrCreateServerUuid() {
+    try {
+      const existing = await this.getStateAsync("info.serverUuid");
+      const val = existing == null ? void 0 : existing.val;
+      if (typeof val === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)) {
+        return val;
+      }
+    } catch {
+    }
+    const fresh = import_node_crypto.default.randomUUID();
+    await this.setStateAsync("info.serverUuid", { val: fresh, ack: true }).catch((err) => {
+      this.log.warn(`Could not persist info.serverUuid: ${String(err)}`);
+    });
+    this.log.info(`Generated and persisted server UUID: ${fresh}`);
+    return fresh;
   }
   /**
    * Default mode for newly registered clients. Respects the master switch:

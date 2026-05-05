@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.5.0",
     "news": {
+      "NEXT": {
+        "en": "Security: HA-API endpoints (/api/states, /api/services, etc.) now require a Bearer token when `Auth Required` is enabled (were unauthenticated, info-disclosure). Public probes (/api/, /api/discovery_info, /health, /manifest.json, /auth/*) stay open. Plus: stable server UUID across restarts (`info.serverUuid` state) — HA-Clients no longer treat each restart as a new server.",
+        "de": "Sicherheit: HA-API-Endpunkte (/api/states, /api/services, ...) erfordern jetzt einen Bearer-Token bei aktivem `Auth Required` (vorher unauthenticated, Info-Disclosure). Public probes bleiben offen. Plus: stabile Server-UUID über Restarts (`info.serverUuid`-State) — HA-Clients behandeln jeden Restart nicht mehr als neuen Server.",
+        "ru": "Безопасность: HA-API endpoints требуют Bearer-token при `Auth Required` (раньше unauthenticated). Plus: стабильная server UUID через рестарты (`info.serverUuid`).",
+        "pt": "Seguranca: HA-API endpoints requerem Bearer-token com `Auth Required` (antes unauthenticated). Plus: UUID estavel atraves de restarts (`info.serverUuid`).",
+        "nl": "Beveiliging: HA-API endpoints vereisen Bearer-token met `Auth Required` (voorheen unauthenticated). Plus: stabiele server-UUID over restarts (`info.serverUuid`).",
+        "fr": "Securite : endpoints HA-API requierent Bearer-token quand `Auth Required` est actif. Plus : UUID serveur stable a travers les redemarrages (`info.serverUuid`).",
+        "it": "Sicurezza: HA-API endpoints richiedono Bearer-token con `Auth Required` attivo. Plus: UUID server stabile tra restart (`info.serverUuid`).",
+        "es": "Seguridad: endpoints HA-API requieren Bearer-token con `Auth Required` activo. Plus: UUID servidor estable entre reinicios (`info.serverUuid`).",
+        "pl": "Bezpieczenstwo: HA-API endpoints wymagaja Bearer-tokenu przy `Auth Required`. Plus: stabilne server-UUID przez restarty (`info.serverUuid`).",
+        "uk": "Безпека: HA-API endpoints вимагають Bearer-token при `Auth Required`. Plus: стабільна server-UUID через рестарти (`info.serverUuid`).",
+        "zh-cn": "安全：HA-API 端点 (/api/states 等) 在启用 `Auth Required` 时需要 Bearer token (之前未认证，信息泄露)。公共探测端点保持开放。加上：跨重启的稳定 server UUID (`info.serverUuid` state)。"
+      },
       "1.5.0": {
         "en": "Security: `/health` no longer leaks the `mdns`/`auth` config flags unauthenticated (reconnaissance risk on internet-exposed instances). `requires_api_password` (mDNS + /api/discovery_info) now mirrors the actual `authRequired` setting. Brute-force lockout map is FIFO-capped and prunes stale failure counts.",
         "de": "Sicherheit: `/health` leakt die `mdns`/`auth`-Config-Flags nicht mehr unauthenticated (Reconnaissance-Risiko bei netzexponierten Instanzen). `requires_api_password` (mDNS + /api/discovery_info) spiegelt jetzt das tatsächliche `authRequired`-Setting. Brute-Force-Lockout-Map ist FIFO-gedeckelt und prunt veraltete Fail-Counts.",
@@ -232,6 +245,20 @@
         "read": true,
         "write": true,
         "def": false
+      },
+      "native": {}
+    },
+    {
+      "_id": "info.serverUuid",
+      "type": "state",
+      "common": {
+        "name": "HA-server UUID (stable across restarts)",
+        "desc": "Persistent UUID broadcast via mDNS and /api/discovery_info. Generated once on first start and re-used across restarts so HA-Clients don't treat each restart as a new server (which would invalidate cached identity, force re-onboarding and drop tokens).",
+        "type": "string",
+        "role": "text",
+        "read": true,
+        "write": false,
+        "def": ""
       },
       "native": {}
     },

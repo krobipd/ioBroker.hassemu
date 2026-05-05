@@ -730,6 +730,7 @@ describe('WebServer', () => {
             );
             await s['app'].register((await import('@fastify/cookie')).default);
             await s['app'].register((await import('@fastify/formbody')).default);
+            s['setupAuthGuard']();
             s['setupErrorHandler']();
             s['setupRoutes']();
             await s['app'].ready();
@@ -884,6 +885,97 @@ describe('WebServer', () => {
             } finally {
                 await s['app'].close();
             }
+        });
+
+        // --- C3: auth pre-handler-guard für /api/* (v1.6.0) ---
+
+        it('GET /api/states without Bearer returns 401 when authRequired=true (v1.6.0)', async () => {
+            const s = await buildAuthServer();
+            try {
+                const res = await s.inject({ method: 'GET', url: '/api/states' });
+                expect(res.statusCode).to.equal(401);
+                const body = res.json() as { error: string };
+                expect(body.error).to.equal('unauthorized');
+            } finally {
+                await s['app'].close();
+            }
+        });
+
+        it('GET /api/states with invalid Bearer returns 401 (v1.6.0)', async () => {
+            const s = await buildAuthServer();
+            try {
+                const res = await s.inject({
+                    method: 'GET',
+                    url: '/api/states',
+                    headers: { authorization: 'Bearer invalid-token-12345' },
+                });
+                expect(res.statusCode).to.equal(401);
+                const body = res.json() as { error: string };
+                expect(body.error).to.equal('invalid_token');
+            } finally {
+                await s['app'].close();
+            }
+        });
+
+        it('GET /api/states with valid Bearer returns 200 (v1.6.0)', async () => {
+            const s = await buildAuthServer();
+            try {
+                // Run a real login to get a valid access token
+                const r1 = await s.inject({ method: 'POST', url: '/auth/login_flow', payload: {} });
+                const cookie = extractCookie(r1.headers['set-cookie'])!;
+                const flowId = (r1.json() as { flow_id: string }).flow_id;
+                const r2 = await s.inject({
+                    method: 'POST',
+                    url: `/auth/login_flow/${flowId}`,
+                    headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
+                    payload: { username: 'admin', password: 'secret' },
+                });
+                const code = (r2.json() as { result: string }).result;
+                const r3 = await s.inject({
+                    method: 'POST',
+                    url: '/auth/token',
+                    payload: { grant_type: 'authorization_code', code },
+                });
+                const accessToken = (r3.json() as { access_token: string }).access_token;
+
+                // Now access protected endpoint with the bearer
+                const res = await s.inject({
+                    method: 'GET',
+                    url: '/api/states',
+                    headers: { authorization: `Bearer ${accessToken}` },
+                });
+                expect(res.statusCode).to.equal(200);
+                expect(res.json()).to.deep.equal([]);
+            } finally {
+                await s['app'].close();
+            }
+        });
+
+        it('Whitelisted endpoints stay open without auth even when authRequired=true (v1.6.0)', async () => {
+            const s = await buildAuthServer();
+            try {
+                // /api/ heartbeat
+                const r1 = await s.inject({ method: 'GET', url: '/api/' });
+                expect(r1.statusCode).to.equal(200);
+                // /health
+                const r2 = await s.inject({ method: 'GET', url: '/health' });
+                expect(r2.statusCode).to.equal(200);
+                // /manifest.json
+                const r3 = await s.inject({ method: 'GET', url: '/manifest.json' });
+                expect(r3.statusCode).to.equal(200);
+                // /api/discovery_info — pre-auth probe used by HA-Clients
+                const r4 = await s.inject({ method: 'GET', url: '/api/discovery_info' });
+                expect(r4.statusCode).to.equal(200);
+            } finally {
+                await s['app'].close();
+            }
+        });
+
+        it('Auth guard is no-op when authRequired=false (v1.6.0)', async () => {
+            // server (top-level beforeEach) uses authRequired=false
+            const res = await server.inject({ method: 'GET', url: '/api/states' });
+            // No 401 — open access since auth is disabled
+            expect(res.statusCode).to.equal(200);
         });
     });
 });

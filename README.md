@@ -147,6 +147,11 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
+### **WORK IN PROGRESS**
+
+- **Sicherheit**: HA-API-Endpunkte (`/api/states`, `/api/services`, `/api/events`, `/api/error_log`, `/api/config`) sind jetzt token-geschützt wenn `Auth Required` aktiv ist — vorher waren sie ohne jeden Auth-Check abrufbar (Information-Disclosure). `/api/discovery_info`, `/api/`-Heartbeat, `/health`, `/manifest.json` und der Auth-Flow bleiben offen, weil HA-Clients sie vor dem Login abfragen müssen.
+- **Stabile Server-UUID**: `info.serverUuid` Datenpunkt — die UUID, die per mDNS und in `/api/discovery_info` gemeldet wird, bleibt jetzt über Adapter-Restarts gleich. HA-Clients (Companion-App, Wall-Display) cachen die Server-Identität — vorher behandelten sie jeden Restart als „neuen Server" und erzwangen erneutes Pairing inklusive Token-Verlust.
+
 ### 1.5.0 (2026-05-05)
 
 - **Sicherheit**: `/health` liefert keine Konfigurations-Flags mehr (`mdns`/`auth` waren ohne Auth einsehbar — Reconnaissance-Risiko für netzexponierte Instanzen).
