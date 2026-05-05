@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.7.0",
     "news": {
+      "NEXT": {
+        "en": "Hotfix: three prettier formatting errors from v1.7.0 fixed (CI lint gate was red, deploy never reached npm). v1.7.0 changes (VIS-2 sub-views, redirect-reload-wrapper) come to npm with this release.",
+        "de": "Hotfix: drei Prettier-Format-Fehler aus v1.7.0 behoben (CI-Lint-Gate war rot, Deploy hat v1.7.0 nicht auf npm gebracht). Die v1.7.0-Änderungen (VIS-2-Sub-Views, Redirect-Reload-Wrapper) kommen mit diesem Release auf npm.",
+        "ru": "Hotfix: три ошибки prettier из v1.7.0 исправлены (CI lint gate был красным, deploy не достиг npm). Изменения v1.7.0 приходят на npm с этим релизом.",
+        "pt": "Hotfix: tres erros prettier de v1.7.0 corrigidos (CI lint gate vermelho, deploy nao chegou ao npm). Mudancas de v1.7.0 chegam ao npm com este release.",
+        "nl": "Hotfix: drie prettier-fouten uit v1.7.0 opgelost (CI lint gate was rood, deploy bereikte npm niet). v1.7.0-wijzigingen komen met deze release op npm.",
+        "fr": "Hotfix : trois erreurs prettier de v1.7.0 corrigees (CI lint gate rouge, deploy n'a pas atteint npm). Les modifications v1.7.0 arrivent sur npm avec cette release.",
+        "it": "Hotfix: tre errori prettier di v1.7.0 corretti (CI lint gate rosso, deploy non ha raggiunto npm). Modifiche v1.7.0 arrivano su npm con questa release.",
+        "es": "Hotfix: tres errores prettier de v1.7.0 corregidos (CI lint gate rojo, deploy no llego a npm). Cambios de v1.7.0 llegan a npm con este release.",
+        "pl": "Hotfix: trzy bledy prettier z v1.7.0 naprawione (CI lint gate czerwony, deploy nie dotarl do npm). Zmiany v1.7.0 trafiaja na npm z tym wydaniem.",
+        "uk": "Hotfix: три помилки prettier з v1.7.0 виправлено (CI lint gate червоний, deploy не дійшов до npm). Зміни v1.7.0 приходять на npm з цим релізом.",
+        "zh-cn": "Hotfix：修复 v1.7.0 的三个 prettier 格式错误（CI lint gate 红，deploy 未到达 npm）。v1.7.0 变更 (VIS-2 子视图、重定向重载包装器) 随此发布到达 npm。"
+      },
       "1.7.0": {
         "en": "VIS-2 sub-views are now individual mode-dropdown entries (parses `vis-views.json` per project, builds `?project/view` URLs). Plus: root no longer 302-redirects — it serves a small HTML wrapper with iframe + 30s polling on the new `/api/redirect_check` endpoint, so the display reloads automatically when you change the mode/manualUrl (no more soft-reboot).",
         "de": "VIS-2-Sub-Views erscheinen jetzt einzeln im Mode-Dropdown (parst `vis-views.json` pro Projekt, baut `?project/view`-URLs). Plus: Root liefert kein 302 mehr — stattdessen ein kleines HTML-Wrapper mit iframe + 30s-Polling auf den neuen `/api/redirect_check`-Endpoint, das Display lädt bei Mode-/manualUrl-Änderungen automatisch neu (kein Soft-Reboot mehr).",

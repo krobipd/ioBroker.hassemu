@@ -710,10 +710,7 @@ export class WebServer {
                     .send(renderLandingPage(client.id, this.adapter.namespace, this.systemLanguage, client.ip));
             }
             this.adapter.log.debug(`Serving wrapper for client ${client.id} → ${url}`);
-            return reply
-                .status(200)
-                .type('text/html; charset=utf-8')
-                .send(renderRedirectWrapper(url));
+            return reply.status(200).type('text/html; charset=utf-8').send(renderRedirectWrapper(url));
         });
 
         // /api/redirect_check — Display polled das alle 30s; wenn der target

@@ -18,7 +18,10 @@ export interface DiscoveryAdapter extends AdapterInterface {
     /** Mirrors `ioBroker.Adapter.readDirAsync`; returns an array of file entries. */
     readDirAsync: (adapterName: string, path: string) => Promise<unknown[]>;
     /** Mirrors `ioBroker.Adapter.readFileAsync`; tests mock this to provide vis-views.json. */
-    readFileAsync: (adapterName: string, path: string) => Promise<{ file: Buffer | string; mimeType?: string } | string | Buffer>;
+    readFileAsync: (
+        adapterName: string,
+        path: string,
+    ) => Promise<{ file: Buffer | string; mimeType?: string } | string | Buffer>;
 }
 
 interface ResolveContext {
@@ -251,7 +254,7 @@ export class UrlDiscovery {
             }
             // Skip wenn dazugehöriger Wert kein View-Object ist (View-Objects haben
             // typische Felder wie `widgets` oder `name`).
-            const v = (viewsContainer as Record<string, unknown>)[viewName];
+            const v = viewsContainer[viewName];
             if (!isPlainObject(v)) {
                 continue;
             }
