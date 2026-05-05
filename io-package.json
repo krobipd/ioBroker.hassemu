@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.6.0",
+    "version": "1.7.0",
     "news": {
-      "NEXT": {
+      "1.7.0": {
         "en": "VIS-2 sub-views are now individual mode-dropdown entries (parses `vis-views.json` per project, builds `?project/view` URLs). Plus: root no longer 302-redirects — it serves a small HTML wrapper with iframe + 30s polling on the new `/api/redirect_check` endpoint, so the display reloads automatically when you change the mode/manualUrl (no more soft-reboot).",
         "de": "VIS-2-Sub-Views erscheinen jetzt einzeln im Mode-Dropdown (parst `vis-views.json` pro Projekt, baut `?project/view`-URLs). Plus: Root liefert kein 302 mehr — stattdessen ein kleines HTML-Wrapper mit iframe + 30s-Polling auf den neuen `/api/redirect_check`-Endpoint, das Display lädt bei Mode-/manualUrl-Änderungen automatisch neu (kein Soft-Reboot mehr).",
         "ru": "VIS-2 sub-views появляются индивидуально в Mode-Dropdown. Plus: root больше не 302-redirects — HTML-wrapper с iframe + 30s-polling на /api/redirect_check, display автоматически перезагружается при изменении mode/manualUrl.",
@@ -93,19 +93,6 @@
         "pl": "Fix: wartość domyślna `---` w dropdown jest teraz poprawnie ustawiana przy aktualizacjach ze starszych klientów v1.1.x (była pusta po migracji).",
         "uk": "Fix: значення за замовчуванням `---` у dropdown тепер коректно застосовується при оновленнях зі старих клієнтів v1.1.x (було порожнім після міграції).",
         "zh-cn": "修复：从旧的 v1.1.x 客户端升级时，下拉框默认值 `---` 现在能正确显示（迁移后曾为空）。"
-      },
-      "1.3.1": {
-        "en": "Fix: legacy v1.1.x clients without mode/manualUrl objects now get migrated correctly on first start.",
-        "de": "Fix: Legacy-v1.1.x-Clients ohne mode/manualUrl-Objekte werden beim ersten Start jetzt korrekt migriert.",
-        "ru": "Fix: устаревшие клиенты v1.1.x без объектов mode/manualUrl теперь корректно мигрируются при первом запуске.",
-        "pt": "Fix: clientes v1.1.x antigos sem objetos mode/manualUrl agora são migrados corretamente na primeira inicialização.",
-        "nl": "Fix: oude v1.1.x-clients zonder mode/manualUrl-objecten worden nu correct gemigreerd bij de eerste start.",
-        "fr": "Fix : les anciens clients v1.1.x sans objets mode/manualUrl sont désormais correctement migrés au premier démarrage.",
-        "it": "Fix: i client v1.1.x legacy senza oggetti mode/manualUrl ora vengono migrati correttamente al primo avvio.",
-        "es": "Fix: los clientes v1.1.x antiguos sin objetos mode/manualUrl ahora se migran correctamente en el primer inicio.",
-        "pl": "Fix: starsze klienty v1.1.x bez obiektów mode/manualUrl są teraz poprawnie migrowane przy pierwszym uruchomieniu.",
-        "uk": "Fix: застарілі клієнти v1.1.x без об'єктів mode/manualUrl тепер коректно мігрують при першому запуску.",
-        "zh-cn": "修复：缺少 mode/manualUrl 对象的旧版 v1.1.x 客户端现在能在首次启动时正确迁移。"
       }
     },
     "titleLang": {
