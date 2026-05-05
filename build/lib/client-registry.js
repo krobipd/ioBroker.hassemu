@@ -129,11 +129,12 @@ class ClientRegistry {
    * Find the client for this cookie or create a new one.
    * Creates channel + states on first call and updates IP/hostname if changed.
    *
-   * @param cookie   Incoming cookie value (may be null/invalid).
-   * @param ip       Remote IP observed by the server.
-   * @param hostname Optional hostname (from reverse DNS), stored for the admin UI.
+   * @param cookie    Incoming cookie value (may be null/invalid).
+   * @param ip        Remote IP observed by the server.
+   * @param hostname  Optional hostname (from reverse DNS), stored for the admin UI.
+   * @param userAgent Optional User-Agent header for NAT-collision-Schutz im Pending-Lock.
    */
-  async identifyOrCreate(cookie, ip, hostname) {
+  async identifyOrCreate(cookie, ip, hostname, userAgent = null) {
     const validCookie = (0, import_coerce.coerceUuid)(cookie);
     if (validCookie) {
       const existing = this.byCookie.get(validCookie);
@@ -144,16 +145,17 @@ class ClientRegistry {
       }
     }
     if (ip) {
-      const pending = this.pendingByIp.get(ip);
+      const bucketKey = userAgent ? `${ip}|${import_node_crypto.default.createHash("sha256").update(userAgent).digest("hex").substring(0, 12)}` : ip;
+      const pending = this.pendingByIp.get(bucketKey);
       if (pending) {
         return pending;
       }
       const promise = this.createClient(ip, hostname);
-      this.pendingByIp.set(ip, promise);
+      this.pendingByIp.set(bucketKey, promise);
       try {
         return await promise;
       } finally {
-        this.pendingByIp.delete(ip);
+        this.pendingByIp.delete(bucketKey);
       }
     }
     return this.createClient(ip, hostname);

@@ -146,11 +146,17 @@ export class ClientRegistry {
      * Find the client for this cookie or create a new one.
      * Creates channel + states on first call and updates IP/hostname if changed.
      *
-     * @param cookie   Incoming cookie value (may be null/invalid).
-     * @param ip       Remote IP observed by the server.
-     * @param hostname Optional hostname (from reverse DNS), stored for the admin UI.
+     * @param cookie    Incoming cookie value (may be null/invalid).
+     * @param ip        Remote IP observed by the server.
+     * @param hostname  Optional hostname (from reverse DNS), stored for the admin UI.
+     * @param userAgent Optional User-Agent header for NAT-collision-Schutz im Pending-Lock.
      */
-    async identifyOrCreate(cookie: string | null, ip: string | null, hostname: string | null): Promise<ClientRecord> {
+    async identifyOrCreate(
+        cookie: string | null,
+        ip: string | null,
+        hostname: string | null,
+        userAgent: string | null = null,
+    ): Promise<ClientRecord> {
         const validCookie = coerceUuid(cookie);
         if (validCookie) {
             const existing = this.byCookie.get(validCookie);
@@ -164,17 +170,26 @@ export class ClientRegistry {
         // IP already has a create in flight. If so, await that Promise — the
         // parallel request of the same display's initial burst will get the
         // same cookie + client, no more duplicate "New client" log entries.
+        //
+        // v1.17.0 (C8): Bucket-Key kombiniert IP + User-Agent-Hash, sodass
+        // zwei verschiedene Displays hinter derselben NAT-IP NICHT in denselben
+        // Pending-Lock fallen (vorher: gleicher Cookie/Token/Mode → Cookie-
+        // Klau-Vektor). UA-Hash truncated auf 12 Hex-Chars um Memory-Footprint
+        // klein zu halten. Bei UA=null fällt der Bucket auf reines IP zurück.
         if (ip) {
-            const pending = this.pendingByIp.get(ip);
+            const bucketKey = userAgent
+                ? `${ip}|${crypto.createHash('sha256').update(userAgent).digest('hex').substring(0, 12)}`
+                : ip;
+            const pending = this.pendingByIp.get(bucketKey);
             if (pending) {
                 return pending;
             }
             const promise = this.createClient(ip, hostname);
-            this.pendingByIp.set(ip, promise);
+            this.pendingByIp.set(bucketKey, promise);
             try {
                 return await promise;
             } finally {
-                this.pendingByIp.delete(ip);
+                this.pendingByIp.delete(bucketKey);
             }
         }
         return this.createClient(ip, hostname);
