@@ -132,6 +132,10 @@ jobs:
     steps:
       - uses: ioBroker/testing-action-deploy@v1
         with:
-          node-version: "22.x"
+          # Deploy-Step MUSS Node 24 sein — Node 22 + npm@latest hat einen
+          # MODULE_NOT_FOUND-Bug für `promise-retry` (mcm1957 issue #19,
+          # Memory `reference_iobroker_deploy_node24_workaround`). Nicht
+          # vom Audit auf engines.node-Min runtersynchen lassen.
+          node-version: "24.x"
           build: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
