@@ -147,6 +147,10 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
+### **WORK IN PROGRESS**
+
+- CI: Deploy-Schritt nutzt jetzt Node 24 (Node 22 + `npm@latest` hatte einen `MODULE_NOT_FOUND`-Bug für `promise-retry`, dadurch kam v1.4.0 nicht auf npm).
+
 ### 1.4.0 (2026-05-05)
 
 - Neuer Datenpunkt `info.refresh_urls` (Button) — auf `true` setzen lädt VIS/VIS-2-Projekte und Admin-Tile-URLs neu, ohne den Adapter neu zu starten. Praktisch nach einer neuen VIS-Seite, die im Mode-Dropdown erscheinen soll.
