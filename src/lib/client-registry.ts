@@ -56,6 +56,12 @@ export class ClientRegistry {
      * is one hour — saves us extendObject roundtrips on every request.
      */
     private readonly lastSeenFlushedAt = new Map<string, number>();
+    /**
+     * v1.19.0 (G5): per-IP burst tracking für broken-cookie-Displays.
+     * Wenn eine IP > 3 neue Clients in einer Stunde erzeugt, kommt ein
+     * einmaliger warn-log mit Hinweis (cookie-Persistenz auf Display kaputt).
+     */
+    private readonly newClientBurst = new Map<string, { count: number; since: number; warnedAt: number }>();
 
     /** @param adapter Adapter instance used for object/state I/O. */
     constructor(adapter: RegistryAdapter) {
@@ -422,7 +428,48 @@ export class ClientRegistry {
         await this.createObjects(record);
         this.touchLastSeen(record);
         this.adapter.log.info(`New client registered: ${id}${ip ? ` (${hostname ?? ip})` : ''}, mode='${mode}'`);
+        // v1.19.0 (G5): IP-Burst-Detection für broken-cookie-Displays. Wenn
+        // dieselbe IP > 3 neue Clients in einer Stunde erzeugt, ist der Cookie-
+        // Mechanismus auf dem Display kaputt (aggressive Privacy, refresh-bug).
+        // Einmaliger warn-Hinweis pro IP pro Stunde — danach bleibt der info-
+        // log normal, aber der Operator hat wenigstens einen Anker zur Diagnose.
+        if (ip) {
+            this.recordNewClientIp(ip);
+        }
         return record;
+    }
+
+    /**
+     * v1.19.0 (G5): tracking-only — wenn eine IP > 3 neue Clients pro Stunde
+     * erzeugt, einmaliger warn-log mit Diagnose-Hinweis. Danach 1h cooldown
+     * pro IP. Map-Cap 200 (FIFO).
+     *
+     * @param ip Remote IP that just got a new ClientRecord assigned.
+     */
+    private recordNewClientIp(ip: string): void {
+        const now = Date.now();
+        const HOUR = 60 * 60 * 1000;
+        const entry = this.newClientBurst.get(ip) ?? { count: 0, since: now, warnedAt: 0 };
+        if (now - entry.since > HOUR) {
+            // Window expired — reset.
+            entry.count = 0;
+            entry.since = now;
+        }
+        entry.count += 1;
+        if (entry.count > 3 && now - entry.warnedAt > HOUR) {
+            this.adapter.log.warn(
+                `client-registry: IP ${ip} created ${entry.count} clients in <1h — display likely not persisting cookies (privacy mode? refresh bug?)`,
+            );
+            entry.warnedAt = now;
+        }
+        this.newClientBurst.set(ip, entry);
+        // Soft-cap to keep the map bounded (analog der anderen Caps).
+        if (this.newClientBurst.size > 200) {
+            const oldest = this.newClientBurst.keys().next().value;
+            if (oldest !== undefined) {
+                this.newClientBurst.delete(oldest);
+            }
+        }
     }
 
     /**
@@ -444,6 +491,25 @@ export class ClientRegistry {
         this.adapter
             .extendObjectAsync(`clients.${record.id}`, { native: { lastSeen: now } })
             .catch(err => this.adapter.log.debug(`touchLastSeen failed for ${record.id}: ${String(err)}`));
+    }
+
+    /**
+     * v1.19.0 (F11): zentraler lastSeen-Seed-Pfad. Vorher hatte main.ts
+     * gcStaleClients seinen eigenen extendObjectAsync-Call mit identischem
+     * native-Format — DRY-Violation und gefährlich wenn das Format mal ändert.
+     * Jetzt nutzen beide Pfade diese Methode. Throttle-Map wird auch upgedated,
+     * damit der nächste touchLastSeen den seed nicht direkt überschreibt.
+     *
+     * @param id  Client id (short segment, ohne `clients.`-Prefix).
+     * @param now Optionaler Timestamp für tests; default Date.now().
+     */
+    async seedLastSeen(id: string, now: number = Date.now()): Promise<void> {
+        this.lastSeenFlushedAt.set(id, now);
+        try {
+            await this.adapter.extendObjectAsync(`clients.${id}`, { native: { lastSeen: now } });
+        } catch (err) {
+            this.adapter.log.debug(`seedLastSeen failed for ${id}: ${String(err)}`);
+        }
     }
 
     /**

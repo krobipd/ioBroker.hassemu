@@ -406,7 +406,7 @@ class HassEmu extends utils.Adapter {
         const native = (_c = obj == null ? void 0 : obj.native) != null ? _c : {};
         const lastSeen = typeof native.lastSeen === "number" ? native.lastSeen : 0;
         if (lastSeen === 0) {
-          await this.extendObjectAsync(`clients.${record.id}`, { native: { lastSeen: now } });
+          await this.registry.seedLastSeen(record.id, now);
           continue;
         }
         if (now - lastSeen > import_constants.STALE_CLIENT_TTL_MS) {
