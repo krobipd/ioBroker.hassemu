@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.9.1",
+    "version": "1.10.0",
     "news": {
-      "NEXT": {
+      "1.10.0": {
         "en": "Server-start failure (e.g. port in use) now terminates explicitly — js-controller restarts after backoff instead of zombie idle. Plus: mDNS broadcast failure visible as warn.",
         "de": "Server-Start-Fehler (z.B. Port belegt) terminiert jetzt explizit — js-controller restartet nach Backoff statt Zombie-Idle. Plus: mDNS-Broadcast-Fehler sichtbar als warn im Log.",
         "ru": "Server-start failure (например, port занят) теперь terminate с явным failure code — js-controller restartет после backoff, вместо zombie idle. Plus: mDNS broadcast failure виден как warn.",
@@ -93,19 +93,6 @@
         "pl": "VIS-2 sub-views sa teraz osobnymi pozycjami w Mode-Dropdown. Plus: root nie robi juz 302-redirect — HTML wrapper z iframe + 30s polling na /api/redirect_check, display przeladowuje sie automatycznie.",
         "uk": "VIS-2 sub-views тепер окремі записи у Mode-Dropdown. Plus: root більше не 302-redirect — HTML wrapper з iframe + 30s polling на /api/redirect_check, display перезавантажується автоматично.",
         "zh-cn": "VIS-2 子视图现在作为独立条目出现在 Mode-Dropdown 中。另：根路径不再 302 重定向 — 改为 HTML 包装器（iframe + 每 30 秒轮询 /api/redirect_check），更改 mode/manualUrl 时显示器自动重载，无需软重启。"
-      },
-      "1.6.0": {
-        "en": "Security: HA-API endpoints (/api/states, /api/services, etc.) now require a Bearer token when `Auth Required` is enabled (were unauthenticated, info-disclosure). Public probes (/api/, /api/discovery_info, /health, /manifest.json, /auth/*) stay open. Plus: stable server UUID across restarts (`info.serverUuid` state) — HA-Clients no longer treat each restart as a new server.",
-        "de": "Sicherheit: HA-API-Endpunkte (/api/states, /api/services, ...) erfordern jetzt einen Bearer-Token bei aktivem `Auth Required` (vorher unauthenticated, Info-Disclosure). Public probes bleiben offen. Plus: stabile Server-UUID über Restarts (`info.serverUuid`-State) — HA-Clients behandeln jeden Restart nicht mehr als neuen Server.",
-        "ru": "Безопасность: HA-API endpoints требуют Bearer-token при `Auth Required` (раньше unauthenticated). Plus: стабильная server UUID через рестарты (`info.serverUuid`).",
-        "pt": "Seguranca: HA-API endpoints requerem Bearer-token com `Auth Required` (antes unauthenticated). Plus: UUID estavel atraves de restarts (`info.serverUuid`).",
-        "nl": "Beveiliging: HA-API endpoints vereisen Bearer-token met `Auth Required` (voorheen unauthenticated). Plus: stabiele server-UUID over restarts (`info.serverUuid`).",
-        "fr": "Securite : endpoints HA-API requierent Bearer-token quand `Auth Required` est actif. Plus : UUID serveur stable a travers les redemarrages (`info.serverUuid`).",
-        "it": "Sicurezza: HA-API endpoints richiedono Bearer-token con `Auth Required` attivo. Plus: UUID server stabile tra restart (`info.serverUuid`).",
-        "es": "Seguridad: endpoints HA-API requieren Bearer-token con `Auth Required` activo. Plus: UUID servidor estable entre reinicios (`info.serverUuid`).",
-        "pl": "Bezpieczenstwo: HA-API endpoints wymagaja Bearer-tokenu przy `Auth Required`. Plus: stabilne server-UUID przez restarty (`info.serverUuid`).",
-        "uk": "Безпека: HA-API endpoints вимагають Bearer-token при `Auth Required`. Plus: стабільна server-UUID через рестарти (`info.serverUuid`).",
-        "zh-cn": "安全：HA-API 端点 (/api/states 等) 在启用 `Auth Required` 时需要 Bearer token (之前未认证，信息泄露)。公共探测端点保持开放。加上：跨重启的稳定 server UUID (`info.serverUuid` state)。"
       }
     },
     "titleLang": {
