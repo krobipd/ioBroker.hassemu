@@ -18,31 +18,15 @@ import {
     REQUEST_ERROR_COOLDOWN_CAP,
     COOKIE_MAX_AGE_S,
 } from './constants';
-import { coerceString, coerceUuid } from './coerce';
+import { coerceString, coerceUuid, safeStringEqual } from './coerce';
 import type { ClientRegistry } from './client-registry';
 import type { GlobalConfig } from './global-config';
 import { renderLandingPage } from './landing-page';
 import { getLocalIp, isWildcardBind } from './network';
 import type { AdapterConfig, AdapterInterface, ClientRecord, SessionData } from './types';
 
-/**
- * Constant-time string comparison for credential checks. Length-leak-resistant
- * via SHA-256-Digest-Vergleich: beide Inputs werden auf eine fixe 32-Byte-
- * Länge gehasht, dann timing-safe verglichen.
- *
- * v1.16.0 (C6): vorher `if (ab.length !== bb.length) return false` VOR
- * timingSafeEqual — die Längen-Differenz war über Response-Timing
- * erschnüffelbar und reduzierte den Search-Space (z.B. Default-User
- * `'admin'` = 5 Zeichen). Jetzt: SHA-256-Hash-Vergleich auf fixer Länge.
- *
- * @param a First string to compare.
- * @param b Second string to compare.
- */
-function safeStringEqual(a: string, b: string): boolean {
-    const ah = crypto.createHash('sha256').update(a, 'utf8').digest();
-    const bh = crypto.createHash('sha256').update(b, 'utf8').digest();
-    return crypto.timingSafeEqual(ah, bh);
-}
+// v1.22.0 (F5): `safeStringEqual` ist nach `coerce.ts` verschoben — generischer
+// crypto-Helper, kein webserver-spezifischer Belang.
 
 /** Adapter surface the WebServer depends on — adds `namespace` for the setup page. */
 export type WebServerAdapter = AdapterInterface & Pick<ioBroker.Adapter, 'namespace'>;

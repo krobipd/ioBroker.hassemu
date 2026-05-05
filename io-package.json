@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.21.0",
     "news": {
+      "NEXT": {
+        "en": "Internal cleanup: safeStringEqual moved from webserver.ts into coerce.ts (generic crypto helper). Plus 5 new unit tests covering identical/different/length-mismatch/empty/UTF-8 cases.",
+        "de": "Interne Aufräumung: safeStringEqual von webserver.ts nach coerce.ts verschoben (generischer Crypto-Helper). Plus 5 neue Unit-Tests für identisch/unterschiedlich/length-mismatch/leer/UTF-8.",
+        "ru": "Внутренняя уборка: safeStringEqual перенесен из webserver.ts в coerce.ts (generic crypto helper). Plus 5 новых unit-tests.",
+        "pt": "Limpeza interna: safeStringEqual movido de webserver.ts para coerce.ts (generic crypto helper). Plus 5 novos unit tests.",
+        "nl": "Interne opruiming: safeStringEqual verhuisd van webserver.ts naar coerce.ts (generieke crypto helper). Plus 5 nieuwe unit tests.",
+        "fr": "Nettoyage interne : safeStringEqual deplace de webserver.ts vers coerce.ts (helper crypto generique). Plus 5 nouveaux unit tests.",
+        "it": "Pulizia interna: safeStringEqual spostato da webserver.ts a coerce.ts (helper crypto generico). Plus 5 nuovi unit test.",
+        "es": "Limpieza interna: safeStringEqual movido de webserver.ts a coerce.ts (helper crypto generico). Plus 5 nuevos unit tests.",
+        "pl": "Wewnetrzne sprzatanie: safeStringEqual przeniesione z webserver.ts do coerce.ts (generic crypto helper). Plus 5 nowych unit tests.",
+        "uk": "Внутрішнє прибирання: safeStringEqual перенесено з webserver.ts до coerce.ts (generic crypto helper). Plus 5 нових unit-тестів.",
+        "zh-cn": "内部清理：safeStringEqual 从 webserver.ts 迁移到 coerce.ts（通用 crypto 辅助）。另：5 个新单元测试覆盖相同/不同/长度差异/空/UTF-8 用例。"
+      },
       "1.21.0": {
         "en": "Robustness: pending-create rejections logged once + rethrown. getLocalIp deprioritises Docker-bridge IPs (172.17/172.18) — mDNS no longer advertises a container address.",
         "de": "Robustheit: Pending-Create-Rejections einmalig geloggt + rethrown. getLocalIp deprioritisiert Docker-Bridge-IPs (172.17/172.18) — mDNS broadcastet keine Container-Adresse mehr.",

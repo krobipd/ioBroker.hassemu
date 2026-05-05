@@ -6,6 +6,27 @@
  * shape — these helpers guard runtime reality.
  */
 
+import crypto from 'node:crypto';
+
+/**
+ * v1.22.0 (F5): vormals in webserver.ts. Constant-time string comparison
+ * for credential checks. Length-leak-resistant via SHA-256-Digest-Vergleich:
+ * beide Inputs werden auf eine fixe 32-Byte-Länge gehasht, dann timing-safe
+ * verglichen.
+ *
+ * v1.16.0 (C6): vorher `if (ab.length !== bb.length) return false` VOR
+ * timingSafeEqual — die Längen-Differenz war über Response-Timing
+ * erschnüffelbar.
+ *
+ * @param a First string to compare.
+ * @param b Second string to compare.
+ */
+export function safeStringEqual(a: string, b: string): boolean {
+    const ah = crypto.createHash('sha256').update(a, 'utf8').digest();
+    const bh = crypto.createHash('sha256').update(b, 'utf8').digest();
+    return crypto.timingSafeEqual(ah, bh);
+}
+
 /**
  * „No-choice"-Marker: User hat den Default-Eintrag `0='---'` (oder eine seiner
  * Repräsentationen) gewählt. Behandelt sowohl die numerische `0` (Admin-UI

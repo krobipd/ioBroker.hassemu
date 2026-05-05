@@ -155,6 +155,10 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
+### **WORK IN PROGRESS**
+
+- **Interne Aufräumung**: `safeStringEqual` (timing-safe Credentials-Vergleich) ist von `webserver.ts` nach `coerce.ts` umgezogen — generischer Crypto-Helper. Plus 5 neue Unit-Tests.
+
 ### 1.21.0 (2026-05-05)
 
 - **Pending-Create-Errors diagnostizierbar**: schlägt das parallele Erst-Anlegen eines Clients fehl, kommt der Fehler jetzt einmalig im Log statt als unhandled rejection.
