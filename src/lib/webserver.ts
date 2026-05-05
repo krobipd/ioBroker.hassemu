@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import dns from 'node:dns/promises';
 import fastifyCookie from '@fastify/cookie';
+import fastifyFormbody from '@fastify/formbody';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import {
     HA_VERSION,
@@ -122,6 +123,13 @@ export class WebServer {
     /** Registers plugins and starts the HTTP listener. */
     async start(): Promise<void> {
         await this.app.register(fastifyCookie);
+        // OAuth2-Spec verlangt `application/x-www-form-urlencoded` für `/auth/token`.
+        // Echte HA-Reference-Clients (frontend/Wall Display SDK) folgen dem.
+        // Fastify hat by-default nur einen JSON-Bodyparser — ohne diesen Plugin
+        // beantwortet `/auth/token` mit form-Body 415 und der Login bleibt komplett
+        // hängen. Tests via `app.inject({payload:{...}})` serialisieren zu JSON
+        // und maskieren das.
+        await this.app.register(fastifyFormbody);
         this.setupErrorHandler();
         this.setupRoutes();
 

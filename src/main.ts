@@ -91,6 +91,7 @@ class HassEmu extends utils.Adapter {
         await this.subscribeForeignObjectsAsync('system.adapter.*');
         await this.subscribeStatesAsync('clients.*');
         await this.subscribeStatesAsync('global.*');
+        await this.subscribeStatesAsync('info.refresh_urls');
 
         const systemLanguage = await this.readSystemLanguage();
 
@@ -166,13 +167,64 @@ class HassEmu extends utils.Adapter {
         if (!url) {
             return;
         }
+        // Defensive: validiere die legacy-URL bevor wir sie nach `global.visUrl`
+        // schreiben. Malicious-Werte (`javascript:`, `data:`) sollen nicht durch
+        // die Migration durchrutschen — `migrateVisUrlToMode` validiert zwar
+        // nochmal, aber zwischen den Migrations-Schritten würde unsafe-Wert
+        // sichtbar sein, und die native-Cleanup ist unbedingt.
+        const safe = coerceSafeUrl(url);
+        if (!safe) {
+            this.log.warn(
+                `Legacy URL rejected as unsafe — dropping native.defaultVisUrl/visUrl without migration: ${String(url)}`,
+            );
+            try {
+                const id = `system.adapter.${this.namespace}`;
+                const obj = await this.getForeignObjectAsync(id);
+                if (obj?.native) {
+                    delete obj.native.defaultVisUrl;
+                    delete obj.native.visUrl;
+                    await this.setForeignObjectAsync(id, obj);
+                }
+            } catch (err) {
+                this.log.warn(`Legacy config cleanup failed: ${String(err)}`);
+            }
+            return;
+        }
+
         this.log.info('Migrating legacy native.defaultVisUrl/visUrl → global.visUrl');
         // We cannot call globalConfig.handleVisUrlWrite — that method is gone in
         // v1.2.0. Write the legacy state directly so migrateVisUrlToMode picks it up.
-        await this.setStateAsync('global.visUrl', { val: url, ack: true }).catch(() => {
-            // global.visUrl object may not exist anymore (v1.2.0 instanceObjects);
-            // create it transparently for the migration step.
-        });
+        // Wichtig: wenn der State-Write FEHLSCHLÄGT (z.B. weil global.visUrl-Object
+        // in v1.2.0+ schon weg ist), dürfen wir die native-Werte NICHT löschen —
+        // sonst ist die User-URL silent verloren. Stattdessen direkt nach
+        // global.mode/manualUrl schreiben (das Ziel wo migrateVisUrlToMode
+        // sie sonst hingeschrieben hätte).
+        let stateWritten = false;
+        try {
+            await this.setStateAsync('global.visUrl', { val: safe, ack: true });
+            stateWritten = true;
+        } catch {
+            // global.visUrl-Object existiert nicht mehr → direkt ins Ziel schreiben
+            try {
+                if (this.globalConfig) {
+                    await this.globalConfig.migrationSet(MODE_MANUAL, safe);
+                    this.log.info(
+                        `Migration shortcut: global.visUrl-state missing → wrote directly to global.mode='manual', manualUrl='${safe}'`,
+                    );
+                    stateWritten = true;
+                }
+            } catch (err) {
+                this.log.warn(`Legacy URL migration failed at fallback: ${String(err)}`);
+            }
+        }
+
+        if (!stateWritten) {
+            // Both paths failed — keep native values as a recovery anchor for
+            // the user. Don't clean up.
+            this.log.warn('Legacy URL preserved in native — neither global.visUrl nor global.mode write succeeded');
+            return;
+        }
+
         try {
             const id = `system.adapter.${this.namespace}`;
             const obj = await this.getForeignObjectAsync(id);
@@ -398,6 +450,34 @@ class HassEmu extends utils.Adapter {
         } else if (globalParsed === 'enabled') {
             await this.globalConfig!.handleEnabledWrite(state.val);
             await this.applyMasterSwitch(this.globalConfig!.isEnabled());
+            return;
+        }
+
+        // info.refresh_urls — User-Trigger für manuelles Dropdown-Refresh ohne
+        // Adapter-Neustart. Re-scan'd den Broker nach VIS/VIS-2-Projekten und
+        // Admin-Tiles, schreibt die neuen states-Maps in alle Mode-Dropdowns.
+        if (id === `${this.namespace}.info.refresh_urls` && state.val === true) {
+            await this.handleRefreshUrlsWrite();
+        }
+    }
+
+    /**
+     * Handler for the `info.refresh_urls` button.
+     * Triggert eine sofortige `urlDiscovery.collect()` (statt Debounce-Schedule),
+     * damit der User nicht 2s warten muss. Schreibt anschließend `false ack` damit
+     * der Button in der Admin-UI wieder „klickbar" wird.
+     */
+    private async handleRefreshUrlsWrite(): Promise<void> {
+        if (!this.urlDiscovery) {
+            return;
+        }
+        try {
+            await this.urlDiscovery.collect();
+            this.log.info('URL discovery refreshed on user request');
+        } catch (err) {
+            this.log.warn(`URL refresh failed: ${err instanceof Error ? err.message : String(err)}`);
+        } finally {
+            await this.setStateAsync('info.refresh_urls', { val: false, ack: true }).catch(() => {});
         }
     }
 

@@ -141,6 +141,7 @@ describe('WebServer', () => {
         globalConfig = await buildGlobalConfig(built.adapter, 'http://example.com/vis', null, true);
         server = new WebServer(built.adapter as never, baseConfig, registry, globalConfig, crypto.randomUUID());
         await server['app'].register((await import('@fastify/cookie')).default);
+        await server['app'].register((await import('@fastify/formbody')).default);
         server['setupErrorHandler']();
         server['setupRoutes']();
         await server['app'].ready();
@@ -341,6 +342,60 @@ describe('WebServer', () => {
             expect(res.statusCode).to.equal(400);
         });
 
+        it('POST /auth/token accepts application/x-www-form-urlencoded body (OAuth2-Spec, v1.4.0)', async () => {
+            // Real HA-Reference-Clients (Wall Display, frontend) senden urlencoded —
+            // ohne @fastify/formbody würde Fastify mit 415 antworten und Auth wäre tot.
+            // Tests via inject({payload:{}}) serialisieren zu JSON und maskieren das.
+            const r1 = await server.inject({ method: 'POST', url: '/auth/login_flow', payload: {} });
+            const cookie = extractCookie(r1.headers['set-cookie'])!;
+            const flowId = (r1.json() as { flow_id: string }).flow_id;
+            const r2 = await server.inject({
+                method: 'POST',
+                url: `/auth/login_flow/${flowId}`,
+                headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
+                payload: { username: 'admin', password: 'secret' },
+            });
+            const code = (r2.json() as { result: string }).result;
+
+            const r3 = await server.inject({
+                method: 'POST',
+                url: '/auth/token',
+                headers: { 'content-type': 'application/x-www-form-urlencoded' },
+                payload: `grant_type=authorization_code&code=${encodeURIComponent(code)}`,
+            });
+            expect(r3.statusCode).to.equal(200);
+            const body = r3.json() as { access_token: string; refresh_token: string };
+            expect(body.access_token).to.match(/^[0-9a-f-]{36}$/);
+            expect(body.refresh_token).to.match(/^[0-9a-f-]{36}$/);
+        });
+
+        it('POST /auth/token with form-urlencoded refresh_token also works', async () => {
+            const r1 = await server.inject({ method: 'POST', url: '/auth/login_flow', payload: {} });
+            const cookie = extractCookie(r1.headers['set-cookie'])!;
+            const flowId = (r1.json() as { flow_id: string }).flow_id;
+            const r2 = await server.inject({
+                method: 'POST',
+                url: `/auth/login_flow/${flowId}`,
+                headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
+                payload: { username: 'admin', password: 'secret' },
+            });
+            const code = (r2.json() as { result: string }).result;
+            const r3 = await server.inject({
+                method: 'POST',
+                url: '/auth/token',
+                payload: { grant_type: 'authorization_code', code },
+            });
+            const refreshToken = (r3.json() as { refresh_token: string }).refresh_token;
+
+            const r4 = await server.inject({
+                method: 'POST',
+                url: '/auth/token',
+                headers: { 'content-type': 'application/x-www-form-urlencoded' },
+                payload: `grant_type=refresh_token&refresh_token=${encodeURIComponent(refreshToken)}`,
+            });
+            expect(r4.statusCode).to.equal(200);
+        });
+
         it('rejects invalid credentials when authRequired is true', async () => {
             const built = createMockAdapter();
             const reg = new ClientRegistry(built.adapter as never);
@@ -353,6 +408,7 @@ describe('WebServer', () => {
                 crypto.randomUUID(),
             );
             await s['app'].register((await import('@fastify/cookie')).default);
+            await s['app'].register((await import('@fastify/formbody')).default);
             s['setupErrorHandler']();
             s['setupRoutes']();
             await s['app'].ready();
@@ -382,6 +438,7 @@ describe('WebServer', () => {
                 crypto.randomUUID(),
             );
             await s['app'].register((await import('@fastify/cookie')).default);
+            await s['app'].register((await import('@fastify/formbody')).default);
             s['setupErrorHandler']();
             s['setupRoutes']();
             await s['app'].ready();
@@ -409,6 +466,7 @@ describe('WebServer', () => {
                 crypto.randomUUID(),
             );
             await s['app'].register((await import('@fastify/cookie')).default);
+            await s['app'].register((await import('@fastify/formbody')).default);
             s['setupErrorHandler']();
             s['setupRoutes']();
             await s['app'].ready();
@@ -499,6 +557,7 @@ describe('WebServer', () => {
             const g = await buildGlobalConfig(built.adapter);
             const s = new WebServer(built.adapter as never, baseConfig, reg, g, crypto.randomUUID());
             await s['app'].register((await import('@fastify/cookie')).default);
+            await s['app'].register((await import('@fastify/formbody')).default);
             s['setupErrorHandler']();
             s['setupRoutes']();
             await s['app'].ready();
@@ -528,6 +587,7 @@ describe('WebServer', () => {
             const g = await buildGlobalConfig(built.adapter);
             const s = new WebServer(built.adapter as never, baseConfig, reg, g, crypto.randomUUID(), 'de');
             await s['app'].register((await import('@fastify/cookie')).default);
+            await s['app'].register((await import('@fastify/formbody')).default);
             s['setupErrorHandler']();
             s['setupRoutes']();
             await s['app'].ready();
@@ -552,6 +612,7 @@ describe('WebServer', () => {
             const g = await buildGlobalConfig(built.adapter);
             const s = new WebServer(built.adapter as never, baseConfig, reg, g, crypto.randomUUID(), 'eo');
             await s['app'].register((await import('@fastify/cookie')).default);
+            await s['app'].register((await import('@fastify/formbody')).default);
             s['setupErrorHandler']();
             s['setupRoutes']();
             await s['app'].ready();
@@ -668,6 +729,7 @@ describe('WebServer', () => {
                 crypto.randomUUID(),
             );
             await s['app'].register((await import('@fastify/cookie')).default);
+            await s['app'].register((await import('@fastify/formbody')).default);
             s['setupErrorHandler']();
             s['setupRoutes']();
             await s['app'].ready();
@@ -747,6 +809,7 @@ describe('WebServer', () => {
                 crypto.randomUUID(),
             );
             await s['app'].register((await import('@fastify/cookie')).default);
+            await s['app'].register((await import('@fastify/formbody')).default);
             s['setupErrorHandler']();
             s['setupRoutes']();
             await s['app'].ready();

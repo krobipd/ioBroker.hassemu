@@ -67,6 +67,16 @@ export class MDNSService {
         } catch (error) {
             const err = error as Error;
             this.adapter.log.warn(`mDNS: Failed to start: ${err.message}`);
+            // Wichtig: bonjour-instance freigeben sonst leakt der UDP-Socket
+            // über die Adapter-Lifetime. `stop()` short-circuit'd auf
+            // `!this.active` und würde nichts cleanen.
+            try {
+                this.bonjour?.destroy();
+            } catch {
+                /* destroy darf re-throwen — wir wollen nur die Resource lossen */
+            }
+            this.bonjour = null;
+            this.published = null;
         }
     }
 
