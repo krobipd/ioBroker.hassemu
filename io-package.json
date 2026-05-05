@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.12.0",
     "news": {
+      "NEXT": {
+        "en": "URL-dropdown refresh now only triggers on adapter add/remove or admin/web/vis-changes (was: every system.adapter.*-change). Subscriptions wired after server-start to avoid race. Plus: smaller lifecycle hardening.",
+        "de": "URL-Dropdown-Refresh feuert nur noch bei Adapter-Add/Remove oder admin/web/vis-Änderungen (vorher: jeder system.adapter.*-Change). Subscriptions erst nach Server-Start. Plus: kleinere Lifecycle-Härtung.",
+        "ru": "URL-dropdown refresh теперь срабатывает только при adapter add/remove или admin/web/vis-changes (раньше: каждый system.adapter.*). Subscriptions после server-start. Plus: lifecycle hardening.",
+        "pt": "URL-dropdown refresh agora dispara so em adapter add/remove ou admin/web/vis-changes (antes: cada system.adapter.*). Subscriptions apos server-start. Plus: lifecycle hardening.",
+        "nl": "URL-dropdown refresh nu alleen bij adapter add/remove of admin/web/vis-changes (eerder: elke system.adapter.*). Subscriptions na server-start. Plus: lifecycle hardening.",
+        "fr": "Refresh URL-dropdown declenche uniquement sur adapter add/remove ou admin/web/vis-changes (avant : chaque system.adapter.*). Subscriptions apres server-start. Plus : lifecycle hardening.",
+        "it": "Refresh URL-dropdown ora solo su adapter add/remove o admin/web/vis-changes (prima: ogni system.adapter.*). Subscriptions dopo server-start. Plus: lifecycle hardening.",
+        "es": "URL-dropdown refresh solo en adapter add/remove o admin/web/vis-changes (antes: cada system.adapter.*). Subscriptions tras server-start. Plus: lifecycle hardening.",
+        "pl": "URL-dropdown refresh tylko przy adapter add/remove lub admin/web/vis-changes (wczesniej: kazda system.adapter.*). Subscriptions po server-start. Plus: lifecycle hardening.",
+        "uk": "URL-dropdown refresh тепер лише при adapter add/remove або admin/web/vis-changes (раніше: кожна system.adapter.*). Subscriptions після server-start. Plus: lifecycle hardening.",
+        "zh-cn": "URL 下拉刷新仅在适配器增删或 admin/web/vis 变更时触发（之前为每个 system.adapter.* 变更）。订阅在服务器启动后建立。另：lifecycle 加固。"
+      },
       "1.12.0": {
         "en": "Security: brute-force lockout no longer bypassable via IPv6-mapped IPv4 (`::ffff:1.2.3.4`) or null-IP — both share the same bucket. Plus: legacy URL migration validates via coerceSafeUrl.",
         "de": "Sicherheit: Brute-Force-Lockout nicht mehr per IPv6-mapped IPv4 (`::ffff:1.2.3.4`) oder null-IP umgehbar — beide teilen sich einen Bucket. Plus: Legacy-URL-Migration validiert via coerceSafeUrl.",

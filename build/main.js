@@ -47,9 +47,16 @@ class HassEmu extends utils.Adapter {
     this.on("stateChange", (id, state) => {
       this.onStateChange(id, state).catch((err) => this.log.error(`stateChange unhandled: ${String(err)}`));
     });
-    this.on("objectChange", () => {
-      var _a;
-      (_a = this.urlDiscovery) == null ? void 0 : _a.scheduleRefresh();
+    this.on("objectChange", (id, obj) => {
+      var _a, _b;
+      if (!(id == null ? void 0 : id.startsWith("system.adapter."))) {
+        return;
+      }
+      const isUrlSourceAdapter = id.startsWith("system.adapter.admin.") || id.startsWith("system.adapter.web.") || id.startsWith("system.adapter.vis.") || id.startsWith("system.adapter.vis-2.");
+      const isAddOrRemove = !obj || obj.type === "instance" && !((_a = obj.common) == null ? void 0 : _a.host);
+      if (isUrlSourceAdapter || isAddOrRemove) {
+        (_b = this.urlDiscovery) == null ? void 0 : _b.scheduleRefresh();
+      }
     });
     this.on("unload", this.onUnload.bind(this));
     if (!processHandlersInstalled) {
@@ -86,12 +93,8 @@ class HassEmu extends utils.Adapter {
       await ((_a2 = this.globalConfig) == null ? void 0 : _a2.syncUrlDropdown(states));
       await ((_b2 = this.registry) == null ? void 0 : _b2.syncUrlDropdown(states));
     });
-    await this.urlDiscovery.collect();
     this.registry.setNewClientModeProvider(() => this.computeNewClientMode());
-    await this.subscribeForeignObjectsAsync("system.adapter.*");
-    await this.subscribeStatesAsync("clients.*");
-    await this.subscribeStatesAsync("global.*");
-    await this.subscribeStatesAsync("info.refresh_urls");
+    await this.urlDiscovery.collect();
     const systemLanguage = await this.readSystemLanguage();
     try {
       this.webServer = new import_webserver.WebServer(
@@ -108,6 +111,10 @@ class HassEmu extends utils.Adapter {
       (_b = (_a = this.terminate) == null ? void 0 : _a.call(this, 11)) != null ? _b : process.exit(11);
       return;
     }
+    await this.subscribeForeignObjectsAsync("system.adapter.*");
+    await this.subscribeStatesAsync("clients.*");
+    await this.subscribeStatesAsync("global.*");
+    await this.subscribeStatesAsync("info.refresh_urls");
     let mdnsActive = false;
     if (this.config.mdnsEnabled) {
       this.mdnsService = new import_mdns.MDNSService(this, this.config, instanceUuid);
@@ -468,6 +475,7 @@ class HassEmu extends utils.Adapter {
   onUnload(callback) {
     var _a;
     try {
+      void this.setState("info.connection", { val: false, ack: true });
       void this.unsubscribeStatesAsync("clients.*");
       void this.unsubscribeStatesAsync("global.*");
       void this.unsubscribeStatesAsync("info.refresh_urls");
@@ -484,7 +492,6 @@ class HassEmu extends utils.Adapter {
       }
       this.registry = null;
       this.globalConfig = null;
-      void this.setState("info.connection", { val: false, ack: true });
     } catch (error) {
       const err = error;
       this.log.error(`Shutdown error: ${err.message}`);

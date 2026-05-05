@@ -37,9 +37,27 @@ class HassEmu extends utils.Adapter {
         this.on('stateChange', (id, state) => {
             this.onStateChange(id, state).catch(err => this.log.error(`stateChange unhandled: ${String(err)}`));
         });
-        this.on('objectChange', () => {
-            // Foreign object changed — refresh URL dropdown (debounced inside discovery)
-            this.urlDiscovery?.scheduleRefresh();
+        this.on('objectChange', (id, obj) => {
+            // v1.13.0 (H4): Narrow filter — vorher feuerte JEDER objectChange
+            // im `system.adapter.*`-Namespace ein scheduleRefresh, auch wenn
+            // ein anderer Adapter (mit Discovery-irrelevanten Properties) eine
+            // Konfiguration änderte. Jetzt nur Trigger bei:
+            //  - Instance-Add/-Remove (obj=null bei delete, oder fresh _id ohne obj)
+            //  - native.intro / native.welcomeScreen / native.welcomeScreenPro
+            //    (Quellen für discovered URLs)
+            //  - admin/web/vis/vis-2 generell (deren Available-Status entscheidet)
+            if (!id?.startsWith('system.adapter.')) {
+                return;
+            }
+            const isUrlSourceAdapter =
+                id.startsWith('system.adapter.admin.') ||
+                id.startsWith('system.adapter.web.') ||
+                id.startsWith('system.adapter.vis.') ||
+                id.startsWith('system.adapter.vis-2.');
+            const isAddOrRemove = !obj || (obj.type === 'instance' && !obj.common?.host);
+            if (isUrlSourceAdapter || isAddOrRemove) {
+                this.urlDiscovery?.scheduleRefresh();
+            }
         });
         this.on('unload', this.onUnload.bind(this));
 
@@ -96,18 +114,11 @@ class HassEmu extends utils.Adapter {
             await this.globalConfig?.syncUrlDropdown(states);
             await this.registry?.syncUrlDropdown(states);
         });
-        await this.urlDiscovery.collect();
-
-        // After discovery: wire the default-mode provider for new clients.
-        // - global.enabled=true → new clients default to 'global' (follow master)
-        // - global.enabled=false → first discovered URL, fallback 'manual'
+        // v1.13.0 (H5): Provider VOR collect() setzen — sonst läuft das
+        // erste collect() mit dem Default-Provider (`() => MODE_GLOBAL`),
+        // der nicht den Resolver-Output für neue Clients widerspiegelt.
         this.registry.setNewClientModeProvider(() => this.computeNewClientMode());
-
-        // Watch broker state for new/removed instances, VIS projects and client/global writes
-        await this.subscribeForeignObjectsAsync('system.adapter.*');
-        await this.subscribeStatesAsync('clients.*');
-        await this.subscribeStatesAsync('global.*');
-        await this.subscribeStatesAsync('info.refresh_urls');
+        await this.urlDiscovery.collect();
 
         const systemLanguage = await this.readSystemLanguage();
 
@@ -129,9 +140,22 @@ class HassEmu extends utils.Adapter {
             // explizit Failure mit code 11 → js-controller restartet nach
             // Backoff. Bei EADDRINUSE (Port belegt) ist das die einzig sinnvolle
             // Reaktion: warten + retry, statt unsichtbar idle zu sitzen.
+            // v1.13.0 (H6): subscriptions waren noch nicht angelegt (jetzt nach
+            // diesem Block) — daher kein cleanup nötig. Falls ein Refactor
+            // subscriptions VORZIEHT: hier explizit unsubscribe.
             this.terminate?.(11) ?? process.exit(11);
             return;
         }
+
+        // v1.13.0 (D11+H6): Subscriptions NACH webServer.start() — vorher
+        // hätte ein State-Write zwischen subscribe und start einen Handler
+        // ausgelöst der auf einen noch-nicht-laufenden Server zugriff. Plus:
+        // wenn webServer.start() throwt, sind Subscriptions noch nicht angelegt
+        // (kein Cleanup-Pfad nötig im catch-Block oben).
+        await this.subscribeForeignObjectsAsync('system.adapter.*');
+        await this.subscribeStatesAsync('clients.*');
+        await this.subscribeStatesAsync('global.*');
+        await this.subscribeStatesAsync('info.refresh_urls');
 
         let mdnsActive = false;
         if (this.config.mdnsEnabled) {
@@ -555,6 +579,11 @@ class HassEmu extends utils.Adapter {
 
     private onUnload(callback: () => void): void {
         try {
+            // v1.13.0 (H10): info.connection=false zuerst, vor jedem cleanup —
+            // wenn ein cleanup-Step throws, bleibt der State mindestens als
+            // false ack'd statt als true hängen.
+            void this.setState('info.connection', { val: false, ack: true });
+
             // v1.10.0 (H2): subscriptions explizit lösen bevor Refs nullen.
             // js-controller cleant das normalerweise — aber im compact-mode mit
             // hot-remove + re-add kann Residual entstehen, das dann auf eine
@@ -585,8 +614,6 @@ class HassEmu extends utils.Adapter {
             // im compact-mode können andere hassemu-Instances noch laufen und
             // brauchen die Handler weiterhin. Wenn der Prozess am Ende ist, räumt
             // Node die Listeners eh auf. (B3 v1.10.0)
-
-            void this.setState('info.connection', { val: false, ack: true });
         } catch (error) {
             const err = error as Error;
             this.log.error(`Shutdown error: ${err.message}`);
