@@ -1,4 +1,10 @@
 # Older Changes
+## 1.9.0 (2026-05-05)
+
+- **Weniger Log-Spam unter Attacke**: 5xx-Fehler werden pro Message nur beim ersten Auftritt als `warn` geloggt (60s-Cooldown), Wiederholungen fallen auf `debug`.
+- **Adapter-Start ~4× schneller bei vielen Displays**: `restore()` liest die vier Datenpunkte pro Client parallel statt sequenziell.
+- **Kleinere Härtung**: Landing-Page-Übersetzungen `as const satisfies` (immutable), Port-Felder lehnen Hex/Exponential ab, `MDNSService.active` extern read-only.
+
 ## 1.8.1 (2026-05-05)
 
 - **Master-Switch schneller**: `global.enabled`-Toggle schreibt das `mode` aller Clients jetzt parallel statt sequenziell (vorher N Broker-Round-Trips). Spürbar auf Instanzen mit vielen Displays.
