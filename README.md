@@ -1,7 +1,7 @@
 # ioBroker.hassemu
 
 [![npm version](https://img.shields.io/npm/v/iobroker.hassemu)](https://www.npmjs.com/package/iobroker.hassemu)
-![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen)
+![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![npm downloads](https://img.shields.io/npm/dt/iobroker.hassemu)](https://www.npmjs.com/package/iobroker.hassemu)
@@ -33,7 +33,7 @@ ioBroker adapter that emulates a [Home Assistant](https://www.home-assistant.io)
 
 ## Requirements
 
-- **Node.js >= 20**
+- **Node.js >= 22**
 - **ioBroker js-controller >= 7.0.7**
 - **ioBroker Admin >= 7.7.22**
 - **ioBroker web >= 8.0.0**
@@ -147,7 +147,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.4.0 (2026-05-05)
 
 - Neuer Datenpunkt `info.refresh_urls` (Button) — auf `true` setzen lädt VIS/VIS-2-Projekte und Admin-Tile-URLs neu, ohne den Adapter neu zu starten. Praktisch nach einer neuen VIS-Seite, die im Mode-Dropdown erscheinen soll.
 - `/auth/token` akzeptiert jetzt auch `application/x-www-form-urlencoded` Bodies (OAuth2-Spec) — manche HA-Clients senden den Token-Request urlencoded statt JSON, das Login lief sonst ins Leere.
@@ -167,15 +167,6 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ### 1.3.0 (2026-04-30)
 - Security: brute-force lockout on login (5 failed attempts → IP blocked for 15 min, successful login resets the counter).
 - Emulated Home Assistant version bumped to 2026.4.0.
-
-### 1.2.0 (2026-04-29)
-- **Breaking:** Redirect target now configured via `mode` (dropdown) + `manualUrl` (free text) instead of the old `visUrl`. Existing setups auto-migrated.
-- Master switch `global.enabled` syncs every display (on → all follow global URL, off → each display picks up its own).
-- Idle displays without auth token are auto-removed after 30 days.
-- Security hardening of the auth flow.
-- `web` adapter declared as dependency.
-
-Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
 ## Support
 
