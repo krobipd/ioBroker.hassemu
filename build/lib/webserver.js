@@ -351,10 +351,19 @@ class WebServer {
     this.loginAttempts.delete(WebServer.normalizeLockoutKey(ip));
   }
   // --- client identification ---
+  /**
+   * v1.15.0 (F6): zentraler Extract `req.ip → coerced string|null`. Vorher
+   * 3× inline `coerceString(req.ip)` in identify/login/token-Handlern.
+   *
+   * @param req Fastify request (uses `req.ip`).
+   */
+  static getClientIp(req) {
+    return (0, import_coerce.coerceString)(req.ip);
+  }
   async identify(req, reply) {
     var _a;
     const cookie = (0, import_coerce.coerceUuid)((_a = req.cookies) == null ? void 0 : _a[CLIENT_COOKIE]);
-    const ip = (0, import_coerce.coerceString)(req.ip);
+    const ip = WebServer.getClientIp(req);
     const record = await this.registry.identifyOrCreate(cookie, ip, null);
     if (cookie !== record.cookie) {
       reply.setCookie(CLIENT_COOKIE, record.cookie, {
@@ -533,7 +542,7 @@ class WebServer {
           return { type: "abort", flow_id: flowId, reason: "unknown_flow" };
         }
         if (this.config.authRequired) {
-          const ip = (0, import_coerce.coerceString)(req.ip);
+          const ip = WebServer.getClientIp(req);
           if (this.isIpLocked(ip)) {
             this.adapter.log.warn(`Login rejected: IP ${ip} is currently locked out`);
             reply.status(429);
@@ -578,7 +587,7 @@ class WebServer {
       async (req, reply) => {
         var _a;
         const { code, grant_type, refresh_token } = (_a = req.body) != null ? _a : {};
-        const ip = (0, import_coerce.coerceString)(req.ip);
+        const ip = WebServer.getClientIp(req);
         if (this.isIpLocked(ip)) {
           reply.status(429);
           return { error: "rate_limited", error_description: "Too many failures, try again later" };

@@ -37,17 +37,24 @@ var import_node_crypto = __toESM(require("node:crypto"));
 var import_node_os = __toESM(require("node:os"));
 function getLocalIp() {
   const interfaces = import_node_os.default.networkInterfaces();
+  let ipv6Fallback = null;
   for (const ifaces of Object.values(interfaces)) {
     if (!ifaces) {
       continue;
     }
     for (const iface of ifaces) {
-      if (iface.family === "IPv4" && !iface.internal) {
+      if (iface.internal) {
+        continue;
+      }
+      if (iface.family === "IPv4") {
         return iface.address;
+      }
+      if (iface.family === "IPv6" && !ipv6Fallback) {
+        ipv6Fallback = iface.address;
       }
     }
   }
-  return "127.0.0.1";
+  return ipv6Fallback != null ? ipv6Fallback : "127.0.0.1";
 }
 function isWildcardBind(bindAddress) {
   if (!bindAddress) {

@@ -63,7 +63,7 @@ class MDNSService {
   }
   /** Start mDNS broadcasting via bonjour-service */
   start() {
-    var _a;
+    var _a, _b, _c;
     const localIP = (0, import_network.getLocalIp)();
     const baseUrl = `http://${localIP}:${this.config.port}`;
     const serviceName = this.config.serviceName || "ioBroker";
@@ -87,6 +87,17 @@ class MDNSService {
         port: this.config.port,
         txt
       });
+      (_b = (_a = this.published).on) == null ? void 0 : _b.call(_a, "error", (err) => {
+        var _a2;
+        this.adapter.log.warn(`mDNS: async publish error: ${err.message}`);
+        this.active = false;
+        try {
+          (_a2 = this.bonjour) == null ? void 0 : _a2.destroy();
+        } catch {
+        }
+        this.bonjour = null;
+        this.published = null;
+      });
       this.active = true;
       this.adapter.log.debug(
         `mDNS: Broadcasting ${serviceName}._home-assistant._tcp.local on ${localIP}:${this.config.port}`
@@ -96,7 +107,7 @@ class MDNSService {
       const err = error;
       this.adapter.log.warn(`mDNS: Failed to start: ${err.message}`);
       try {
-        (_a = this.bonjour) == null ? void 0 : _a.destroy();
+        (_c = this.bonjour) == null ? void 0 : _c.destroy();
       } catch {
       }
       this.bonjour = null;
