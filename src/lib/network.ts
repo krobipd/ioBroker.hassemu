@@ -9,9 +9,16 @@ import os from 'node:os';
  * — mDNS broadcastete dann unbrauchbares Loopback. Jetzt: IPv6-Fallback
  * vor Loopback. IPv4 hat weiterhin Vorrang weil HA-Clients (Wall Display
  * etc.) traditionell IPv4 erwarten.
+ *
+ * v1.21.0 (E6): Docker-Bridge-IPs (172.17.x.x default + ähnliche Container-
+ * Bridges) werden gegenüber „echten" LAN-IPs deprioritisiert — `bind: 0.0.0.0`
+ * + Docker führte sonst dazu, dass mDNS die Container-Bridge advertised, die
+ * vom LAN aus nicht erreichbar ist. Echte LAN-IPs (192.168.x.x, 10.x.x.x,
+ * 172.16-31.x.x außer 172.17) haben Vorrang.
  */
 export function getLocalIp(): string {
     const interfaces = os.networkInterfaces();
+    let dockerBridgeFallback: string | null = null;
     let ipv6Fallback: string | null = null;
     for (const ifaces of Object.values(interfaces)) {
         if (!ifaces) {
@@ -22,6 +29,13 @@ export function getLocalIp(): string {
                 continue;
             }
             if (iface.family === 'IPv4') {
+                if (iface.address.startsWith('172.17.') || iface.address.startsWith('172.18.')) {
+                    // Default Docker-Bridge — only use as last resort.
+                    if (!dockerBridgeFallback) {
+                        dockerBridgeFallback = iface.address;
+                    }
+                    continue;
+                }
                 return iface.address;
             }
             if (iface.family === 'IPv6' && !ipv6Fallback) {
@@ -29,7 +43,7 @@ export function getLocalIp(): string {
             }
         }
     }
-    return ipv6Fallback ?? '127.0.0.1';
+    return dockerBridgeFallback ?? ipv6Fallback ?? '127.0.0.1';
 }
 
 /**

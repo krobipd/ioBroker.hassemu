@@ -198,12 +198,28 @@ export class ClientRegistry {
                 : ip;
             const pending = this.pendingByIp.get(bucketKey);
             if (pending) {
-                return pending;
+                // v1.21.0 (D3): pending-promise kann rejecten — z.B. wenn
+                // createClient async failed (broker-disconnect, object-create-
+                // error). Wir können nicht recover'n (der erste Caller hat eh
+                // schon gefailt), aber wir wollen den Fehler diagnostizierbar
+                // machen. catch+rethrow sorgt für ein einzelnes log statt
+                // unhandled-rejection im fastify-error-handler.
+                return pending.catch(err => {
+                    this.adapter.log.debug(
+                        `client-registry: pending createClient for ${bucketKey} rejected: ${String(err)}`,
+                    );
+                    throw err;
+                });
             }
             const promise = this.createClient(ip, hostname);
             this.pendingByIp.set(bucketKey, promise);
             try {
                 return await promise;
+            } catch (err) {
+                this.adapter.log.warn(
+                    `client-registry: createClient failed for IP ${ip}: ${err instanceof Error ? err.message : String(err)}`,
+                );
+                throw err;
             } finally {
                 this.pendingByIp.delete(bucketKey);
             }

@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.20.0",
     "news": {
+      "NEXT": {
+        "en": "Robustness: pending-create rejections logged once + rethrown. getLocalIp deprioritises Docker-bridge IPs (172.17/172.18) — mDNS no longer advertises a container address.",
+        "de": "Robustheit: Pending-Create-Rejections einmalig geloggt + rethrown. getLocalIp deprioritisiert Docker-Bridge-IPs (172.17/172.18) — mDNS broadcastet keine Container-Adresse mehr.",
+        "ru": "Robustness: pending-create rejections теперь логируются один раз и rethrown. Plus: getLocalIp deprioritises Docker-bridge IPs (172.17/172.18) — mDNS не advertise unreachable container address.",
+        "pt": "Robustness: pending-create rejections agora logadas uma vez e rethrown. Plus: getLocalIp despioriza IPs Docker-bridge (172.17/172.18) — mDNS nao anuncia endereco de container inalcancavel.",
+        "nl": "Robuustheid: pending-create rejections worden nu eenmalig gelogd en rethrown. Plus: getLocalIp deprioriteert Docker-bridge IPs (172.17/172.18) — mDNS adverteert geen onbereikbaar container adres meer.",
+        "fr": "Robustesse : pending-create rejections loguees une fois et rethrown. Plus : getLocalIp depriorise les IPs Docker-bridge (172.17/172.18) — mDNS n'annonce plus d'adresse container inaccessible.",
+        "it": "Robustezza: pending-create rejections loggate una volta e rethrown. Plus: getLocalIp depriorizza IP Docker-bridge (172.17/172.18) — mDNS non annuncia indirizzi container irraggiungibili.",
+        "es": "Robustez: pending-create rejections loggeadas una vez y rethrown. Plus: getLocalIp despioriza IPs Docker-bridge (172.17/172.18) — mDNS no anuncia direcciones de container inaccesibles.",
+        "pl": "Niezawodnosc: pending-create rejections logowane raz i rethrown. Plus: getLocalIp depriorytetuje IP Docker-bridge (172.17/172.18) — mDNS nie ogłasza nieosiagalnego adresu kontenera.",
+        "uk": "Надійність: pending-create rejections логуються один раз і rethrown. Plus: getLocalIp деприоритизує Docker-bridge IPs (172.17/172.18) — mDNS не advertise unreachable container address.",
+        "zh-cn": "稳健性：pending 创建的拒绝现在只记录一次并重新抛出。另：getLocalIp 降低 Docker 桥接地址（172.17/172.18）的优先级 — mDNS 不再广播 LAN 无法访问的容器地址。"
+      },
       "1.20.0": {
         "en": "Internal cleanup: 3 helpers (buildDropdownStates, parseAdapterStateId, safeGetState) extracted into coerce.ts — client-registry + global-config share them instead of duplicating.",
         "de": "Interne Aufräumung: 3 Helpers (buildDropdownStates, parseAdapterStateId, safeGetState) nach coerce.ts extrahiert — client-registry + global-config teilen sie sich.",
