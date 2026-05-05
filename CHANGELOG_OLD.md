@@ -1,4 +1,8 @@
 # Older Changes
+## 1.3.0 (2026-04-30)
+- Security: brute-force lockout on login (5 failed attempts → IP blocked for 15 min, successful login resets the counter).
+- Emulated Home Assistant version bumped to 2026.4.0.
+
 ## 1.2.0 (2026-04-29)
 - **Breaking:** Redirect target now configured via `mode` (dropdown) + `manualUrl` (free text) instead of the old `visUrl`. Existing setups auto-migrated.
 - Master switch `global.enabled` syncs every display (on → all follow global URL, off → each display picks up its own).

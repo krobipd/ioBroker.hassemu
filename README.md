@@ -147,7 +147,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.4.1 (2026-05-05)
 
 - CI: Deploy-Schritt nutzt jetzt Node 24 (Node 22 + `npm@latest` hatte einen `MODULE_NOT_FOUND`-Bug für `promise-retry`, dadurch kam v1.4.0 nicht auf npm).
 
@@ -167,10 +167,6 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ### 1.3.1 (2026-04-30)
 - Fix: legacy v1.1.x clients without `mode`/`manualUrl` objects now get migrated correctly on first start.
 - Mode dropdown gains a `0 = "---"` no-choice fallback — new displays start without a target until a real choice is made.
-
-### 1.3.0 (2026-04-30)
-- Security: brute-force lockout on login (5 failed attempts → IP blocked for 15 min, successful login resets the counter).
-- Emulated Home Assistant version bumped to 2026.4.0.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
