@@ -285,14 +285,18 @@ class ClientRegistry {
    * @param value New mode value (sentinel or URL).
    */
   async bulkSetMode(value) {
+    const writes = [];
     let changed = 0;
     for (const record of this.byId.values()) {
       if (record.mode === value) {
         continue;
       }
       record.mode = value;
-      await this.adapter.setStateAsync(`clients.${record.id}.mode`, { val: value, ack: true });
+      writes.push(this.adapter.setStateAsync(`clients.${record.id}.mode`, { val: value, ack: true }));
       changed++;
+    }
+    if (writes.length > 0) {
+      await Promise.all(writes);
     }
     if (changed > 0) {
       this.adapter.log.info(`client-registry: bulk-set mode='${value}' on ${changed} client(s)`);
@@ -313,6 +317,7 @@ class ClientRegistry {
     if (record.token) {
       this.byToken.delete(record.token);
     }
+    this.lastSeenFlushedAt.delete(id);
     try {
       await this.adapter.delObjectAsync(`clients.${id}`, { recursive: true });
     } catch (err) {

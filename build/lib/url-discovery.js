@@ -86,10 +86,15 @@ class UrlDiscovery {
     const result = {};
     const hostIp = (0, import_network.getLocalIp)();
     let instances = {};
+    let instancesOk = false;
     try {
       instances = (_a = await this.adapter.getForeignObjectsAsync("system.adapter.*", "instance")) != null ? _a : {};
+      instancesOk = true;
     } catch (err) {
       this.adapter.log.debug(`url-discovery: getForeignObjectsAsync failed: ${String(err)}`);
+    }
+    if (!instancesOk) {
+      return { ...this.cached };
     }
     const crossRefs = buildCrossRefs(instances);
     for (const [id, obj] of Object.entries(instances)) {

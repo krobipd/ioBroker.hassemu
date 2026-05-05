@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.8.0",
     "news": {
+      "NEXT": {
+        "en": "Master-switch faster: bulk mode change writes parallel (was: N sequential broker calls). URL-dropdown survives transient broker hiccups. Reverse-DNS lookup has a 5s timeout.",
+        "de": "Master-Switch schneller: Bulk-Mode-Wechsel schreibt parallel (vorher N sequenzielle Broker-Calls). URL-Dropdown übersteht kurze Broker-Hänger. Reverse-DNS-Lookup hat 5s-Timeout.",
+        "ru": "Master-switch быстрее: bulk mode change пишет параллельно (раньше N последовательных broker-вызовов). URL-dropdown переживает кратковременные сбои broker. Reverse-DNS lookup имеет 5s timeout.",
+        "pt": "Master-switch mais rapido: bulk mode change escreve em paralelo (antes: N chamadas sequenciais ao broker). URL-dropdown sobrevive a hiccups breves do broker. Reverse-DNS lookup tem timeout de 5s.",
+        "nl": "Master-switch sneller: bulk mode change schrijft parallel (eerder N sequentiele broker-calls). URL-dropdown overleeft korte broker-hikjes. Reverse-DNS lookup heeft 5s timeout.",
+        "fr": "Master-switch plus rapide : bulk mode change ecrit en parallele (avant : N appels broker sequentiels). URL-dropdown survit aux hoquets brefs du broker. Reverse-DNS lookup a un timeout de 5s.",
+        "it": "Master-switch piu veloce: bulk mode change scrive in parallelo (prima: N chiamate broker sequenziali). URL-dropdown sopravvive a brevi singhiozzi del broker. Reverse-DNS lookup ha timeout 5s.",
+        "es": "Master-switch mas rapido: bulk mode change escribe en paralelo (antes: N llamadas broker secuenciales). URL-dropdown sobrevive hipidos breves del broker. Reverse-DNS lookup tiene timeout de 5s.",
+        "pl": "Master-switch szybszy: bulk mode change zapisuje rownolegle (wczesniej pojedynczo). URL-dropdown przezywa krotkie zacinki broker. Reverse-DNS lookup ma timeout 5s.",
+        "uk": "Master-switch швидший: bulk mode change пише паралельно (раніше N послідовних broker-викликів). URL-dropdown переживає короткі затинки broker. Reverse-DNS lookup має таймаут 5s.",
+        "zh-cn": "Master-switch 更快：bulk 模式切换并行写入（之前为 N 次串行 broker 调用）。URL 下拉可挺过 broker 短暂停顿。反向 DNS 查询设 5 秒超时。"
+      },
       "1.8.0": {
         "en": "Code-cleanup: cookie TTL, map caps, mode-sentinels and stale-TTL now in `lib/constants.ts`. Plus: token-endpoint errors downgraded from warn to debug — scanners no longer flood the log.",
         "de": "Code-Aufräumen: Cookie-TTL, Map-Caps, Mode-Sentinels und Stale-TTL jetzt zentral in `lib/constants.ts`. Plus: Token-Endpunkt-Fehler auf debug runtergestuft — Scanner füllen das Log nicht mehr.",

@@ -325,7 +325,10 @@ class WebServer {
       return;
     }
     this.dnsInFlight.add(ip);
-    import_promises.default.reverse(ip).then((names) => {
+    const timeout = new Promise(
+      (_, reject) => setTimeout(() => reject(new Error("dns reverse-lookup timeout")), 5e3)
+    );
+    Promise.race([import_promises.default.reverse(ip), timeout]).then((names) => {
       const name = names[0];
       if (name) {
         this.registry.identifyOrCreate(record.cookie, ip, name).catch(() => {
