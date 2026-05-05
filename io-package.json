@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.9.1",
     "news": {
+      "NEXT": {
+        "en": "Server-start failure (e.g. port in use) now terminates explicitly — js-controller restarts after backoff instead of zombie idle. Plus: mDNS broadcast failure visible as warn.",
+        "de": "Server-Start-Fehler (z.B. Port belegt) terminiert jetzt explizit — js-controller restartet nach Backoff statt Zombie-Idle. Plus: mDNS-Broadcast-Fehler sichtbar als warn im Log.",
+        "ru": "Server-start failure (например, port занят) теперь terminate с явным failure code — js-controller restartет после backoff, вместо zombie idle. Plus: mDNS broadcast failure виден как warn.",
+        "pt": "Server-start failure (ex. porta ocupada) agora termina com failure code explicito — js-controller reinicia apos backoff em vez de adapter zombie. Plus: mDNS broadcast failure visivel como warn.",
+        "nl": "Server-start failure (bv. poort bezet) terminate nu met expliciete failure code — js-controller herstart na backoff in plaats van zombie. Plus: mDNS broadcast failure zichtbaar als warn.",
+        "fr": "Server-start failure (p.ex. port occupe) termine maintenant avec failure code explicite — js-controller redemarre apres backoff au lieu de zombie. Plus : mDNS broadcast failure visible en warn.",
+        "it": "Server-start failure (es. porta occupata) ora termina con failure code esplicito — js-controller riavvia dopo backoff invece di zombie. Plus: mDNS broadcast failure visibile come warn.",
+        "es": "Server-start failure (p.ej. puerto ocupado) ahora termina con failure code explicito — js-controller reinicia tras backoff en vez de zombie. Plus: mDNS broadcast failure visible como warn.",
+        "pl": "Server-start failure (np. port zajety) terminuje teraz z jawnym failure code — js-controller restartuje po backoff zamiast zombie. Plus: mDNS broadcast failure widoczne jako warn.",
+        "uk": "Server-start failure (напр. порт зайнятий) тепер terminate з явним failure code — js-controller restart після backoff, замість zombie. Plus: mDNS broadcast failure видно як warn.",
+        "zh-cn": "服务器启动失败（如端口占用）现在以显式失败代码终止 — js-controller 在 backoff 后重启，而不是 zombie。另：mDNS 广播失败在 warn 级别可见。"
+      },
       "1.9.1": {
         "en": "Internal cleanup: 5xx-error cooldown map now uses the same FIFO-eviction helper as the other capped maps (was inconsistent inline FIFO in v1.9.0). Plus 5 new tests for the cooldown logic.",
         "de": "Interne Aufräumung: 5xx-Error-Cooldown-Map nutzt jetzt denselben FIFO-Helper wie die anderen gedeckelten Maps (war in v1.9.0 inline-inkonsistent). Plus 5 neue Tests für die Cooldown-Logik.",

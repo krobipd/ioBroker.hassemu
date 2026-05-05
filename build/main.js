@@ -30,14 +30,15 @@ var import_global_config = require("./lib/global-config");
 var import_mdns = require("./lib/mdns");
 var import_url_discovery = require("./lib/url-discovery");
 var import_webserver = require("./lib/webserver");
+let processHandlersInstalled = false;
+let installedUnhandledHandler = null;
+let installedUncaughtHandler = null;
 class HassEmu extends utils.Adapter {
   mdnsService = null;
   webServer = null;
   registry = null;
   globalConfig = null;
   urlDiscovery = null;
-  unhandledRejectionHandler = null;
-  uncaughtExceptionHandler = null;
   constructor(options = {}) {
     super({ ...options, name: "hassemu" });
     this.on("ready", () => {
@@ -51,16 +52,22 @@ class HassEmu extends utils.Adapter {
       (_a = this.urlDiscovery) == null ? void 0 : _a.scheduleRefresh();
     });
     this.on("unload", this.onUnload.bind(this));
-    this.unhandledRejectionHandler = (reason) => {
-      this.log.error(`Unhandled rejection: ${reason instanceof Error ? reason.message : String(reason)}`);
-    };
-    this.uncaughtExceptionHandler = (err) => {
-      this.log.error(`Uncaught exception: ${err.message}`);
-    };
-    process.on("unhandledRejection", this.unhandledRejectionHandler);
-    process.on("uncaughtException", this.uncaughtExceptionHandler);
+    if (!processHandlersInstalled) {
+      installedUnhandledHandler = (reason) => {
+        console.error(
+          `[hassemu] Unhandled rejection: ${reason instanceof Error ? reason.message : String(reason)}`
+        );
+      };
+      installedUncaughtHandler = (err) => {
+        console.error(`[hassemu] Uncaught exception: ${err.message}`);
+      };
+      process.on("unhandledRejection", installedUnhandledHandler);
+      process.on("uncaughtException", installedUncaughtHandler);
+      processHandlersInstalled = true;
+    }
   }
   async onReady() {
+    var _a, _b;
     await this.setState("info.connection", { val: false, ack: true });
     this.globalConfig = new import_global_config.GlobalConfig(this);
     await this.globalConfig.restore();
@@ -75,9 +82,9 @@ class HassEmu extends utils.Adapter {
       `Config: port=${this.config.port}, auth=${this.config.authRequired}, mdns=${this.config.mdnsEnabled}`
     );
     this.urlDiscovery = new import_url_discovery.UrlDiscovery(this, async (states) => {
-      var _a, _b;
-      await ((_a = this.globalConfig) == null ? void 0 : _a.syncUrlDropdown(states));
-      await ((_b = this.registry) == null ? void 0 : _b.syncUrlDropdown(states));
+      var _a2, _b2;
+      await ((_a2 = this.globalConfig) == null ? void 0 : _a2.syncUrlDropdown(states));
+      await ((_b2 = this.registry) == null ? void 0 : _b2.syncUrlDropdown(states));
     });
     await this.urlDiscovery.collect();
     this.registry.setNewClientModeProvider(() => this.computeNewClientMode());
@@ -98,19 +105,26 @@ class HassEmu extends utils.Adapter {
       await this.webServer.start();
     } catch (err) {
       this.log.error(`Web server failed to start: ${String(err)}`);
+      (_b = (_a = this.terminate) == null ? void 0 : _a.call(this, 11)) != null ? _b : process.exit(11);
       return;
     }
+    let mdnsActive = false;
     if (this.config.mdnsEnabled) {
       this.mdnsService = new import_mdns.MDNSService(this, this.config, instanceUuid);
       this.mdnsService.start();
+      mdnsActive = this.mdnsService.isActive();
+      if (!mdnsActive) {
+        this.log.warn(
+          "mDNS broadcast failed \u2014 clients must enter the URL manually. Auth/connection still works."
+        );
+      }
     } else {
       this.log.debug("mDNS disabled \u2014 clients must enter the URL manually.");
     }
     await this.setState("info.connection", { val: true, ack: true });
     const bindAddr = this.config.bindAddress || "0.0.0.0";
-    this.log.info(
-      `HA emulation running on ${bindAddr}:${this.config.port}${this.config.mdnsEnabled ? ", mDNS active" : ""}`
-    );
+    const mdnsSuffix = this.config.mdnsEnabled ? mdnsActive ? ", mDNS active" : ", mDNS FAILED" : "";
+    this.log.info(`HA emulation running on ${bindAddr}:${this.config.port}${mdnsSuffix}`);
   }
   /**
    * Liefert die persistente Server-UUID. Beim ersten Start wird sie generiert und in
@@ -450,6 +464,10 @@ class HassEmu extends utils.Adapter {
   onUnload(callback) {
     var _a;
     try {
+      void this.unsubscribeStatesAsync("clients.*");
+      void this.unsubscribeStatesAsync("global.*");
+      void this.unsubscribeStatesAsync("info.refresh_urls");
+      void this.unsubscribeForeignObjectsAsync("system.adapter.*");
       (_a = this.urlDiscovery) == null ? void 0 : _a.cancelRefresh();
       this.urlDiscovery = null;
       if (this.mdnsService) {
@@ -462,14 +480,6 @@ class HassEmu extends utils.Adapter {
       }
       this.registry = null;
       this.globalConfig = null;
-      if (this.unhandledRejectionHandler) {
-        process.off("unhandledRejection", this.unhandledRejectionHandler);
-        this.unhandledRejectionHandler = null;
-      }
-      if (this.uncaughtExceptionHandler) {
-        process.off("uncaughtException", this.uncaughtExceptionHandler);
-        this.uncaughtExceptionHandler = null;
-      }
       void this.setState("info.connection", { val: false, ack: true });
     } catch (error) {
       const err = error;

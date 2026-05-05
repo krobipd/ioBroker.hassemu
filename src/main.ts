@@ -9,14 +9,22 @@ import { UrlDiscovery } from './lib/url-discovery';
 import { WebServer } from './lib/webserver';
 import type { AdapterConfig } from './lib/types';
 
+// v1.10.0 (B3): in compact-mode teilen alle hassemu-Instances einen Node-Prozess.
+// Würde jeder Konstruktor `process.on('unhandledRejection'/'uncaughtException')`
+// adden, wäre jeder Error N× im Log und die Listener stacken bei host-restarts.
+// Module-Level-Flag → es wird genau ein Paar Listeners installiert, egal wieviele
+// Instances. Logging via console.error weil zum Zeitpunkt eines Last-Defence-
+// Errors keine spezifische Adapter-Instance „die richtige" ist.
+let processHandlersInstalled = false;
+let installedUnhandledHandler: ((reason: unknown) => void) | null = null;
+let installedUncaughtHandler: ((err: Error) => void) | null = null;
+
 class HassEmu extends utils.Adapter {
     private mdnsService: MDNSService | null = null;
     private webServer: WebServer | null = null;
     private registry: ClientRegistry | null = null;
     private globalConfig: GlobalConfig | null = null;
     private urlDiscovery: UrlDiscovery | null = null;
-    private unhandledRejectionHandler: ((reason: unknown) => void) | null = null;
-    private uncaughtExceptionHandler: ((err: Error) => void) | null = null;
 
     declare config: AdapterConfig;
 
@@ -36,16 +44,20 @@ class HassEmu extends utils.Adapter {
         this.on('unload', this.onUnload.bind(this));
 
         // Last-line-of-defence against unhandled rejections / sync throws from
-        // fire-and-forget paths. The per-handler wrappers cover documented async
-        // paths; this catches anything that slips past during refactors.
-        this.unhandledRejectionHandler = (reason: unknown) => {
-            this.log.error(`Unhandled rejection: ${reason instanceof Error ? reason.message : String(reason)}`);
-        };
-        this.uncaughtExceptionHandler = (err: Error) => {
-            this.log.error(`Uncaught exception: ${err.message}`);
-        };
-        process.on('unhandledRejection', this.unhandledRejectionHandler);
-        process.on('uncaughtException', this.uncaughtExceptionHandler);
+        // fire-and-forget paths. Module-Level-Flag — siehe Kommentar oben.
+        if (!processHandlersInstalled) {
+            installedUnhandledHandler = (reason: unknown): void => {
+                console.error(
+                    `[hassemu] Unhandled rejection: ${reason instanceof Error ? reason.message : String(reason)}`,
+                );
+            };
+            installedUncaughtHandler = (err: Error): void => {
+                console.error(`[hassemu] Uncaught exception: ${err.message}`);
+            };
+            process.on('unhandledRejection', installedUnhandledHandler);
+            process.on('uncaughtException', installedUncaughtHandler);
+            processHandlersInstalled = true;
+        }
     }
 
     private async onReady(): Promise<void> {
@@ -111,21 +123,39 @@ class HassEmu extends utils.Adapter {
             await this.webServer.start();
         } catch (err) {
             this.log.error(`Web server failed to start: ${String(err)}`);
+            // v1.10.0 (B4): nicht stumm zurückkehren — der Adapter wäre sonst
+            // zombie (info.connection=false, kein Server, keine Subscriptions,
+            // kein Restart-Signal an js-controller). terminate() signalisiert
+            // explizit Failure mit code 11 → js-controller restartet nach
+            // Backoff. Bei EADDRINUSE (Port belegt) ist das die einzig sinnvolle
+            // Reaktion: warten + retry, statt unsichtbar idle zu sitzen.
+            this.terminate?.(11) ?? process.exit(11);
             return;
         }
 
+        let mdnsActive = false;
         if (this.config.mdnsEnabled) {
             this.mdnsService = new MDNSService(this, this.config, instanceUuid);
             this.mdnsService.start();
+            // v1.10.0 (H1): mdns.start() catched intern und setzt active=false
+            // bei Fehler — vorher wurde info.connection=true unabhängig gesetzt
+            // und der User hatte den Eindruck Discovery funktioniert. Jetzt
+            // führen wir die Information sichtbar im Log + im Suffix der
+            // running-Meldung.
+            mdnsActive = this.mdnsService.isActive();
+            if (!mdnsActive) {
+                this.log.warn(
+                    'mDNS broadcast failed — clients must enter the URL manually. Auth/connection still works.',
+                );
+            }
         } else {
             this.log.debug('mDNS disabled — clients must enter the URL manually.');
         }
 
         await this.setState('info.connection', { val: true, ack: true });
         const bindAddr = this.config.bindAddress || '0.0.0.0';
-        this.log.info(
-            `HA emulation running on ${bindAddr}:${this.config.port}${this.config.mdnsEnabled ? ', mDNS active' : ''}`,
-        );
+        const mdnsSuffix = this.config.mdnsEnabled ? (mdnsActive ? ', mDNS active' : ', mDNS FAILED') : '';
+        this.log.info(`HA emulation running on ${bindAddr}:${this.config.port}${mdnsSuffix}`);
     }
 
     /**
@@ -521,6 +551,16 @@ class HassEmu extends utils.Adapter {
 
     private onUnload(callback: () => void): void {
         try {
+            // v1.10.0 (H2): subscriptions explizit lösen bevor Refs nullen.
+            // js-controller cleant das normalerweise — aber im compact-mode mit
+            // hot-remove + re-add kann Residual entstehen, das dann auf eine
+            // bereits genullte Adapter-Instance feuert. Sync-call (void) weil
+            // onUnload synchron sein MUSS (sonst SIGKILL).
+            void this.unsubscribeStatesAsync('clients.*');
+            void this.unsubscribeStatesAsync('global.*');
+            void this.unsubscribeStatesAsync('info.refresh_urls');
+            void this.unsubscribeForeignObjectsAsync('system.adapter.*');
+
             this.urlDiscovery?.cancelRefresh();
             this.urlDiscovery = null;
 
@@ -537,15 +577,10 @@ class HassEmu extends utils.Adapter {
             this.registry = null;
             this.globalConfig = null;
 
-            // Detach process-level last-line-of-defence handlers
-            if (this.unhandledRejectionHandler) {
-                process.off('unhandledRejection', this.unhandledRejectionHandler);
-                this.unhandledRejectionHandler = null;
-            }
-            if (this.uncaughtExceptionHandler) {
-                process.off('uncaughtException', this.uncaughtExceptionHandler);
-                this.uncaughtExceptionHandler = null;
-            }
+            // Process-level last-line-of-defence handlers werden NICHT detached:
+            // im compact-mode können andere hassemu-Instances noch laufen und
+            // brauchen die Handler weiterhin. Wenn der Prozess am Ende ist, räumt
+            // Node die Listeners eh auf. (B3 v1.10.0)
 
             void this.setState('info.connection', { val: false, ack: true });
         } catch (error) {
