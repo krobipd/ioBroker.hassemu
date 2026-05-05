@@ -155,7 +155,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.23.0 (2026-05-05)
 
 - **Interne Aufräumung**: `parseModeWrite`-Helper in `coerce.ts` — beide `handleModeWrite`-Handler (`client-registry` + `global-config`) delegieren jetzt an einen Validator statt ~80% der Logik zu duplizieren.
 
@@ -175,12 +175,6 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ### 1.19.1 (2026-05-05)
 
 - **Test-Coverage**: 7 neue Unit-Tests für v1.19.0-Features — `seedLastSeen`-Pfad und Per-IP-Burst-Erkennung (Schwelle, Cooldown, per-IP-unabhängig, FIFO-Cap).
-
-### 1.19.0 (2026-05-05)
-
-- **Burst-Erkennung für broken Cookies**: erzeugt ein Display mehr als 3 neue Clients innerhalb einer Stunde (= der Cookie wird nicht persistiert), kommt einmaliger `warn`-Hinweis mit Diagnose-Pfad.
-- **README**: Hinweis dass nur eine hassemu-Instance pro Host laufen kann (Port 8123 fix).
-- **`lastSeen`-Update-Pfad konsolidiert**: GC und Throttle nutzen jetzt denselben `registry.seedLastSeen()`-Helper.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 

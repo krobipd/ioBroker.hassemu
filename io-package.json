@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.22.0",
+    "version": "1.23.0",
     "news": {
-      "NEXT": {
+      "1.23.0": {
         "en": "Internal cleanup: parseModeWrite helper in coerce.ts — both handleModeWrite handlers (client-registry + global-config) delegate to one validator instead of duplicating ~80% of the logic.",
         "de": "Interne Aufräumung: parseModeWrite-Helper in coerce.ts — beide handleModeWrite-Handler (client-registry + global-config) delegieren an einen Validator statt ~80% der Logik zu duplizieren.",
         "ru": "Внутренняя уборка: parseModeWrite helper в coerce.ts — оба handleModeWrite-handler делегируют на единый validator вместо дублирования ~80% логики.",
@@ -93,19 +93,6 @@
         "pl": "Logging hygiene: 'Invalid credentials' na debug po 5 lockout-failures (warn-floods sie zatrzymuja). Plus: bledy server-stop nie logowane dwa razy, mode-rejection na UI-echo to debug.",
         "uk": "Logging hygiene: 'Invalid credentials' на debug після 5 lockout-failures (warn-floods зупиняються). Plus: server-stop errors не логуються двічі, mode-rejection на UI-echo — debug.",
         "zh-cn": "日志清理：5 次锁定失败后 'Invalid credentials' 降为 debug（warn 洪水停止）。另：服务器停止错误不再重复记录，UI 回响的 mode-rejection 改为 debug。"
-      },
-      "1.17.0": {
-        "en": "Security: pendingByIp uses IP+UA-hash bucket — NAT-co-located displays no longer share cookie/token. discovery_info uses bind-address. VIS discovery iterates all web.* instances.",
-        "de": "Sicherheit: pendingByIp nutzt IP+UA-Hash-Bucket — NAT-co-located Displays teilen kein Cookie/Token mehr. discovery_info nutzt bind-address. VIS-Discovery iteriert alle web.*-Instances.",
-        "ru": "Безопасность: pendingByIp использует IP+UA-hash bucket — NAT-co-located displays не делят cookie/token. discovery_info использует bind-address. VIS discovery итерирует все web.*.",
-        "pt": "Seguranca: pendingByIp usa bucket IP+UA-hash — displays NAT-co-located nao compartilham cookie/token. discovery_info usa bind-address. VIS discovery itera todas web.*.",
-        "nl": "Beveiliging: pendingByIp gebruikt IP+UA-hash bucket — twee displays achter NAT delen geen cookie/token. discovery_info gebruikt bind-address. Plus: VIS discovery itereert alle web.* instances.",
-        "fr": "Securite : pendingByIp utilise bucket IP+UA-hash — 2 displays NAT ne partagent plus cookie/token. discovery_info utilise bind-address. Plus : VIS discovery itere toutes web.*.",
-        "it": "Sicurezza: pendingByIp usa bucket IP+UA-hash — due display dietro NAT non condividono cookie/token. discovery_info usa bind-address. Plus: VIS discovery itera tutte le istanze web.*.",
-        "es": "Seguridad: pendingByIp usa bucket IP+UA-hash — dos displays detras de NAT no comparten cookie/token. discovery_info usa bind-address. Plus: VIS discovery itera todas las instancias web.*.",
-        "pl": "Bezpieczenstwo: pendingByIp uzywa bucket IP+UA-hash — dwa displays za NAT nie wspoldzielca cookie/token. discovery_info uzywa bind-address. Plus: VIS discovery iteruje wszystkie web.* instances.",
-        "uk": "Безпека: pendingByIp використовує bucket IP+UA-hash — два displays за NAT не ділять cookie/token. discovery_info використовує bind-address. Plus: VIS discovery ітерує всі web.* instances.",
-        "zh-cn": "安全：pendingByIp 改用 IP+UA-hash 桶 — NAT 后的两个显示器不再共享 cookie/token。discovery_info 使用绑定地址（而非客户端可控的 Host 头）。另：VIS 发现遍历所有 web.* 实例（之前仅 web.0）。"
       }
     },
     "titleLang": {

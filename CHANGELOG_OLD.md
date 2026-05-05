@@ -1,4 +1,10 @@
 # Older Changes
+## 1.19.0 (2026-05-05)
+
+- **Burst-Erkennung für broken Cookies**: erzeugt ein Display mehr als 3 neue Clients innerhalb einer Stunde (= der Cookie wird nicht persistiert), kommt einmaliger `warn`-Hinweis mit Diagnose-Pfad.
+- **README**: Hinweis dass nur eine hassemu-Instance pro Host laufen kann (Port 8123 fix).
+- **`lastSeen`-Update-Pfad konsolidiert**: GC und Throttle nutzen jetzt denselben `registry.seedLastSeen()`-Helper.
+
 ## 1.18.0 (2026-05-05)
 
 - **Logging-Hygiene Login-Floods**: `Invalid credentials` kommt pro IP nur bis zur Lockout-Schwelle als `warn` ins Log, danach auf `debug`. Brute-Force füllt das Log nicht mehr.
