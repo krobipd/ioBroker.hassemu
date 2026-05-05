@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.15.0",
+    "version": "1.16.0",
     "news": {
-      "NEXT": {
+      "1.16.0": {
         "en": "Security: credentials compare via SHA-256 digest (no length-leak). Plus: loopback IPs hidden from landing page, mDNS-disabled has config hint.",
         "de": "Sicherheit: Credentials-Vergleich via SHA-256-Digest (kein Längen-Leak). Plus: Loopback-IPs nicht in Landing-Page, mDNS-disabled mit Config-Hinweis.",
         "ru": "Безопасность: credentials compare via SHA-256 digest (no length-leak). Plus: loopback IPs скрыты на landing page, mDNS-disabled с config hint.",
@@ -93,19 +93,6 @@
         "pl": "Server-start failure (np. port zajety) terminuje teraz z jawnym failure code — js-controller restartuje po backoff zamiast zombie. Plus: mDNS broadcast failure widoczne jako warn.",
         "uk": "Server-start failure (напр. порт зайнятий) тепер terminate з явним failure code — js-controller restart після backoff, замість zombie. Plus: mDNS broadcast failure видно як warn.",
         "zh-cn": "服务器启动失败（如端口占用）现在以显式失败代码终止 — js-controller 在 backoff 后重启，而不是 zombie。另：mDNS 广播失败在 warn 级别可见。"
-      },
-      "1.9.1": {
-        "en": "Internal cleanup: 5xx-error cooldown map now uses the same FIFO-eviction helper as the other capped maps (was inconsistent inline FIFO in v1.9.0). Plus 5 new tests for the cooldown logic.",
-        "de": "Interne Aufräumung: 5xx-Error-Cooldown-Map nutzt jetzt denselben FIFO-Helper wie die anderen gedeckelten Maps (war in v1.9.0 inline-inkonsistent). Plus 5 neue Tests für die Cooldown-Logik.",
-        "ru": "Внутренняя уборка: 5xx-cooldown map теперь использует тот же FIFO-helper что и другие capped maps (в v1.9.0 inline). Plus 5 новых тестов для cooldown.",
-        "pt": "Limpeza interna: 5xx-cooldown map usa o mesmo FIFO-helper que outros maps capped (era inline em v1.9.0). Plus 5 novos testes para cooldown.",
-        "nl": "Interne opruiming: 5xx-cooldown map gebruikt nu dezelfde FIFO-helper als andere capped maps (was inline in v1.9.0). Plus 5 nieuwe tests voor cooldown.",
-        "fr": "Nettoyage interne : 5xx-cooldown map utilise maintenant le meme FIFO-helper que les autres maps cappees (etait inline en v1.9.0). Plus 5 nouveaux tests pour cooldown.",
-        "it": "Pulizia interna: 5xx-cooldown map ora usa lo stesso FIFO-helper degli altri map capped (era inline in v1.9.0). Plus 5 nuovi test per cooldown.",
-        "es": "Limpieza interna: 5xx-cooldown map ahora usa el mismo FIFO-helper que otros maps capped (era inline en v1.9.0). Plus 5 nuevos tests para cooldown.",
-        "pl": "Wewnetrzne sprzatanie: 5xx-cooldown map uzywa tego samego FIFO-helpera co inne capped maps (bylo inline w v1.9.0). Plus 5 nowych testow dla cooldown.",
-        "uk": "Внутрішнє прибирання: 5xx-cooldown map використовує той самий FIFO-helper що й інші capped maps (було inline у v1.9.0). Plus 5 нових тестів для cooldown.",
-        "zh-cn": "内部清理：5xx-cooldown map 现使用与其他 capped maps 相同的 FIFO 辅助函数（v1.9.0 中为内联实现）。另：cooldown 逻辑新增 5 个测试。"
       }
     },
     "titleLang": {
