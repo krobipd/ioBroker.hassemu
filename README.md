@@ -35,7 +35,7 @@ ioBroker adapter that emulates a [Home Assistant](https://www.home-assistant.io)
 
 - **Node.js >= 22**
 - **ioBroker js-controller >= 7.0.7**
-- **ioBroker Admin >= 7.7.22**
+- **ioBroker Admin >= 7.8.23**
 - **ioBroker web >= 8.0.0**
 
 ---
@@ -153,7 +153,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.18.0 (2026-05-05)
 
 - **Logging-Hygiene Login-Floods**: `Invalid credentials` kommt pro IP nur bis zur Lockout-Schwelle als `warn` ins Log, danach auf `debug`. Brute-Force füllt das Log nicht mehr.
 - **Stop-Error nicht mehr doppelt**: bei intended shutdown loggt `webServer.stop()` selbst auf `debug`, der Caller in `onUnload` cleant silent. Vorher zwei Einträge im Log.
@@ -184,12 +184,6 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 - **Defensives Cleanup bei `onReady`-Re-Run**: webServer/mDNS/urlDiscovery werden vorher sauber gestoppt falls js-controller `onReady` ohne `unload` zweimal triggert.
 - **Test-Injects schneller**: `inject` einmalig im Constructor gebunden statt pro Property-Access — weniger GC-Druck in Test-Loops.
 - **Cleanup-Timer defensive**: bei doppeltem `start()` (Refactor-Edge) wird der vorherige Timer gecleared statt zu leaken.
-
-### 1.13.0 (2026-05-05)
-
-- **URL-Dropdown-Refresh schmaler**: feuert nur noch bei Adapter-Add/Remove oder Änderungen an `admin`/`web`/`vis`/`vis-2` — vorher bei jedem `system.adapter.*`-Object-Change im ganzen Host.
-- **Subscriptions nach Server-Start**: vermeidet Race-Window in dem ein State-Write zwischen Subscribe und Server-Listen einen Handler auf nicht-laufenden Server feuert.
-- **Lifecycle-Härtung**: `info.connection=false` in `onUnload` zuerst (nicht nach Refs-Null), `setNewClientModeProvider` vor `collect()` (statt danach), klarer Code-Pfad bei WebServer-Start-Fail.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 

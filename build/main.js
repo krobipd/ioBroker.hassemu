@@ -517,7 +517,8 @@ class HassEmu extends utils.Adapter {
         this.mdnsService = null;
       }
       if (this.webServer) {
-        this.webServer.stop().catch((err) => this.log.error(`Server stop error: ${err.message}`));
+        this.webServer.stop().catch(() => {
+        });
         this.webServer = null;
       }
       this.registry = null;

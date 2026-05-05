@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.17.0",
+    "version": "1.18.0",
     "news": {
-      "NEXT": {
+      "1.18.0": {
         "en": "Logging hygiene: 'Invalid credentials' downgraded to debug after 5 lockout-failures (warn-floods stop). Plus: server-stop errors no longer logged twice, mode-rejection on UI-echo is debug not warn.",
         "de": "Logging-Hygiene: 'Invalid credentials' nach 5 Lockout-Fails auf debug. Plus: Stop-Fehler nicht mehr doppelt geloggt, mode-Rejection bei UI-Echo ist debug.",
         "ru": "Logging hygiene: 'Invalid credentials' понижается до debug после 5 lockout-failures (warn-floods прекращаются). Plus: server-stop errors не логируются дважды, mode-rejection на UI-echo — debug.",
@@ -93,19 +93,6 @@
         "pl": "Bezpieczenstwo: brute-force lockout nie do obejscia przez IPv6-mapped IPv4 lub null-IP — wspolny bucket. Plus: legacy URL migration waliduje via coerceSafeUrl.",
         "uk": "Безпека: brute-force lockout більше не обходиться через IPv6-mapped IPv4 або null-IP — спільний bucket. Plus: legacy URL migration валідує через coerceSafeUrl.",
         "zh-cn": "安全：暴力锁定不再可经由 IPv6-mapped IPv4 (`::ffff:1.2.3.4`) 或 null-IP 绕过 — 共享桶。另：旧版 URL 迁移经 coerceSafeUrl 校验。"
-      },
-      "1.11.0": {
-        "en": "Security: refresh-token endpoint now has same brute-force lockout as login (5 invalid grants → 15min IP lock). Plus stale-client GC also removes idle token-clients (>30 days).",
-        "de": "Sicherheit: Refresh-Token-Endpoint hat jetzt denselben Brute-Force-Lockout wie Login (5 ungültige Grants → 15min IP-Sperre). Plus: Stale-Client-GC entfernt jetzt auch idle Token-Clients (>30 Tage).",
-        "ru": "Безопасность: refresh-token endpoint теперь имеет такой же brute-force lockout как login (5 неверных grants → 15min IP lock). Plus: stale-client GC удаляет idle token-clients (>30 дней).",
-        "pt": "Seguranca: refresh-token endpoint tem agora o mesmo lockout brute-force do login (5 grants invalidos → 15min IP lock). Plus: stale-client GC remove idle token-clients (>30 dias).",
-        "nl": "Beveiliging: refresh-token endpoint heeft nu dezelfde brute-force lockout als login (5 ongeldige grants → 15min IP lock). Plus: stale-client GC ruimt idle token-clients op (>30 dagen).",
-        "fr": "Securite : refresh-token endpoint a maintenant le meme lockout brute-force que login (5 grants invalides → 15min IP lock). Plus : stale-client GC supprime les idle token-clients (>30 jours).",
-        "it": "Sicurezza: refresh-token endpoint ha ora lo stesso lockout brute-force del login (5 grant invalidi → 15min IP lock). Plus: stale-client GC rimuove idle token-client (>30 giorni).",
-        "es": "Seguridad: refresh-token endpoint tiene ahora el mismo lockout brute-force que login (5 grants invalidos → 15min IP lock). Plus: stale-client GC elimina idle token-clients (>30 dias).",
-        "pl": "Bezpieczenstwo: refresh-token endpoint ma teraz ten sam brute-force lockout co login (5 nieprawidlowych grantow → 15min IP lock). Plus: stale-client GC usuwa idle token-clients (>30 dni).",
-        "uk": "Безпека: refresh-token endpoint тепер має той самий brute-force lockout що й login (5 невірних grants → 15min IP lock). Plus: stale-client GC видаляє idle token-clients (>30 днів).",
-        "zh-cn": "安全：refresh-token 端点现拥有与登录相同的暴力破解锁定（5 次无效 grant → 15 分钟 IP 锁）。另：stale-client GC 也清理 idle token-client (>30 天)。"
       }
     },
     "titleLang": {
@@ -174,7 +161,7 @@
     ],
     "globalDependencies": [
       {
-        "admin": ">=7.7.22"
+        "admin": ">=7.8.23"
       },
       {
         "web": ">=8.0.0"
