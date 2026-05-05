@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.12.0",
+    "version": "1.13.0",
     "news": {
-      "NEXT": {
+      "1.13.0": {
         "en": "URL-dropdown refresh now only triggers on adapter add/remove or admin/web/vis-changes (was: every system.adapter.*-change). Subscriptions wired after server-start to avoid race. Plus: smaller lifecycle hardening.",
         "de": "URL-Dropdown-Refresh feuert nur noch bei Adapter-Add/Remove oder admin/web/vis-Änderungen (vorher: jeder system.adapter.*-Change). Subscriptions erst nach Server-Start. Plus: kleinere Lifecycle-Härtung.",
         "ru": "URL-dropdown refresh теперь срабатывает только при adapter add/remove или admin/web/vis-changes (раньше: каждый system.adapter.*). Subscriptions после server-start. Plus: lifecycle hardening.",
@@ -93,19 +93,6 @@
         "pl": "Master-switch szybszy: bulk mode change zapisuje rownolegle (wczesniej pojedynczo). URL-dropdown przezywa krotkie zacinki broker. Reverse-DNS lookup ma timeout 5s.",
         "uk": "Master-switch швидший: bulk mode change пише паралельно (раніше N послідовних broker-викликів). URL-dropdown переживає короткі затинки broker. Reverse-DNS lookup має таймаут 5s.",
         "zh-cn": "Master-switch 更快：bulk 模式切换并行写入（之前为 N 次串行 broker 调用）。URL 下拉可挺过 broker 短暂停顿。反向 DNS 查询设 5 秒超时。"
-      },
-      "1.8.0": {
-        "en": "Code-cleanup: cookie TTL, map caps, mode-sentinels and stale-TTL now in `lib/constants.ts`. Plus: token-endpoint errors downgraded from warn to debug — scanners no longer flood the log.",
-        "de": "Code-Aufräumen: Cookie-TTL, Map-Caps, Mode-Sentinels und Stale-TTL jetzt zentral in `lib/constants.ts`. Plus: Token-Endpunkt-Fehler auf debug runtergestuft — Scanner füllen das Log nicht mehr.",
-        "ru": "Cleanup кода: cookie lifetime, map caps, mode-sentinels и stale-client TTL теперь в lib/constants.ts. Plus: token-endpoint errors понижены с warn до debug.",
-        "pt": "Cleanup de codigo: cookie lifetime, map caps, mode-sentinels e stale-client TTL agora em lib/constants.ts. Plus: erros do token-endpoint reduzidos de warn para debug.",
-        "nl": "Code-opruiming: cookie lifetime, map caps, mode-sentinels en stale-client TTL nu in lib/constants.ts. Plus: token-endpoint fouten van warn naar debug.",
-        "fr": "Nettoyage de code : cookie lifetime, map caps, mode-sentinels et stale-client TTL maintenant dans lib/constants.ts. Plus : erreurs du token-endpoint passees de warn a debug.",
-        "it": "Cleanup codice: cookie lifetime, map caps, mode-sentinels e stale-client TTL ora in lib/constants.ts. Plus: errori token-endpoint da warn a debug.",
-        "es": "Limpieza de codigo: cookie lifetime, map caps, mode-sentinels y stale-client TTL ahora en lib/constants.ts. Plus: errores de token-endpoint bajados de warn a debug.",
-        "pl": "Czyszczenie kodu: cookie lifetime, map caps, mode-sentinels i stale-client TTL teraz w lib/constants.ts. Plus: bledy token-endpoint z warn do debug.",
-        "uk": "Прибирання коду: cookie lifetime, map caps, mode-sentinels та stale-client TTL тепер у lib/constants.ts. Plus: помилки token-endpoint понижено з warn до debug.",
-        "zh-cn": "代码清理：cookie 生命周期、map 上限、mode-sentinels、stale-client TTL 现已统一在 lib/constants.ts。另：token-endpoint 错误从 warn 降级到 debug — 扫描器和过期浏览器标签页不再刷屏。"
       }
     },
     "titleLang": {
