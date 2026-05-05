@@ -24,6 +24,27 @@ export const LOGIN_LOCKOUT_THRESHOLD = 5;
 /** Brute-force lockout window: how long an IP stays locked after threshold reached. */
 export const LOGIN_LOCKOUT_WINDOW_MS = 15 * 60 * 1000;
 
+/** Stale-Client-GC threshold: clients without token + lastSeen older are auto-removed. */
+export const STALE_CLIENT_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+/** Browser cookie lifetime (10 years) — clients keep their identity essentially forever. */
+export const COOKIE_MAX_AGE_S = 10 * 365 * 24 * 60 * 60;
+
+/** Hard cap on in-flight auth flow sessions. Older entries are dropped FIFO when full. */
+export const SESSIONS_CAP = 100;
+/** Hard cap on remembered refresh tokens. Older entries are dropped FIFO when full. */
+export const REFRESH_TOKENS_CAP = 200;
+/** Hard cap on tracked login-attempt entries (FIFO-eviction when full). */
+export const LOGIN_ATTEMPTS_CAP = 1000;
+
+/**
+ * Resolver-Sentinels für `client.mode` und `global.mode`. `'global'` heißt:
+ * delegate an `global.mode`. `'manual'` heißt: nutze die zugehörige
+ * `manualUrl`-State. Jeder andere String wird als URL interpretiert.
+ */
+export const MODE_GLOBAL = 'global';
+export const MODE_MANUAL = 'manual';
+
 /** Login form schema for Home Assistant auth flow */
 export const LOGIN_SCHEMA = [
     { name: 'username', required: true, type: 'string' },

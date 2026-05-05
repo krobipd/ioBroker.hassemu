@@ -2,14 +2,12 @@ import crypto from 'node:crypto';
 import * as utils from '@iobroker/adapter-core';
 import { ClientRegistry, parseClientStateId } from './lib/client-registry';
 import { coerceSafeUrl } from './lib/coerce';
-import { GlobalConfig, MODE_GLOBAL, MODE_MANUAL, parseGlobalStateId } from './lib/global-config';
+import { MODE_GLOBAL, MODE_MANUAL, STALE_CLIENT_TTL_MS } from './lib/constants';
+import { GlobalConfig, parseGlobalStateId } from './lib/global-config';
 import { MDNSService } from './lib/mdns';
 import { UrlDiscovery } from './lib/url-discovery';
 import { WebServer } from './lib/webserver';
 import type { AdapterConfig } from './lib/types';
-
-/** Stale-Client-GC threshold: clients without token + lastSeen older are auto-removed. */
-const STALE_CLIENT_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 class HassEmu extends utils.Adapter {
     private mdnsService: MDNSService | null = null;

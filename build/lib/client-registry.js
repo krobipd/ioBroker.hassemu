@@ -34,7 +34,7 @@ __export(client_registry_exports, {
 module.exports = __toCommonJS(client_registry_exports);
 var import_node_crypto = __toESM(require("node:crypto"));
 var import_coerce = require("./coerce");
-var import_global_config = require("./global-config");
+var import_constants = require("./constants");
 var import_network = require("./network");
 const CLIENTS_PREFIX = "clients.";
 class ClientRegistry {
@@ -43,7 +43,7 @@ class ClientRegistry {
   byId = /* @__PURE__ */ new Map();
   byToken = /* @__PURE__ */ new Map();
   currentUrlStates = {};
-  newClientModeProvider = () => import_global_config.MODE_GLOBAL;
+  newClientModeProvider = () => import_constants.MODE_GLOBAL;
   /**
    * In-flight client creations keyed by remote IP. Keeps parallel cookieless
    * requests from the same display (typical on first connect: HA clients fire
@@ -219,7 +219,7 @@ class ClientRegistry {
     if (!record) {
       return;
     }
-    if (rawValue === 0 || rawValue === "0" || rawValue === "") {
+    if ((0, import_coerce.isNoChoice)(rawValue)) {
       record.mode = "";
       await this.adapter.setStateAsync(`clients.${id}.mode`, { val: 0, ack: true });
       return;
@@ -229,8 +229,8 @@ class ClientRegistry {
       await this.adapter.setStateAsync(`clients.${id}.mode`, { val: record.mode || 0, ack: true });
       return;
     }
-    if (rawValue === import_global_config.MODE_GLOBAL || rawValue === import_global_config.MODE_MANUAL) {
-      if (rawValue === import_global_config.MODE_MANUAL && !record.manualUrl) {
+    if (rawValue === import_constants.MODE_GLOBAL || rawValue === import_constants.MODE_MANUAL) {
+      if (rawValue === import_constants.MODE_MANUAL && !record.manualUrl) {
         this.adapter.log.warn(
           `client-registry: ${id} mode set to 'manual' but manualUrl is empty \u2014 fill clients.${id}.manualUrl to redirect`
         );
@@ -269,7 +269,7 @@ class ClientRegistry {
     }
     record.manualUrl = result.safe;
     await this.adapter.setStateAsync(`clients.${id}.manualUrl`, { val: (_b = result.safe) != null ? _b : "", ack: true });
-    if (record.mode === import_global_config.MODE_MANUAL && !result.safe) {
+    if (record.mode === import_constants.MODE_MANUAL && !result.safe) {
       this.adapter.log.warn(
         `client-registry: ${id} manualUrl cleared while mode='manual' \u2014 display will hit the setup page`
       );
@@ -384,8 +384,8 @@ class ClientRegistry {
   buildModeStates() {
     return {
       0: "---",
-      [import_global_config.MODE_GLOBAL]: "Global URL",
-      [import_global_config.MODE_MANUAL]: "Manual URL",
+      [import_constants.MODE_GLOBAL]: "Global URL",
+      [import_constants.MODE_MANUAL]: "Manual URL",
       ...this.currentUrlStates
     };
   }

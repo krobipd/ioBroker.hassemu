@@ -11,7 +11,8 @@
  * The resolver delegates: a client whose `mode === 'global'` ends up here.
  */
 
-import { coerceBoolean, coerceSafeUrl, parseManualUrlWrite } from './coerce';
+import { coerceBoolean, coerceSafeUrl, isNoChoice, parseManualUrlWrite } from './coerce';
+import { MODE_GLOBAL, MODE_MANUAL } from './constants';
 import type { AdapterInterface, ClientRecord, UrlStates } from './types';
 
 /** Extended adapter interface — needs state I/O and object extend. */
@@ -21,10 +22,8 @@ export type GlobalConfigAdapter = AdapterInterface &
 /** Kinds of state IDs the GlobalConfig reacts to. */
 export type GlobalStateKind = 'mode' | 'manualUrl' | 'enabled';
 
-/** Sentinel value: client delegates to global. Not legal as `global.mode`. */
-export const MODE_GLOBAL = 'global';
-/** Sentinel value: use the matching manualUrl datapoint. */
-export const MODE_MANUAL = 'manual';
+// Re-export für Backwards-Kompatibilität — Tests importieren direkt von hier.
+export { MODE_GLOBAL, MODE_MANUAL } from './constants';
 
 /** Holds the runtime state of the global redirect override. */
 export class GlobalConfig {
@@ -74,8 +73,7 @@ export class GlobalConfig {
 
     private resolveClientMode(record: ClientRecord): string | null {
         const m: unknown = record.mode;
-        // No-choice markers: numeric 0, string '0', empty string — all → null
-        if (m === 0 || m === '0' || m === '') {
+        if (isNoChoice(m)) {
             return null;
         }
         if (m === MODE_GLOBAL) {
@@ -88,8 +86,7 @@ export class GlobalConfig {
     }
 
     private resolveGlobalMode(): string | null {
-        const m: unknown = this.mode;
-        if (m === 0 || m === '0' || m === '') {
+        if (isNoChoice(this.mode)) {
             return null;
         }
         if (this.mode === MODE_MANUAL) {
@@ -111,8 +108,7 @@ export class GlobalConfig {
      * @param rawValue Value written to the state.
      */
     async handleModeWrite(rawValue: unknown): Promise<void> {
-        // No-choice markers: numeric 0, string '0', empty string — all clear the choice
-        if (rawValue === 0 || rawValue === '0' || rawValue === '') {
+        if (isNoChoice(rawValue)) {
             this.mode = '';
             await this.adapter.setStateAsync('global.mode', { val: 0, ack: true });
             return;

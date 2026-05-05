@@ -7,6 +7,21 @@
  */
 
 /**
+ * „No-choice"-Marker: User hat den Default-Eintrag `0='---'` (oder eine seiner
+ * Repräsentationen) gewählt. Behandelt sowohl die numerische `0` (Admin-UI
+ * mit `type: mixed` Dropdowns), die String-Variante `'0'` und den leeren String.
+ *
+ * Wird in beiden Mode-Handlers (client-registry, global-config) gleich behandelt
+ * — vor v1.8.0 war die Logik 4× dupliziert. Jeder andere Wert ist ein „echter"
+ * User-Input und muss validiert werden.
+ *
+ * @param value Untrusted input vom Mode-State (numeric 0 / string '0' / '' / URL / sentinel).
+ */
+export function isNoChoice(value: unknown): boolean {
+    return value === 0 || value === '0' || value === '';
+}
+
+/**
  * Coerce to a finite number, or null. Rejects NaN, Infinity, non-numeric strings.
  *
  * @param value Untrusted input.

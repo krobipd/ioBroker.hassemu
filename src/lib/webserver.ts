@@ -11,23 +11,16 @@ import {
     OAUTH_ACCESS_TOKEN_TTL_S,
     LOGIN_LOCKOUT_THRESHOLD,
     LOGIN_LOCKOUT_WINDOW_MS,
+    SESSIONS_CAP,
+    REFRESH_TOKENS_CAP,
+    LOGIN_ATTEMPTS_CAP,
+    COOKIE_MAX_AGE_S,
 } from './constants';
 import { coerceString, coerceUuid } from './coerce';
 import type { ClientRegistry } from './client-registry';
 import type { GlobalConfig } from './global-config';
 import { renderLandingPage } from './landing-page';
 import type { AdapterConfig, AdapterInterface, ClientRecord, SessionData } from './types';
-
-/** Hard cap on in-flight auth flow sessions. Older entries are dropped FIFO when full. */
-const SESSIONS_CAP = 100;
-/** Hard cap on remembered refresh tokens. Older entries are dropped FIFO when full. */
-const REFRESH_TOKENS_CAP = 200;
-/**
- * Hard cap on tracked login-attempt entries. Internet-exposed instances see
- * carrier-grade-NAT IPs accumulate over time — without a cap, the map leaks.
- * Older entries are dropped FIFO when full.
- */
-const LOGIN_ATTEMPTS_CAP = 1000;
 
 /**
  * Constant-time string comparison for credential checks. Returns false for length mismatch.
@@ -96,8 +89,6 @@ function renderRedirectWrapper(target: string): string {
 
 /** Browser cookie name. Client identity lives here — auto-sent on every page navigation. */
 export const CLIENT_COOKIE = 'hassemu_client';
-/** Cookie lifetime (10 years). Clients stay identified essentially forever unless removed. */
-const COOKIE_MAX_AGE_S = 10 * 365 * 24 * 60 * 60;
 
 /**
  * Fastify web server emulating the HA REST API.
@@ -568,7 +559,9 @@ export class WebServer {
                 const flowId = req.params.flowId;
                 const session = this.sessions.get(flowId);
                 if (!session) {
-                    this.adapter.log.warn(`Unknown flow_id: ${flowId}`);
+                    // v1.8.0: nach Session-TTL (10 min) feuert das bei jedem
+                    // legit returning user — nicht actionable. debug, nicht warn.
+                    this.adapter.log.debug(`Unknown flow_id: ${flowId}`);
                     reply.status(400);
                     return { type: 'abort', flow_id: flowId, reason: 'unknown_flow' };
                 }
@@ -646,7 +639,10 @@ export class WebServer {
                     const incoming = typeof refresh_token === 'string' ? refresh_token : '';
                     const ownerId = incoming ? this.refreshTokens.get(incoming) : undefined;
                     if (!ownerId) {
-                        this.adapter.log.warn('Refresh token rejected — unknown or missing');
+                        // v1.8.0: internet-exposed Instance sieht Scanner hammern
+                        // /auth/token. Erste Occurrence pro Restart bleibt warn,
+                        // alle weiteren auf debug. Lockout greift sowieso.
+                        this.adapter.log.debug('Refresh token rejected — unknown or missing');
                         reply.status(400);
                         return { error: 'invalid_grant', error_description: 'Invalid refresh token' };
                     }
@@ -659,7 +655,9 @@ export class WebServer {
                     };
                 }
 
-                this.adapter.log.warn(`Token exchange failed: grant_type=${String(grant_type)}`);
+                // v1.8.0: „wrong grant_type" ist ein Client-Format-Fehler,
+                // nicht ein Server-Concern — debug.
+                this.adapter.log.debug(`Token exchange failed: grant_type=${String(grant_type)}`);
                 reply.status(400);
                 return { error: 'invalid_request', error_description: 'Invalid or expired code' };
             },

@@ -19,14 +19,14 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var global_config_exports = {};
 __export(global_config_exports, {
   GlobalConfig: () => GlobalConfig,
-  MODE_GLOBAL: () => MODE_GLOBAL,
-  MODE_MANUAL: () => MODE_MANUAL,
+  MODE_GLOBAL: () => import_constants2.MODE_GLOBAL,
+  MODE_MANUAL: () => import_constants2.MODE_MANUAL,
   parseGlobalStateId: () => parseGlobalStateId
 });
 module.exports = __toCommonJS(global_config_exports);
 var import_coerce = require("./coerce");
-const MODE_GLOBAL = "global";
-const MODE_MANUAL = "manual";
+var import_constants = require("./constants");
+var import_constants2 = require("./constants");
 class GlobalConfig {
   adapter;
   mode = "";
@@ -66,23 +66,22 @@ class GlobalConfig {
   resolveClientMode(record) {
     var _a;
     const m = record.mode;
-    if (m === 0 || m === "0" || m === "") {
+    if ((0, import_coerce.isNoChoice)(m)) {
       return null;
     }
-    if (m === MODE_GLOBAL) {
+    if (m === import_constants.MODE_GLOBAL) {
       return this.resolveGlobalMode();
     }
-    if (m === MODE_MANUAL) {
+    if (m === import_constants.MODE_MANUAL) {
       return (_a = record.manualUrl) != null ? _a : null;
     }
     return (0, import_coerce.coerceSafeUrl)(m);
   }
   resolveGlobalMode() {
-    const m = this.mode;
-    if (m === 0 || m === "0" || m === "") {
+    if ((0, import_coerce.isNoChoice)(this.mode)) {
       return null;
     }
-    if (this.mode === MODE_MANUAL) {
+    if (this.mode === import_constants.MODE_MANUAL) {
       return this.manualUrl;
     }
     return (0, import_coerce.coerceSafeUrl)(this.mode);
@@ -99,7 +98,7 @@ class GlobalConfig {
    * @param rawValue Value written to the state.
    */
   async handleModeWrite(rawValue) {
-    if (rawValue === 0 || rawValue === "0" || rawValue === "") {
+    if ((0, import_coerce.isNoChoice)(rawValue)) {
       this.mode = "";
       await this.adapter.setStateAsync("global.mode", { val: 0, ack: true });
       return;
@@ -109,19 +108,19 @@ class GlobalConfig {
       await this.adapter.setStateAsync("global.mode", { val: this.mode || 0, ack: true });
       return;
     }
-    if (rawValue === MODE_GLOBAL) {
+    if (rawValue === import_constants.MODE_GLOBAL) {
       this.adapter.log.warn("global-config: 'global' is not allowed as global.mode (self-referential)");
       await this.adapter.setStateAsync("global.mode", { val: this.mode, ack: true });
       return;
     }
-    if (rawValue === MODE_MANUAL) {
+    if (rawValue === import_constants.MODE_MANUAL) {
       if (!this.manualUrl) {
         this.adapter.log.warn(
           "global-config: global.mode set to 'manual' but global.manualUrl is empty \u2014 fill it to redirect"
         );
       }
-      this.mode = MODE_MANUAL;
-      await this.adapter.setStateAsync("global.mode", { val: MODE_MANUAL, ack: true });
+      this.mode = import_constants.MODE_MANUAL;
+      await this.adapter.setStateAsync("global.mode", { val: import_constants.MODE_MANUAL, ack: true });
       return;
     }
     const safe = (0, import_coerce.coerceSafeUrl)(rawValue);
@@ -149,7 +148,7 @@ class GlobalConfig {
     }
     this.manualUrl = result.safe;
     await this.adapter.setStateAsync("global.manualUrl", { val: (_b = result.safe) != null ? _b : "", ack: true });
-    if (this.mode === MODE_MANUAL && !result.safe) {
+    if (this.mode === import_constants.MODE_MANUAL && !result.safe) {
       this.adapter.log.warn(
         "global-config: global.manualUrl cleared while global.mode='manual' \u2014 clients delegating to global will hit the setup page"
       );
@@ -174,7 +173,7 @@ class GlobalConfig {
    * @param states Discovered URL → label map.
    */
   async syncUrlDropdown(states) {
-    const merged = { 0: "---", [MODE_MANUAL]: "Manual URL", ...states };
+    const merged = { 0: "---", [import_constants.MODE_MANUAL]: "Manual URL", ...states };
     await this.adapter.extendObjectAsync("global.mode", {
       common: { states: merged }
     });
