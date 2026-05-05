@@ -147,7 +147,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.9.0 (2026-05-05)
 
 - **Weniger Log-Spam unter Attacke**: 5xx-Fehler werden pro Message nur beim ersten Auftritt als `warn` geloggt (60s-Cooldown), Wiederholungen fallen auf `debug`.
 - **Adapter-Start ~4× schneller bei vielen Displays**: `restore()` liest die vier Datenpunkte pro Client parallel statt sequenziell.
@@ -172,11 +172,6 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 
 - **VIS-2-Views** stehen jetzt als eigene Einträge im Mode-Dropdown — nicht nur das Top-Level-Projekt. Pro Projekt-Folder liest der Adapter `vis-views.json` und legt für jede View eine URL `?<projekt>/<view>` an. Bei fehlender oder kaputter Datei bleibt der Top-Level-Eintrag funktional.
 - **Display-Reload bei Redirect-Edit**: das Adapter-Root liefert kein 302 mehr, sondern eine kleine HTML-Seite mit `<iframe>` zum Ziel + 30-Sekunden-Polling auf den neuen Endpunkt `/api/redirect_check`. Wenn du die Mode-/manualUrl-Konfiguration änderst, lädt das Display von selbst neu — kein Soft-Reboot mehr nötig.
-
-### 1.6.0 (2026-05-05)
-
-- **Sicherheit**: HA-API-Endpunkte (`/api/states`, `/api/services`, `/api/events`, `/api/error_log`, `/api/config`) sind jetzt token-geschützt wenn `Auth Required` aktiv ist — vorher waren sie ohne jeden Auth-Check abrufbar (Information-Disclosure). `/api/discovery_info`, `/api/`-Heartbeat, `/health`, `/manifest.json` und der Auth-Flow bleiben offen, weil HA-Clients sie vor dem Login abfragen müssen.
-- **Stabile Server-UUID**: `info.serverUuid` Datenpunkt — die UUID, die per mDNS und in `/api/discovery_info` gemeldet wird, bleibt jetzt über Adapter-Restarts gleich. HA-Clients (Companion-App, Wall-Display) cachen die Server-Identität — vorher behandelten sie jeden Restart als „neuen Server" und erzwangen erneutes Pairing inklusive Token-Verlust.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 

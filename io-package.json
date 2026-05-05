@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.8.1",
+    "version": "1.9.0",
     "news": {
-      "NEXT": {
+      "1.9.0": {
         "en": "Less log-spam: 5xx errors at warn only on first per-message (60s cooldown). Adapter-restart ~4x faster with many displays. Minor hardening (port fields reject hex).",
         "de": "Weniger Log-Spam: 5xx-Fehler als warn nur beim ersten Auftritt pro Message (60s-Cooldown). Adapter-Restart ~4× schneller bei vielen Displays. Kleinere Härtung (Port ohne Hex).",
         "ru": "Меньше log-spam: 5xx на warn только при первом появлении (60s cooldown). Adapter-restart ~4× быстрее с множеством displays. Минор-загартування (порт без hex).",
@@ -93,19 +93,6 @@
         "pl": "Bezpieczenstwo: `/health` nie ujawnia juz flag `mdns`/`auth` bez auth. `requires_api_password` teraz odzwierciedla prawdziwe `authRequired`. Mapa brute-force lockout FIFO-cappowana, czysci nieaktualne wpisy.",
         "uk": "Безпека: `/health` більше не показує `mdns`/`auth` без авторизації. `requires_api_password` тепер відповідає реальному `authRequired`. Brute-force lockout map FIFO-обмежена і видаляє застарілі записи.",
         "zh-cn": "安全：`/health` 不再向未认证用户泄漏 `mdns`/`auth` 配置标志。`requires_api_password` 现在反映实际的 `authRequired`。Brute-force lockout map 已 FIFO 限制并清理过期条目。"
-      },
-      "1.4.1": {
-        "en": "CI fix: deploy step now uses Node 24 (Node 22 + npm@latest had a MODULE_NOT_FOUND bug, blocked v1.4.0 from reaching npm). v1.4.0 changes are bundled into this release.",
-        "de": "CI-Fix: Deploy-Schritt nutzt jetzt Node 24 (Node 22 + npm@latest hatte einen MODULE_NOT_FOUND-Bug, hinderte v1.4.0 daran, auf npm zu kommen). v1.4.0-Änderungen sind in diesem Release gebündelt.",
-        "ru": "CI fix: deploy на Node 24 (Node 22 + npm@latest был MODULE_NOT_FOUND bug, v1.4.0 не дошёл до npm). v1.4.0 изменения включены в этот релиз.",
-        "pt": "CI fix: deploy agora usa Node 24 (Node 22 + npm@latest tinha bug MODULE_NOT_FOUND, v1.4.0 nao chegou ao npm). Mudancas de v1.4.0 incluidas neste release.",
-        "nl": "CI fix: deploy stap gebruikt nu Node 24 (Node 22 + npm@latest had MODULE_NOT_FOUND bug, v1.4.0 bereikte npm niet). v1.4.0 wijzigingen zijn in deze release.",
-        "fr": "CI fix : etape deploy utilise Node 24 (Node 22 + npm@latest avait un bug MODULE_NOT_FOUND, v1.4.0 n'a pas atteint npm). Modifications v1.4.0 incluses dans cette release.",
-        "it": "CI fix: deploy ora usa Node 24 (Node 22 + npm@latest aveva bug MODULE_NOT_FOUND, v1.4.0 non e arrivato a npm). Modifiche v1.4.0 incluse in questa release.",
-        "es": "CI fix: paso deploy ahora usa Node 24 (Node 22 + npm@latest tenia bug MODULE_NOT_FOUND, v1.4.0 no llego a npm). Cambios de v1.4.0 incluidos en este release.",
-        "pl": "CI fix: deploy uzywa teraz Node 24 (Node 22 + npm@latest mial bug MODULE_NOT_FOUND, v1.4.0 nie dotarl do npm). Zmiany v1.4.0 wlaczone w tym release.",
-        "uk": "CI fix: крок deploy тепер використовує Node 24 (Node 22 + npm@latest мав bug MODULE_NOT_FOUND, v1.4.0 не дійшов до npm). Зміни v1.4.0 включені в цей реліз.",
-        "zh-cn": "CI 修复：deploy 步骤现使用 Node 24 (Node 22 + npm@latest 有 MODULE_NOT_FOUND bug，v1.4.0 未到达 npm)。v1.4.0 变更包含在此发布。"
       }
     },
     "titleLang": {

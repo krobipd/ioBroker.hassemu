@@ -92,12 +92,17 @@ class ClientRegistry {
       if (!cookie) {
         continue;
       }
-      const modeRaw = await this.readState(`${id}.mode`);
+      const [modeRaw, manualUrlRaw, ipRaw, hostnameRaw] = await Promise.all([
+        this.readState(`${id}.mode`),
+        this.readState(`${id}.manualUrl`),
+        this.readState(`${id}.ip`),
+        this.readState(`${id}.hostname`)
+      ]);
       const mode = typeof modeRaw === "string" ? modeRaw : "";
-      const manualUrl = (0, import_coerce.coerceSafeUrl)(await this.readState(`${id}.manualUrl`));
-      const ip = (0, import_coerce.coerceString)(await this.readState(`${id}.ip`));
+      const manualUrl = (0, import_coerce.coerceSafeUrl)(manualUrlRaw);
+      const ip = (0, import_coerce.coerceString)(ipRaw);
       const token = (0, import_coerce.coerceUuid)(native.token);
-      const legacyHostname = (0, import_coerce.coerceString)(await this.readState(`${id}.hostname`));
+      const legacyHostname = (0, import_coerce.coerceString)(hostnameRaw);
       let channelName = (0, import_coerce.coerceString)((_b = obj.common) == null ? void 0 : _b.name);
       if (legacyHostname) {
         if (legacyHostname !== channelName) {
@@ -501,6 +506,9 @@ function parseClientStateId(fullId, namespace) {
     return null;
   }
   const [id, kind] = parts;
+  if (!id) {
+    return null;
+  }
   if (kind !== "mode" && kind !== "manualUrl" && kind !== "remove") {
     return null;
   }
