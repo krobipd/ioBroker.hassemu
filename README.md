@@ -152,7 +152,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.15.0 (2026-05-05)
 
 - **IPv6-LAN-Fallback**: `getLocalIp` nimmt jetzt die erste non-internal IPv6-Adresse statt `127.0.0.1` wenn keine IPv4 verfügbar ist. mDNS broadcastet damit eine reachable Adresse statt Loopback.
 - **mDNS async-Bind-Fehler gefangen**: bonjour wirft Port-5353-belegt-Fehler asynchron in dgram-Sockets. Ein `error`-Listener setzt jetzt `active=false` + warnt im Log.
@@ -179,13 +179,6 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 
 - **Sicherheit Refresh-Token-Brute-Force**: `/auth/token` mit `grant_type=refresh_token` hat jetzt denselben Brute-Force-Lockout wie `/auth/login_flow` — 5 ungültige Grants pro IP → 15min HTTP 429.
 - **Stale-Client-GC erfasst auch Token-Clients**: Clients mit `lastSeen > 30 Tage` werden jetzt entfernt, auch wenn sie einen Token haben (vorher übersprungen).
-
-### 1.10.0 (2026-05-05)
-
-- **Adapter beendet sich bei Server-Start-Fehler** (Port belegt etc.) jetzt mit Exit-Code 11 — js-controller startet ihn nach Backoff neu, statt zombie idle zu sitzen.
-- **mDNS-Broadcast-Fehler ist jetzt sichtbar**: `warn`-Meldung im Log + `mDNS FAILED` im running-Status (vorher still).
-- **Compact-Mode**: `unhandledRejection`/`uncaughtException`-Handler nur einmal pro Node-Prozess (Module-Level-Flag), nicht pro Instance.
-- **onUnload löst Subscriptions explizit auf** vor dem Null-Set — verhindert Residual-Calls auf genullte Instance bei hot-remove.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
