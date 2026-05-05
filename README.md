@@ -47,6 +47,8 @@ ioBroker adapter that emulates a [Home Assistant](https://www.home-assistant.io)
 | 8123 | TCP/HTTP | Home Assistant emulation (HA standard port)   | No — fixed   |
 | 5353 | UDP      | mDNS service broadcast (only if mDNS enabled) | No           |
 
+> **Single instance per host.** Port 8123 is the HA standard and required for displays to find the server. Running a second hassemu instance on the same host fails with `EADDRINUSE` — js-controller will keep restarting it. If you have multiple ioBroker hosts in the same LAN, only one of them can run hassemu (or assign different bind addresses).
+
 ---
 
 ## Configuration
@@ -153,6 +155,12 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
+### **WORK IN PROGRESS**
+
+- **Burst-Erkennung für broken Cookies**: erzeugt ein Display mehr als 3 neue Clients innerhalb einer Stunde (= der Cookie wird nicht persistiert), kommt einmaliger `warn`-Hinweis mit Diagnose-Pfad.
+- **README**: Hinweis dass nur eine hassemu-Instance pro Host laufen kann (Port 8123 fix).
+- **`lastSeen`-Update-Pfad konsolidiert**: GC und Throttle nutzen jetzt denselben `registry.seedLastSeen()`-Helper.
+
 ### 1.18.0 (2026-05-05)
 
 - **Logging-Hygiene Login-Floods**: `Invalid credentials` kommt pro IP nur bis zur Lockout-Schwelle als `warn` ins Log, danach auf `debug`. Brute-Force füllt das Log nicht mehr.

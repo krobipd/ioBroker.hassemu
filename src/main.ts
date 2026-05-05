@@ -507,8 +507,10 @@ class HassEmu extends utils.Adapter {
                 const native = (obj?.native as { lastSeen?: number } | undefined) ?? {};
                 const lastSeen = typeof native.lastSeen === 'number' ? native.lastSeen : 0;
                 if (lastSeen === 0) {
-                    // Pre-v1.2.0 client — seed timestamp, GC waits one cycle.
-                    await this.extendObjectAsync(`clients.${record.id}`, { native: { lastSeen: now } });
+                    // v1.19.0 (F11): Pre-v1.2.0 client — seed timestamp via Registry-
+                    // Helper. Vorher hatte main.ts seinen eigenen extendObjectAsync-Call
+                    // mit identischem native-Format (DRY-Violation).
+                    await this.registry!.seedLastSeen(record.id, now);
                     continue;
                 }
                 if (now - lastSeen > STALE_CLIENT_TTL_MS) {
