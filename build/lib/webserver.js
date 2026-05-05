@@ -185,7 +185,7 @@ class WebServer {
       await this.app.close();
       this.adapter.log.debug("Web server stopped");
     } catch (err) {
-      this.adapter.log.error(`Web server stop error: ${String(err)}`);
+      this.adapter.log.debug(`Web server stop error: ${String(err)}`);
     }
   }
   // v1.14.0 (H8): `inject` ist jetzt ein readonly Field (oben deklariert,
@@ -533,7 +533,7 @@ class WebServer {
         }
       },
       async (req, reply) => {
-        var _a;
+        var _a, _b;
         const flowId = req.params.flowId;
         const session = this.sessions.get(flowId);
         if (!session) {
@@ -553,7 +553,14 @@ class WebServer {
           const passOk = typeof password === "string" && safeStringEqual(password, this.config.password);
           if (!userOk || !passOk) {
             this.recordLoginFailure(ip);
-            this.adapter.log.warn("Invalid credentials");
+            const entry = this.loginAttempts.get(WebServer.normalizeLockoutKey(ip));
+            const failCount = (_b = entry == null ? void 0 : entry.failedCount) != null ? _b : 0;
+            const ipSuffix = ip ? ` (IP ${ip})` : "";
+            if (failCount <= import_constants.LOGIN_LOCKOUT_THRESHOLD) {
+              this.adapter.log.warn(`Invalid credentials${ipSuffix}`);
+            } else {
+              this.adapter.log.debug(`Invalid credentials${ipSuffix} (post-lockout-threshold)`);
+            }
             reply.status(400);
             return {
               type: "form",

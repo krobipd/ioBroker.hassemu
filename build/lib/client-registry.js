@@ -232,7 +232,7 @@ class ClientRegistry {
       return;
     }
     if (typeof rawValue !== "string") {
-      this.adapter.log.warn(`client-registry: rejected non-string mode for ${id}`);
+      this.adapter.log.debug(`client-registry: rejected non-string mode for ${id}`);
       await this.adapter.setStateAsync(`clients.${id}.mode`, { val: record.mode || 0, ack: true });
       return;
     }
