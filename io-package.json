@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.19.1",
     "news": {
+      "NEXT": {
+        "en": "Internal cleanup: 3 helpers (buildDropdownStates, parseAdapterStateId, safeGetState) extracted into coerce.ts — client-registry + global-config share them instead of duplicating.",
+        "de": "Interne Aufräumung: 3 Helpers (buildDropdownStates, parseAdapterStateId, safeGetState) nach coerce.ts extrahiert — client-registry + global-config teilen sie sich.",
+        "ru": "Внутренняя уборка: 3 helpers (buildDropdownStates, parseAdapterStateId, safeGetState) вынесены в coerce.ts — client-registry и global-config делят implementation.",
+        "pt": "Limpeza interna: 3 helpers (buildDropdownStates, parseAdapterStateId, safeGetState) extraidos para coerce.ts — client-registry e global-config compartilham a implementacao.",
+        "nl": "Interne opruiming: 3 helpers (buildDropdownStates, parseAdapterStateId, safeGetState) naar coerce.ts — client-registry en global-config delen de implementatie.",
+        "fr": "Nettoyage interne : 3 helpers (buildDropdownStates, parseAdapterStateId, safeGetState) extraits vers coerce.ts — client-registry et global-config partagent l'implementation.",
+        "it": "Pulizia interna: 3 helpers (buildDropdownStates, parseAdapterStateId, safeGetState) estratti in coerce.ts — client-registry e global-config condividono l'implementazione.",
+        "es": "Limpieza interna: 3 helpers (buildDropdownStates, parseAdapterStateId, safeGetState) extraidos a coerce.ts — client-registry y global-config comparten la implementacion.",
+        "pl": "Wewnetrzne sprzatanie: 3 helpers (buildDropdownStates, parseAdapterStateId, safeGetState) przeniesione do coerce.ts — client-registry i global-config wspoldzielca implementacje.",
+        "uk": "Внутрішнє прибирання: 3 helpers (buildDropdownStates, parseAdapterStateId, safeGetState) винесено в coerce.ts — client-registry та global-config ділять implementation.",
+        "zh-cn": "内部清理：3 个辅助函数（buildDropdownStates、parseAdapterStateId、safeGetState）提取到 coerce.ts — client-registry 和 global-config 共享实现，不再重复。"
+      },
       "1.19.1": {
         "en": "Test coverage: 7 new unit tests for v1.19.0 features — seedLastSeen path + per-IP burst-detection (4 cases: no-warn-under-3, warn-on-4th, no-double-warn, per-IP-independent, FIFO-cap).",
         "de": "Test-Coverage: 7 neue Unit-Tests für v1.19.0-Features — seedLastSeen-Pfad + Per-IP-Burst-Erkennung (4 Cases: kein-warn-unter-3, warn-bei-4-tem, kein-double-warn, per-IP-unabhängig, FIFO-cap).",

@@ -18,6 +18,7 @@ var __copyProps = (to, from, except, desc) => {
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 var coerce_exports = {};
 __export(coerce_exports, {
+  buildDropdownStates: () => buildDropdownStates,
   coerceBoolean: () => coerceBoolean,
   coerceFiniteNumber: () => coerceFiniteNumber,
   coerceSafeUrl: () => coerceSafeUrl,
@@ -26,7 +27,9 @@ __export(coerce_exports, {
   coerceUuid: () => coerceUuid,
   isNoChoice: () => isNoChoice,
   isPlainObject: () => isPlainObject,
-  parseManualUrlWrite: () => parseManualUrlWrite
+  parseAdapterStateId: () => parseAdapterStateId,
+  parseManualUrlWrite: () => parseManualUrlWrite,
+  safeGetState: () => safeGetState
 });
 module.exports = __toCommonJS(coerce_exports);
 function isNoChoice(value) {
@@ -103,8 +106,32 @@ function coerceSafeUrlReason(value) {
   }
   return { safe: value, reason: null };
 }
+async function safeGetState(adapter, id) {
+  var _a;
+  try {
+    return (_a = await adapter.getStateAsync(id)) != null ? _a : null;
+  } catch {
+    return null;
+  }
+}
+function parseAdapterStateId(fullId, namespace, prefix, expectedParts) {
+  const fullPrefix = `${namespace}.${prefix}`;
+  if (!fullId.startsWith(fullPrefix)) {
+    return null;
+  }
+  const tail = fullId.substring(fullPrefix.length);
+  const parts = tail.split(".");
+  if (parts.length !== expectedParts) {
+    return null;
+  }
+  return parts;
+}
+function buildDropdownStates(sentinels, urlStates) {
+  return { 0: "---", ...sentinels, ...urlStates };
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  buildDropdownStates,
   coerceBoolean,
   coerceFiniteNumber,
   coerceSafeUrl,
@@ -113,6 +140,8 @@ function coerceSafeUrlReason(value) {
   coerceUuid,
   isNoChoice,
   isPlainObject,
-  parseManualUrlWrite
+  parseAdapterStateId,
+  parseManualUrlWrite,
+  safeGetState
 });
 //# sourceMappingURL=coerce.js.map

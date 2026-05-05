@@ -38,9 +38,9 @@ class GlobalConfig {
   }
   /** Loads the current global.* values from the broker. Call once on adapter start. */
   async restore() {
-    const modeState = await this.safeGetState("global.mode");
-    const manualState = await this.safeGetState("global.manualUrl");
-    const enabledState = await this.safeGetState("global.enabled");
+    const modeState = await (0, import_coerce.safeGetState)(this.adapter, "global.mode");
+    const manualState = await (0, import_coerce.safeGetState)(this.adapter, "global.manualUrl");
+    const enabledState = await (0, import_coerce.safeGetState)(this.adapter, "global.enabled");
     this.mode = typeof (modeState == null ? void 0 : modeState.val) === "string" ? modeState.val : "";
     this.manualUrl = (0, import_coerce.coerceSafeUrl)(manualState == null ? void 0 : manualState.val);
     this.enabled = (0, import_coerce.coerceBoolean)(enabledState == null ? void 0 : enabledState.val) === true;
@@ -173,7 +173,7 @@ class GlobalConfig {
    * @param states Discovered URL → label map.
    */
   async syncUrlDropdown(states) {
-    const merged = { 0: "---", [import_constants.MODE_MANUAL]: "Manual URL", ...states };
+    const merged = (0, import_coerce.buildDropdownStates)({ [import_constants.MODE_MANUAL]: "Manual URL" }, states);
     await this.adapter.extendObjectAsync("global.mode", {
       common: { states: merged }
     });
@@ -194,21 +194,15 @@ class GlobalConfig {
     await this.adapter.setStateAsync("global.mode", { val: safeMode, ack: true });
     await this.adapter.setStateAsync("global.manualUrl", { val: safeManual != null ? safeManual : "", ack: true });
   }
-  async safeGetState(id) {
-    var _a;
-    try {
-      return (_a = await this.adapter.getStateAsync(id)) != null ? _a : null;
-    } catch {
-      return null;
-    }
-  }
+  // v1.20.0 (F10): private safeGetState war duplicate zu coerce.ts:safeGetState —
+  // jetzt direkt importiert.
 }
 function parseGlobalStateId(fullId, namespace) {
-  const prefix = `${namespace}.global.`;
-  if (!fullId.startsWith(prefix)) {
+  const parts = (0, import_coerce.parseAdapterStateId)(fullId, namespace, "global.", 1);
+  if (!parts) {
     return null;
   }
-  const tail = fullId.substring(prefix.length);
+  const [tail] = parts;
   if (tail === "mode" || tail === "manualUrl" || tail === "enabled") {
     return tail;
   }

@@ -167,3 +167,78 @@ export function coerceSafeUrlReason(value: unknown): { safe: string | null; reas
     }
     return { safe: value, reason: null };
 }
+
+// ---------------------------------------------------------------------------
+// v1.20.0 (Phase F-DRY): generische Helpers, die in client-registry und
+// global-config bisher dupliziert waren.
+// ---------------------------------------------------------------------------
+
+/** Minimal-Surface für `safeGetState` — Tests können das mocken. */
+export interface StateReader {
+    /** Returns the state for `id`, or `null|undefined` if it does not exist. */
+    getStateAsync: (id: string) => Promise<ioBroker.State | null | undefined>;
+}
+
+/**
+ * v1.20.0 (F10): try/catch + null-Fallback um `getStateAsync`. Vorher hatten
+ * `client-registry.readState` und `global-config.safeGetState` identische
+ * Wrapper. Caller extrahieren `.val` selbst, wenn sie nur den Wert wollen.
+ *
+ * @param adapter Anything that exposes `getStateAsync(id)`.
+ * @param id      Voller State-ID (mit Namespace) oder relativer Pfad — wie der
+ *                Caller das schon bisher übergeben hat.
+ */
+export async function safeGetState(adapter: StateReader, id: string): Promise<ioBroker.State | null> {
+    try {
+        return (await adapter.getStateAsync(id)) ?? null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * v1.20.0 (F9): generischer Parser für Namespace-Prefix-Tail-Kind State-IDs.
+ * Vorher hatten `parseClientStateId` und `parseGlobalStateId` identische
+ * Prefix-Validierung + Split-Logik. Beide delegieren jetzt hier.
+ *
+ * Beispiel: `parseAdapterStateId('hassemu.0.clients.abc.mode', 'hassemu.0', 'clients.', 2)`
+ * liefert `['abc', 'mode']` (zwei Tail-Parts mit `clients.<id>.<kind>`).
+ *
+ * @param fullId      Voller State-ID aus dem Event.
+ * @param namespace   Adapter-Namespace (z.B. `hassemu.0`).
+ * @param prefix      Sub-Pfad nach dem Namespace, **mit** trailing dot (z.B. `clients.`).
+ * @param expectedParts Anzahl erwarteter Tail-Segmente (1 für `global.<kind>`, 2 für `clients.<id>.<kind>`).
+ * @returns Tail-Segments als Tuple, oder `null` wenn Prefix/Anzahl nicht passt.
+ */
+export function parseAdapterStateId(
+    fullId: string,
+    namespace: string,
+    prefix: string,
+    expectedParts: number,
+): string[] | null {
+    const fullPrefix = `${namespace}.${prefix}`;
+    if (!fullId.startsWith(fullPrefix)) {
+        return null;
+    }
+    const tail = fullId.substring(fullPrefix.length);
+    const parts = tail.split('.');
+    if (parts.length !== expectedParts) {
+        return null;
+    }
+    return parts;
+}
+
+/**
+ * v1.20.0 (F4): composed `0='---' + sentinels + url-states` — Grundgerüst
+ * der Mode-Dropdowns. Vorher hatten `client-registry.buildModeStates` und
+ * `global-config.syncUrlDropdown` identische Composition.
+ *
+ * @param sentinels Zusätzliche Sentinel-Einträge (z.B. `{ global: 'Follow master', manual: 'Manual URL' }`).
+ * @param urlStates Discovered URLs (`{ 'http://x/': 'X', ... }`).
+ */
+export function buildDropdownStates(
+    sentinels: Record<string, string>,
+    urlStates: Record<string, string>,
+): Record<string, string> {
+    return { 0: '---', ...sentinels, ...urlStates };
+}
