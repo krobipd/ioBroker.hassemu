@@ -301,7 +301,7 @@ describe('GlobalConfig', () => {
     });
 
     describe('migrationSet', () => {
-        it('sets mode + manualUrl in one call without validation', async () => {
+        it('sets mode + manualUrl in one call', async () => {
             await g.migrationSet(MODE_MANUAL, 'http://from-legacy/');
             expect(store.states.get('hassemu.0.global.mode')?.val).to.equal(MODE_MANUAL);
             expect(store.states.get('hassemu.0.global.manualUrl')?.val).to.equal('http://from-legacy/');
@@ -311,6 +311,18 @@ describe('GlobalConfig', () => {
             await g.migrationSet('http://x/', null);
             expect(store.states.get('hassemu.0.global.mode')?.ack).to.be.true;
             expect(store.states.get('hassemu.0.global.manualUrl')?.ack).to.be.true;
+        });
+
+        it('falls back to manual when mode is neither MODE_MANUAL nor a safe URL (C10 v1.12.0)', async () => {
+            // 'javascript:alert(1)' is rejected by coerceSafeUrl → migrationSet
+            // must default to MODE_MANUAL instead of writing the unsafe value.
+            await g.migrationSet('javascript:alert(1)', null);
+            expect(store.states.get('hassemu.0.global.mode')?.val).to.equal(MODE_MANUAL);
+        });
+
+        it('rejects unsafe manualUrl via coerceSafeUrl (C10 v1.12.0)', async () => {
+            await g.migrationSet(MODE_MANUAL, 'data:text/html,<script>x</script>');
+            expect(store.states.get('hassemu.0.global.manualUrl')?.val).to.equal('');
         });
     });
 

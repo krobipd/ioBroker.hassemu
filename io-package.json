@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.11.0",
     "news": {
+      "NEXT": {
+        "en": "Security: brute-force lockout no longer bypassable via IPv6-mapped IPv4 (`::ffff:1.2.3.4`) or null-IP — both share the same bucket. Plus: legacy URL migration validates via coerceSafeUrl.",
+        "de": "Sicherheit: Brute-Force-Lockout nicht mehr per IPv6-mapped IPv4 (`::ffff:1.2.3.4`) oder null-IP umgehbar — beide teilen sich einen Bucket. Plus: Legacy-URL-Migration validiert via coerceSafeUrl.",
+        "ru": "Безопасность: brute-force lockout больше нельзя обойти через IPv6-mapped IPv4 (`::ffff:1.2.3.4`) или null-IP — общий bucket. Plus: legacy URL migration валидирует через coerceSafeUrl.",
+        "pt": "Seguranca: brute-force lockout nao mais contornavel via IPv6-mapped IPv4 ou null-IP — bucket compartilhado. Plus: legacy URL migration valida via coerceSafeUrl.",
+        "nl": "Beveiliging: brute-force lockout niet meer omzeilbaar via IPv6-mapped IPv4 of null-IP — gedeelde bucket. Plus: legacy URL migration valideert via coerceSafeUrl.",
+        "fr": "Securite : lockout brute-force plus contournable via IPv6-mapped IPv4 ou null-IP — bucket partage. Plus : migration URL legacy valide via coerceSafeUrl.",
+        "it": "Sicurezza: lockout brute-force non piu bypassabile via IPv6-mapped IPv4 o null-IP — bucket condiviso. Plus: legacy URL migration valida via coerceSafeUrl.",
+        "es": "Seguridad: lockout brute-force ya no eludible via IPv6-mapped IPv4 o null-IP — bucket compartido. Plus: legacy URL migration valida via coerceSafeUrl.",
+        "pl": "Bezpieczenstwo: brute-force lockout nie do obejscia przez IPv6-mapped IPv4 lub null-IP — wspolny bucket. Plus: legacy URL migration waliduje via coerceSafeUrl.",
+        "uk": "Безпека: brute-force lockout більше не обходиться через IPv6-mapped IPv4 або null-IP — спільний bucket. Plus: legacy URL migration валідує через coerceSafeUrl.",
+        "zh-cn": "安全：暴力锁定不再可经由 IPv6-mapped IPv4 (`::ffff:1.2.3.4`) 或 null-IP 绕过 — 共享桶。另：旧版 URL 迁移经 coerceSafeUrl 校验。"
+      },
       "1.11.0": {
         "en": "Security: refresh-token endpoint now has same brute-force lockout as login (5 invalid grants → 15min IP lock). Plus stale-client GC also removes idle token-clients (>30 days).",
         "de": "Sicherheit: Refresh-Token-Endpoint hat jetzt denselben Brute-Force-Lockout wie Login (5 ungültige Grants → 15min IP-Sperre). Plus: Stale-Client-GC entfernt jetzt auch idle Token-Clients (>30 Tage).",

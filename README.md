@@ -152,6 +152,11 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
+### **WORK IN PROGRESS**
+
+- **Brute-Force-Lockout-Härtung**: IPv6-mapped IPv4 (`::ffff:1.2.3.4`) und `null`-IP teilen jetzt einen Bucket mit raw IPv4 — vorher konnten Angreifer durch Adress-Form-Wechsel den Counter umgehen.
+- **Legacy-URL-Migration validiert** via `coerceSafeUrl`: alte `javascript:`/`data:`-URLs aus v1.0.x-Config fallen auf Manual-Mode statt unsafe geschrieben zu werden.
+
 ### 1.11.0 (2026-05-05)
 
 - **Sicherheit Refresh-Token-Brute-Force**: `/auth/token` mit `grant_type=refresh_token` hat jetzt denselben Brute-Force-Lockout wie `/auth/login_flow` — 5 ungültige Grants pro IP → 15min HTTP 429.

@@ -202,10 +202,16 @@ export class GlobalConfig {
      * @param manualUrl New manualUrl, or null to clear.
      */
     async migrationSet(mode: string, manualUrl: string | null): Promise<void> {
-        this.mode = mode;
-        this.manualUrl = manualUrl;
-        await this.adapter.setStateAsync('global.mode', { val: mode, ack: true });
-        await this.adapter.setStateAsync('global.manualUrl', { val: manualUrl ?? '', ack: true });
+        // v1.12.0 (C10): trust-Annahme aus dem Caller droppen. Wenn `mode` weder
+        // 'manual' noch eine sichere URL ist, defaulten wir auf 'manual' (das
+        // legt user-facing den Setup-Pfad nah und vermeidet schreiben von
+        // unsicheren values wie `javascript:alert(1)`).
+        const safeMode = mode === MODE_MANUAL || coerceSafeUrl(mode) ? mode : MODE_MANUAL;
+        const safeManual = manualUrl !== null ? coerceSafeUrl(manualUrl) : null;
+        this.mode = safeMode;
+        this.manualUrl = safeManual;
+        await this.adapter.setStateAsync('global.mode', { val: safeMode, ack: true });
+        await this.adapter.setStateAsync('global.manualUrl', { val: safeManual ?? '', ack: true });
     }
 
     private async safeGetState(id: string): Promise<ioBroker.State | null> {

@@ -324,16 +324,34 @@ export class WebServer {
     }
 
     /**
+     * v1.12.0 (C5): Map-Key für Lockout normalisieren — IPv6-Mapped-IPv4
+     * (`::ffff:1.2.3.4`) auf IPv4 strippen, damit derselbe Client nicht zwei
+     * Buckets bekommt. Bei `null` (Unix-Socket-Bind, Test-Inject ohne
+     * remoteAddress, Fastify IPv6-Edge) eindeutiger Sentinel-Bucket statt
+     * Lockout-Bypass.
+     *
+     * @param ip Raw IP from `req.ip` oder null.
+     */
+    private static normalizeLockoutKey(ip: string | null): string {
+        if (!ip) {
+            return '__no-ip__';
+        }
+        // Strip IPv6-Mapped-IPv4 prefix
+        if (ip.startsWith('::ffff:')) {
+            return ip.substring(7);
+        }
+        return ip;
+    }
+
+    /**
      * Brute-force lockout: returns true if `ip` is currently in the timeout window.
      * Lazy-resets entries whose lockout already expired (caller can immediately try again).
      *
      * @param ip Remote IP, or null when unavailable.
      */
     private isIpLocked(ip: string | null): boolean {
-        if (!ip) {
-            return false;
-        }
-        const entry = this.loginAttempts.get(ip);
+        const key = WebServer.normalizeLockoutKey(ip);
+        const entry = this.loginAttempts.get(key);
         if (!entry || entry.lockedUntil === 0) {
             return false;
         }
@@ -341,7 +359,7 @@ export class WebServer {
             return true;
         }
         // Lockout window passed — drop the entry, IP gets a fresh budget.
-        this.loginAttempts.delete(ip);
+        this.loginAttempts.delete(key);
         return false;
     }
 
@@ -353,11 +371,9 @@ export class WebServer {
      * @param ip Remote IP that failed authentication.
      */
     private recordLoginFailure(ip: string | null): void {
-        if (!ip) {
-            return;
-        }
+        const key = WebServer.normalizeLockoutKey(ip);
         const now = Date.now();
-        const entry = this.loginAttempts.get(ip) ?? { failedCount: 0, lockedUntil: 0, lastSeen: now };
+        const entry = this.loginAttempts.get(key) ?? { failedCount: 0, lockedUntil: 0, lastSeen: now };
         entry.failedCount += 1;
         entry.lastSeen = now;
         if (entry.failedCount >= LOGIN_LOCKOUT_THRESHOLD) {
@@ -368,12 +384,12 @@ export class WebServer {
             );
         }
         // Cap loginAttempts before insert to avoid unbounded growth from stray
-        // attempts. evictOldest is a no-op when this ip already exists in map
+        // attempts. evictOldest is a no-op when this key already exists in map
         // (size won't change on re-set).
-        if (!this.loginAttempts.has(ip)) {
+        if (!this.loginAttempts.has(key)) {
             WebServer.evictOldest(this.loginAttempts, LOGIN_ATTEMPTS_CAP);
         }
-        this.loginAttempts.set(ip, entry);
+        this.loginAttempts.set(key, entry);
     }
 
     /**
@@ -384,9 +400,7 @@ export class WebServer {
      * @param ip Remote IP that just authenticated successfully.
      */
     private clearLoginAttempts(ip: string | null): void {
-        if (ip) {
-            this.loginAttempts.delete(ip);
-        }
+        this.loginAttempts.delete(WebServer.normalizeLockoutKey(ip));
     }
 
     // --- client identification ---
