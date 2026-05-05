@@ -452,12 +452,13 @@ class ClientRegistry {
    * `'global'` + `'manual'` sentinels, and all currently discovered URLs.
    */
   buildModeStates() {
-    return {
-      0: "---",
-      [import_constants.MODE_GLOBAL]: "Global URL",
-      [import_constants.MODE_MANUAL]: "Manual URL",
-      ...this.currentUrlStates
-    };
+    return (0, import_coerce.buildDropdownStates)(
+      {
+        [import_constants.MODE_GLOBAL]: "Global URL",
+        [import_constants.MODE_MANUAL]: "Manual URL"
+      },
+      this.currentUrlStates
+    );
   }
   /**
    * Idempotently creates all per-client objects (channel + states). Safe to
@@ -547,22 +548,13 @@ class ClientRegistry {
   }
   async readState(subId) {
     var _a;
-    try {
-      const s = await this.adapter.getStateAsync(`clients.${subId}`);
-      return (_a = s == null ? void 0 : s.val) != null ? _a : null;
-    } catch {
-      return null;
-    }
+    const s = await (0, import_coerce.safeGetState)(this.adapter, `clients.${subId}`);
+    return (_a = s == null ? void 0 : s.val) != null ? _a : null;
   }
 }
 function parseClientStateId(fullId, namespace) {
-  const prefix = `${namespace}.${CLIENTS_PREFIX}`;
-  if (!fullId.startsWith(prefix)) {
-    return null;
-  }
-  const tail = fullId.substring(prefix.length);
-  const parts = tail.split(".");
-  if (parts.length !== 2) {
+  const parts = (0, import_coerce.parseAdapterStateId)(fullId, namespace, CLIENTS_PREFIX, 2);
+  if (!parts) {
     return null;
   }
   const [id, kind] = parts;

@@ -6,7 +6,7 @@
 
 **ioBroker HASS Emulator** — emuliert einen minimalen HA-Server für Geräte, die ein HA-Dashboard erwarten → leitet auf beliebige URL um.
 
-- **Version:** 1.9.0 npm latest, v1.9.1 deploy CI in Arbeit (2026-05-05). 10 Releases in einer Auto-Mode-Welle: Phase A (User-Wünsche) komplett, Phase B 4/5, Phase C 4/12 priorisiert, Phase D 7/9, Phase E 7/9. Stand-Down nach v1.9.1 (User-Hardware-Test ausstehend). Roadmap: `/Volumes/ssd/ioBroker/Ressourcen/hassemu/features-roadmap.md`
+- **Version:** 1.19.1 npm latest (deploy success 2026-05-05). 22 Releases in einer Auto-Mode-Welle. 66/81 Roadmap-Items durch — 5 Phasen komplett (A User-Wünsche + B CRITICAL Stability + G LOGGING + H READY-LIFECYCLE + I SPEC/DOKU). Verbleibend offen: F-Phase DRY-Refactors (7), J-Phase Tests (5), C11 Reverse-Proxy-Cookies (1), D3 academic Promise-handling (1), E6 Multi-NIC (1). Roadmap: `/Volumes/ssd/ioBroker/Ressourcen/hassemu/features-roadmap.md`
 - **GitHub:** https://github.com/krobipd/ioBroker.hassemu
 - **npm:** https://www.npmjs.com/package/iobroker.hassemu
 - **Repository PR:** ioBroker/ioBroker.repositories#5793

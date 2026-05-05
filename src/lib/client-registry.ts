@@ -10,7 +10,17 @@
  */
 
 import crypto from 'node:crypto';
-import { coerceString, coerceUuid, coerceSafeUrl, isNoChoice, isPlainObject, parseManualUrlWrite } from './coerce';
+import {
+    buildDropdownStates,
+    coerceSafeUrl,
+    coerceString,
+    coerceUuid,
+    isNoChoice,
+    isPlainObject,
+    parseAdapterStateId,
+    parseManualUrlWrite,
+    safeGetState,
+} from './coerce';
 import { MODE_GLOBAL, MODE_MANUAL } from './constants';
 import { generateClientId } from './network';
 import type { AdapterInterface, ClientRecord, UrlStates } from './types';
@@ -518,12 +528,16 @@ export class ClientRegistry {
      * `'global'` + `'manual'` sentinels, and all currently discovered URLs.
      */
     private buildModeStates(): UrlStates {
-        return {
-            0: '---',
-            [MODE_GLOBAL]: 'Global URL',
-            [MODE_MANUAL]: 'Manual URL',
-            ...this.currentUrlStates,
-        };
+        // v1.20.0 (F4): Helper aus coerce.ts. Vorher dupliziert mit global-config
+        // (bis auf den zusätzlichen `global`-Sentinel hier, weil clients per
+        // `mode='global'` an global delegieren können — global selbst nicht).
+        return buildDropdownStates(
+            {
+                [MODE_GLOBAL]: 'Global URL',
+                [MODE_MANUAL]: 'Manual URL',
+            },
+            this.currentUrlStates,
+        );
     }
 
     /**
@@ -626,12 +640,11 @@ export class ClientRegistry {
     }
 
     private async readState(subId: string): Promise<unknown> {
-        try {
-            const s = await this.adapter.getStateAsync(`clients.${subId}`);
-            return s?.val ?? null;
-        } catch {
-            return null;
-        }
+        // v1.20.0 (F10): Helper aus coerce.ts — vorher dupliziert mit
+        // global-config.safeGetState (gleicher try/catch-+-null-Fallback,
+        // nur Pfad-Prefix anders).
+        const s = await safeGetState(this.adapter, `clients.${subId}`);
+        return s?.val ?? null;
     }
 }
 
@@ -645,13 +658,11 @@ export function parseClientStateId(
     fullId: string,
     namespace: string,
 ): { id: string; kind: 'mode' | 'manualUrl' | 'remove' } | null {
-    const prefix = `${namespace}.${CLIENTS_PREFIX}`;
-    if (!fullId.startsWith(prefix)) {
-        return null;
-    }
-    const tail = fullId.substring(prefix.length);
-    const parts = tail.split('.');
-    if (parts.length !== 2) {
+    // v1.20.0 (F9): generischer parseAdapterStateId-Helper. Vorher hatte
+    // client-registry seine eigene Prefix-+-Tail-Validierung dupliziert mit
+    // global-config.parseGlobalStateId.
+    const parts = parseAdapterStateId(fullId, namespace, CLIENTS_PREFIX, 2);
+    if (!parts) {
         return null;
     }
     const [id, kind] = parts;

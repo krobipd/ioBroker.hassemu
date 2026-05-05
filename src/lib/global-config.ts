@@ -11,7 +11,15 @@
  * The resolver delegates: a client whose `mode === 'global'` ends up here.
  */
 
-import { coerceBoolean, coerceSafeUrl, isNoChoice, parseManualUrlWrite } from './coerce';
+import {
+    buildDropdownStates,
+    coerceBoolean,
+    coerceSafeUrl,
+    isNoChoice,
+    parseAdapterStateId,
+    parseManualUrlWrite,
+    safeGetState,
+} from './coerce';
 import { MODE_GLOBAL, MODE_MANUAL } from './constants';
 import type { AdapterInterface, ClientRecord, UrlStates } from './types';
 
@@ -39,9 +47,9 @@ export class GlobalConfig {
 
     /** Loads the current global.* values from the broker. Call once on adapter start. */
     async restore(): Promise<void> {
-        const modeState = await this.safeGetState('global.mode');
-        const manualState = await this.safeGetState('global.manualUrl');
-        const enabledState = await this.safeGetState('global.enabled');
+        const modeState = await safeGetState(this.adapter, 'global.mode');
+        const manualState = await safeGetState(this.adapter, 'global.manualUrl');
+        const enabledState = await safeGetState(this.adapter, 'global.enabled');
         this.mode = typeof modeState?.val === 'string' ? modeState.val : '';
         this.manualUrl = coerceSafeUrl(manualState?.val);
         this.enabled = coerceBoolean(enabledState?.val) === true;
@@ -185,9 +193,11 @@ export class GlobalConfig {
      * @param states Discovered URL → label map.
      */
     async syncUrlDropdown(states: UrlStates): Promise<void> {
-        // 0='---' is the no-choice fallback (analogous to govee-smart pattern).
-        // 'global' is intentionally NOT in this map — it would be self-referential.
-        const merged: UrlStates = { 0: '---', [MODE_MANUAL]: 'Manual URL', ...states };
+        // v1.20.0 (F4): buildDropdownStates Helper aus coerce.ts — vorher
+        // hatten client-registry und global-config identische `0='---' +
+        // sentinels + states`-Composition. Hier nur `manual`-Sentinel weil
+        // `global` in global-config self-referential wäre.
+        const merged = buildDropdownStates({ [MODE_MANUAL]: 'Manual URL' }, states);
         await this.adapter.extendObjectAsync('global.mode', {
             common: { states: merged },
         });
@@ -214,13 +224,8 @@ export class GlobalConfig {
         await this.adapter.setStateAsync('global.manualUrl', { val: safeManual ?? '', ack: true });
     }
 
-    private async safeGetState(id: string): Promise<ioBroker.State | null> {
-        try {
-            return (await this.adapter.getStateAsync(id)) ?? null;
-        } catch {
-            return null;
-        }
-    }
+    // v1.20.0 (F10): private safeGetState war duplicate zu coerce.ts:safeGetState —
+    // jetzt direkt importiert.
 }
 
 /**
@@ -230,11 +235,14 @@ export class GlobalConfig {
  * @param namespace The adapter namespace (e.g. `hassemu.0`).
  */
 export function parseGlobalStateId(fullId: string, namespace: string): GlobalStateKind | null {
-    const prefix = `${namespace}.global.`;
-    if (!fullId.startsWith(prefix)) {
+    // v1.20.0 (F9): generischer parseAdapterStateId-Helper. Vorher hatte
+    // global-config seine eigene Prefix-+-Tail-Validierung dupliziert mit
+    // client-registry.parseClientStateId.
+    const parts = parseAdapterStateId(fullId, namespace, 'global.', 1);
+    if (!parts) {
         return null;
     }
-    const tail = fullId.substring(prefix.length);
+    const [tail] = parts;
     if (tail === 'mode' || tail === 'manualUrl' || tail === 'enabled') {
         return tail;
     }
