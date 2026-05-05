@@ -98,39 +98,40 @@ class GlobalConfig {
    * @param rawValue Value written to the state.
    */
   async handleModeWrite(rawValue) {
-    if ((0, import_coerce.isNoChoice)(rawValue)) {
-      this.mode = "";
-      await this.adapter.setStateAsync("global.mode", { val: 0, ack: true });
-      return;
-    }
-    if (typeof rawValue !== "string") {
-      this.adapter.log.warn("global-config: rejected non-string global.mode");
-      await this.adapter.setStateAsync("global.mode", { val: this.mode || 0, ack: true });
-      return;
-    }
-    if (rawValue === import_constants.MODE_GLOBAL) {
-      this.adapter.log.warn("global-config: 'global' is not allowed as global.mode (self-referential)");
-      await this.adapter.setStateAsync("global.mode", { val: this.mode, ack: true });
-      return;
-    }
-    if (rawValue === import_constants.MODE_MANUAL) {
-      if (!this.manualUrl) {
+    const result = (0, import_coerce.parseModeWrite)(rawValue, [import_constants.MODE_MANUAL]);
+    switch (result.kind) {
+      case "no-choice":
+        this.mode = "";
+        await this.adapter.setStateAsync("global.mode", { val: 0, ack: true });
+        return;
+      case "rejected-non-string":
+        this.adapter.log.warn("global-config: rejected non-string global.mode");
+        await this.adapter.setStateAsync("global.mode", { val: this.mode || 0, ack: true });
+        return;
+      case "rejected-disallowed-sentinel":
         this.adapter.log.warn(
-          "global-config: global.mode set to 'manual' but global.manualUrl is empty \u2014 fill it to redirect"
+          `global-config: '${result.value}' is not allowed as global.mode (self-referential)`
         );
-      }
-      this.mode = import_constants.MODE_MANUAL;
-      await this.adapter.setStateAsync("global.mode", { val: import_constants.MODE_MANUAL, ack: true });
-      return;
+        await this.adapter.setStateAsync("global.mode", { val: this.mode, ack: true });
+        return;
+      case "sentinel":
+        if (result.value === import_constants.MODE_MANUAL && !this.manualUrl) {
+          this.adapter.log.warn(
+            "global-config: global.mode set to 'manual' but global.manualUrl is empty \u2014 fill it to redirect"
+          );
+        }
+        this.mode = result.value;
+        await this.adapter.setStateAsync("global.mode", { val: result.value, ack: true });
+        return;
+      case "rejected-unsafe-url":
+        this.adapter.log.warn(`global-config: rejected unsafe global.mode value '${result.raw}'`);
+        await this.adapter.setStateAsync("global.mode", { val: this.mode, ack: true });
+        return;
+      case "url":
+        this.mode = result.value;
+        await this.adapter.setStateAsync("global.mode", { val: result.value, ack: true });
+        return;
     }
-    const safe = (0, import_coerce.coerceSafeUrl)(rawValue);
-    if (!safe) {
-      this.adapter.log.warn(`global-config: rejected unsafe global.mode value '${rawValue}'`);
-      await this.adapter.setStateAsync("global.mode", { val: this.mode, ack: true });
-      return;
-    }
-    this.mode = safe;
-    await this.adapter.setStateAsync("global.mode", { val: safe, ack: true });
   }
   /**
    * Accept a write on `global.manualUrl`. Free-text — must pass

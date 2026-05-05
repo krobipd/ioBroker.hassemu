@@ -242,34 +242,38 @@ class ClientRegistry {
     if (!record) {
       return;
     }
-    if ((0, import_coerce.isNoChoice)(rawValue)) {
-      record.mode = "";
-      await this.adapter.setStateAsync(`clients.${id}.mode`, { val: 0, ack: true });
-      return;
+    const result = (0, import_coerce.parseModeWrite)(rawValue, [import_constants.MODE_GLOBAL, import_constants.MODE_MANUAL]);
+    switch (result.kind) {
+      case "no-choice":
+        record.mode = "";
+        await this.adapter.setStateAsync(`clients.${id}.mode`, { val: 0, ack: true });
+        return;
+      case "rejected-non-string":
+        this.adapter.log.debug(`client-registry: rejected non-string mode for ${id}`);
+        await this.adapter.setStateAsync(`clients.${id}.mode`, { val: record.mode || 0, ack: true });
+        return;
+      case "sentinel":
+        if (result.value === import_constants.MODE_MANUAL && !record.manualUrl) {
+          this.adapter.log.warn(
+            `client-registry: ${id} mode set to 'manual' but manualUrl is empty \u2014 fill clients.${id}.manualUrl to redirect`
+          );
+        }
+        record.mode = result.value;
+        await this.adapter.setStateAsync(`clients.${id}.mode`, { val: result.value, ack: true });
+        return;
+      case "rejected-unsafe-url":
+        this.adapter.log.warn(`client-registry: rejected unsafe mode value for ${id}: '${result.raw}'`);
+        await this.adapter.setStateAsync(`clients.${id}.mode`, { val: record.mode, ack: true });
+        return;
+      case "url":
+        record.mode = result.value;
+        await this.adapter.setStateAsync(`clients.${id}.mode`, { val: result.value, ack: true });
+        return;
+      // 'rejected-disallowed-sentinel' kommt hier nicht vor weil beide
+      // Sentinels (global/manual) erlaubt sind. Defensive: revert.
+      default:
+        await this.adapter.setStateAsync(`clients.${id}.mode`, { val: record.mode || 0, ack: true });
     }
-    if (typeof rawValue !== "string") {
-      this.adapter.log.debug(`client-registry: rejected non-string mode for ${id}`);
-      await this.adapter.setStateAsync(`clients.${id}.mode`, { val: record.mode || 0, ack: true });
-      return;
-    }
-    if (rawValue === import_constants.MODE_GLOBAL || rawValue === import_constants.MODE_MANUAL) {
-      if (rawValue === import_constants.MODE_MANUAL && !record.manualUrl) {
-        this.adapter.log.warn(
-          `client-registry: ${id} mode set to 'manual' but manualUrl is empty \u2014 fill clients.${id}.manualUrl to redirect`
-        );
-      }
-      record.mode = rawValue;
-      await this.adapter.setStateAsync(`clients.${id}.mode`, { val: rawValue, ack: true });
-      return;
-    }
-    const safe = (0, import_coerce.coerceSafeUrl)(rawValue);
-    if (!safe) {
-      this.adapter.log.warn(`client-registry: rejected unsafe mode value for ${id}: '${rawValue}'`);
-      await this.adapter.setStateAsync(`clients.${id}.mode`, { val: record.mode, ack: true });
-      return;
-    }
-    record.mode = safe;
-    await this.adapter.setStateAsync(`clients.${id}.mode`, { val: safe, ack: true });
   }
   /**
    * Accept an external manualUrl write on `clients.<id>.manualUrl`.

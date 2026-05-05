@@ -141,6 +141,53 @@ export function parseManualUrlWrite(rawValue: unknown): ManualUrlWriteResult {
     return { ok: true, safe };
 }
 
+/** Result of {@link parseModeWrite}. */
+export type ModeWriteResult =
+    | { kind: 'no-choice' }
+    | { kind: 'sentinel'; value: string }
+    | { kind: 'url'; value: string }
+    | { kind: 'rejected-non-string' }
+    | { kind: 'rejected-disallowed-sentinel'; value: string }
+    | { kind: 'rejected-unsafe-url'; raw: string };
+
+/**
+ * v1.23.0 (F2): zentralisierte Validierung für Mode-Writes. Vorher hatten
+ * `ClientRegistry.handleModeWrite` und `GlobalConfig.handleModeWrite` ~80%
+ * der Logik dupliziert (no-choice, non-string-reject, sentinel-check, URL-
+ * coerce). Beide nutzen jetzt diesen Helper und steuern nur ihre eigenen
+ * State-IDs / Logging-Prefixes / erlaubte Sentinels.
+ *
+ * `allowedSentinels` ist die Liste der zulässigen non-URL Mode-Werte —
+ * client-registry erlaubt z.B. `[MODE_GLOBAL, MODE_MANUAL]`, global-config
+ * nur `[MODE_MANUAL]` (MODE_GLOBAL wäre self-referential).
+ *
+ * @param rawValue         Wert vom State-Write.
+ * @param allowedSentinels Erlaubte Non-URL-Sentinels.
+ */
+export function parseModeWrite(rawValue: unknown, allowedSentinels: readonly string[]): ModeWriteResult {
+    if (isNoChoice(rawValue)) {
+        return { kind: 'no-choice' };
+    }
+    if (typeof rawValue !== 'string') {
+        return { kind: 'rejected-non-string' };
+    }
+    // String-Sentinels haben Vorrang vor URL-Coerce.
+    if (allowedSentinels.includes(rawValue)) {
+        return { kind: 'sentinel', value: rawValue };
+    }
+    // Disallowed-Sentinel-Detection: wenn der Caller MODE_GLOBAL/MODE_MANUAL
+    // als known-strings hat, aber sie nicht in allowedSentinels sind, melden
+    // wir das explizit (für Self-Referential-Check in global-config).
+    if (rawValue === 'global' || rawValue === 'manual') {
+        return { kind: 'rejected-disallowed-sentinel', value: rawValue };
+    }
+    const safe = coerceSafeUrl(rawValue);
+    if (!safe) {
+        return { kind: 'rejected-unsafe-url', raw: rawValue };
+    }
+    return { kind: 'url', value: safe };
+}
+
 /**
  * Coerce to a safe redirect URL, or null.
  *
