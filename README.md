@@ -155,7 +155,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.19.1 (2026-05-05)
 
 - **Test-Coverage**: 7 neue Unit-Tests für v1.19.0-Features — `seedLastSeen`-Pfad und Per-IP-Burst-Erkennung (Schwelle, Cooldown, per-IP-unabhängig, FIFO-Cap).
 
@@ -184,11 +184,6 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 - **`coerceSafeUrlReason`-Helper**: rejected URLs liefern jetzt den Grund (`bad-scheme:javascript:`, `credentials-in-url`, `unparseable`, `too-long`, …) für gezielte Log-Nachvollziehbarkeit.
 - **README-Upgrading aktualisiert**: Eintrag „1.2.0 → 1.15.x" hinzugefügt, plus Hinweis auf den v1.3.2-Schema-Repair bei leerem Mode-Dropdown nach Upgrade.
 - **Config-Hinweis bei mDNS=off**: die Configuration-Tabelle erklärt jetzt explizit dass Displays manuell konfiguriert werden müssen wenn mDNS deaktiviert ist.
-
-### 1.15.0 (2026-05-05)
-
-- **IPv6-LAN-Fallback**: `getLocalIp` nimmt jetzt die erste non-internal IPv6-Adresse statt `127.0.0.1` wenn keine IPv4 verfügbar ist. mDNS broadcastet damit eine reachable Adresse statt Loopback.
-- **mDNS async-Bind-Fehler gefangen**: bonjour wirft Port-5353-belegt-Fehler asynchron in dgram-Sockets. Ein `error`-Listener setzt jetzt `active=false` + warnt im Log.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
