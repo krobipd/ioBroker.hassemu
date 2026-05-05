@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.4.1",
     "news": {
+      "NEXT": {
+        "en": "Security: `/health` no longer leaks the `mdns`/`auth` config flags unauthenticated (reconnaissance risk on internet-exposed instances). `requires_api_password` (mDNS + /api/discovery_info) now mirrors the actual `authRequired` setting. Brute-force lockout map is FIFO-capped and prunes stale failure counts.",
+        "de": "Sicherheit: `/health` leakt die `mdns`/`auth`-Config-Flags nicht mehr unauthenticated (Reconnaissance-Risiko bei netzexponierten Instanzen). `requires_api_password` (mDNS + /api/discovery_info) spiegelt jetzt das tatsächliche `authRequired`-Setting. Brute-Force-Lockout-Map ist FIFO-gedeckelt und prunt veraltete Fail-Counts.",
+        "ru": "Безопасность: `/health` больше не утекает флаги `mdns`/`auth` без авторизации. `requires_api_password` теперь отражает фактический `authRequired`. Brute-force lockout map FIFO-ограничен и удаляет устаревшие записи.",
+        "pt": "Seguranca: `/health` nao expoe mais flags `mdns`/`auth` sem auth. `requires_api_password` agora espelha `authRequired` real. Brute-force lockout map e FIFO-capped e remove registros obsoletos.",
+        "nl": "Beveiliging: `/health` lekt de `mdns`/`auth` config flags niet meer unauthenticated. `requires_api_password` weerspiegelt nu de echte `authRequired`. Brute-force lockout map is FIFO-capped en pruned stale entries.",
+        "fr": "Securite : `/health` ne fuite plus les flags `mdns`/`auth` non authentifies. `requires_api_password` reflete maintenant le vrai `authRequired`. La map de lockout brute-force est FIFO-cappee et purge les entrees obsoletes.",
+        "it": "Sicurezza: `/health` non rivela piu i flag `mdns`/`auth` senza auth. `requires_api_password` ora rispecchia il vero `authRequired`. Mappa lockout brute-force FIFO-cappata e prune entry obsolete.",
+        "es": "Seguridad: `/health` ya no expone los flags `mdns`/`auth` sin auth. `requires_api_password` ahora refleja el `authRequired` real. Mapa de lockout brute-force FIFO-capped y limpia entradas obsoletas.",
+        "pl": "Bezpieczenstwo: `/health` nie ujawnia juz flag `mdns`/`auth` bez auth. `requires_api_password` teraz odzwierciedla prawdziwe `authRequired`. Mapa brute-force lockout FIFO-cappowana, czysci nieaktualne wpisy.",
+        "uk": "Безпека: `/health` більше не показує `mdns`/`auth` без авторизації. `requires_api_password` тепер відповідає реальному `authRequired`. Brute-force lockout map FIFO-обмежена і видаляє застарілі записи.",
+        "zh-cn": "安全：`/health` 不再向未认证用户泄漏 `mdns`/`auth` 配置标志。`requires_api_password` 现在反映实际的 `authRequired`。Brute-force lockout map 已 FIFO 限制并清理过期条目。"
+      },
       "1.4.1": {
         "en": "CI fix: deploy step now uses Node 24 (Node 22 + npm@latest had a MODULE_NOT_FOUND bug, blocked v1.4.0 from reaching npm). v1.4.0 changes are bundled into this release.",
         "de": "CI-Fix: Deploy-Schritt nutzt jetzt Node 24 (Node 22 + npm@latest hatte einen MODULE_NOT_FOUND-Bug, hinderte v1.4.0 daran, auf npm zu kommen). v1.4.0-Änderungen sind in diesem Release gebündelt.",
