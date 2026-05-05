@@ -157,7 +157,9 @@ class HassEmu extends utils.Adapter {
     }
     const safe = (0, import_coerce.coerceSafeUrl)(url);
     if (!safe) {
-      this.log.warn(`Legacy URL rejected as unsafe \u2014 dropping native.defaultVisUrl/visUrl without migration: ${String(url)}`);
+      this.log.warn(
+        `Legacy URL rejected as unsafe \u2014 dropping native.defaultVisUrl/visUrl without migration: ${String(url)}`
+      );
       try {
         const id = `system.adapter.${this.namespace}`;
         const obj = await this.getForeignObjectAsync(id);
