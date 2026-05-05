@@ -1,4 +1,9 @@
 # Older Changes
+## 1.7.0 (2026-05-05)
+
+- **VIS-2-Views** stehen jetzt als eigene Einträge im Mode-Dropdown — nicht nur das Top-Level-Projekt. Pro Projekt-Folder liest der Adapter `vis-views.json` und legt für jede View eine URL `?<projekt>/<view>` an. Bei fehlender oder kaputter Datei bleibt der Top-Level-Eintrag funktional.
+- **Display-Reload bei Redirect-Edit**: das Adapter-Root liefert kein 302 mehr, sondern eine kleine HTML-Seite mit `<iframe>` zum Ziel + 30-Sekunden-Polling auf den neuen Endpunkt `/api/redirect_check`. Wenn du die Mode-/manualUrl-Konfiguration änderst, lädt das Display von selbst neu — kein Soft-Reboot mehr nötig.
+
 ## 1.6.0 (2026-05-05)
 
 - **Sicherheit**: HA-API-Endpunkte (`/api/states`, `/api/services`, `/api/events`, `/api/error_log`, `/api/config`) sind jetzt token-geschützt wenn `Auth Required` aktiv ist — vorher waren sie ohne jeden Auth-Check abrufbar (Information-Disclosure). `/api/discovery_info`, `/api/`-Heartbeat, `/health`, `/manifest.json` und der Auth-Flow bleiben offen, weil HA-Clients sie vor dem Login abfragen müssen.

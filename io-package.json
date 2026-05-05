@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.9.0",
+    "version": "1.9.1",
     "news": {
-      "NEXT": {
+      "1.9.1": {
         "en": "Internal cleanup: 5xx-error cooldown map now uses the same FIFO-eviction helper as the other capped maps (was inconsistent inline FIFO in v1.9.0). Plus 5 new tests for the cooldown logic.",
         "de": "Interne Aufräumung: 5xx-Error-Cooldown-Map nutzt jetzt denselben FIFO-Helper wie die anderen gedeckelten Maps (war in v1.9.0 inline-inkonsistent). Plus 5 neue Tests für die Cooldown-Logik.",
         "ru": "Внутренняя уборка: 5xx-cooldown map теперь использует тот же FIFO-helper что и другие capped maps (в v1.9.0 inline). Plus 5 новых тестов для cooldown.",
@@ -93,19 +93,6 @@
         "pl": "Bezpieczenstwo: HA-API endpoints wymagaja Bearer-tokenu przy `Auth Required`. Plus: stabilne server-UUID przez restarty (`info.serverUuid`).",
         "uk": "Безпека: HA-API endpoints вимагають Bearer-token при `Auth Required`. Plus: стабільна server-UUID через рестарти (`info.serverUuid`).",
         "zh-cn": "安全：HA-API 端点 (/api/states 等) 在启用 `Auth Required` 时需要 Bearer token (之前未认证，信息泄露)。公共探测端点保持开放。加上：跨重启的稳定 server UUID (`info.serverUuid` state)。"
-      },
-      "1.5.0": {
-        "en": "Security: `/health` no longer leaks the `mdns`/`auth` config flags unauthenticated (reconnaissance risk on internet-exposed instances). `requires_api_password` (mDNS + /api/discovery_info) now mirrors the actual `authRequired` setting. Brute-force lockout map is FIFO-capped and prunes stale failure counts.",
-        "de": "Sicherheit: `/health` leakt die `mdns`/`auth`-Config-Flags nicht mehr unauthenticated (Reconnaissance-Risiko bei netzexponierten Instanzen). `requires_api_password` (mDNS + /api/discovery_info) spiegelt jetzt das tatsächliche `authRequired`-Setting. Brute-Force-Lockout-Map ist FIFO-gedeckelt und prunt veraltete Fail-Counts.",
-        "ru": "Безопасность: `/health` больше не утекает флаги `mdns`/`auth` без авторизации. `requires_api_password` теперь отражает фактический `authRequired`. Brute-force lockout map FIFO-ограничен и удаляет устаревшие записи.",
-        "pt": "Seguranca: `/health` nao expoe mais flags `mdns`/`auth` sem auth. `requires_api_password` agora espelha `authRequired` real. Brute-force lockout map e FIFO-capped e remove registros obsoletos.",
-        "nl": "Beveiliging: `/health` lekt de `mdns`/`auth` config flags niet meer unauthenticated. `requires_api_password` weerspiegelt nu de echte `authRequired`. Brute-force lockout map is FIFO-capped en pruned stale entries.",
-        "fr": "Securite : `/health` ne fuite plus les flags `mdns`/`auth` non authentifies. `requires_api_password` reflete maintenant le vrai `authRequired`. La map de lockout brute-force est FIFO-cappee et purge les entrees obsoletes.",
-        "it": "Sicurezza: `/health` non rivela piu i flag `mdns`/`auth` senza auth. `requires_api_password` ora rispecchia il vero `authRequired`. Mappa lockout brute-force FIFO-cappata e prune entry obsolete.",
-        "es": "Seguridad: `/health` ya no expone los flags `mdns`/`auth` sin auth. `requires_api_password` ahora refleja el `authRequired` real. Mapa de lockout brute-force FIFO-capped y limpia entradas obsoletas.",
-        "pl": "Bezpieczenstwo: `/health` nie ujawnia juz flag `mdns`/`auth` bez auth. `requires_api_password` teraz odzwierciedla prawdziwe `authRequired`. Mapa brute-force lockout FIFO-cappowana, czysci nieaktualne wpisy.",
-        "uk": "Безпека: `/health` більше не показує `mdns`/`auth` без авторизації. `requires_api_password` тепер відповідає реальному `authRequired`. Brute-force lockout map FIFO-обмежена і видаляє застарілі записи.",
-        "zh-cn": "安全：`/health` 不再向未认证用户泄漏 `mdns`/`auth` 配置标志。`requires_api_password` 现在反映实际的 `authRequired`。Brute-force lockout map 已 FIFO 限制并清理过期条目。"
       }
     },
     "titleLang": {

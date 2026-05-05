@@ -147,7 +147,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.9.1 (2026-05-05)
 
 - **Interne Aufräumung**: 5xx-Error-Cooldown-Map (eingeführt in v1.9.0) nutzt jetzt denselben FIFO-Eviction-Helper wie alle anderen gedeckelten Maps im Server — vorher inline-inkonsistent.
 - **Test-Coverage**: 5 neue Unit-Tests für die Cooldown-Logik (erste Beobachtung, Window-Wiederholung, Window-Ablauf, unabhängige Keys, FIFO-Cap).
@@ -172,11 +172,6 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ### 1.7.1 (2026-05-05)
 
 - Hotfix: drei Prettier-Format-Fehler aus v1.7.0 behoben (CI-Lint-Gate war rot, deploy hat v1.7.0 nicht auf npm gebracht). v1.7.0-Änderungen erreichen npm jetzt mit dieser Version.
-
-### 1.7.0 (2026-05-05)
-
-- **VIS-2-Views** stehen jetzt als eigene Einträge im Mode-Dropdown — nicht nur das Top-Level-Projekt. Pro Projekt-Folder liest der Adapter `vis-views.json` und legt für jede View eine URL `?<projekt>/<view>` an. Bei fehlender oder kaputter Datei bleibt der Top-Level-Eintrag funktional.
-- **Display-Reload bei Redirect-Edit**: das Adapter-Root liefert kein 302 mehr, sondern eine kleine HTML-Seite mit `<iframe>` zum Ziel + 30-Sekunden-Polling auf den neuen Endpunkt `/api/redirect_check`. Wenn du die Mode-/manualUrl-Konfiguration änderst, lädt das Display von selbst neu — kein Soft-Reboot mehr nötig.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
