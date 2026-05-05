@@ -67,7 +67,10 @@ The Admin UI configures the server. Redirect URLs are set via the state tree (se
 
 ```
 hassemu.0.
-├── info.connection              — Server is running (bool)
+├── info.
+│   ├── connection               — Server is running (bool)
+│   ├── serverUuid               — Stable server identity reported via mDNS / discovery_info (read-only, persists across restarts)
+│   └── refresh_urls             — Button: re-scan VIS / VIS-2 / Admin URLs without restarting the adapter (set to true)
 ├── global.
 │   ├── enabled                  — Master switch (see below)
 │   ├── mode                     — Dropdown of discovered URLs + 'manual'
@@ -126,7 +129,9 @@ Empty `mode` serves the landing page — pick one of the above.
 
 ### URL was changed but the display still shows the old dashboard
 
-After the display has been redirected once, it's running on the target dashboard and doesn't ask hassemu again. Reboot the display, or use its built-in "reload" function if it has one.
+Since v1.7.0 the adapter wraps the target URL in an HTML page that polls `/api/redirect_check` every 30 seconds — on a `mode` or `manualUrl` change the display reloads itself within ~30s, no soft-reboot needed.
+
+If a display is still stuck on the old URL after that, it was probably wired to the target dashboard directly (bypassing the adapter) or it's caching aggressively. Reboot the display, or use its built-in "reload" function if it has one.
 
 ### Display keeps getting a new ID
 
@@ -180,7 +185,9 @@ Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 - [ioBroker Forum](https://forum.iobroker.net/)
 - [GitHub Issues](https://github.com/krobipd/ioBroker.hassemu/issues)
 
-If the adapter is useful to you, consider buying me a coffee:
+### Support Development
+
+This adapter is free and open source. If you find it useful, consider buying me a coffee:
 
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Support-ff5e5b?style=for-the-badge&logo=ko-fi)](https://ko-fi.com/krobipd)
 [![PayPal](https://img.shields.io/badge/Donate-PayPal-blue.svg?style=for-the-badge)](https://paypal.me/krobipd)
