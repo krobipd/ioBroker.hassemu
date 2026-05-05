@@ -111,6 +111,12 @@ class WebServer {
   /** Set of IPs whose reverse DNS lookup is already in-flight — prevents duplicate work. */
   dnsInFlight = /* @__PURE__ */ new Set();
   /**
+   * Per-message cooldown timestamps for 5xx error logging. First occurrence
+   * of a unique message logs at warn; repeats within {@link REQUEST_ERROR_COOLDOWN_MS}
+   * fall to debug to prevent log-spam under attack/probe traffic.
+   */
+  errorLogCooldown = /* @__PURE__ */ new Map();
+  /**
    * @param adapter        Adapter instance used for logging, timers and namespace.
    * @param config         Resolved runtime config.
    * @param registry       Multi-client registry.
@@ -214,11 +220,11 @@ class WebServer {
    * @param cap Hard cap; when `map.size >= cap`, the oldest entry is removed.
    */
   static evictOldest(map, cap) {
-    if (map.size < cap) {
-      return;
-    }
-    const oldest = map.keys().next().value;
-    if (oldest !== void 0) {
+    while (map.size >= cap) {
+      const oldest = map.keys().next().value;
+      if (oldest === void 0) {
+        return;
+      }
       map.delete(oldest);
     }
   }
@@ -384,6 +390,7 @@ class WebServer {
   // --- error handling ---
   setupErrorHandler() {
     this.app.setErrorHandler((err, _req, reply) => {
+      var _a;
       const error = err;
       if (error.validation) {
         this.adapter.log.debug(`Validation error: ${error.message}`);
@@ -396,7 +403,21 @@ class WebServer {
         reply.status(code).send({ error: error.message });
         return;
       }
-      this.adapter.log.warn(`Request error: ${error.message}`);
+      const key = error.message || "unknown";
+      const now = Date.now();
+      const lastSeen = (_a = this.errorLogCooldown.get(key)) != null ? _a : 0;
+      if (now - lastSeen > import_constants.REQUEST_ERROR_COOLDOWN_MS) {
+        this.adapter.log.warn(`Request error: ${error.message}`);
+        this.errorLogCooldown.set(key, now);
+        if (this.errorLogCooldown.size > 200) {
+          const oldestKey = this.errorLogCooldown.keys().next().value;
+          if (oldestKey !== void 0) {
+            this.errorLogCooldown.delete(oldestKey);
+          }
+        }
+      } else {
+        this.adapter.log.debug(`Request error (repeat): ${error.message}`);
+      }
       reply.status(500).send({ error: "Internal server error" });
     });
   }

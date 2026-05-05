@@ -41,6 +41,10 @@ class MDNSService {
   active = false;
   bonjour = null;
   published = null;
+  /** Read-only flag — true between successful `start()` and `stop()`. */
+  isActive() {
+    return this.active;
+  }
   /**
    * Creates a new MDNSService instance
    *
