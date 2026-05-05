@@ -35,6 +35,7 @@ module.exports = __toCommonJS(webserver_exports);
 var import_node_crypto = __toESM(require("node:crypto"));
 var import_promises = __toESM(require("node:dns/promises"));
 var import_cookie = __toESM(require("@fastify/cookie"));
+var import_formbody = __toESM(require("@fastify/formbody"));
 var import_fastify = __toESM(require("fastify"));
 var import_constants = require("./constants");
 var import_coerce = require("./coerce");
@@ -110,6 +111,7 @@ class WebServer {
   async start() {
     var _a;
     await this.app.register(import_cookie.default);
+    await this.app.register(import_formbody.default);
     this.setupErrorHandler();
     this.setupRoutes();
     const bindAddress = this.config.bindAddress || "0.0.0.0";

@@ -59,6 +59,7 @@ class MDNSService {
   }
   /** Start mDNS broadcasting via bonjour-service */
   start() {
+    var _a;
     const localIP = (0, import_network.getLocalIp)();
     const baseUrl = `http://${localIP}:${this.config.port}`;
     const serviceName = this.config.serviceName || "ioBroker";
@@ -87,6 +88,12 @@ class MDNSService {
     } catch (error) {
       const err = error;
       this.adapter.log.warn(`mDNS: Failed to start: ${err.message}`);
+      try {
+        (_a = this.bonjour) == null ? void 0 : _a.destroy();
+      } catch {
+      }
+      this.bonjour = null;
+      this.published = null;
     }
   }
   /** Stop mDNS broadcasting */

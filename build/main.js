@@ -84,6 +84,7 @@ class HassEmu extends utils.Adapter {
     await this.subscribeForeignObjectsAsync("system.adapter.*");
     await this.subscribeStatesAsync("clients.*");
     await this.subscribeStatesAsync("global.*");
+    await this.subscribeStatesAsync("info.refresh_urls");
     const systemLanguage = await this.readSystemLanguage();
     try {
       this.webServer = new import_webserver.WebServer(
@@ -154,9 +155,44 @@ class HassEmu extends utils.Adapter {
     if (!url) {
       return;
     }
+    const safe = (0, import_coerce.coerceSafeUrl)(url);
+    if (!safe) {
+      this.log.warn(`Legacy URL rejected as unsafe \u2014 dropping native.defaultVisUrl/visUrl without migration: ${String(url)}`);
+      try {
+        const id = `system.adapter.${this.namespace}`;
+        const obj = await this.getForeignObjectAsync(id);
+        if (obj == null ? void 0 : obj.native) {
+          delete obj.native.defaultVisUrl;
+          delete obj.native.visUrl;
+          await this.setForeignObjectAsync(id, obj);
+        }
+      } catch (err) {
+        this.log.warn(`Legacy config cleanup failed: ${String(err)}`);
+      }
+      return;
+    }
     this.log.info("Migrating legacy native.defaultVisUrl/visUrl \u2192 global.visUrl");
-    await this.setStateAsync("global.visUrl", { val: url, ack: true }).catch(() => {
-    });
+    let stateWritten = false;
+    try {
+      await this.setStateAsync("global.visUrl", { val: safe, ack: true });
+      stateWritten = true;
+    } catch {
+      try {
+        if (this.globalConfig) {
+          await this.globalConfig.migrationSet(import_global_config.MODE_MANUAL, safe);
+          this.log.info(
+            `Migration shortcut: global.visUrl-state missing \u2192 wrote directly to global.mode='manual', manualUrl='${safe}'`
+          );
+          stateWritten = true;
+        }
+      } catch (err) {
+        this.log.warn(`Legacy URL migration failed at fallback: ${String(err)}`);
+      }
+    }
+    if (!stateWritten) {
+      this.log.warn("Legacy URL preserved in native \u2014 neither global.visUrl nor global.mode write succeeded");
+      return;
+    }
     try {
       const id = `system.adapter.${this.namespace}`;
       const obj = await this.getForeignObjectAsync(id);
@@ -357,6 +393,30 @@ class HassEmu extends utils.Adapter {
     } else if (globalParsed === "enabled") {
       await this.globalConfig.handleEnabledWrite(state.val);
       await this.applyMasterSwitch(this.globalConfig.isEnabled());
+      return;
+    }
+    if (id === `${this.namespace}.info.refresh_urls` && state.val === true) {
+      await this.handleRefreshUrlsWrite();
+    }
+  }
+  /**
+   * Handler for the `info.refresh_urls` button.
+   * Triggert eine sofortige `urlDiscovery.collect()` (statt Debounce-Schedule),
+   * damit der User nicht 2s warten muss. Schreibt anschließend `false ack` damit
+   * der Button in der Admin-UI wieder „klickbar" wird.
+   */
+  async handleRefreshUrlsWrite() {
+    if (!this.urlDiscovery) {
+      return;
+    }
+    try {
+      await this.urlDiscovery.collect();
+      this.log.info("URL discovery refreshed on user request");
+    } catch (err) {
+      this.log.warn(`URL refresh failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      await this.setStateAsync("info.refresh_urls", { val: false, ack: true }).catch(() => {
+      });
     }
   }
   onUnload(callback) {
