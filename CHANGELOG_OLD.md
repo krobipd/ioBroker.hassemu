@@ -1,4 +1,9 @@
 # Older Changes
+## 1.9.1 (2026-05-05)
+
+- **Interne Aufräumung**: 5xx-Error-Cooldown-Map (eingeführt in v1.9.0) nutzt jetzt denselben FIFO-Eviction-Helper wie alle anderen gedeckelten Maps im Server — vorher inline-inkonsistent.
+- **Test-Coverage**: 5 neue Unit-Tests für die Cooldown-Logik (erste Beobachtung, Window-Wiederholung, Window-Ablauf, unabhängige Keys, FIFO-Cap).
+
 ## 1.9.0 (2026-05-05)
 
 - **Weniger Log-Spam unter Attacke**: 5xx-Fehler werden pro Message nur beim ersten Auftritt als `warn` geloggt (60s-Cooldown), Wiederholungen fallen auf `debug`.

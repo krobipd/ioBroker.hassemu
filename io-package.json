@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.13.0",
+    "version": "1.14.0",
     "news": {
-      "NEXT": {
+      "1.14.0": {
         "en": "Lifecycle hardening: schema-repair skips check when objects are already correct (saves 2 broker round-trips per restart). Plus defensive cleanup on onReady re-run, smaller GC pressure on test injects.",
         "de": "Lifecycle-Härtung: Schema-Repair überspringt Check wenn Objects schon ok sind (-2 Broker-Round-Trips). Plus defensives onReady-Re-Run-Cleanup, weniger GC-Druck bei Test-Injects.",
         "ru": "Lifecycle hardening: schema-repair пропускает check если objects уже корректны (-2 broker round-trips). Plus defensive cleanup при onReady re-run, меньше GC-pressure на test injects.",
@@ -93,19 +93,6 @@
         "pl": "Mniej log-spam: 5xx na warn tylko pierwsze wystapienie per wiadomosc (60s cooldown). Adapter-restart ~4x szybszy z wieloma displayami. Minor hardening (port bez hex).",
         "uk": "Менше log-spam: 5xx на warn лише при першій появі (60s cooldown). Adapter-restart ~4× швидший з багатьма displays. Мінор-загартування (порт без hex).",
         "zh-cn": "日志垃圾减少：5xx 仅在每消息首次记 warn（60s cooldown）。多显示器适配器重启快约 4 倍。小幅加固（端口不接受 hex）。"
-      },
-      "1.8.1": {
-        "en": "Master-switch faster: bulk mode change writes parallel (was: N sequential broker calls). URL-dropdown survives transient broker hiccups. Reverse-DNS lookup has a 5s timeout.",
-        "de": "Master-Switch schneller: Bulk-Mode-Wechsel schreibt parallel (vorher N sequenzielle Broker-Calls). URL-Dropdown übersteht kurze Broker-Hänger. Reverse-DNS-Lookup hat 5s-Timeout.",
-        "ru": "Master-switch быстрее: bulk mode change пишет параллельно (раньше N последовательных broker-вызовов). URL-dropdown переживает кратковременные сбои broker. Reverse-DNS lookup имеет 5s timeout.",
-        "pt": "Master-switch mais rapido: bulk mode change escreve em paralelo (antes: N chamadas sequenciais ao broker). URL-dropdown sobrevive a hiccups breves do broker. Reverse-DNS lookup tem timeout de 5s.",
-        "nl": "Master-switch sneller: bulk mode change schrijft parallel (eerder N sequentiele broker-calls). URL-dropdown overleeft korte broker-hikjes. Reverse-DNS lookup heeft 5s timeout.",
-        "fr": "Master-switch plus rapide : bulk mode change ecrit en parallele (avant : N appels broker sequentiels). URL-dropdown survit aux hoquets brefs du broker. Reverse-DNS lookup a un timeout de 5s.",
-        "it": "Master-switch piu veloce: bulk mode change scrive in parallelo (prima: N chiamate broker sequenziali). URL-dropdown sopravvive a brevi singhiozzi del broker. Reverse-DNS lookup ha timeout 5s.",
-        "es": "Master-switch mas rapido: bulk mode change escribe en paralelo (antes: N llamadas broker secuenciales). URL-dropdown sobrevive hipidos breves del broker. Reverse-DNS lookup tiene timeout de 5s.",
-        "pl": "Master-switch szybszy: bulk mode change zapisuje rownolegle (wczesniej pojedynczo). URL-dropdown przezywa krotkie zacinki broker. Reverse-DNS lookup ma timeout 5s.",
-        "uk": "Master-switch швидший: bulk mode change пише паралельно (раніше N послідовних broker-викликів). URL-dropdown переживає короткі затинки broker. Reverse-DNS lookup має таймаут 5s.",
-        "zh-cn": "Master-switch 更快：bulk 模式切换并行写入（之前为 N 次串行 broker 调用）。URL 下拉可挺过 broker 短暂停顿。反向 DNS 查询设 5 秒超时。"
       }
     },
     "titleLang": {

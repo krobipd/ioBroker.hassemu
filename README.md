@@ -152,7 +152,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.14.0 (2026-05-05)
 
 - **Schema-Repair überspringt Check** wenn `global.mode`/`global.manualUrl` schon korrekt sind — spart 2 Broker-Round-Trips pro Start. Repair-Pfad bleibt für pre-v1.3.2-Bug.
 - **Defensives Cleanup bei `onReady`-Re-Run**: webServer/mDNS/urlDiscovery werden vorher sauber gestoppt falls js-controller `onReady` ohne `unload` zweimal triggert.
@@ -181,11 +181,6 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 - **mDNS-Broadcast-Fehler ist jetzt sichtbar**: `warn`-Meldung im Log + `mDNS FAILED` im running-Status (vorher still).
 - **Compact-Mode**: `unhandledRejection`/`uncaughtException`-Handler nur einmal pro Node-Prozess (Module-Level-Flag), nicht pro Instance.
 - **onUnload löst Subscriptions explizit auf** vor dem Null-Set — verhindert Residual-Calls auf genullte Instance bei hot-remove.
-
-### 1.9.1 (2026-05-05)
-
-- **Interne Aufräumung**: 5xx-Error-Cooldown-Map (eingeführt in v1.9.0) nutzt jetzt denselben FIFO-Eviction-Helper wie alle anderen gedeckelten Maps im Server — vorher inline-inkonsistent.
-- **Test-Coverage**: 5 neue Unit-Tests für die Cooldown-Logik (erste Beobachtung, Window-Wiederholung, Window-Ablauf, unabhängige Keys, FIFO-Cap).
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
