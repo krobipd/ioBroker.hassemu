@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.16.0",
+    "version": "1.17.0",
     "news": {
-      "NEXT": {
+      "1.17.0": {
         "en": "Security: pendingByIp uses IP+UA-hash bucket — NAT-co-located displays no longer share cookie/token. discovery_info uses bind-address. VIS discovery iterates all web.* instances.",
         "de": "Sicherheit: pendingByIp nutzt IP+UA-Hash-Bucket — NAT-co-located Displays teilen kein Cookie/Token mehr. discovery_info nutzt bind-address. VIS-Discovery iteriert alle web.*-Instances.",
         "ru": "Безопасность: pendingByIp использует IP+UA-hash bucket — NAT-co-located displays не делят cookie/token. discovery_info использует bind-address. VIS discovery итерирует все web.*.",
@@ -93,19 +93,6 @@
         "pl": "Bezpieczenstwo: refresh-token endpoint ma teraz ten sam brute-force lockout co login (5 nieprawidlowych grantow → 15min IP lock). Plus: stale-client GC usuwa idle token-clients (>30 dni).",
         "uk": "Безпека: refresh-token endpoint тепер має той самий brute-force lockout що й login (5 невірних grants → 15min IP lock). Plus: stale-client GC видаляє idle token-clients (>30 днів).",
         "zh-cn": "安全：refresh-token 端点现拥有与登录相同的暴力破解锁定（5 次无效 grant → 15 分钟 IP 锁）。另：stale-client GC 也清理 idle token-client (>30 天)。"
-      },
-      "1.10.0": {
-        "en": "Server-start failure (e.g. port in use) now terminates explicitly — js-controller restarts after backoff instead of zombie idle. Plus: mDNS broadcast failure visible as warn.",
-        "de": "Server-Start-Fehler (z.B. Port belegt) terminiert jetzt explizit — js-controller restartet nach Backoff statt Zombie-Idle. Plus: mDNS-Broadcast-Fehler sichtbar als warn im Log.",
-        "ru": "Server-start failure (например, port занят) теперь terminate с явным failure code — js-controller restartет после backoff, вместо zombie idle. Plus: mDNS broadcast failure виден как warn.",
-        "pt": "Server-start failure (ex. porta ocupada) agora termina com failure code explicito — js-controller reinicia apos backoff em vez de adapter zombie. Plus: mDNS broadcast failure visivel como warn.",
-        "nl": "Server-start failure (bv. poort bezet) terminate nu met expliciete failure code — js-controller herstart na backoff in plaats van zombie. Plus: mDNS broadcast failure zichtbaar als warn.",
-        "fr": "Server-start failure (p.ex. port occupe) termine maintenant avec failure code explicite — js-controller redemarre apres backoff au lieu de zombie. Plus : mDNS broadcast failure visible en warn.",
-        "it": "Server-start failure (es. porta occupata) ora termina con failure code esplicito — js-controller riavvia dopo backoff invece di zombie. Plus: mDNS broadcast failure visibile come warn.",
-        "es": "Server-start failure (p.ej. puerto ocupado) ahora termina con failure code explicito — js-controller reinicia tras backoff en vez de zombie. Plus: mDNS broadcast failure visible como warn.",
-        "pl": "Server-start failure (np. port zajety) terminuje teraz z jawnym failure code — js-controller restartuje po backoff zamiast zombie. Plus: mDNS broadcast failure widoczne jako warn.",
-        "uk": "Server-start failure (напр. порт зайнятий) тепер terminate з явним failure code — js-controller restart після backoff, замість zombie. Plus: mDNS broadcast failure видно як warn.",
-        "zh-cn": "服务器启动失败（如端口占用）现在以显式失败代码终止 — js-controller 在 backoff 后重启，而不是 zombie。另：mDNS 广播失败在 warn 级别可见。"
       }
     },
     "titleLang": {
