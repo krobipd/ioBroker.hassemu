@@ -178,12 +178,14 @@ const STRINGS = {
   }
 };
 function renderLandingPage(clientId, namespace, language = "en", ip = null) {
-  var _a;
+  var _a, _b;
   const s = (_a = STRINGS[language]) != null ? _a : STRINGS.en;
   const id = escapeHtml(clientId);
   const ns = escapeHtml(namespace);
   const datapoint = `${ns}.clients.${id}.mode`;
-  const ipLine = ip && ip.trim() ? `<tr><th scope="row">${escapeHtml(s.ipLabel)}</th><td>${escapeHtml(ip)}</td></tr>` : "";
+  const trimmedIp = (_b = ip == null ? void 0 : ip.trim()) != null ? _b : "";
+  const isLoopback = trimmedIp === "" || trimmedIp === "127.0.0.1" || trimmedIp === "::1" || trimmedIp === "0.0.0.0" || trimmedIp.startsWith("127.");
+  const ipLine = isLoopback ? "" : `<tr><th scope="row">${escapeHtml(s.ipLabel)}</th><td>${escapeHtml(trimmedIp)}</td></tr>`;
   return `<!DOCTYPE html>
 <html lang="${escapeHtml(s.htmlLang)}">
 <head>

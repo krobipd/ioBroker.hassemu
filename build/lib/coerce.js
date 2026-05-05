@@ -21,6 +21,7 @@ __export(coerce_exports, {
   coerceBoolean: () => coerceBoolean,
   coerceFiniteNumber: () => coerceFiniteNumber,
   coerceSafeUrl: () => coerceSafeUrl,
+  coerceSafeUrlReason: () => coerceSafeUrlReason,
   coerceString: () => coerceString,
   coerceUuid: () => coerceUuid,
   isNoChoice: () => isNoChoice,
@@ -76,28 +77,38 @@ function parseManualUrlWrite(rawValue) {
   return { ok: true, safe };
 }
 function coerceSafeUrl(value) {
-  if (typeof value !== "string" || value.length === 0 || value.length > 2048) {
-    return null;
+  return coerceSafeUrlReason(value).safe;
+}
+function coerceSafeUrlReason(value) {
+  if (typeof value !== "string") {
+    return { safe: null, reason: "not-a-string" };
+  }
+  if (value.length === 0) {
+    return { safe: null, reason: "empty" };
+  }
+  if (value.length > 2048) {
+    return { safe: null, reason: "too-long" };
   }
   let url;
   try {
     url = new URL(value);
   } catch {
-    return null;
+    return { safe: null, reason: "unparseable" };
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    return null;
+    return { safe: null, reason: `bad-scheme:${url.protocol}` };
   }
   if (url.username.length > 0 || url.password.length > 0) {
-    return null;
+    return { safe: null, reason: "credentials-in-url" };
   }
-  return value;
+  return { safe: value, reason: null };
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   coerceBoolean,
   coerceFiniteNumber,
   coerceSafeUrl,
+  coerceSafeUrlReason,
   coerceString,
   coerceUuid,
   isNoChoice,

@@ -41,12 +41,9 @@ var import_constants = require("./constants");
 var import_coerce = require("./coerce");
 var import_landing_page = require("./landing-page");
 function safeStringEqual(a, b) {
-  const ab = Buffer.from(a, "utf8");
-  const bb = Buffer.from(b, "utf8");
-  if (ab.length !== bb.length) {
-    return false;
-  }
-  return import_node_crypto.default.timingSafeEqual(ab, bb);
+  const ah = import_node_crypto.default.createHash("sha256").update(a, "utf8").digest();
+  const bh = import_node_crypto.default.createHash("sha256").update(b, "utf8").digest();
+  return import_node_crypto.default.timingSafeEqual(ah, bh);
 }
 function renderRedirectWrapper(target) {
   const escAttr = target.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");

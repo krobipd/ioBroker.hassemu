@@ -1,5 +1,13 @@
 import { expect } from 'chai';
-import { coerceFiniteNumber, coerceString, coerceBoolean, coerceUuid, coerceSafeUrl, isPlainObject } from './coerce';
+import {
+    coerceFiniteNumber,
+    coerceString,
+    coerceBoolean,
+    coerceUuid,
+    coerceSafeUrl,
+    coerceSafeUrlReason,
+    isPlainObject,
+} from './coerce';
 
 describe('coerce', () => {
     describe('coerceFiniteNumber', () => {
@@ -157,6 +165,56 @@ describe('coerce', () => {
             expect(coerceSafeUrl(null)).to.be.null;
             expect(coerceSafeUrl(42)).to.be.null;
             expect(coerceSafeUrl({})).to.be.null;
+        });
+    });
+
+    describe('coerceSafeUrlReason (E4 v1.16.0)', () => {
+        it('returns safe + null reason for OK URLs', () => {
+            const r = coerceSafeUrlReason('http://example.com/');
+            expect(r.safe).to.equal('http://example.com/');
+            expect(r.reason).to.be.null;
+        });
+
+        it('reports bad-scheme for javascript:', () => {
+            const r = coerceSafeUrlReason('javascript:alert(1)');
+            expect(r.safe).to.be.null;
+            expect(r.reason).to.equal('bad-scheme:javascript:');
+        });
+
+        it('reports bad-scheme for data:', () => {
+            const r = coerceSafeUrlReason('data:text/html,<script>x</script>');
+            expect(r.safe).to.be.null;
+            expect(r.reason).to.equal('bad-scheme:data:');
+        });
+
+        it('reports credentials-in-url for user:pass URLs', () => {
+            const r = coerceSafeUrlReason('https://user:pass@example.com/');
+            expect(r.safe).to.be.null;
+            expect(r.reason).to.equal('credentials-in-url');
+        });
+
+        it('reports unparseable for malformed strings', () => {
+            const r = coerceSafeUrlReason('not a url');
+            expect(r.safe).to.be.null;
+            expect(r.reason).to.equal('unparseable');
+        });
+
+        it('reports empty for empty string', () => {
+            const r = coerceSafeUrlReason('');
+            expect(r.safe).to.be.null;
+            expect(r.reason).to.equal('empty');
+        });
+
+        it('reports too-long for >2048 chars', () => {
+            const r = coerceSafeUrlReason('http://x.com/' + 'a'.repeat(2050));
+            expect(r.safe).to.be.null;
+            expect(r.reason).to.equal('too-long');
+        });
+
+        it('reports not-a-string for non-strings', () => {
+            const r = coerceSafeUrlReason(42);
+            expect(r.safe).to.be.null;
+            expect(r.reason).to.equal('not-a-string');
         });
     });
 });

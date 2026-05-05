@@ -132,20 +132,38 @@ export function parseManualUrlWrite(rawValue: unknown): ManualUrlWriteResult {
  * @param value Untrusted input.
  */
 export function coerceSafeUrl(value: unknown): string | null {
-    if (typeof value !== 'string' || value.length === 0 || value.length > 2048) {
-        return null;
+    return coerceSafeUrlReason(value).safe;
+}
+
+/**
+ * v1.16.0 (E4): wie {@link coerceSafeUrl}, aber liefert zusätzlich einen
+ * Grund warum eine URL abgelehnt wurde — für gezielte log/debug-Ausgaben
+ * an Boundaries (z.B. „mode-write rejected: credentials-in-URL"). Bei
+ * `safe: string` ist `reason: null`, bei `safe: null` ein kurzer Grund.
+ *
+ * @param value Untrusted input.
+ */
+export function coerceSafeUrlReason(value: unknown): { safe: string | null; reason: string | null } {
+    if (typeof value !== 'string') {
+        return { safe: null, reason: 'not-a-string' };
+    }
+    if (value.length === 0) {
+        return { safe: null, reason: 'empty' };
+    }
+    if (value.length > 2048) {
+        return { safe: null, reason: 'too-long' };
     }
     let url: URL;
     try {
         url = new URL(value);
     } catch {
-        return null;
+        return { safe: null, reason: 'unparseable' };
     }
     if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-        return null;
+        return { safe: null, reason: `bad-scheme:${url.protocol}` };
     }
     if (url.username.length > 0 || url.password.length > 0) {
-        return null;
+        return { safe: null, reason: 'credentials-in-url' };
     }
-    return value;
+    return { safe: value, reason: null };
 }

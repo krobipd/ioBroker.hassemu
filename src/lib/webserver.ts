@@ -25,18 +25,22 @@ import { renderLandingPage } from './landing-page';
 import type { AdapterConfig, AdapterInterface, ClientRecord, SessionData } from './types';
 
 /**
- * Constant-time string comparison for credential checks. Returns false for length mismatch.
+ * Constant-time string comparison for credential checks. Length-leak-resistant
+ * via SHA-256-Digest-Vergleich: beide Inputs werden auf eine fixe 32-Byte-
+ * Länge gehasht, dann timing-safe verglichen.
+ *
+ * v1.16.0 (C6): vorher `if (ab.length !== bb.length) return false` VOR
+ * timingSafeEqual — die Längen-Differenz war über Response-Timing
+ * erschnüffelbar und reduzierte den Search-Space (z.B. Default-User
+ * `'admin'` = 5 Zeichen). Jetzt: SHA-256-Hash-Vergleich auf fixer Länge.
  *
  * @param a First string to compare.
  * @param b Second string to compare.
  */
 function safeStringEqual(a: string, b: string): boolean {
-    const ab = Buffer.from(a, 'utf8');
-    const bb = Buffer.from(b, 'utf8');
-    if (ab.length !== bb.length) {
-        return false;
-    }
-    return crypto.timingSafeEqual(ab, bb);
+    const ah = crypto.createHash('sha256').update(a, 'utf8').digest();
+    const bh = crypto.createHash('sha256').update(b, 'utf8').digest();
+    return crypto.timingSafeEqual(ah, bh);
 }
 
 /** Adapter surface the WebServer depends on — adds `namespace` for the setup page. */
