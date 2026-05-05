@@ -6,7 +6,7 @@
 
 **ioBroker HASS Emulator** — emuliert einen minimalen HA-Server für Geräte, die ein HA-Dashboard erwarten → leitet auf beliebige URL um.
 
-- **Version:** 1.8.0 npm latest, v1.8.1 deploy CI in Arbeit (2026-05-05). 8 Releases in einer Auto-Mode-Welle: Phase A (User-Wünsche) komplett, Phase B 4/5, Phase C 3/3 priorisiert, Phase D 5/9 — siehe Roadmap in `/Volumes/ssd/ioBroker/Ressourcen/hassemu/features-roadmap.md`
+- **Version:** 1.9.0 npm latest, v1.9.1 deploy CI in Arbeit (2026-05-05). 10 Releases in einer Auto-Mode-Welle: Phase A (User-Wünsche) komplett, Phase B 4/5, Phase C 4/12 priorisiert, Phase D 7/9, Phase E 7/9. Stand-Down nach v1.9.1 (User-Hardware-Test ausstehend). Roadmap: `/Volumes/ssd/ioBroker/Ressourcen/hassemu/features-roadmap.md`
 - **GitHub:** https://github.com/krobipd/ioBroker.hassemu
 - **npm:** https://www.npmjs.com/package/iobroker.hassemu
 - **Repository PR:** ioBroker/ioBroker.repositories#5793
@@ -72,7 +72,7 @@ src/lib/webserver.ts         → Fastify HTTP Server + HA API Emulation + Cookie
     3. `clients.<id>.mode = <URL>` → diese URL
     4. sonst → 200 HTML mit der Landing-Seite
 
-## Tests (306 unit + 57 package + 1 integration)
+## Tests (311 unit + 57 package + 1 integration)
 
 Tests leben seit v1.1.6 neben dem Source als `src/lib/*.test.ts` und laufen direkt via `ts-node/register` (offizieller `ioBroker.example/TypeScript`-Standard).
 
@@ -93,6 +93,8 @@ test/integration.js              → @iobroker/testing Integration-Tests
 
 | Version | Highlights                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.9.1   | D6/E9-Konsistenz-Hotfix: errorLogCooldown nutzt jetzt WebServer.evictOldest helper (war inline-FIFO) + 5 neue Cooldown-Unit-Tests (shouldEmitRequestErrorWarn). Tests 306→311                                                                                                                                                                                                                                                                                          |
+| 1.9.0   | D6 5xx-Error-Cooldown (warn-only first per message, 60s-window), D8 restore() parallel readState (~4× restart-speedup bei vielen Clients), E2 STRINGS as const satisfies, E5 parseClientStateId empty-id reject, E7 MDNSService.active private + isActive(), E8 DECIMAL_NUMBER_RE strict (rejects HEX/exponential), E9 evictOldest while-loop                                                                                                                          |
 | 1.8.1   | Phase D: lastSeenFlushedAt-cleanup in remove() (D2), url-discovery cache preserved bei Broker-Hiccup (D4), DNS-reverse 5s-Timeout via Promise.race (D5), bulkSetMode parallel via Promise.all (D7) — robustness/perf, kein behavior change                                                                                                                                                                                                                            |
 | 1.8.0   | Phase E+F+G: Cookie-/Map-/Sentinel-Konstanten zentralisiert in `lib/constants.ts` (E1, F8), `isNoChoice()`-Helper in `coerce.ts` (F1), Login-Spam-Logs (Unknown flow_id, Refresh rejected, Token grant_type) auf `debug` (G2-G4)                                                                                                                                                                                                                                       |
 | 1.7.1   | Hotfix für 3 prettier-Format-Fehler aus v1.7.0 — bringt v1.7.0-Code auf npm. Lesson: IMMER `pre-release.py` vor `npm run release`                                                                                                                                                                                                                                                                                                                                      |
