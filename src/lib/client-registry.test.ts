@@ -267,6 +267,32 @@ describe('ClientRegistry', () => {
             expect(rec1.id).to.not.equal(rec2.id);
         });
 
+        // v1.17.0 (C8) — different User-Agents on the same IP (NAT) get separate
+        // ClientRecords statt cookie/token zu teilen.
+        it('parallel cookieless requests with different UAs on same IP get distinct clients (C8 v1.17.0)', async () => {
+            const promises = [
+                registry.identifyOrCreate(null, '10.0.0.1', null, 'Display-A/1.0'),
+                registry.identifyOrCreate(null, '10.0.0.1', null, 'Display-B/2.0'),
+            ];
+            const results = await Promise.all(promises);
+            expect(results[0].id).to.not.equal(results[1].id);
+            expect(results[0].cookie).to.not.equal(results[1].cookie);
+            expect(registry.listAll()).to.have.lengthOf(2);
+        });
+
+        // v1.17.0 (C8) — same UA on same IP behaves wie vorher: Bursts kollabieren.
+        it('parallel cookieless requests with same UA on same IP collapse to one client', async () => {
+            const promises = [
+                registry.identifyOrCreate(null, '10.0.0.2', null, 'Display-A/1.0'),
+                registry.identifyOrCreate(null, '10.0.0.2', null, 'Display-A/1.0'),
+                registry.identifyOrCreate(null, '10.0.0.2', null, 'Display-A/1.0'),
+            ];
+            const results = await Promise.all(promises);
+            expect(results[0].id).to.equal(results[1].id);
+            expect(results[1].id).to.equal(results[2].id);
+            expect(registry.listAll()).to.have.lengthOf(1);
+        });
+
         it('updates IP when it changes on subsequent visit', async () => {
             const rec = await registry.identifyOrCreate(null, '1.1.1.1', null);
             await registry.identifyOrCreate(rec.cookie, '2.2.2.2', null);
