@@ -155,7 +155,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.22.0 (2026-05-05)
 
 - **Interne Aufräumung**: `safeStringEqual` (timing-safe Credentials-Vergleich) ist von `webserver.ts` nach `coerce.ts` umgezogen — generischer Crypto-Helper. Plus 5 neue Unit-Tests.
 
@@ -177,12 +177,6 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 - **Burst-Erkennung für broken Cookies**: erzeugt ein Display mehr als 3 neue Clients innerhalb einer Stunde (= der Cookie wird nicht persistiert), kommt einmaliger `warn`-Hinweis mit Diagnose-Pfad.
 - **README**: Hinweis dass nur eine hassemu-Instance pro Host laufen kann (Port 8123 fix).
 - **`lastSeen`-Update-Pfad konsolidiert**: GC und Throttle nutzen jetzt denselben `registry.seedLastSeen()`-Helper.
-
-### 1.18.0 (2026-05-05)
-
-- **Logging-Hygiene Login-Floods**: `Invalid credentials` kommt pro IP nur bis zur Lockout-Schwelle als `warn` ins Log, danach auf `debug`. Brute-Force füllt das Log nicht mehr.
-- **Stop-Error nicht mehr doppelt**: bei intended shutdown loggt `webServer.stop()` selbst auf `debug`, der Caller in `onUnload` cleant silent. Vorher zwei Einträge im Log.
-- **`non-string mode`-Rejection auf `debug`**: das ist UI-Echo (Dropdown-Klicks o.ä.) und kein Server-Concern — vorher fälschlich als `warn`.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
