@@ -152,6 +152,12 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
+### **WORK IN PROGRESS**
+
+- **URL-Dropdown-Refresh schmaler**: feuert nur noch bei Adapter-Add/Remove oder Änderungen an `admin`/`web`/`vis`/`vis-2` — vorher bei jedem `system.adapter.*`-Object-Change im ganzen Host.
+- **Subscriptions nach Server-Start**: vermeidet Race-Window in dem ein State-Write zwischen Subscribe und Server-Listen einen Handler auf nicht-laufenden Server feuert.
+- **Lifecycle-Härtung**: `info.connection=false` in `onUnload` zuerst (nicht nach Refs-Null), `setNewClientModeProvider` vor `collect()` (statt danach), klarer Code-Pfad bei WebServer-Start-Fail.
+
 ### 1.12.0 (2026-05-05)
 
 - **Brute-Force-Lockout-Härtung**: IPv6-mapped IPv4 (`::ffff:1.2.3.4`) und `null`-IP teilen jetzt einen Bucket mit raw IPv4 — vorher konnten Angreifer durch Adress-Form-Wechsel den Counter umgehen.
