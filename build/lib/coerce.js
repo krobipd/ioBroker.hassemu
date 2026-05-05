@@ -39,6 +39,7 @@ __export(coerce_exports, {
   isPlainObject: () => isPlainObject,
   parseAdapterStateId: () => parseAdapterStateId,
   parseManualUrlWrite: () => parseManualUrlWrite,
+  parseModeWrite: () => parseModeWrite,
   safeGetState: () => safeGetState,
   safeStringEqual: () => safeStringEqual
 });
@@ -95,6 +96,25 @@ function parseManualUrlWrite(rawValue) {
     return { ok: false };
   }
   return { ok: true, safe };
+}
+function parseModeWrite(rawValue, allowedSentinels) {
+  if (isNoChoice(rawValue)) {
+    return { kind: "no-choice" };
+  }
+  if (typeof rawValue !== "string") {
+    return { kind: "rejected-non-string" };
+  }
+  if (allowedSentinels.includes(rawValue)) {
+    return { kind: "sentinel", value: rawValue };
+  }
+  if (rawValue === "global" || rawValue === "manual") {
+    return { kind: "rejected-disallowed-sentinel", value: rawValue };
+  }
+  const safe = coerceSafeUrl(rawValue);
+  if (!safe) {
+    return { kind: "rejected-unsafe-url", raw: rawValue };
+  }
+  return { kind: "url", value: safe };
 }
 function coerceSafeUrl(value) {
   return coerceSafeUrlReason(value).safe;
@@ -159,6 +179,7 @@ function buildDropdownStates(sentinels, urlStates) {
   isPlainObject,
   parseAdapterStateId,
   parseManualUrlWrite,
+  parseModeWrite,
   safeGetState,
   safeStringEqual
 });

@@ -18,6 +18,7 @@ import {
     isNoChoice,
     parseAdapterStateId,
     parseManualUrlWrite,
+    parseModeWrite,
     safeGetState,
 } from './coerce';
 import { MODE_GLOBAL, MODE_MANUAL } from './constants';
@@ -116,39 +117,44 @@ export class GlobalConfig {
      * @param rawValue Value written to the state.
      */
     async handleModeWrite(rawValue: unknown): Promise<void> {
-        if (isNoChoice(rawValue)) {
-            this.mode = '';
-            await this.adapter.setStateAsync('global.mode', { val: 0, ack: true });
-            return;
-        }
-        if (typeof rawValue !== 'string') {
-            this.adapter.log.warn('global-config: rejected non-string global.mode');
-            await this.adapter.setStateAsync('global.mode', { val: this.mode || 0, ack: true });
-            return;
-        }
-        if (rawValue === MODE_GLOBAL) {
-            this.adapter.log.warn("global-config: 'global' is not allowed as global.mode (self-referential)");
-            await this.adapter.setStateAsync('global.mode', { val: this.mode, ack: true });
-            return;
-        }
-        if (rawValue === MODE_MANUAL) {
-            if (!this.manualUrl) {
+        // v1.23.0 (F2): zentralisierte Validierung via parseModeWrite. Erlaubte
+        // Sentinels: nur MODE_MANUAL — MODE_GLOBAL wäre self-referential
+        // (global.mode='global' → resolve global.mode → ...).
+        const result = parseModeWrite(rawValue, [MODE_MANUAL]);
+        switch (result.kind) {
+            case 'no-choice':
+                this.mode = '';
+                await this.adapter.setStateAsync('global.mode', { val: 0, ack: true });
+                return;
+            case 'rejected-non-string':
+                this.adapter.log.warn('global-config: rejected non-string global.mode');
+                await this.adapter.setStateAsync('global.mode', { val: this.mode || 0, ack: true });
+                return;
+            case 'rejected-disallowed-sentinel':
+                // MODE_GLOBAL bei global.mode → self-referential.
                 this.adapter.log.warn(
-                    "global-config: global.mode set to 'manual' but global.manualUrl is empty — fill it to redirect",
+                    `global-config: '${result.value}' is not allowed as global.mode (self-referential)`,
                 );
-            }
-            this.mode = MODE_MANUAL;
-            await this.adapter.setStateAsync('global.mode', { val: MODE_MANUAL, ack: true });
-            return;
+                await this.adapter.setStateAsync('global.mode', { val: this.mode, ack: true });
+                return;
+            case 'sentinel':
+                if (result.value === MODE_MANUAL && !this.manualUrl) {
+                    this.adapter.log.warn(
+                        "global-config: global.mode set to 'manual' but global.manualUrl is empty — fill it to redirect",
+                    );
+                }
+                this.mode = result.value;
+                await this.adapter.setStateAsync('global.mode', { val: result.value, ack: true });
+                return;
+            case 'rejected-unsafe-url':
+                this.adapter.log.warn(`global-config: rejected unsafe global.mode value '${result.raw}'`);
+                await this.adapter.setStateAsync('global.mode', { val: this.mode, ack: true });
+                return;
+            case 'url':
+                this.mode = result.value;
+                await this.adapter.setStateAsync('global.mode', { val: result.value, ack: true });
+                return;
         }
-        const safe = coerceSafeUrl(rawValue);
-        if (!safe) {
-            this.adapter.log.warn(`global-config: rejected unsafe global.mode value '${rawValue}'`);
-            await this.adapter.setStateAsync('global.mode', { val: this.mode, ack: true });
-            return;
-        }
-        this.mode = safe;
-        await this.adapter.setStateAsync('global.mode', { val: safe, ack: true });
     }
 
     /**
