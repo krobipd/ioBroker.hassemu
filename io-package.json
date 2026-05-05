@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.17.0",
     "news": {
+      "NEXT": {
+        "en": "Logging hygiene: 'Invalid credentials' downgraded to debug after 5 lockout-failures (warn-floods stop). Plus: server-stop errors no longer logged twice, mode-rejection on UI-echo is debug not warn.",
+        "de": "Logging-Hygiene: 'Invalid credentials' nach 5 Lockout-Fails auf debug. Plus: Stop-Fehler nicht mehr doppelt geloggt, mode-Rejection bei UI-Echo ist debug.",
+        "ru": "Logging hygiene: 'Invalid credentials' понижается до debug после 5 lockout-failures (warn-floods прекращаются). Plus: server-stop errors не логируются дважды, mode-rejection на UI-echo — debug.",
+        "pt": "Logging hygiene: 'Invalid credentials' reduzido a debug apos 5 lockout-failures (warn-floods param). Plus: server-stop errors nao logados duas vezes, mode-rejection em UI-echo e debug.",
+        "nl": "Logging hygiene: 'Invalid credentials' op debug na 5 lockout-failures (warn-floods stoppen). Plus: server-stop fouten niet meer dubbel gelogd, mode-rejection bij UI-echo is debug.",
+        "fr": "Logging hygiene : 'Invalid credentials' a debug apres 5 lockout-failures (warn-floods arretes). Plus : erreurs server-stop plus loguees deux fois, mode-rejection sur UI-echo est debug.",
+        "it": "Logging hygiene: 'Invalid credentials' a debug dopo 5 lockout-failures (warn-flood si fermano). Plus: errori server-stop non loggati piu due volte, mode-rejection su UI-echo e debug.",
+        "es": "Logging hygiene: 'Invalid credentials' a debug tras 5 lockout-failures (warn-floods paran). Plus: errores server-stop no logueados dos veces, mode-rejection en UI-echo es debug.",
+        "pl": "Logging hygiene: 'Invalid credentials' na debug po 5 lockout-failures (warn-floods sie zatrzymuja). Plus: bledy server-stop nie logowane dwa razy, mode-rejection na UI-echo to debug.",
+        "uk": "Logging hygiene: 'Invalid credentials' на debug після 5 lockout-failures (warn-floods зупиняються). Plus: server-stop errors не логуються двічі, mode-rejection на UI-echo — debug.",
+        "zh-cn": "日志清理：5 次锁定失败后 'Invalid credentials' 降为 debug（warn 洪水停止）。另：服务器停止错误不再重复记录，UI 回响的 mode-rejection 改为 debug。"
+      },
       "1.17.0": {
         "en": "Security: pendingByIp uses IP+UA-hash bucket — NAT-co-located displays no longer share cookie/token. discovery_info uses bind-address. VIS discovery iterates all web.* instances.",
         "de": "Sicherheit: pendingByIp nutzt IP+UA-Hash-Bucket — NAT-co-located Displays teilen kein Cookie/Token mehr. discovery_info nutzt bind-address. VIS-Discovery iteriert alle web.*-Instances.",
