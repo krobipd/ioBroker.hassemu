@@ -219,6 +219,27 @@ class WebServer {
    * @param map Map to evict from.
    * @param cap Hard cap; when `map.size >= cap`, the oldest entry is removed.
    */
+  /**
+   * Cooldown-Decision für 5xx-Error-Logging. Liefert `true` für die erste
+   * Beobachtung pro `key` innerhalb {@link REQUEST_ERROR_COOLDOWN_MS} und
+   * markiert den Eintrag — Wiederholungen liefern `false` bis das Fenster
+   * abgelaufen ist. Map ist FIFO-gedeckelt auf {@link REQUEST_ERROR_COOLDOWN_CAP}.
+   *
+   * @param key Eindeutiger Error-Identifier (üblicherweise `error.message`).
+   * @param now Aktuelle Zeit in ms (testbar).
+   */
+  shouldEmitRequestErrorWarn(key, now) {
+    var _a;
+    const lastSeen = (_a = this.errorLogCooldown.get(key)) != null ? _a : 0;
+    if (lastSeen !== 0 && now - lastSeen <= import_constants.REQUEST_ERROR_COOLDOWN_MS) {
+      return false;
+    }
+    if (!this.errorLogCooldown.has(key)) {
+      WebServer.evictOldest(this.errorLogCooldown, import_constants.REQUEST_ERROR_COOLDOWN_CAP);
+    }
+    this.errorLogCooldown.set(key, now);
+    return true;
+  }
   static evictOldest(map, cap) {
     while (map.size >= cap) {
       const oldest = map.keys().next().value;
@@ -390,7 +411,6 @@ class WebServer {
   // --- error handling ---
   setupErrorHandler() {
     this.app.setErrorHandler((err, _req, reply) => {
-      var _a;
       const error = err;
       if (error.validation) {
         this.adapter.log.debug(`Validation error: ${error.message}`);
@@ -404,17 +424,8 @@ class WebServer {
         return;
       }
       const key = error.message || "unknown";
-      const now = Date.now();
-      const lastSeen = (_a = this.errorLogCooldown.get(key)) != null ? _a : 0;
-      if (now - lastSeen > import_constants.REQUEST_ERROR_COOLDOWN_MS) {
+      if (this.shouldEmitRequestErrorWarn(key, Date.now())) {
         this.adapter.log.warn(`Request error: ${error.message}`);
-        this.errorLogCooldown.set(key, now);
-        if (this.errorLogCooldown.size > 200) {
-          const oldestKey = this.errorLogCooldown.keys().next().value;
-          if (oldestKey !== void 0) {
-            this.errorLogCooldown.delete(oldestKey);
-          }
-        }
       } else {
         this.adapter.log.debug(`Request error (repeat): ${error.message}`);
       }
