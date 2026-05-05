@@ -147,7 +147,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.8.0 (2026-05-05)
 
 - **Code-Aufräumen**: Konstanten (Cookie-TTL, Map-Caps, Mode-Sentinels, Stale-TTL) liegen jetzt zentral in `lib/constants.ts`. Verhalten unverändert.
 - **Logging weniger laut**: Token-Endpunkt-Fehler (unbekannter `flow_id`, ungültiger Refresh-Token, falscher `grant_type`) jetzt `debug` statt `warn`.
@@ -171,10 +171,6 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 - **Sicherheit**: `/health` liefert keine Konfigurations-Flags mehr (`mdns`/`auth` waren ohne Auth einsehbar — Reconnaissance-Risiko für netzexponierte Instanzen).
 - **Sicherheit**: `requires_api_password` in `/api/discovery_info` und im mDNS-TXT spiegelt jetzt die tatsächliche `authRequired`-Konfiguration (vorher hartkodiert auf `true` — strikte HA-Clients haben den Auth-Flow auch bei deaktivierter Auth ausgelöst).
 - **Speicher**: Brute-Force-Lockout-Map ist jetzt FIFO-gedeckelt (1000 IPs) und prunt veraltete Fail-Counts (älter als das Lockout-Fenster) — bisher wuchs die Map auf netzexponierten Instanzen langsam unbegrenzt.
-
-### 1.4.1 (2026-05-05)
-
-- CI: Deploy-Schritt nutzt jetzt Node 24 (Node 22 + `npm@latest` hatte einen `MODULE_NOT_FOUND`-Bug für `promise-retry`, dadurch kam v1.4.0 nicht auf npm).
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 

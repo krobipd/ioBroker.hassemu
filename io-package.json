@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.7.1",
+    "version": "1.8.0",
     "news": {
-      "NEXT": {
+      "1.8.0": {
         "en": "Code-cleanup: cookie TTL, map caps, mode-sentinels and stale-TTL now in `lib/constants.ts`. Plus: token-endpoint errors downgraded from warn to debug — scanners no longer flood the log.",
         "de": "Code-Aufräumen: Cookie-TTL, Map-Caps, Mode-Sentinels und Stale-TTL jetzt zentral in `lib/constants.ts`. Plus: Token-Endpunkt-Fehler auf debug runtergestuft — Scanner füllen das Log nicht mehr.",
         "ru": "Cleanup кода: cookie lifetime, map caps, mode-sentinels и stale-client TTL теперь в lib/constants.ts. Plus: token-endpoint errors понижены с warn до debug.",
@@ -93,19 +93,6 @@
         "pl": "Nowy przycisk `info.refresh_urls` przeladowuje dropdown VIS/Admin URL bez restartu adaptera. Plus: `/auth/token` akceptuje form-urlencoded body (OAuth2 spec), mDNS nie wycieka socketow przy bledzie startu, migration URL legacy odrzuca unsafe wartosci czysto.",
         "uk": "Нова кнопка `info.refresh_urls` перезавантажує VIS/Admin URL-dropdown без перезапуску адаптера. Plus: `/auth/token` приймає form-urlencoded body (OAuth2 spec), mDNS більше не витікає сокети при помилці старту, legacy URL-migration коректно відхиляє небезпечні значення.",
         "zh-cn": "新增 `info.refresh_urls` 按钮：无需重启即可刷新 VIS/Admin URL 下拉。另：`/auth/token` 现接受 form-urlencoded 请求体 (OAuth2 规范)，mDNS 启动失败不再泄漏 socket，legacy URL 迁移正确丢弃不安全值。"
-      },
-      "1.3.3": {
-        "en": "Documentation: rewrote release notes in user-friendly style across all languages.",
-        "de": "Dokumentation: Release-Notes in alle Sprachen User-orientiert neu geschrieben.",
-        "ru": "Документация: примечания к релизу переписаны в дружественном к пользователю стиле на всех языках.",
-        "pt": "Documentação: notas de release reescritas em estilo amigável ao usuário em todos os idiomas.",
-        "nl": "Documentatie: release-notes herschreven in gebruikersvriendelijke stijl in alle talen.",
-        "fr": "Documentation : notes de version réécrites dans un style adapté à l'utilisateur dans toutes les langues.",
-        "it": "Documentazione: note di release riscritte in stile user-friendly in tutte le lingue.",
-        "es": "Documentación: notas de versión reescritas en estilo amigable para el usuario en todos los idiomas.",
-        "pl": "Dokumentacja: notatki wydania przepisane w przyjaznym dla użytkownika stylu we wszystkich językach.",
-        "uk": "Документація: нотатки до релізу переписано у дружньому до користувача стилі усіма мовами.",
-        "zh-cn": "文档：所有语言的发布说明已重写为用户友好的风格。"
       }
     },
     "titleLang": {
