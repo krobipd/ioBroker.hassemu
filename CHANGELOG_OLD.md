@@ -1,4 +1,10 @@
 # Older Changes
+## 1.17.0 (2026-05-05)
+
+- **NAT-Cookie-Schutz**: zwei Displays hinter derselben NAT-IP teilten sich beim parallelen Erst-Connect Cookie + Token + Mode. Jetzt: Bucket-Key kombiniert IP + User-Agent-Hash.
+- **`/api/discovery_info` nutzt bind-Address**, nicht den `Host`-Header. Vorher konnte ein Angreifer mit `Host: attacker.lan` andere HA-Clients zur falschen URL umleiten.
+- **VIS-Discovery iteriert alle `web.*`-Instances**: User mit `web.1` (zweite Web-Instance) hatten vorher keine VIS-Projekte im Mode-Dropdown.
+
 ## 1.16.0 (2026-05-05)
 
 - **Sicherheit Credentials-Vergleich**: `safeStringEqual` hashed beide Seiten via SHA-256 vor dem timing-safe Vergleich — vorher waren Username-/Password-Längen über Response-Timing leakbar.

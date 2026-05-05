@@ -36,7 +36,9 @@ module.exports = __toCommonJS(network_exports);
 var import_node_crypto = __toESM(require("node:crypto"));
 var import_node_os = __toESM(require("node:os"));
 function getLocalIp() {
+  var _a;
   const interfaces = import_node_os.default.networkInterfaces();
+  let dockerBridgeFallback = null;
   let ipv6Fallback = null;
   for (const ifaces of Object.values(interfaces)) {
     if (!ifaces) {
@@ -47,6 +49,12 @@ function getLocalIp() {
         continue;
       }
       if (iface.family === "IPv4") {
+        if (iface.address.startsWith("172.17.") || iface.address.startsWith("172.18.")) {
+          if (!dockerBridgeFallback) {
+            dockerBridgeFallback = iface.address;
+          }
+          continue;
+        }
         return iface.address;
       }
       if (iface.family === "IPv6" && !ipv6Fallback) {
@@ -54,7 +62,7 @@ function getLocalIp() {
       }
     }
   }
-  return ipv6Fallback != null ? ipv6Fallback : "127.0.0.1";
+  return (_a = dockerBridgeFallback != null ? dockerBridgeFallback : ipv6Fallback) != null ? _a : "127.0.0.1";
 }
 function isWildcardBind(bindAddress) {
   if (!bindAddress) {

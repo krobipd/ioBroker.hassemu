@@ -154,12 +154,22 @@ class ClientRegistry {
       const bucketKey = userAgent ? `${ip}|${import_node_crypto.default.createHash("sha256").update(userAgent).digest("hex").substring(0, 12)}` : ip;
       const pending = this.pendingByIp.get(bucketKey);
       if (pending) {
-        return pending;
+        return pending.catch((err) => {
+          this.adapter.log.debug(
+            `client-registry: pending createClient for ${bucketKey} rejected: ${String(err)}`
+          );
+          throw err;
+        });
       }
       const promise = this.createClient(ip, hostname);
       this.pendingByIp.set(bucketKey, promise);
       try {
         return await promise;
+      } catch (err) {
+        this.adapter.log.warn(
+          `client-registry: createClient failed for IP ${ip}: ${err instanceof Error ? err.message : String(err)}`
+        );
+        throw err;
       } finally {
         this.pendingByIp.delete(bucketKey);
       }
