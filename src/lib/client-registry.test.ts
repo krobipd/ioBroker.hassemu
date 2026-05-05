@@ -450,11 +450,12 @@ describe('ClientRegistry', () => {
             expect(rec.mode).to.equal(MODE_GLOBAL);
         });
 
-        it('rejects non-string values', async () => {
+        it('rejects non-string values (logs debug, G7 v1.18.0)', async () => {
             await registry.handleModeWrite(rec.id, 42 as unknown);
             expect(rec.mode).to.equal(MODE_GLOBAL);
-            const warn = store.logs.find(l => l.level === 'warn' && l.msg.includes('non-string'));
-            expect(warn).to.not.be.undefined;
+            // v1.18.0 (G7): downgrade warn→debug — das war UI-echo, kein Server-Concern.
+            const debug = store.logs.find(l => l.level === 'debug' && l.msg.includes('non-string'));
+            expect(debug).to.not.be.undefined;
         });
 
         it('no-op when id is unknown', async () => {

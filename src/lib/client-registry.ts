@@ -271,7 +271,10 @@ export class ClientRegistry {
             return;
         }
         if (typeof rawValue !== 'string') {
-            this.adapter.log.warn(`client-registry: rejected non-string mode for ${id}`);
+            // v1.18.0 (G7): debug statt warn — nicht-string mode-Schreibungen
+            // sind UI-Echo (z.B. `0='---'` Dropdown) oder Skript-Bugs, kein
+            // Server-Concern. War als warn falsch klassifiziert.
+            this.adapter.log.debug(`client-registry: rejected non-string mode for ${id}`);
             await this.adapter.setStateAsync(`clients.${id}.mode`, { val: record.mode || 0, ack: true });
             return;
         }

@@ -641,7 +641,9 @@ class HassEmu extends utils.Adapter {
             }
 
             if (this.webServer) {
-                this.webServer.stop().catch((err: Error) => this.log.error(`Server stop error: ${err.message}`));
+                // v1.18.0 (G6): kein doppeltes log — webServer.stop() loggt
+                // intern bereits auf debug. Hier nur silent-catch.
+                this.webServer.stop().catch(() => {});
                 this.webServer = null;
             }
 

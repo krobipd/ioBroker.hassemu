@@ -236,7 +236,10 @@ export class WebServer {
             await this.app.close();
             this.adapter.log.debug('Web server stopped');
         } catch (err) {
-            this.adapter.log.error(`Web server stop error: ${String(err)}`);
+            // v1.18.0 (G6+G8): debug statt error — bei intended shutdown
+            // (onUnload) ist ein close-error meist ein "already-closed"-Race
+            // ohne Konsequenz. Caller (main.ts onUnload) loggt nicht doppelt.
+            this.adapter.log.debug(`Web server stop error: ${String(err)}`);
         }
     }
 
@@ -679,7 +682,17 @@ export class WebServer {
                     const passOk = typeof password === 'string' && safeStringEqual(password, this.config.password);
                     if (!userOk || !passOk) {
                         this.recordLoginFailure(ip);
-                        this.adapter.log.warn('Invalid credentials');
+                        // v1.18.0 (G1): erste 5 Failures pro IP at warn (matcht
+                        // Lockout-Threshold + zeigt das echte Problem), Rest at
+                        // debug. Memory `feedback_no_log_spam`.
+                        const entry = this.loginAttempts.get(WebServer.normalizeLockoutKey(ip));
+                        const failCount = entry?.failedCount ?? 0;
+                        const ipSuffix = ip ? ` (IP ${ip})` : '';
+                        if (failCount <= LOGIN_LOCKOUT_THRESHOLD) {
+                            this.adapter.log.warn(`Invalid credentials${ipSuffix}`);
+                        } else {
+                            this.adapter.log.debug(`Invalid credentials${ipSuffix} (post-lockout-threshold)`);
+                        }
                         reply.status(400);
                         return {
                             type: 'form',
