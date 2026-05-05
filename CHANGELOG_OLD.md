@@ -1,4 +1,8 @@
 # Older Changes
+## 1.19.1 (2026-05-05)
+
+- **Test-Coverage**: 7 neue Unit-Tests für v1.19.0-Features — `seedLastSeen`-Pfad und Per-IP-Burst-Erkennung (Schwelle, Cooldown, per-IP-unabhängig, FIFO-Cap).
+
 ## 1.19.0 (2026-05-05)
 
 - **Burst-Erkennung für broken Cookies**: erzeugt ein Display mehr als 3 neue Clients innerhalb einer Stunde (= der Cookie wird nicht persistiert), kommt einmaliger `warn`-Hinweis mit Diagnose-Pfad.

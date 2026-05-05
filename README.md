@@ -155,7 +155,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.24.0 (2026-05-05)
 
 - **Test-Coverage**: 2 neue Unit-Tests für den v1.17.0 NAT-Cookie-Schutz — unterschiedliche User-Agents auf derselben IP bekommen distinct Clients, gleiche UA collapsed parallele Bursts.
 
@@ -175,10 +175,6 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ### 1.20.0 (2026-05-05)
 
 - **Interne Aufräumung**: drei Helpers nach `coerce.ts` extrahiert — `buildDropdownStates`, `parseAdapterStateId`, `safeGetState`. `client-registry` und `global-config` teilen sie statt zu duplizieren.
-
-### 1.19.1 (2026-05-05)
-
-- **Test-Coverage**: 7 neue Unit-Tests für v1.19.0-Features — `seedLastSeen`-Pfad und Per-IP-Burst-Erkennung (Schwelle, Cooldown, per-IP-unabhängig, FIFO-Cap).
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
