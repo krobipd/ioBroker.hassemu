@@ -125,8 +125,16 @@ export class UrlDiscovery {
             collectFromInstance(id, obj, crossRefs, hostIp, result);
         }
 
-        await this.addVisProjects(result, crossRefs.get('web.0'), hostIp, 'vis-2.0', 'vis-2', 'VIS-2');
-        await this.addVisProjects(result, crossRefs.get('web.0'), hostIp, 'vis.0', 'vis', 'VIS');
+        // v1.17.0 (E10): über alle `web.*`-Instances iterieren statt nur `web.0`
+        // hardcoded. User mit `web.1` (zweite Web-Instance, z.B. separat für VIS)
+        // hatten vorher keine VIS-Projekte im Dropdown.
+        for (const [shortName, native] of crossRefs.entries()) {
+            if (!shortName.startsWith('web.')) {
+                continue;
+            }
+            await this.addVisProjects(result, native, hostIp, 'vis-2.0', 'vis-2', 'VIS-2');
+            await this.addVisProjects(result, native, hostIp, 'vis.0', 'vis', 'VIS');
+        }
 
         this.cached = result;
         if (this.onChange) {

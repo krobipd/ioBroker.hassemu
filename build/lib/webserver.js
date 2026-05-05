@@ -40,6 +40,7 @@ var import_fastify = __toESM(require("fastify"));
 var import_constants = require("./constants");
 var import_coerce = require("./coerce");
 var import_landing_page = require("./landing-page");
+var import_network = require("./network");
 function safeStringEqual(a, b) {
   const ah = import_node_crypto.default.createHash("sha256").update(a, "utf8").digest();
   const bh = import_node_crypto.default.createHash("sha256").update(b, "utf8").digest();
@@ -361,7 +362,8 @@ class WebServer {
     var _a;
     const cookie = (0, import_coerce.coerceUuid)((_a = req.cookies) == null ? void 0 : _a[CLIENT_COOKIE]);
     const ip = WebServer.getClientIp(req);
-    const record = await this.registry.identifyOrCreate(cookie, ip, null);
+    const userAgent = (0, import_coerce.coerceString)(req.headers["user-agent"]);
+    const record = await this.registry.identifyOrCreate(cookie, ip, null, userAgent);
     if (cookie !== record.cookie) {
       reply.setCookie(CLIENT_COOKIE, record.cookie, {
         path: "/",
@@ -481,8 +483,9 @@ class WebServer {
       version: import_constants.HA_VERSION,
       whitelist_external_dirs: []
     }));
-    this.app.get("/api/discovery_info", (req) => {
-      const host = req.hostname || this.config.bindAddress || "0.0.0.0";
+    this.app.get("/api/discovery_info", () => {
+      const isWildcard = !this.config.bindAddress || (0, import_network.isWildcardBind)(this.config.bindAddress);
+      const host = isWildcard ? (0, import_network.getLocalIp)() : this.config.bindAddress;
       const baseUrl = `http://${host}:${this.config.port}`;
       return {
         base_url: baseUrl,

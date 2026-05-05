@@ -22,6 +22,7 @@ import { coerceString, coerceUuid } from './coerce';
 import type { ClientRegistry } from './client-registry';
 import type { GlobalConfig } from './global-config';
 import { renderLandingPage } from './landing-page';
+import { getLocalIp, isWildcardBind } from './network';
 import type { AdapterConfig, AdapterInterface, ClientRecord, SessionData } from './types';
 
 /**
@@ -436,7 +437,10 @@ export class WebServer {
     private async identify(req: FastifyRequest, reply: FastifyReply): Promise<ClientRecord> {
         const cookie = coerceUuid(req.cookies?.[CLIENT_COOKIE]);
         const ip = WebServer.getClientIp(req);
-        const record = await this.registry.identifyOrCreate(cookie, ip, null);
+        // v1.17.0 (C8): UA durchreichen damit NAT-Co-Located Displays nicht
+        // im selben Pending-Lock landen (siehe identifyOrCreate-Kommentar).
+        const userAgent = coerceString(req.headers['user-agent']);
+        const record = await this.registry.identifyOrCreate(cookie, ip, null, userAgent);
         if (cookie !== record.cookie) {
             reply.setCookie(CLIENT_COOKIE, record.cookie, {
                 path: '/',
@@ -590,8 +594,14 @@ export class WebServer {
             whitelist_external_dirs: [],
         }));
 
-        this.app.get('/api/discovery_info', req => {
-            const host = req.hostname || this.config.bindAddress || '0.0.0.0';
+        this.app.get('/api/discovery_info', () => {
+            // v1.17.0 (E11): NICHT mehr `req.hostname` — der Host-Header ist
+            // client-controlled und ein Angreifer könnte mit `Host: attacker.lan`
+            // andere HA-Clients zur falschen URL umleiten. Stattdessen die
+            // tatsächlich gebundene Adresse: bindAddress (ggf. wildcard) oder
+            // ersten lokalen non-internal IPv4 via getLocalIp.
+            const isWildcard = !this.config.bindAddress || isWildcardBind(this.config.bindAddress);
+            const host = isWildcard ? getLocalIp() : this.config.bindAddress;
             const baseUrl = `http://${host}:${this.config.port}`;
             return {
                 base_url: baseUrl,

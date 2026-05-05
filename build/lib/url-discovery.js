@@ -100,8 +100,13 @@ class UrlDiscovery {
     for (const [id, obj] of Object.entries(instances)) {
       collectFromInstance(id, obj, crossRefs, hostIp, result);
     }
-    await this.addVisProjects(result, crossRefs.get("web.0"), hostIp, "vis-2.0", "vis-2", "VIS-2");
-    await this.addVisProjects(result, crossRefs.get("web.0"), hostIp, "vis.0", "vis", "VIS");
+    for (const [shortName, native] of crossRefs.entries()) {
+      if (!shortName.startsWith("web.")) {
+        continue;
+      }
+      await this.addVisProjects(result, native, hostIp, "vis-2.0", "vis-2", "VIS-2");
+      await this.addVisProjects(result, native, hostIp, "vis.0", "vis", "VIS");
+    }
     this.cached = result;
     if (this.onChange) {
       try {
