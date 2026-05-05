@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.8.0",
+    "version": "1.8.1",
     "news": {
-      "NEXT": {
+      "1.8.1": {
         "en": "Master-switch faster: bulk mode change writes parallel (was: N sequential broker calls). URL-dropdown survives transient broker hiccups. Reverse-DNS lookup has a 5s timeout.",
         "de": "Master-Switch schneller: Bulk-Mode-Wechsel schreibt parallel (vorher N sequenzielle Broker-Calls). URL-Dropdown übersteht kurze Broker-Hänger. Reverse-DNS-Lookup hat 5s-Timeout.",
         "ru": "Master-switch быстрее: bulk mode change пишет параллельно (раньше N последовательных broker-вызовов). URL-dropdown переживает кратковременные сбои broker. Reverse-DNS lookup имеет 5s timeout.",
@@ -93,19 +93,6 @@
         "pl": "CI fix: deploy uzywa teraz Node 24 (Node 22 + npm@latest mial bug MODULE_NOT_FOUND, v1.4.0 nie dotarl do npm). Zmiany v1.4.0 wlaczone w tym release.",
         "uk": "CI fix: крок deploy тепер використовує Node 24 (Node 22 + npm@latest мав bug MODULE_NOT_FOUND, v1.4.0 не дійшов до npm). Зміни v1.4.0 включені в цей реліз.",
         "zh-cn": "CI 修复：deploy 步骤现使用 Node 24 (Node 22 + npm@latest 有 MODULE_NOT_FOUND bug，v1.4.0 未到达 npm)。v1.4.0 变更包含在此发布。"
-      },
-      "1.4.0": {
-        "en": "New `info.refresh_urls` button reloads the VIS/Admin URL dropdown without an adapter restart. Plus: `/auth/token` now accepts form-urlencoded bodies (OAuth2 spec), mDNS no longer leaks sockets on start failure, and legacy URL migration drops unsafe values cleanly.",
-        "de": "Neuer Button `info.refresh_urls` lädt das VIS-/Admin-URL-Dropdown ohne Adapter-Neustart neu. Plus: `/auth/token` akzeptiert form-urlencoded Bodies (OAuth2-Spec), mDNS leakt keine Sockets mehr bei Startfehler, Legacy-URL-Migration verwirft unsichere Werte sauber.",
-        "ru": "Новая кнопка `info.refresh_urls` перезагружает VIS/Admin URL-dropdown без перезапуска адаптера. Plus: `/auth/token` принимает form-urlencoded body (OAuth2), mDNS не утекает сокеты при ошибке старта, legacy URL-migration корректно отклоняет небезопасные значения.",
-        "pt": "Novo botao `info.refresh_urls` recarrega o dropdown VIS/Admin sem reiniciar o adapter. Plus: `/auth/token` aceita form-urlencoded (OAuth2 spec), mDNS nao vaza sockets em falha de start, migration de URL legada descarta valores unsafe.",
-        "nl": "Nieuwe `info.refresh_urls` knop herlaadt VIS/Admin URL-dropdown zonder adapter-restart. Plus: `/auth/token` accepteert form-urlencoded body (OAuth2 spec), mDNS lekt geen sockets meer bij startfout, legacy URL-migratie verwerpt unsafe waarden netjes.",
-        "fr": "Nouveau bouton `info.refresh_urls` recharge le dropdown VIS/Admin sans redemarrage de l'adaptateur. Plus : `/auth/token` accepte form-urlencoded (OAuth2 spec), mDNS ne laisse plus fuir les sockets en cas d'echec de demarrage, migration legacy URL rejette proprement les valeurs unsafe.",
-        "it": "Nuovo pulsante `info.refresh_urls` ricarica il dropdown VIS/Admin senza riavvio dell'adapter. Plus: `/auth/token` accetta body form-urlencoded (OAuth2 spec), mDNS non fa piu leak di socket in caso di errore di start, migration URL legacy scarta valori unsafe in modo pulito.",
-        "es": "Nuevo boton `info.refresh_urls` recarga el dropdown VIS/Admin sin reiniciar el adaptador. Plus: `/auth/token` acepta form-urlencoded body (OAuth2 spec), mDNS ya no fuga sockets en fallo de start, migration URL legacy descarta valores unsafe limpiamente.",
-        "pl": "Nowy przycisk `info.refresh_urls` przeladowuje dropdown VIS/Admin URL bez restartu adaptera. Plus: `/auth/token` akceptuje form-urlencoded body (OAuth2 spec), mDNS nie wycieka socketow przy bledzie startu, migration URL legacy odrzuca unsafe wartosci czysto.",
-        "uk": "Нова кнопка `info.refresh_urls` перезавантажує VIS/Admin URL-dropdown без перезапуску адаптера. Plus: `/auth/token` приймає form-urlencoded body (OAuth2 spec), mDNS більше не витікає сокети при помилці старту, legacy URL-migration коректно відхиляє небезпечні значення.",
-        "zh-cn": "新增 `info.refresh_urls` 按钮：无需重启即可刷新 VIS/Admin URL 下拉。另：`/auth/token` 现接受 form-urlencoded 请求体 (OAuth2 规范)，mDNS 启动失败不再泄漏 socket，legacy URL 迁移正确丢弃不安全值。"
       }
     },
     "titleLang": {
