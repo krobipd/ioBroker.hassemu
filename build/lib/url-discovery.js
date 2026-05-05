@@ -149,6 +149,66 @@ class UrlDiscovery {
         continue;
       }
       result[safe] = `${label}: ${name}`;
+      if (adapterName === "vis-2.0") {
+        await this.addVisViews(result, adapterName, name, url, label);
+      }
+    }
+  }
+  /**
+   * Lese `<project>/vis-views.json` und füge pro View einen Dropdown-Eintrag
+   * `?<project>/<viewName>` ein. Defensive — alle Fehler silently caught.
+   *
+   * @param result Output-Map (mutated)
+   * @param adapterName VIS-Adapter (z.B. `vis-2.0`)
+   * @param projectName Top-level-Projekt-Folder
+   * @param projectUrl Bereits berechneter Projekt-URL (`...?projectName`)
+   * @param label Sprach-Label für Dropdown (`VIS-2`)
+   */
+  async addVisViews(result, adapterName, projectName, projectUrl, label) {
+    let raw;
+    try {
+      raw = await this.adapter.readFileAsync(adapterName, `${projectName}/vis-views.json`);
+    } catch {
+      return;
+    }
+    let text;
+    if (typeof raw === "string") {
+      text = raw;
+    } else if (Buffer.isBuffer(raw)) {
+      text = raw.toString("utf8");
+    } else if ((0, import_coerce.isPlainObject)(raw) && raw.file !== void 0) {
+      const f = raw.file;
+      text = typeof f === "string" ? f : Buffer.isBuffer(f) ? f.toString("utf8") : "";
+    } else {
+      return;
+    }
+    if (!text) {
+      return;
+    }
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return;
+    }
+    if (!(0, import_coerce.isPlainObject)(parsed)) {
+      return;
+    }
+    const viewsContainer = (0, import_coerce.isPlainObject)(parsed.views) ? parsed.views : parsed;
+    for (const viewName of Object.keys(viewsContainer)) {
+      if (viewName.startsWith("_") || viewName === "settings" || viewName === "activeView") {
+        continue;
+      }
+      const v = viewsContainer[viewName];
+      if (!(0, import_coerce.isPlainObject)(v)) {
+        continue;
+      }
+      const viewUrl = `${projectUrl}/${encodeURIComponent(viewName)}`;
+      const safe = (0, import_coerce.coerceSafeUrl)(viewUrl);
+      if (!safe) {
+        continue;
+      }
+      result[safe] = `${label}: ${projectName} / ${viewName}`;
     }
   }
 }

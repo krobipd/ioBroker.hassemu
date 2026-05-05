@@ -51,6 +51,38 @@ function safeStringEqual(a, b) {
   }
   return import_node_crypto.default.timingSafeEqual(ab, bb);
 }
+function renderRedirectWrapper(target) {
+  const escAttr = target.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  const escJs = JSON.stringify(target);
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>ioBroker HASS Emulator</title>
+<style>html,body,iframe{margin:0;padding:0;border:0;width:100%;height:100%;background:#000;overflow:hidden;}</style>
+</head>
+<body>
+<iframe src="${escAttr}" allow="autoplay; fullscreen; geolocation; microphone; camera"></iframe>
+<script>
+(function(){
+  var current=${escJs};
+  setInterval(function(){
+    fetch('/api/redirect_check',{cache:'no-store',credentials:'same-origin'})
+      .then(function(r){return r.json();})
+      .then(function(j){
+        if(j&&typeof j.target==='string'&&j.target&&j.target!==current){
+          location.reload();
+        }
+      })
+      .catch(function(){/* silent \u2014 broker hiccup, retry next tick */});
+  },30000);
+})();
+</script>
+</body>
+</html>`;
+}
 const CLIENT_COOKIE = "hassemu_client";
 const COOKIE_MAX_AGE_S = 10 * 365 * 24 * 60 * 60;
 class WebServer {
@@ -553,8 +585,13 @@ class WebServer {
         this.adapter.log.debug(`No redirect URL for client ${client.id} \u2014 serving landing page`);
         return reply.status(200).type("text/html; charset=utf-8").send((0, import_landing_page.renderLandingPage)(client.id, this.adapter.namespace, this.systemLanguage, client.ip));
       }
-      this.adapter.log.debug(`Redirecting client ${client.id} \u2192 ${url}`);
-      return reply.redirect(url, 302);
+      this.adapter.log.debug(`Serving wrapper for client ${client.id} \u2192 ${url}`);
+      return reply.status(200).type("text/html; charset=utf-8").send(renderRedirectWrapper(url));
+    });
+    this.app.get("/api/redirect_check", async (req, reply) => {
+      const client = await this.identify(req, reply);
+      const url = this.globalConfig.resolveUrlFor(client);
+      return { target: url != null ? url : null };
     });
   }
   setupNotFound() {

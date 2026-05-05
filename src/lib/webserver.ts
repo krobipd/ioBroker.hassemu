@@ -47,6 +47,53 @@ function safeStringEqual(a: string, b: string): boolean {
 /** Adapter surface the WebServer depends on — adds `namespace` for the setup page. */
 export type WebServerAdapter = AdapterInterface & Pick<ioBroker.Adapter, 'namespace'>;
 
+/**
+ * HTML-Wrapper statt 302-Redirect (A3 / v1.7.0). Display lädt das HTML einmal,
+ * sieht den Target im iframe, polled `/api/redirect_check` alle 30s. Bei
+ * Target-Wechsel (User edit) macht es `location.reload()` und bekommt das
+ * neue iframe-Target.
+ *
+ * `target` muss bereits durch `coerceSafeUrl` validiert sein (Resolver garantiert
+ * das). Der Wrapper escaped trotzdem — defense in depth.
+ *
+ * @param target Vom Resolver gelieferte Ziel-URL
+ */
+function renderRedirectWrapper(target: string): string {
+    // Conservative HTML-attribute escape: minimal set to make the URL safe in
+    // the `src` attribute and the JS string literal below. Sicherheits-relevant
+    // weil target letztlich aus user-konfigurierten States stammt.
+    const escAttr = target.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    const escJs = JSON.stringify(target); // safe for inline JS string literal
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>ioBroker HASS Emulator</title>
+<style>html,body,iframe{margin:0;padding:0;border:0;width:100%;height:100%;background:#000;overflow:hidden;}</style>
+</head>
+<body>
+<iframe src="${escAttr}" allow="autoplay; fullscreen; geolocation; microphone; camera"></iframe>
+<script>
+(function(){
+  var current=${escJs};
+  setInterval(function(){
+    fetch('/api/redirect_check',{cache:'no-store',credentials:'same-origin'})
+      .then(function(r){return r.json();})
+      .then(function(j){
+        if(j&&typeof j.target==='string'&&j.target&&j.target!==current){
+          location.reload();
+        }
+      })
+      .catch(function(){/* silent — broker hiccup, retry next tick */});
+  },30000);
+})();
+</script>
+</body>
+</html>`;
+}
+
 /** Browser cookie name. Client identity lives here — auto-sent on every page navigation. */
 export const CLIENT_COOKIE = 'hassemu_client';
 /** Cookie lifetime (10 years). Clients stay identified essentially forever unless removed. */
@@ -640,7 +687,18 @@ export class WebServer {
             theme_color: '#03a9f4',
         }));
 
-        // Root — 302 redirect, or landing page when no URL is configured
+        // Root — HTML-Wrapper (iframe + auto-reload), oder Landing-Page wenn keine URL.
+        //
+        // v1.7.0 (A3): statt 302 liefern wir ein iframe-HTML + 30s-poll auf
+        // /api/redirect_check. Wenn die Mode-/URL-Config sich ändert (User edit
+        // im Adapter), pollt das Display den Wechsel und macht `location.reload()`
+        // — ohne Soft-Reboot des Displays. Vorher musste der User das Display
+        // manuell rebooten.
+        //
+        // WebViews wie Shelly Wall Display rendern iframes + JavaScript korrekt.
+        // Falls ein User direkten 302-Redirect will (Browser-Test, Bookmarklet
+        // etc.), kann er die Target-URL direkt eingeben — der Wrapper läuft nur
+        // beim Aufruf von `/`.
         this.app.get('/', async (req, reply) => {
             const client = await this.identify(req, reply);
             const url = this.globalConfig.resolveUrlFor(client);
@@ -651,8 +709,21 @@ export class WebServer {
                     .type('text/html; charset=utf-8')
                     .send(renderLandingPage(client.id, this.adapter.namespace, this.systemLanguage, client.ip));
             }
-            this.adapter.log.debug(`Redirecting client ${client.id} → ${url}`);
-            return reply.redirect(url, 302);
+            this.adapter.log.debug(`Serving wrapper for client ${client.id} → ${url}`);
+            return reply
+                .status(200)
+                .type('text/html; charset=utf-8')
+                .send(renderRedirectWrapper(url));
+        });
+
+        // /api/redirect_check — Display polled das alle 30s; wenn der target
+        // sich geändert hat (User edit), gibt der Wrapper `location.reload()`
+        // ab. Cookie-basiert — Display schickt seinen `hassemu_client`-Cookie
+        // automatisch mit.
+        this.app.get('/api/redirect_check', async (req, reply) => {
+            const client = await this.identify(req, reply);
+            const url = this.globalConfig.resolveUrlFor(client);
+            return { target: url ?? null };
         });
     }
 
