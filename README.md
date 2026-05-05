@@ -152,7 +152,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.12.0 (2026-05-05)
 
 - **Brute-Force-Lockout-Härtung**: IPv6-mapped IPv4 (`::ffff:1.2.3.4`) und `null`-IP teilen jetzt einen Bucket mit raw IPv4 — vorher konnten Angreifer durch Adress-Form-Wechsel den Counter umgehen.
 - **Legacy-URL-Migration validiert** via `coerceSafeUrl`: alte `javascript:`/`data:`-URLs aus v1.0.x-Config fallen auf Manual-Mode statt unsafe geschrieben zu werden.
@@ -179,12 +179,6 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 - **Weniger Log-Spam unter Attacke**: 5xx-Fehler werden pro Message nur beim ersten Auftritt als `warn` geloggt (60s-Cooldown), Wiederholungen fallen auf `debug`.
 - **Adapter-Start ~4× schneller bei vielen Displays**: `restore()` liest die vier Datenpunkte pro Client parallel statt sequenziell.
 - **Kleinere Härtung**: Landing-Page-Übersetzungen `as const satisfies` (immutable), Port-Felder lehnen Hex/Exponential ab, `MDNSService.active` extern read-only.
-
-### 1.8.1 (2026-05-05)
-
-- **Master-Switch schneller**: `global.enabled`-Toggle schreibt das `mode` aller Clients jetzt parallel statt sequenziell (vorher N Broker-Round-Trips). Spürbar auf Instanzen mit vielen Displays.
-- **Mode-Dropdown bleibt gefüllt** wenn der Broker beim Lesen der `vis-2.0`/`web.0`-Objekte kurz nicht antwortet — der zuletzt funktionierende Stand wird gehalten statt mit `{}` überschrieben.
-- **Reverse-DNS-Lookup hat 5s-Timeout**: ein langsamer/blockierter LAN-Nameserver hängt den HA-Auth-Flow nicht mehr.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 

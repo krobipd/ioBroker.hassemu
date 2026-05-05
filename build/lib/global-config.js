@@ -187,10 +187,12 @@ class GlobalConfig {
    * @param manualUrl New manualUrl, or null to clear.
    */
   async migrationSet(mode, manualUrl) {
-    this.mode = mode;
-    this.manualUrl = manualUrl;
-    await this.adapter.setStateAsync("global.mode", { val: mode, ack: true });
-    await this.adapter.setStateAsync("global.manualUrl", { val: manualUrl != null ? manualUrl : "", ack: true });
+    const safeMode = mode === import_constants.MODE_MANUAL || (0, import_coerce.coerceSafeUrl)(mode) ? mode : import_constants.MODE_MANUAL;
+    const safeManual = manualUrl !== null ? (0, import_coerce.coerceSafeUrl)(manualUrl) : null;
+    this.mode = safeMode;
+    this.manualUrl = safeManual;
+    await this.adapter.setStateAsync("global.mode", { val: safeMode, ack: true });
+    await this.adapter.setStateAsync("global.manualUrl", { val: safeManual != null ? safeManual : "", ack: true });
   }
   async safeGetState(id) {
     var _a;
