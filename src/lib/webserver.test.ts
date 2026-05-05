@@ -871,6 +871,71 @@ describe('WebServer', () => {
             }
         });
 
+        it('POST /auth/token with refresh_token: 5 invalid attempts → 429 (C7 v1.11.0)', async () => {
+            const s = await buildAuthServer();
+            try {
+                // 5x with bogus refresh_token — each triggers recordLoginFailure
+                for (let i = 0; i < 5; i++) {
+                    const res = await s.inject({
+                        method: 'POST',
+                        url: '/auth/token',
+                        payload: { grant_type: 'refresh_token', refresh_token: crypto.randomUUID() },
+                    });
+                    // First 5 still return 400 invalid_grant (counter reaches threshold ON 5th)
+                    expect(res.statusCode).to.equal(400);
+                }
+                expect(s.loginAttempts.size).to.equal(1);
+                const entry = [...s.loginAttempts.values()][0];
+                expect(entry.failedCount).to.be.at.least(5);
+                expect(entry.lockedUntil).to.be.greaterThan(Date.now());
+                // 6th attempt → 429 because IP is now locked
+                const r6 = await s.inject({
+                    method: 'POST',
+                    url: '/auth/token',
+                    payload: { grant_type: 'refresh_token', refresh_token: crypto.randomUUID() },
+                });
+                expect(r6.statusCode).to.equal(429);
+                expect((r6.json() as { error: string }).error).to.equal('rate_limited');
+            } finally {
+                await s['app'].close();
+            }
+        });
+
+        it('POST /auth/token with VALID refresh_token does NOT count as failure (C7 v1.11.0)', async () => {
+            const s = await buildAuthServer();
+            try {
+                // Real login first to obtain a valid refresh_token
+                const r1 = await s.inject({ method: 'POST', url: '/auth/login_flow', payload: {} });
+                const cookie = extractCookie(r1.headers['set-cookie'])!;
+                const flowId = (r1.json() as { flow_id: string }).flow_id;
+                const r2 = await s.inject({
+                    method: 'POST',
+                    url: `/auth/login_flow/${flowId}`,
+                    headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
+                    payload: { username: 'admin', password: 'secret' },
+                });
+                const code = (r2.json() as { result: string }).result;
+                const r3 = await s.inject({
+                    method: 'POST',
+                    url: '/auth/token',
+                    payload: { grant_type: 'authorization_code', code },
+                });
+                const refreshToken = (r3.json() as { refresh_token: string }).refresh_token;
+                // Use the valid token 10x — should never lockout
+                for (let i = 0; i < 10; i++) {
+                    const res = await s.inject({
+                        method: 'POST',
+                        url: '/auth/token',
+                        payload: { grant_type: 'refresh_token', refresh_token: refreshToken },
+                    });
+                    expect(res.statusCode).to.equal(200);
+                }
+                expect(s.loginAttempts.size).to.equal(0);
+            } finally {
+                await s['app'].close();
+            }
+        });
+
         it('cleanupSessions() prunes stale failure-counts (v1.5.0)', async () => {
             const s = await buildAuthServer();
             try {

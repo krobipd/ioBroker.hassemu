@@ -663,6 +663,16 @@ export class WebServer {
             '/auth/token',
             async (req, reply) => {
                 const { code, grant_type, refresh_token } = req.body ?? {};
+                const ip = coerceString(req.ip);
+
+                // v1.11.0 (C7): /auth/token mit refresh_token-grant war vorher
+                // brute-force-frei — Login-Flow gelockt, Token-Endpoint nicht.
+                // Asymmetrie ist riskant (massive Probes, Side-Channel-Risk).
+                // Jetzt: dieselbe Lockout-Mechanik wie /auth/login_flow/:flowId.
+                if (this.isIpLocked(ip)) {
+                    reply.status(429);
+                    return { error: 'rate_limited', error_description: 'Too many failures, try again later' };
+                }
 
                 if (grant_type === 'authorization_code' && code && this.sessions.has(code)) {
                     const session = this.sessions.get(code)!;
@@ -690,8 +700,10 @@ export class WebServer {
                     if (!ownerId) {
                         // v1.8.0: internet-exposed Instance sieht Scanner hammern
                         // /auth/token. Erste Occurrence pro Restart bleibt warn,
-                        // alle weiteren auf debug. Lockout greift sowieso.
+                        // alle weiteren auf debug. v1.11.0 (C7): jetzt zusätzlich
+                        // recordLoginFailure → triggert Lockout nach 5 invalid-grants.
                         this.adapter.log.debug('Refresh token rejected — unknown or missing');
+                        this.recordLoginFailure(ip);
                         reply.status(400);
                         return { error: 'invalid_grant', error_description: 'Invalid refresh token' };
                     }
@@ -705,7 +717,8 @@ export class WebServer {
                 }
 
                 // v1.8.0: „wrong grant_type" ist ein Client-Format-Fehler,
-                // nicht ein Server-Concern — debug.
+                // nicht ein Server-Concern — debug. KEIN Lockout-Counter
+                // (legitimer Client-Bug soll nicht zu IP-Sperre führen).
                 this.adapter.log.debug(`Token exchange failed: grant_type=${String(grant_type)}`);
                 reply.status(400);
                 return { error: 'invalid_request', error_description: 'Invalid or expired code' };
