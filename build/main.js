@@ -346,10 +346,17 @@ class HassEmu extends utils.Adapter {
     }
   }
   /**
-   * Removes clients that are clearly stale: no auth token (= never authenticated
-   * or revoked) AND `native.lastSeen` older than {@link STALE_CLIENT_TTL_MS}.
+   * Removes clients that are clearly stale: `native.lastSeen` older than
+   * {@link STALE_CLIENT_TTL_MS}.
+   *
    * Clients without `lastSeen` (pre-1.2.0) get the timestamp seeded on this run
    * — GC kicks in only on subsequent restarts.
+   *
+   * v1.11.0 (C9): vorher übersprang GC alle token-haltenden Clients (`if record.token`).
+   * Effekt: über Jahre wuchs die Liste mit „authenticated, but never seen again"-
+   * Clients (Display weg/refurbished/Bridge-Reset etc.). Jetzt: lastSeen-basiert
+   * unabhängig vom Token. Access-Token sind ohnehin nur 30min gültig — wenn
+   * lastSeen 30 Tage zurückliegt, ist der Token längst abgelaufen.
    */
   async gcStaleClients() {
     var _a, _b, _c;
@@ -357,9 +364,6 @@ class HassEmu extends utils.Adapter {
     const records = (_b = (_a = this.registry) == null ? void 0 : _a.listAll()) != null ? _b : [];
     let removed = 0;
     for (const record of records) {
-      if (record.token) {
-        continue;
-      }
       try {
         const obj = await this.getObjectAsync(`clients.${record.id}`);
         const native = (_c = obj == null ? void 0 : obj.native) != null ? _c : {};
@@ -377,7 +381,7 @@ class HassEmu extends utils.Adapter {
       }
     }
     if (removed > 0) {
-      this.log.info(`Stale-Client-GC: removed ${removed} client(s) (no token + idle >30 days)`);
+      this.log.info(`Stale-Client-GC: removed ${removed} client(s) (idle >30 days)`);
     }
   }
   /**

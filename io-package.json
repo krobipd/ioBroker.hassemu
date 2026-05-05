@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.10.0",
+    "version": "1.11.0",
     "news": {
-      "NEXT": {
+      "1.11.0": {
         "en": "Security: refresh-token endpoint now has same brute-force lockout as login (5 invalid grants → 15min IP lock). Plus stale-client GC also removes idle token-clients (>30 days).",
         "de": "Sicherheit: Refresh-Token-Endpoint hat jetzt denselben Brute-Force-Lockout wie Login (5 ungültige Grants → 15min IP-Sperre). Plus: Stale-Client-GC entfernt jetzt auch idle Token-Clients (>30 Tage).",
         "ru": "Безопасность: refresh-token endpoint теперь имеет такой же brute-force lockout как login (5 неверных grants → 15min IP lock). Plus: stale-client GC удаляет idle token-clients (>30 дней).",
@@ -93,19 +93,6 @@
         "pl": "Hotfix: trzy bledy prettier z v1.7.0 naprawione (CI lint gate czerwony, deploy nie dotarl do npm). Zmiany v1.7.0 trafiaja na npm z tym wydaniem.",
         "uk": "Hotfix: три помилки prettier з v1.7.0 виправлено (CI lint gate червоний, deploy не дійшов до npm). Зміни v1.7.0 приходять на npm з цим релізом.",
         "zh-cn": "Hotfix：修复 v1.7.0 的三个 prettier 格式错误（CI lint gate 红，deploy 未到达 npm）。v1.7.0 变更 (VIS-2 子视图、重定向重载包装器) 随此发布到达 npm。"
-      },
-      "1.7.0": {
-        "en": "VIS-2 sub-views are now individual mode-dropdown entries (parses `vis-views.json` per project, builds `?project/view` URLs). Plus: root no longer 302-redirects — it serves a small HTML wrapper with iframe + 30s polling on the new `/api/redirect_check` endpoint, so the display reloads automatically when you change the mode/manualUrl (no more soft-reboot).",
-        "de": "VIS-2-Sub-Views erscheinen jetzt einzeln im Mode-Dropdown (parst `vis-views.json` pro Projekt, baut `?project/view`-URLs). Plus: Root liefert kein 302 mehr — stattdessen ein kleines HTML-Wrapper mit iframe + 30s-Polling auf den neuen `/api/redirect_check`-Endpoint, das Display lädt bei Mode-/manualUrl-Änderungen automatisch neu (kein Soft-Reboot mehr).",
-        "ru": "VIS-2 sub-views появляются индивидуально в Mode-Dropdown. Plus: root больше не 302-redirects — HTML-wrapper с iframe + 30s-polling на /api/redirect_check, display автоматически перезагружается при изменении mode/manualUrl.",
-        "pt": "VIS-2 sub-views agora sao entradas individuais no Mode-Dropdown. Plus: root nao 302-redirects mais — HTML wrapper com iframe + 30s polling em /api/redirect_check, display recarrega automaticamente.",
-        "nl": "VIS-2 sub-views verschijnen nu individueel in Mode-Dropdown. Plus: root 302-redirect vervangen door HTML wrapper met iframe + 30s polling op /api/redirect_check — display herlaadt automatisch.",
-        "fr": "Les sub-views VIS-2 apparaissent individuellement dans le Mode-Dropdown. Plus : root ne 302-redirige plus — HTML wrapper avec iframe + 30s polling sur /api/redirect_check, le display se recharge automatiquement.",
-        "it": "Le sub-views VIS-2 ora sono voci individuali nel Mode-Dropdown. Plus: root non fa piu 302-redirect — HTML wrapper con iframe + 30s polling su /api/redirect_check, il display si ricarica automaticamente.",
-        "es": "Las sub-vistas VIS-2 ahora son entradas individuales en el Mode-Dropdown. Plus: root ya no 302-redirige — HTML wrapper con iframe + 30s polling en /api/redirect_check, el display se recarga automaticamente.",
-        "pl": "VIS-2 sub-views sa teraz osobnymi pozycjami w Mode-Dropdown. Plus: root nie robi juz 302-redirect — HTML wrapper z iframe + 30s polling na /api/redirect_check, display przeladowuje sie automatycznie.",
-        "uk": "VIS-2 sub-views тепер окремі записи у Mode-Dropdown. Plus: root більше не 302-redirect — HTML wrapper з iframe + 30s polling на /api/redirect_check, display перезавантажується автоматично.",
-        "zh-cn": "VIS-2 子视图现在作为独立条目出现在 Mode-Dropdown 中。另：根路径不再 302 重定向 — 改为 HTML 包装器（iframe + 每 30 秒轮询 /api/redirect_check），更改 mode/manualUrl 时显示器自动重载，无需软重启。"
       }
     },
     "titleLang": {
