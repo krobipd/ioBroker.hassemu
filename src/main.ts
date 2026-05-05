@@ -71,7 +71,13 @@ class HassEmu extends utils.Adapter {
         // Garbage-collect stale clients (no token + lastSeen older than 30 days).
         await this.gcStaleClients();
 
-        const instanceUuid = crypto.randomUUID();
+        // HA-Server-UUID stabil über Restarts halten — sonst behandeln HA-Clients
+        // (Companion-App, Wall-Display, ...) jeden Adapter-Restart als „neuer Server"
+        // → Re-Onboarding, Token-Invalidation, History-Verlust. Persistierung in
+        // einem normalen State (NICHT via extendForeignObjectAsync auf
+        // system.adapter.X.native — das triggert Restart-Loops, govee-smart-Lesson
+        // v2.1.3, Memory `feedback_unhandled_rejection_crash_loop` / `reference_iobroker_partial_object_repair`).
+        const instanceUuid = await this.getOrCreateServerUuid();
         this.log.debug(
             `Config: port=${this.config.port}, auth=${this.config.authRequired}, mdns=${this.config.mdnsEnabled}`,
         );
@@ -122,6 +128,40 @@ class HassEmu extends utils.Adapter {
         this.log.info(
             `HA emulation running on ${bindAddr}:${this.config.port}${this.config.mdnsEnabled ? ', mDNS active' : ''}`,
         );
+    }
+
+    /**
+     * Liefert die persistente Server-UUID. Beim ersten Start wird sie generiert und in
+     * `info.serverUuid` geschrieben; bei späteren Starts kommt der gleiche Wert raus.
+     *
+     * Warum nicht `extendForeignObjectAsync(system.adapter.X, native: { serverUuid })`?
+     * Schreibt man auf den eigenen `system.adapter.X`-Objekt, triggert js-controller
+     * einen Adapter-Restart — bei jedem Start ein Restart-Loop. govee-smart hatte das
+     * in v2.1.3 (`extendForeignObjectAsync` für `mqttCredentials`-native) und musste
+     * auf state-based persistence migrieren.
+     */
+    private async getOrCreateServerUuid(): Promise<string> {
+        try {
+            const existing = await this.getStateAsync('info.serverUuid');
+            const val = existing?.val;
+            if (
+                typeof val === 'string' &&
+                /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)
+            ) {
+                return val;
+            }
+        } catch {
+            /* state didn't exist yet — fresh install */
+        }
+        const fresh = crypto.randomUUID();
+        await this.setStateAsync('info.serverUuid', { val: fresh, ack: true }).catch(err => {
+            // info.serverUuid is an instanceObject — should always exist. Falls
+            // doch nicht: log + fortfahren mit der frischen UUID, sie wird beim
+            // nächsten Start erneut generiert (kein bleibender Schaden).
+            this.log.warn(`Could not persist info.serverUuid: ${String(err)}`);
+        });
+        this.log.info(`Generated and persisted server UUID: ${fresh}`);
+        return fresh;
     }
 
     /**

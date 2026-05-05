@@ -141,6 +141,7 @@ export class WebServer {
         // hängen. Tests via `app.inject({payload:{...}})` serialisieren zu JSON
         // und maskieren das.
         await this.app.register(fastifyFormbody);
+        this.setupAuthGuard();
         this.setupErrorHandler();
         this.setupRoutes();
 
@@ -357,6 +358,59 @@ export class WebServer {
             .finally(() => {
                 this.dnsInFlight.delete(ip);
             });
+    }
+
+    // --- auth guard ---
+
+    /**
+     * Pre-handler hook der `/api/*`-Routen schützt wenn `authRequired=true`.
+     *
+     * Vorher: `/api/states`, `/api/services`, `/api/events`, `/api/error_log`,
+     * `/api/discovery_info` lieferten unauthenticated alle ihre Daten —
+     * pure Information-Disclosure. Echte HA verlangt `Authorization: Bearer
+     * <token>` für alle `/api/*` außer dem `/api/`-Heartbeat.
+     *
+     * Whitelist (kein Auth nötig):
+     *   - `/`, `/manifest.json`, `/health`, `/api/` — public Endpoints (Heartbeat, PWA)
+     *   - `/api/discovery_info` — HA-Clients fragen das VOR dem Auth-Flow ab um
+     *     zu erkennen ob `requires_api_password` true ist (Spec-Verhalten)
+     *   - `/auth/*` — der Auth-Flow selbst
+     *
+     * Bei `authRequired=false`: Hook macht nichts (no-op), bestehender Verhalten.
+     */
+    private setupAuthGuard(): void {
+        this.app.addHook('preHandler', async (req, reply) => {
+            if (!this.config.authRequired) {
+                return;
+            }
+            const path = (req.url ?? '/').split('?')[0];
+            // Public endpoints — explicitly allowed
+            if (
+                path === '/' ||
+                path === '/api/' ||
+                path === '/api/discovery_info' ||
+                path === '/manifest.json' ||
+                path === '/health' ||
+                path.startsWith('/auth/')
+            ) {
+                return;
+            }
+            // From here on: protected (`/api/*` apart from `/api/`)
+            const authHeader = req.headers.authorization;
+            if (typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
+                this.adapter.log.debug(`Auth required for ${path} — missing Bearer token`);
+                reply.status(401).send({ error: 'unauthorized' });
+                return;
+            }
+            const token = authHeader.substring('Bearer '.length).trim();
+            const client = this.registry.getByToken(token);
+            if (!client) {
+                this.adapter.log.debug(`Auth required for ${path} — unknown Bearer token`);
+                reply.status(401).send({ error: 'invalid_token' });
+                return;
+            }
+            // OK — handler runs
+        });
     }
 
     // --- error handling ---
