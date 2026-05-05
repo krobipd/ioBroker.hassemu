@@ -8,9 +8,14 @@ export class MDNSService {
     private readonly adapter: AdapterInterface;
     private readonly config: AdapterConfig;
     public readonly uuid: string;
-    public active = false;
+    private active = false;
     private bonjour: Bonjour | null = null;
     private published: Service | null = null;
+
+    /** Read-only flag — true between successful `start()` and `stop()`. */
+    public isActive(): boolean {
+        return this.active;
+    }
 
     /**
      * Creates a new MDNSService instance
