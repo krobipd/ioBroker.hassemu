@@ -152,6 +152,13 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
+### **WORK IN PROGRESS**
+
+- **Adapter beendet sich bei Server-Start-Fehler** (Port belegt etc.) jetzt mit Exit-Code 11 — js-controller startet ihn nach Backoff neu, statt zombie idle zu sitzen.
+- **mDNS-Broadcast-Fehler ist jetzt sichtbar**: `warn`-Meldung im Log + `mDNS FAILED` im running-Status (vorher still).
+- **Compact-Mode**: `unhandledRejection`/`uncaughtException`-Handler nur einmal pro Node-Prozess (Module-Level-Flag), nicht pro Instance.
+- **onUnload löst Subscriptions explizit auf** vor dem Null-Set — verhindert Residual-Calls auf genullte Instance bei hot-remove.
+
 ### 1.9.1 (2026-05-05)
 
 - **Interne Aufräumung**: 5xx-Error-Cooldown-Map (eingeführt in v1.9.0) nutzt jetzt denselben FIFO-Eviction-Helper wie alle anderen gedeckelten Maps im Server — vorher inline-inkonsistent.
