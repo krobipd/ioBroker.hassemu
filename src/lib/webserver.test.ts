@@ -855,6 +855,43 @@ describe('WebServer', () => {
             }
         });
 
+        it('IPv6-mapped IPv4 addresses share lockout bucket with raw IPv4 (C5 v1.12.0)', async () => {
+            const s = await buildAuthServer();
+            try {
+                // Simulate failures from `::ffff:10.0.0.5` AND `10.0.0.5` —
+                // before normalization, these were two buckets and the lockout
+                // could be bypassed by alternating.
+                const access = s as unknown as {
+                    recordLoginFailure: (ip: string | null) => void;
+                    isIpLocked: (ip: string | null) => boolean;
+                };
+                for (let i = 0; i < 3; i++) access.recordLoginFailure('::ffff:10.0.0.5');
+                for (let i = 0; i < 2; i++) access.recordLoginFailure('10.0.0.5');
+                // 5 failures total → IP must be locked, identical for both keys.
+                expect(access.isIpLocked('10.0.0.5')).to.be.true;
+                expect(access.isIpLocked('::ffff:10.0.0.5')).to.be.true;
+                expect(s.loginAttempts.size).to.equal(1);
+                expect([...s.loginAttempts.keys()][0]).to.equal('10.0.0.5');
+            } finally {
+                await s['app'].close();
+            }
+        });
+
+        it('null IP gets a dedicated lockout bucket (C5 v1.12.0)', async () => {
+            const s = await buildAuthServer();
+            try {
+                const access = s as unknown as {
+                    recordLoginFailure: (ip: string | null) => void;
+                    isIpLocked: (ip: string | null) => boolean;
+                };
+                for (let i = 0; i < 5; i++) access.recordLoginFailure(null);
+                expect(access.isIpLocked(null)).to.be.true;
+                expect(s.loginAttempts.has('__no-ip__')).to.be.true;
+            } finally {
+                await s['app'].close();
+            }
+        });
+
         it('cleanupSessions() prunes expired lockouts', async () => {
             const s = await buildAuthServer();
             try {
