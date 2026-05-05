@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.18.0",
+    "version": "1.19.0",
     "news": {
-      "NEXT": {
+      "1.19.0": {
         "en": "Diagnostics: per-IP burst-detection — display creating >3 clients in <1h (broken cookie) gets one warn with cause. Plus: README single-instance-per-host hint.",
         "de": "Diagnose: Per-IP-Burst-Erkennung — Display mit >3 Clients in <1h (kaputter Cookie) bekommt einen warn mit Ursache. Plus: README Single-Instance-pro-Host-Hinweis.",
         "ru": "Диагностика: per-IP burst-detection — display с >3 clients в <1h (broken cookie) получает warn с причиной. Plus: README single-instance-per-host hint.",
@@ -93,19 +93,6 @@
         "pl": "URL-dropdown refresh tylko przy adapter add/remove lub admin/web/vis-changes (wczesniej: kazda system.adapter.*). Subscriptions po server-start. Plus: lifecycle hardening.",
         "uk": "URL-dropdown refresh тепер лише при adapter add/remove або admin/web/vis-changes (раніше: кожна system.adapter.*). Subscriptions після server-start. Plus: lifecycle hardening.",
         "zh-cn": "URL 下拉刷新仅在适配器增删或 admin/web/vis 变更时触发（之前为每个 system.adapter.* 变更）。订阅在服务器启动后建立。另：lifecycle 加固。"
-      },
-      "1.12.0": {
-        "en": "Security: brute-force lockout no longer bypassable via IPv6-mapped IPv4 (`::ffff:1.2.3.4`) or null-IP — both share the same bucket. Plus: legacy URL migration validates via coerceSafeUrl.",
-        "de": "Sicherheit: Brute-Force-Lockout nicht mehr per IPv6-mapped IPv4 (`::ffff:1.2.3.4`) oder null-IP umgehbar — beide teilen sich einen Bucket. Plus: Legacy-URL-Migration validiert via coerceSafeUrl.",
-        "ru": "Безопасность: brute-force lockout больше нельзя обойти через IPv6-mapped IPv4 (`::ffff:1.2.3.4`) или null-IP — общий bucket. Plus: legacy URL migration валидирует через coerceSafeUrl.",
-        "pt": "Seguranca: brute-force lockout nao mais contornavel via IPv6-mapped IPv4 ou null-IP — bucket compartilhado. Plus: legacy URL migration valida via coerceSafeUrl.",
-        "nl": "Beveiliging: brute-force lockout niet meer omzeilbaar via IPv6-mapped IPv4 of null-IP — gedeelde bucket. Plus: legacy URL migration valideert via coerceSafeUrl.",
-        "fr": "Securite : lockout brute-force plus contournable via IPv6-mapped IPv4 ou null-IP — bucket partage. Plus : migration URL legacy valide via coerceSafeUrl.",
-        "it": "Sicurezza: lockout brute-force non piu bypassabile via IPv6-mapped IPv4 o null-IP — bucket condiviso. Plus: legacy URL migration valida via coerceSafeUrl.",
-        "es": "Seguridad: lockout brute-force ya no eludible via IPv6-mapped IPv4 o null-IP — bucket compartido. Plus: legacy URL migration valida via coerceSafeUrl.",
-        "pl": "Bezpieczenstwo: brute-force lockout nie do obejscia przez IPv6-mapped IPv4 lub null-IP — wspolny bucket. Plus: legacy URL migration waliduje via coerceSafeUrl.",
-        "uk": "Безпека: brute-force lockout більше не обходиться через IPv6-mapped IPv4 або null-IP — спільний bucket. Plus: legacy URL migration валідує через coerceSafeUrl.",
-        "zh-cn": "安全：暴力锁定不再可经由 IPv6-mapped IPv4 (`::ffff:1.2.3.4`) 或 null-IP 绕过 — 共享桶。另：旧版 URL 迁移经 coerceSafeUrl 校验。"
       }
     },
     "titleLang": {
