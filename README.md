@@ -155,7 +155,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.20.0 (2026-05-05)
 
 - **Interne Aufräumung**: drei Helpers nach `coerce.ts` extrahiert — `buildDropdownStates`, `parseAdapterStateId`, `safeGetState`. `client-registry` und `global-config` teilen sie statt zu duplizieren.
 
@@ -180,14 +180,6 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 - **NAT-Cookie-Schutz**: zwei Displays hinter derselben NAT-IP teilten sich beim parallelen Erst-Connect Cookie + Token + Mode. Jetzt: Bucket-Key kombiniert IP + User-Agent-Hash.
 - **`/api/discovery_info` nutzt bind-Address**, nicht den `Host`-Header. Vorher konnte ein Angreifer mit `Host: attacker.lan` andere HA-Clients zur falschen URL umleiten.
 - **VIS-Discovery iteriert alle `web.*`-Instances**: User mit `web.1` (zweite Web-Instance) hatten vorher keine VIS-Projekte im Mode-Dropdown.
-
-### 1.16.0 (2026-05-05)
-
-- **Sicherheit Credentials-Vergleich**: `safeStringEqual` hashed beide Seiten via SHA-256 vor dem timing-safe Vergleich — vorher waren Username-/Password-Längen über Response-Timing leakbar.
-- **Landing-Page versteckt Loopback-IPs**: `127.0.0.1` / `::1` / `0.0.0.0` werden nicht mehr als Display-IP angezeigt — verwirrte User bei Reverse-Proxy-Setups.
-- **`coerceSafeUrlReason`-Helper**: rejected URLs liefern jetzt den Grund (`bad-scheme:javascript:`, `credentials-in-url`, `unparseable`, `too-long`, …) für gezielte Log-Nachvollziehbarkeit.
-- **README-Upgrading aktualisiert**: Eintrag „1.2.0 → 1.15.x" hinzugefügt, plus Hinweis auf den v1.3.2-Schema-Repair bei leerem Mode-Dropdown nach Upgrade.
-- **Config-Hinweis bei mDNS=off**: die Configuration-Tabelle erklärt jetzt explizit dass Displays manuell konfiguriert werden müssen wenn mDNS deaktiviert ist.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
