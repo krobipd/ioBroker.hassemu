@@ -15,6 +15,7 @@ import {
     REFRESH_TOKENS_CAP,
     LOGIN_ATTEMPTS_CAP,
     REQUEST_ERROR_COOLDOWN_MS,
+    REQUEST_ERROR_COOLDOWN_CAP,
     COOKIE_MAX_AGE_S,
 } from './constants';
 import { coerceString, coerceUuid } from './coerce';
@@ -265,6 +266,27 @@ export class WebServer {
      * @param map Map to evict from.
      * @param cap Hard cap; when `map.size >= cap`, the oldest entry is removed.
      */
+    /**
+     * Cooldown-Decision für 5xx-Error-Logging. Liefert `true` für die erste
+     * Beobachtung pro `key` innerhalb {@link REQUEST_ERROR_COOLDOWN_MS} und
+     * markiert den Eintrag — Wiederholungen liefern `false` bis das Fenster
+     * abgelaufen ist. Map ist FIFO-gedeckelt auf {@link REQUEST_ERROR_COOLDOWN_CAP}.
+     *
+     * @param key Eindeutiger Error-Identifier (üblicherweise `error.message`).
+     * @param now Aktuelle Zeit in ms (testbar).
+     */
+    public shouldEmitRequestErrorWarn(key: string, now: number): boolean {
+        const lastSeen = this.errorLogCooldown.get(key) ?? 0;
+        if (lastSeen !== 0 && now - lastSeen <= REQUEST_ERROR_COOLDOWN_MS) {
+            return false;
+        }
+        if (!this.errorLogCooldown.has(key)) {
+            WebServer.evictOldest(this.errorLogCooldown, REQUEST_ERROR_COOLDOWN_CAP);
+        }
+        this.errorLogCooldown.set(key, now);
+        return true;
+    }
+
     private static evictOldest<V>(map: Map<string, V>, cap: number): void {
         // v1.9.0 (E9): while-loop statt single if. Single Eviction reicht
         // wenn der Caller VOR jedem Insert evictet (heute der Fall), aber
@@ -491,17 +513,8 @@ export class WebServer {
             // Auftreten pro unique message kommt als warn, alle Wiederholungen
             // im 60s-Fenster auf debug. Memory `feedback_no_log_spam`.
             const key = error.message || 'unknown';
-            const now = Date.now();
-            const lastSeen = this.errorLogCooldown.get(key) ?? 0;
-            if (now - lastSeen > REQUEST_ERROR_COOLDOWN_MS) {
+            if (this.shouldEmitRequestErrorWarn(key, Date.now())) {
                 this.adapter.log.warn(`Request error: ${error.message}`);
-                this.errorLogCooldown.set(key, now);
-                if (this.errorLogCooldown.size > 200) {
-                    const oldestKey = this.errorLogCooldown.keys().next().value;
-                    if (oldestKey !== undefined) {
-                        this.errorLogCooldown.delete(oldestKey);
-                    }
-                }
             } else {
                 this.adapter.log.debug(`Request error (repeat): ${error.message}`);
             }
