@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.23.0",
     "news": {
+      "NEXT": {
+        "en": "Test coverage: 2 new unit tests for the v1.17.0 NAT-cookie protection — different-UA-on-same-IP yields distinct clients, same-UA-on-same-IP still collapses parallel bursts.",
+        "de": "Test-Coverage: 2 neue Unit-Tests für den v1.17.0 NAT-Cookie-Schutz — unterschiedliche-UA-auf-gleicher-IP ergibt verschiedene Clients, gleiche-UA collapsed parallele Bursts.",
+        "ru": "Test coverage: 2 новых unit-tests для v1.17.0 NAT-cookie protection — different-UA-same-IP → distinct clients, same-UA-same-IP → collapse.",
+        "pt": "Test coverage: 2 novos unit tests para a protecao NAT-cookie v1.17.0.",
+        "nl": "Test coverage: 2 nieuwe unit tests voor v1.17.0 NAT-cookie bescherming.",
+        "fr": "Test coverage : 2 nouveaux unit tests pour la protection NAT-cookie v1.17.0.",
+        "it": "Test coverage: 2 nuovi unit test per la protezione NAT-cookie v1.17.0.",
+        "es": "Test coverage: 2 nuevos unit tests para la proteccion NAT-cookie v1.17.0.",
+        "pl": "Test coverage: 2 nowe unit tests dla ochrony NAT-cookie v1.17.0.",
+        "uk": "Test coverage: 2 нові unit-тести для NAT-cookie protection v1.17.0.",
+        "zh-cn": "测试覆盖：v1.17.0 NAT-cookie 保护新增 2 个单元测试。"
+      },
       "1.23.0": {
         "en": "Internal cleanup: parseModeWrite helper in coerce.ts — both handleModeWrite handlers (client-registry + global-config) delegate to one validator instead of duplicating ~80% of the logic.",
         "de": "Interne Aufräumung: parseModeWrite-Helper in coerce.ts — beide handleModeWrite-Handler (client-registry + global-config) delegieren an einen Validator statt ~80% der Logik zu duplizieren.",

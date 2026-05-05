@@ -155,6 +155,10 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
+### **WORK IN PROGRESS**
+
+- **Test-Coverage**: 2 neue Unit-Tests für den v1.17.0 NAT-Cookie-Schutz — unterschiedliche User-Agents auf derselben IP bekommen distinct Clients, gleiche UA collapsed parallele Bursts.
+
 ### 1.23.0 (2026-05-05)
 
 - **Interne Aufräumung**: `parseModeWrite`-Helper in `coerce.ts` — beide `handleModeWrite`-Handler (`client-registry` + `global-config`) delegieren jetzt an einen Validator statt ~80% der Logik zu duplizieren.
