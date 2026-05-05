@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.4.0",
+    "version": "1.4.1",
     "news": {
-      "NEXT": {
+      "1.4.1": {
         "en": "CI fix: deploy step now uses Node 24 (Node 22 + npm@latest had a MODULE_NOT_FOUND bug, blocked v1.4.0 from reaching npm). v1.4.0 changes are bundled into this release.",
         "de": "CI-Fix: Deploy-Schritt nutzt jetzt Node 24 (Node 22 + npm@latest hatte einen MODULE_NOT_FOUND-Bug, hinderte v1.4.0 daran, auf npm zu kommen). v1.4.0-Änderungen sind in diesem Release gebündelt.",
         "ru": "CI fix: deploy на Node 24 (Node 22 + npm@latest был MODULE_NOT_FOUND bug, v1.4.0 не дошёл до npm). v1.4.0 изменения включены в этот релиз.",
@@ -93,19 +93,6 @@
         "pl": "Breaking: cel przekierowania jest teraz konfigurowany przez dropdown mode + wolny tekst manualUrl zamiast starego visUrl. Istniejące konfiguracje są migrowane automatycznie.",
         "uk": "Breaking: ціль перенаправлення тепер налаштовується через dropdown mode + вільний текст manualUrl замість старого visUrl. Існуючі налаштування мігрують автоматично.",
         "zh-cn": "Breaking：重定向目标现在通过 mode 下拉框 + manualUrl 自由文本配置，取代旧的 visUrl。现有配置会自动迁移。"
-      },
-      "1.1.6": {
-        "en": "Internal cleanup. No user-facing changes.",
-        "de": "Interne Bereinigung. Keine User-sichtbaren Änderungen.",
-        "ru": "Внутренняя очистка. Без видимых изменений для пользователя.",
-        "pt": "Limpeza interna. Sem alterações visíveis para o usuário.",
-        "nl": "Interne opschoning. Geen wijzigingen voor de gebruiker.",
-        "fr": "Nettoyage interne. Aucune modification visible pour l'utilisateur.",
-        "it": "Pulizia interna. Nessuna modifica visibile all'utente.",
-        "es": "Limpieza interna. Sin cambios visibles para el usuario.",
-        "pl": "Wewnętrzne porządki. Brak zmian widocznych dla użytkownika.",
-        "uk": "Внутрішнє прибирання. Без помітних для користувача змін.",
-        "zh-cn": "内部清理。对用户无可见变化。"
       }
     },
     "titleLang": {
