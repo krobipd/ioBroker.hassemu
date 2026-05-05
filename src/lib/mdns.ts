@@ -47,7 +47,10 @@ export class MDNSService {
                 version: HA_VERSION,
                 uuid: this.uuid,
                 location_name: serviceName,
-                requires_api_password: 'True',
+                // mDNS-TXT ist string-only — boolean explizit zu „True"/„False" mappen.
+                // Vorher hardcoded 'True' unabhängig von authRequired → Spec-Drift (HA-Clients
+                // mit strict-mode triggerten Auth-Flow auch bei authRequired=false).
+                requires_api_password: this.config.authRequired ? 'True' : 'False',
             };
 
             this.published = this.bonjour.publish({

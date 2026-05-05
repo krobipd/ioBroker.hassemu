@@ -22,6 +22,12 @@ import type { AdapterConfig, AdapterInterface, ClientRecord, SessionData } from 
 const SESSIONS_CAP = 100;
 /** Hard cap on remembered refresh tokens. Older entries are dropped FIFO when full. */
 const REFRESH_TOKENS_CAP = 200;
+/**
+ * Hard cap on tracked login-attempt entries. Internet-exposed instances see
+ * carrier-grade-NAT IPs accumulate over time — without a cap, the map leaks.
+ * Older entries are dropped FIFO when full.
+ */
+const LOGIN_ATTEMPTS_CAP = 1000;
 
 /**
  * Constant-time string comparison for credential checks. Returns false for length mismatch.
@@ -67,11 +73,16 @@ export class WebServer {
     public readonly refreshTokens: Map<string, string> = new Map();
     /**
      * Brute-force lockout state per remote IP. Each entry tracks failed login
-     * attempts; once {@link LOGIN_LOCKOUT_THRESHOLD} is reached, `lockedUntil`
-     * is set and further attempts from that IP are rejected with HTTP 429
-     * until the window passes. Expired entries are pruned in {@link cleanupSessions}.
+     * attempts and the timestamp of the last failure; once
+     * {@link LOGIN_LOCKOUT_THRESHOLD} is reached, `lockedUntil` is set and
+     * further attempts from that IP are rejected with HTTP 429 until the
+     * window passes. The map is FIFO-capped at {@link LOGIN_ATTEMPTS_CAP}
+     * (else internet-exposed instances leak slowly via stray failure counts
+     * with `lockedUntil=0`); expired and stale entries are pruned in
+     * {@link cleanupSessions}.
      */
-    public readonly loginAttempts: Map<string, { failedCount: number; lockedUntil: number }> = new Map();
+    public readonly loginAttempts: Map<string, { failedCount: number; lockedUntil: number; lastSeen: number }> =
+        new Map();
     private cleanupTimer: ioBroker.Interval | null = null;
     public readonly instanceUuid: string;
     /** ioBroker system language for the setup page — resolved on startup. */
@@ -182,13 +193,22 @@ export class WebServer {
         }
         let cleanedLockouts = 0;
         for (const [ip, entry] of this.loginAttempts) {
+            // Expired lockout — IP gets a fresh budget on next attempt.
             if (entry.lockedUntil > 0 && entry.lockedUntil <= now) {
+                this.loginAttempts.delete(ip);
+                cleanedLockouts++;
+                continue;
+            }
+            // Stale failure-count without active lockout (failedCount<threshold,
+            // lockedUntil=0). Without this prune, every distinct IP that ever
+            // typed a wrong password leaves a row behind forever.
+            if (entry.lockedUntil === 0 && entry.failedCount > 0 && now - entry.lastSeen > LOGIN_LOCKOUT_WINDOW_MS) {
                 this.loginAttempts.delete(ip);
                 cleanedLockouts++;
             }
         }
         if (cleanedLockouts > 0) {
-            this.adapter.log.debug(`Lockout cleanup: cleared ${cleanedLockouts} expired IP lockouts`);
+            this.adapter.log.debug(`Lockout cleanup: cleared ${cleanedLockouts} expired/stale IP entries`);
         }
     }
 
@@ -264,14 +284,22 @@ export class WebServer {
         if (!ip) {
             return;
         }
-        const entry = this.loginAttempts.get(ip) ?? { failedCount: 0, lockedUntil: 0 };
+        const now = Date.now();
+        const entry = this.loginAttempts.get(ip) ?? { failedCount: 0, lockedUntil: 0, lastSeen: now };
         entry.failedCount += 1;
+        entry.lastSeen = now;
         if (entry.failedCount >= LOGIN_LOCKOUT_THRESHOLD) {
-            entry.lockedUntil = Date.now() + LOGIN_LOCKOUT_WINDOW_MS;
+            entry.lockedUntil = now + LOGIN_LOCKOUT_WINDOW_MS;
             this.adapter.log.warn(
                 `Login lockout: IP ${ip} reached ${LOGIN_LOCKOUT_THRESHOLD} failed attempts — ` +
                     `locked for ${Math.round(LOGIN_LOCKOUT_WINDOW_MS / 60000)} min`,
             );
+        }
+        // Cap loginAttempts before insert to avoid unbounded growth from stray
+        // attempts. evictOldest is a no-op when this ip already exists in map
+        // (size won't change on re-set).
+        if (!this.loginAttempts.has(ip)) {
+            WebServer.evictOldest(this.loginAttempts, LOGIN_ATTEMPTS_CAP);
         }
         this.loginAttempts.set(ip, entry);
     }
@@ -387,7 +415,9 @@ export class WebServer {
                 external_url: null,
                 internal_url: baseUrl,
                 location_name: this.serviceName,
-                requires_api_password: true,
+                // Vorher hardcoded `true` unabhängig von authRequired — strict HA-Clients
+                // versuchten Auth auch bei authRequired=false und scheiterten am leeren Login-Flow.
+                requires_api_password: this.config.authRequired,
                 uuid: this.instanceUuid,
                 version: HA_VERSION,
             };
@@ -538,14 +568,13 @@ export class WebServer {
     private setupMiscRoutes(): void {
         // Liveness only — no config leak. Earlier versions exposed the global
         // redirect URL via /health which is unauthenticated; removed in v1.2.0.
+        // v1.5.0: auch der `config: { mdns, auth }`-Block raus — Auth-Status leakte
+        // unauthenticated und ließ sich von einem Network-Attacker zur Reconnaissance
+        // nutzen (auth-disabled Instances quickly mappen).
         this.app.get('/health', () => ({
             status: 'ok',
             adapter: 'hassemu',
             version: HA_VERSION,
-            config: {
-                mdns: this.config.mdnsEnabled,
-                auth: this.config.authRequired,
-            },
         }));
 
         this.app.get('/manifest.json', () => ({

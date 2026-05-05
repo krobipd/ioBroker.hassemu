@@ -42,6 +42,7 @@ var import_coerce = require("./coerce");
 var import_landing_page = require("./landing-page");
 const SESSIONS_CAP = 100;
 const REFRESH_TOKENS_CAP = 200;
+const LOGIN_ATTEMPTS_CAP = 1e3;
 function safeStringEqual(a, b) {
   const ab = Buffer.from(a, "utf8");
   const bb = Buffer.from(b, "utf8");
@@ -66,9 +67,13 @@ class WebServer {
   refreshTokens = /* @__PURE__ */ new Map();
   /**
    * Brute-force lockout state per remote IP. Each entry tracks failed login
-   * attempts; once {@link LOGIN_LOCKOUT_THRESHOLD} is reached, `lockedUntil`
-   * is set and further attempts from that IP are rejected with HTTP 429
-   * until the window passes. Expired entries are pruned in {@link cleanupSessions}.
+   * attempts and the timestamp of the last failure; once
+   * {@link LOGIN_LOCKOUT_THRESHOLD} is reached, `lockedUntil` is set and
+   * further attempts from that IP are rejected with HTTP 429 until the
+   * window passes. The map is FIFO-capped at {@link LOGIN_ATTEMPTS_CAP}
+   * (else internet-exposed instances leak slowly via stray failure counts
+   * with `lockedUntil=0`); expired and stale entries are pruned in
+   * {@link cleanupSessions}.
    */
   loginAttempts = /* @__PURE__ */ new Map();
   cleanupTimer = null;
@@ -161,10 +166,15 @@ class WebServer {
       if (entry.lockedUntil > 0 && entry.lockedUntil <= now) {
         this.loginAttempts.delete(ip);
         cleanedLockouts++;
+        continue;
+      }
+      if (entry.lockedUntil === 0 && entry.failedCount > 0 && now - entry.lastSeen > import_constants.LOGIN_LOCKOUT_WINDOW_MS) {
+        this.loginAttempts.delete(ip);
+        cleanedLockouts++;
       }
     }
     if (cleanedLockouts > 0) {
-      this.adapter.log.debug(`Lockout cleanup: cleared ${cleanedLockouts} expired IP lockouts`);
+      this.adapter.log.debug(`Lockout cleanup: cleared ${cleanedLockouts} expired/stale IP entries`);
     }
   }
   /**
@@ -235,13 +245,18 @@ class WebServer {
     if (!ip) {
       return;
     }
-    const entry = (_a = this.loginAttempts.get(ip)) != null ? _a : { failedCount: 0, lockedUntil: 0 };
+    const now = Date.now();
+    const entry = (_a = this.loginAttempts.get(ip)) != null ? _a : { failedCount: 0, lockedUntil: 0, lastSeen: now };
     entry.failedCount += 1;
+    entry.lastSeen = now;
     if (entry.failedCount >= import_constants.LOGIN_LOCKOUT_THRESHOLD) {
-      entry.lockedUntil = Date.now() + import_constants.LOGIN_LOCKOUT_WINDOW_MS;
+      entry.lockedUntil = now + import_constants.LOGIN_LOCKOUT_WINDOW_MS;
       this.adapter.log.warn(
         `Login lockout: IP ${ip} reached ${import_constants.LOGIN_LOCKOUT_THRESHOLD} failed attempts \u2014 locked for ${Math.round(import_constants.LOGIN_LOCKOUT_WINDOW_MS / 6e4)} min`
       );
+    }
+    if (!this.loginAttempts.has(ip)) {
+      WebServer.evictOldest(this.loginAttempts, LOGIN_ATTEMPTS_CAP);
     }
     this.loginAttempts.set(ip, entry);
   }
@@ -340,7 +355,9 @@ class WebServer {
         external_url: null,
         internal_url: baseUrl,
         location_name: this.serviceName,
-        requires_api_password: true,
+        // Vorher hardcoded `true` unabhängig von authRequired — strict HA-Clients
+        // versuchten Auth auch bei authRequired=false und scheiterten am leeren Login-Flow.
+        requires_api_password: this.config.authRequired,
         uuid: this.instanceUuid,
         version: import_constants.HA_VERSION
       };
@@ -476,11 +493,7 @@ class WebServer {
     this.app.get("/health", () => ({
       status: "ok",
       adapter: "hassemu",
-      version: import_constants.HA_VERSION,
-      config: {
-        mdns: this.config.mdnsEnabled,
-        auth: this.config.authRequired
-      }
+      version: import_constants.HA_VERSION
     }));
     this.app.get("/manifest.json", () => ({
       name: this.serviceName,

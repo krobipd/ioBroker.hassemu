@@ -484,14 +484,14 @@ describe('WebServer', () => {
     });
 
     describe('misc endpoints', () => {
-        it('GET /health returns liveness without leaking redirect URL (security fix v1.2.0)', async () => {
+        it('GET /health returns liveness without any config leak (security fix v1.5.0)', async () => {
             const res = await server.inject({ method: 'GET', url: '/health' });
             const body = res.json() as Record<string, unknown>;
             expect(body.status).to.equal('ok');
             expect(body.version).to.equal(HA_VERSION);
-            expect(body).to.not.have.property('config.globalRedirect');
-            const cfg = body.config as Record<string, unknown>;
-            expect(cfg).to.not.have.property('globalRedirect');
+            // v1.5.0: complete config-block removed (was previously exposing `mdns` + `auth` flags
+            // unauthenticated — Reconnaissance vector for network attackers).
+            expect(body).to.not.have.property('config');
         });
 
         it('GET /manifest.json returns PWA manifest with service name', async () => {
@@ -827,13 +827,60 @@ describe('WebServer', () => {
         it('cleanupSessions() prunes expired lockouts', async () => {
             const s = await buildAuthServer();
             try {
+                const now = Date.now();
                 // Inject an expired lockout entry directly
-                s.loginAttempts.set('10.0.0.99', { failedCount: 5, lockedUntil: Date.now() - 1000 });
-                s.loginAttempts.set('10.0.0.100', { failedCount: 2, lockedUntil: 0 }); // not locked
+                s.loginAttempts.set('10.0.0.99', { failedCount: 5, lockedUntil: now - 1000, lastSeen: now });
+                s.loginAttempts.set('10.0.0.100', { failedCount: 2, lockedUntil: 0, lastSeen: now }); // recent failed
                 expect(s.loginAttempts.size).to.equal(2);
                 s.cleanupSessions();
-                expect(s.loginAttempts.has('10.0.0.99')).to.be.false; // pruned
-                expect(s.loginAttempts.has('10.0.0.100')).to.be.true; // still tracked
+                expect(s.loginAttempts.has('10.0.0.99')).to.be.false; // pruned (expired lockout)
+                expect(s.loginAttempts.has('10.0.0.100')).to.be.true; // still within window
+            } finally {
+                await s['app'].close();
+            }
+        });
+
+        it('cleanupSessions() prunes stale failure-counts (v1.5.0)', async () => {
+            const s = await buildAuthServer();
+            try {
+                const now = Date.now();
+                // Stale: failedCount>0, no lockout, lastSeen older than the window
+                s.loginAttempts.set('10.0.0.101', {
+                    failedCount: 2,
+                    lockedUntil: 0,
+                    lastSeen: now - 16 * 60 * 1000, // > LOGIN_LOCKOUT_WINDOW_MS (15 min)
+                });
+                // Fresh failure within window — keep
+                s.loginAttempts.set('10.0.0.102', { failedCount: 2, lockedUntil: 0, lastSeen: now });
+                s.cleanupSessions();
+                expect(s.loginAttempts.has('10.0.0.101')).to.be.false; // pruned (stale)
+                expect(s.loginAttempts.has('10.0.0.102')).to.be.true; // fresh
+            } finally {
+                await s['app'].close();
+            }
+        });
+
+        it('GET /health does not leak adapter config (v1.5.0)', async () => {
+            const s = await buildAuthServer();
+            try {
+                const res = await s.inject({ method: 'GET', url: '/health' });
+                expect(res.statusCode).to.equal(200);
+                const body = res.json() as Record<string, unknown>;
+                expect(body).to.have.keys(['status', 'adapter', 'version']);
+                expect(body).to.not.have.property('config');
+            } finally {
+                await s['app'].close();
+            }
+        });
+
+        it('GET /api/discovery_info reports requires_api_password from config (v1.5.0)', async () => {
+            const s = await buildAuthServer();
+            try {
+                const res = await s.inject({ method: 'GET', url: '/api/discovery_info' });
+                expect(res.statusCode).to.equal(200);
+                const body = res.json() as { requires_api_password: boolean };
+                // buildAuthServer sets authRequired=true, so discovery_info must mirror that
+                expect(body.requires_api_password).to.equal(true);
             } finally {
                 await s['app'].close();
             }
