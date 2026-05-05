@@ -6,8 +6,6 @@
 - Security hardening of the auth flow.
 - `web` adapter declared as dependency.
 
-Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
-
 ## 1.1.6 (2026-04-28)
 - Internal cleanup. No user-facing changes.
 
