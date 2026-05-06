@@ -35,6 +35,8 @@ __export(coerce_exports, {
   coerceSafeUrlReason: () => coerceSafeUrlReason,
   coerceString: () => coerceString,
   coerceUuid: () => coerceUuid,
+  decideGcAction: () => decideGcAction,
+  decideLegacyVisMigration: () => decideLegacyVisMigration,
   isNoChoice: () => isNoChoice,
   isPlainObject: () => isPlainObject,
   parseAdapterStateId: () => parseAdapterStateId,
@@ -163,6 +165,26 @@ function parseAdapterStateId(fullId, namespace, prefix, expectedParts) {
   }
   return parts;
 }
+function decideGcAction(lastSeen, now, ttlMs) {
+  const ls = typeof lastSeen === "number" && Number.isFinite(lastSeen) ? lastSeen : 0;
+  if (ls === 0) {
+    return "seed";
+  }
+  if (now - ls > ttlMs) {
+    return "stale";
+  }
+  return "keep";
+}
+function decideLegacyVisMigration(rawValue) {
+  if (rawValue === void 0 || rawValue === null || rawValue === "") {
+    return { kind: "empty" };
+  }
+  const safe = coerceSafeUrl(rawValue);
+  if (safe) {
+    return { kind: "safe-url", safe };
+  }
+  return { kind: "unsafe-rejected" };
+}
 function buildDropdownStates(sentinels, urlStates) {
   return { 0: "---", ...sentinels, ...urlStates };
 }
@@ -175,6 +197,8 @@ function buildDropdownStates(sentinels, urlStates) {
   coerceSafeUrlReason,
   coerceString,
   coerceUuid,
+  decideGcAction,
+  decideLegacyVisMigration,
   isNoChoice,
   isPlainObject,
   parseAdapterStateId,

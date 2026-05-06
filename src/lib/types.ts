@@ -18,6 +18,17 @@ export interface AdapterConfig {
     mdnsEnabled: boolean;
     /** Service name for mDNS discovery. */
     serviceName: string;
+    /**
+     * v1.25.0 (C11): nur aktivieren wenn der Adapter hinter einem **trusted**
+     * Reverse-Proxy mit TLS-Termination läuft. Effekte:
+     * - Fastify `trustProxy: true` (req.ip kommt aus X-Forwarded-For)
+     * - Cookie `secure: true` wenn der Proxy `X-Forwarded-Proto: https` setzt
+     *
+     * Achtung: bei `trustProxy: true` ohne echten Reverse-Proxy kann jeder
+     * Client per `X-Forwarded-For` den Brute-Force-Lockout umgehen. Default
+     * ist `false`. Optional in jsonConfig.
+     */
+    trustProxy?: boolean;
 }
 
 /**

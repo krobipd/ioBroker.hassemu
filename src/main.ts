@@ -1,13 +1,18 @@
 import crypto from 'node:crypto';
 import * as utils from '@iobroker/adapter-core';
 import { ClientRegistry, parseClientStateId } from './lib/client-registry';
-import { coerceSafeUrl } from './lib/coerce';
+import { coerceSafeUrl, decideGcAction, decideLegacyVisMigration } from './lib/coerce';
 import { MODE_GLOBAL, MODE_MANUAL, STALE_CLIENT_TTL_MS } from './lib/constants';
 import { GlobalConfig, parseGlobalStateId } from './lib/global-config';
 import { MDNSService } from './lib/mdns';
 import { UrlDiscovery } from './lib/url-discovery';
 import { WebServer } from './lib/webserver';
 import type { AdapterConfig } from './lib/types';
+// v1.25.0 (F3): instanceObjects als single source of truth — repairGlobalSchemas
+// liest die Object-Schemas aus dem io-package.json statt sie zu duplizieren.
+// resolveJsonModule ist im tsconfig aktiv.
+import iobrokerPackage from '../io-package.json';
+const instanceObjectsList = (iobrokerPackage as { instanceObjects: unknown[] }).instanceObjects ?? [];
 
 // v1.10.0 (B3): in compact-mode teilen alle hassemu-Instances einen Node-Prozess.
 // Würde jeder Konstruktor `process.on('unhandledRejection'/'uncaughtException')`
@@ -351,23 +356,18 @@ class HassEmu extends utils.Adapter {
      * upgraded to 'mixed'. Idempotent — does nothing on subsequent starts.
      */
     private async migrateVisUrlToMode(): Promise<void> {
+        // v1.25.0 (J2): Decision-Logik in pure helper coerce.decideLegacyVisMigration
+        // (testbar). Hier nur das I/O zum Broker.
         // 1) Global visUrl → mode + manualUrl
         try {
             const legacyGlobal = await this.getStateAsync('global.visUrl');
-            if (
-                legacyGlobal &&
-                legacyGlobal.val !== undefined &&
-                legacyGlobal.val !== null &&
-                legacyGlobal.val !== ''
-            ) {
-                const safe = coerceSafeUrl(legacyGlobal.val);
-                if (safe) {
-                    await this.globalConfig!.migrationSet(MODE_MANUAL, safe);
-                    this.log.info(`Migration: global.visUrl → mode='manual', manualUrl='${safe}'`);
-                } else {
-                    await this.globalConfig!.migrationSet(MODE_MANUAL, null);
-                    this.log.warn(`Migration: legacy global.visUrl rejected as unsafe — set global.manualUrl manually`);
-                }
+            const decision = decideLegacyVisMigration(legacyGlobal?.val);
+            if (decision.kind === 'safe-url') {
+                await this.globalConfig!.migrationSet(MODE_MANUAL, decision.safe);
+                this.log.info(`Migration: global.visUrl → mode='manual', manualUrl='${decision.safe}'`);
+            } else if (decision.kind === 'unsafe-rejected') {
+                await this.globalConfig!.migrationSet(MODE_MANUAL, null);
+                this.log.warn(`Migration: legacy global.visUrl rejected as unsafe — set global.manualUrl manually`);
             }
         } catch {
             /* state didn't exist — fresh install or already migrated */
@@ -383,21 +383,19 @@ class HassEmu extends utils.Adapter {
         for (const record of records) {
             try {
                 const legacy = await this.getStateAsync(`clients.${record.id}.visUrl`);
-                if (legacy && legacy.val !== undefined && legacy.val !== null && legacy.val !== '') {
-                    const safe = coerceSafeUrl(legacy.val);
-                    if (safe) {
-                        record.mode = MODE_MANUAL;
-                        record.manualUrl = safe;
-                        await this.setStateAsync(`clients.${record.id}.mode`, { val: MODE_MANUAL, ack: true });
-                        await this.setStateAsync(`clients.${record.id}.manualUrl`, { val: safe, ack: true });
-                        this.log.info(
-                            `Migration: client ${record.id} visUrl='${safe}' → mode='manual', manualUrl='${safe}'`,
-                        );
-                    } else {
-                        this.log.warn(
-                            `Migration: client ${record.id} legacy visUrl rejected as unsafe — set clients.${record.id}.manualUrl manually`,
-                        );
-                    }
+                const decision = decideLegacyVisMigration(legacy?.val);
+                if (decision.kind === 'safe-url') {
+                    record.mode = MODE_MANUAL;
+                    record.manualUrl = decision.safe;
+                    await this.setStateAsync(`clients.${record.id}.mode`, { val: MODE_MANUAL, ack: true });
+                    await this.setStateAsync(`clients.${record.id}.manualUrl`, { val: decision.safe, ack: true });
+                    this.log.info(
+                        `Migration: client ${record.id} visUrl='${decision.safe}' → mode='manual', manualUrl='${decision.safe}'`,
+                    );
+                } else if (decision.kind === 'unsafe-rejected') {
+                    this.log.warn(
+                        `Migration: client ${record.id} legacy visUrl rejected as unsafe — set clients.${record.id}.manualUrl manually`,
+                    );
                 }
             } catch {
                 /* state didn't exist for this client */
@@ -426,62 +424,47 @@ class HassEmu extends utils.Adapter {
      * Idempotent — extending an already-complete object is a no-op write.
      */
     private async repairGlobalSchemas(): Promise<void> {
-        // v1.14.0 (H3): vor dem unconditional extendObjectAsync prüfen ob die
-        // Objects schon fully-formed sind. Spart 2 Round-Trips bei jedem Start
-        // für die ~99% der Installationen die das Object-Schema schon korrekt
-        // haben (nur Pre-v1.3.2 user mit dem partial-formed bug brauchen den
-        // repair-Pfad).
-        const needsRepair = async (id: string, expectedCommonType: string): Promise<boolean> => {
+        // v1.14.0 (H3): needs-repair-Check vor unconditional extendObjectAsync
+        // — spart 2 Round-Trips bei jedem Start für ~99% der Installationen.
+        // v1.25.0 (F3): schemas kommen jetzt aus io-package.json:instanceObjects
+        // statt hardgecoded — vorher waren die schemas in zwei Plätzen (hier
+        // und in der instanceObjects-Section), Drift möglich. Jetzt: single
+        // source of truth.
+        const repair = async (id: string, expectedCommonType: string): Promise<void> => {
             try {
                 const obj = await this.getObjectAsync(id);
-                if (!obj || obj.type !== 'state') {
-                    return true;
+                if (obj && obj.type === 'state' && obj.common?.type === expectedCommonType) {
+                    return; // bereits korrekt
                 }
-                if (obj.common?.type !== expectedCommonType) {
-                    return true;
-                }
-                return false;
             } catch {
-                return true;
+                /* fall through to repair */
+            }
+            const fullId = `${this.namespace}.${id}`;
+            const schema = (
+                instanceObjectsList as Array<{ _id: string; type: string; common?: unknown; native?: unknown }>
+            ).find(o => o._id === id || o._id === fullId);
+            if (!schema) {
+                this.log.debug(`repair ${id}: no instanceObjects-schema found, skipping`);
+                return;
+            }
+            try {
+                // extendObjectAsync hat overloads je nach `type`. Wir sind hier
+                // ausschließlich bei `type:'state'`-Items aus instanceObjects —
+                // ein `as never` erlaubt der TS-Type-Narrowing den Aufruf ohne
+                // dass wir die genaue State-Common-Shape statisch beweisen müssen.
+                // Die Schema-Quelle (io-package.json) ist build-time-validiert.
+                await this.extendObjectAsync(id, {
+                    type: schema.type,
+                    common: schema.common,
+                    native: schema.native ?? {},
+                } as never);
+            } catch (err) {
+                this.log.debug(`repair ${id} failed: ${String(err)}`);
             }
         };
 
-        if (await needsRepair('global.mode', 'mixed')) {
-            try {
-                await this.extendObjectAsync('global.mode', {
-                    type: 'state',
-                    common: {
-                        name: 'Global redirect mode',
-                        type: 'mixed',
-                        role: 'value',
-                        read: true,
-                        write: true,
-                        def: 0,
-                    },
-                    native: {},
-                });
-            } catch (err) {
-                this.log.debug(`repair global.mode failed: ${String(err)}`);
-            }
-        }
-        if (await needsRepair('global.manualUrl', 'string')) {
-            try {
-                await this.extendObjectAsync('global.manualUrl', {
-                    type: 'state',
-                    common: {
-                        name: "Global manual URL (used when mode='manual')",
-                        type: 'string',
-                        role: 'url',
-                        read: true,
-                        write: true,
-                        def: '',
-                    },
-                    native: {},
-                });
-            } catch (err) {
-                this.log.debug(`repair global.manualUrl failed: ${String(err)}`);
-            }
-        }
+        await repair('global.mode', 'mixed');
+        await repair('global.manualUrl', 'string');
     }
 
     /**
@@ -505,15 +488,12 @@ class HassEmu extends utils.Adapter {
             try {
                 const obj = await this.getObjectAsync(`clients.${record.id}`);
                 const native = (obj?.native as { lastSeen?: number } | undefined) ?? {};
-                const lastSeen = typeof native.lastSeen === 'number' ? native.lastSeen : 0;
-                if (lastSeen === 0) {
-                    // v1.19.0 (F11): Pre-v1.2.0 client — seed timestamp via Registry-
-                    // Helper. Vorher hatte main.ts seinen eigenen extendObjectAsync-Call
-                    // mit identischem native-Format (DRY-Violation).
+                // v1.25.0 (J1): Decision-Logik in pure helper coerce.decideGcAction
+                // (testbar). Hier nur das I/O zum Broker.
+                const action = decideGcAction(native.lastSeen, now, STALE_CLIENT_TTL_MS);
+                if (action === 'seed') {
                     await this.registry!.seedLastSeen(record.id, now);
-                    continue;
-                }
-                if (now - lastSeen > STALE_CLIENT_TTL_MS) {
+                } else if (action === 'stale') {
                     await this.registry!.remove(record.id);
                     removed++;
                 }

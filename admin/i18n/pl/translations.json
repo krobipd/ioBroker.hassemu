@@ -9,14 +9,18 @@
     "donatePaypal": "Przekaż darowiznę przez PayPal",
     "header_auth": "Uwierzytelnianie",
     "header_mdns": "Wykrywanie mDNS",
+    "header_proxy": "Reverse Proxy",
     "header_server": "Serwer",
     "mdnsEnabled": "Włącz Wykrywanie mDNS",
     "mdnsEnabledTooltip": "Rozgłaszaj usługę przez mDNS, aby urządzenia mogły ją znaleźć automatycznie (działa na wszystkich platformach)",
     "mdnsInfo": "mDNS rozgłasza usługę w sieci lokalnej, aby urządzenia mogły ją odkryć automatycznie.\n\nJeśli mDNS jest wyłączone lub nie działa, wprowadź URL ręcznie na ekranie:\n`http://YOUR_IP:8123`",
     "password": "Hasło",
+    "proxyInfo": "Wlaczyc tylko gdy adapter dziala ZA zaufanym reverse proxy z terminacja TLS (nginx, Traefik). Proxy musi usuwac przychodzace naglowki X-Forwarded-* — w przeciwnym razie klienci moga sfalszowac IP i obejsc brute-force lockout. Z ta opcja cookie jest oznaczone `Secure` gdy X-Forwarded-Proto to `https`.",
     "redirectInfo": "Cele przekierowań ustawia się przez datapointy, nie tutaj. Użyj `global.visUrl` + `global.enabled`, aby skierować wszystkich klientów na ten sam URL, albo ustaw każdy wyświetlacz osobno w `clients.<id>.visUrl`. Oba pola oferują listę rozwijaną znanych URL ioBroker.",
     "serviceName": "Nazwa Usługi",
     "serviceNameTooltip": "Nazwa wyświetlana na ekranie podczas wykrywania",
     "supportHeader": "Wsparcie",
+    "trustProxy": "Zaufaj nagłowkom reverse proxy",
+    "trustProxyTooltip": "Jesli wlaczone, req.ip / req.protocol pochodza z naglowkow X-Forwarded-*. Wlaczac tylko za zaufanym reverse proxy.",
     "username": "Nazwa użytkownika"
 }

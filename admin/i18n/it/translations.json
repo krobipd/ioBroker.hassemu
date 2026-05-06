@@ -9,14 +9,18 @@
     "donatePaypal": "Dona tramite PayPal",
     "header_auth": "Autenticazione",
     "header_mdns": "Individuazione mDNS",
+    "header_proxy": "Reverse Proxy",
     "header_server": "Server",
     "mdnsEnabled": "Abilita Scoperta mDNS",
     "mdnsEnabledTooltip": "Trasmetti il servizio via mDNS in modo che i dispositivi possano trovarlo automaticamente (funziona su tutte le piattaforme)",
     "mdnsInfo": "mDNS trasmette il servizio sulla rete locale in modo che i dispositivi possano scoprirlo automaticamente.\n\nSe mDNS è disabilitato o non funziona, inserisci l'URL manualmente sul display:\n`http://YOUR_IP:8123`",
     "password": "Password",
+    "proxyInfo": "Attivare solo quando l'adapter gira DIETRO un reverse proxy fidato con terminazione TLS (nginx, Traefik). Il proxy deve rimuovere gli header X-Forwarded-* in arrivo — altrimenti i client possono falsificare l'IP e aggirare il brute-force lockout. Con questa opzione il cookie e marcato `Secure` quando X-Forwarded-Proto e `https`.",
     "redirectInfo": "Le destinazioni di redirect si configurano tramite datapoint, non qui. Usa `global.visUrl` + `global.enabled` per mandare tutti i client allo stesso URL, oppure imposta ogni display singolarmente in `clients.<id>.visUrl`. Entrambi i campi offrono un dropdown con gli URL ioBroker noti.",
     "serviceName": "Nome del Servizio",
     "serviceNameTooltip": "Nome mostrato sul display durante il rilevamento",
     "supportHeader": "Supporto",
+    "trustProxy": "Fidarsi degli header del reverse proxy",
+    "trustProxyTooltip": "Se attivo, req.ip / req.protocol vengono dagli header X-Forwarded-*. Attivare solo dietro a un reverse proxy fidato.",
     "username": "Nome utente"
 }

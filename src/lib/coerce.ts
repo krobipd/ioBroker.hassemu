@@ -297,6 +297,55 @@ export function parseAdapterStateId(
 }
 
 /**
+ * v1.25.0 (J1): pure decision-helper für `gcStaleClients` (main.ts).
+ * Drei Outcomes:
+ *  - `'seed'` — kein lastSeen vorhanden, Timestamp setzen, GC wartet einen Cycle
+ *  - `'stale'` — lastSeen älter als TTL → entfernen
+ *  - `'keep'` — lastSeen neu genug → keep
+ *
+ * Vorher war diese Logik inline in main.ts → nicht direkt unit-testbar.
+ *
+ * @param lastSeen Untyped value (kommt aus broker `native.lastSeen`).
+ * @param now      Aktuelle Zeit in ms.
+ * @param ttlMs    Stale-TTL in ms.
+ */
+export function decideGcAction(lastSeen: unknown, now: number, ttlMs: number): 'seed' | 'stale' | 'keep' {
+    const ls = typeof lastSeen === 'number' && Number.isFinite(lastSeen) ? lastSeen : 0;
+    if (ls === 0) {
+        return 'seed';
+    }
+    if (now - ls > ttlMs) {
+        return 'stale';
+    }
+    return 'keep';
+}
+
+/** Result of {@link decideLegacyVisMigration}. */
+export type LegacyVisMigration = { kind: 'empty' } | { kind: 'safe-url'; safe: string } | { kind: 'unsafe-rejected' };
+
+/**
+ * v1.25.0 (J2): pure decision-helper für die `migrateVisUrlToMode`-Logik
+ * (main.ts). Behandelt drei Fälle:
+ *  - leer/undefined/null → `'empty'` (keine Migration nötig)
+ *  - safe-URL → `'safe-url'` (legacy-URL übernehmen)
+ *  - unsafe (`javascript:`/Credentials/etc.) → `'unsafe-rejected'` (Manual-Mode setzen, URL verwerfen)
+ *
+ * Vorher war diese Logik inline in main.ts → nicht direkt unit-testbar.
+ *
+ * @param rawValue Untyped value (aus dem legacy `*.visUrl`-State).
+ */
+export function decideLegacyVisMigration(rawValue: unknown): LegacyVisMigration {
+    if (rawValue === undefined || rawValue === null || rawValue === '') {
+        return { kind: 'empty' };
+    }
+    const safe = coerceSafeUrl(rawValue);
+    if (safe) {
+        return { kind: 'safe-url', safe };
+    }
+    return { kind: 'unsafe-rejected' };
+}
+
+/**
  * v1.20.0 (F4): composed `0='---' + sentinels + url-states` — Grundgerüst
  * der Mode-Dropdowns. Vorher hatten `client-registry.buildModeStates` und
  * `global-config.syncUrlDropdown` identische Composition.

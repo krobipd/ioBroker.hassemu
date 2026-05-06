@@ -9,14 +9,18 @@
     "donatePaypal": "Doneer via PayPal",
     "header_auth": "Authenticatie",
     "header_mdns": "mDNS-detectie",
+    "header_proxy": "Reverse Proxy",
     "header_server": "Server",
     "mdnsEnabled": "mDNS-detectie inschakelen",
     "mdnsEnabledTooltip": "De service via mDNS uitzenden zodat apparaten deze automatisch kunnen vinden (werkt op alle platformen)",
     "mdnsInfo": "mDNS zendt de service uit op het lokale netwerk zodat apparaten deze automatisch kunnen ontdekken.\n\nAls mDNS uitgeschakeld is of niet werkt, voer de URL handmatig in op het scherm:\n`http://YOUR_IP:8123`",
     "password": "Wachtwoord",
+    "proxyInfo": "Alleen inschakelen wanneer de adapter ACHTER een vertrouwde reverse proxy met TLS-terminatie loopt (nginx, Traefik). De proxy moet inkomende X-Forwarded-*-headers verwijderen — anders kunnen clients hun IP vervalsen en de brute-force lockout omzeilen. Met deze optie is de cookie `Secure` als X-Forwarded-Proto `https` is.",
     "redirectInfo": "Redirect-doelen worden via datapunten ingesteld, niet hier. Gebruik `global.visUrl` + `global.enabled` om alle clients naar dezelfde URL te sturen, of stel elk display apart in onder `clients.<id>.visUrl`. Beide velden bieden een dropdown met bekende ioBroker-URL's.",
     "serviceName": "Servicenaam",
     "serviceNameTooltip": "Naam weergegeven op het scherm tijdens detectie",
     "supportHeader": "Steun",
+    "trustProxy": "Reverse-proxy-headers vertrouwen",
+    "trustProxyTooltip": "Indien aan, komt req.ip / req.protocol uit X-Forwarded-*-headers. Alleen achter een vertrouwde reverse proxy inschakelen.",
     "username": "Gebruikersnaam"
 }

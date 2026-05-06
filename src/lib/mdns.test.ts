@@ -190,4 +190,42 @@ describe('MDNSService cross-platform', () => {
         service.stop();
         expect(service.isActive()).to.be.false;
     });
+
+    describe('async error handling (J6 v1.25.0 — D12 v1.15.0 coverage)', () => {
+        it('async publish error sets active=false and warns', () => {
+            const localAdapter = createMockAdapter();
+            const localService = new MDNSService(
+                localAdapter as never,
+                {
+                    port: 8123,
+                    bindAddress: '0.0.0.0',
+                    authRequired: false,
+                    username: '',
+                    password: '',
+                    mdnsEnabled: true,
+                    serviceName: 'AsyncErrorTest',
+                },
+                crypto.randomUUID(),
+            );
+
+            localService.start();
+            expect(localService.isActive()).to.be.true;
+
+            // Fire async 'error' event auf das publish'd service-objekt — bonjour-
+            // service's Service extends EventEmitter, so .emit() ist available.
+            const internal = localService as unknown as {
+                published: { emit?: (event: string, err: Error) => void } | null;
+            };
+            internal.published?.emit?.('error', new Error('mock dgram bind failure'));
+
+            expect(localService.isActive()).to.be.false;
+            const warns = localAdapter._logs.filter(
+                l => l.level === 'warn' && l.msg.includes('async publish error'),
+            );
+            expect(warns).to.have.length(1);
+            expect(warns[0].msg).to.include('mock dgram bind failure');
+
+            localService.stop();
+        });
+    });
 });

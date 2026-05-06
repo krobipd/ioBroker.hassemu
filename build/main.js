@@ -30,6 +30,9 @@ var import_global_config = require("./lib/global-config");
 var import_mdns = require("./lib/mdns");
 var import_url_discovery = require("./lib/url-discovery");
 var import_webserver = require("./lib/webserver");
+var import_io_package = __toESM(require("../io-package.json"));
+var _a;
+const instanceObjectsList = (_a = import_io_package.default.instanceObjects) != null ? _a : [];
 let processHandlersInstalled = false;
 let installedUnhandledHandler = null;
 let installedUncaughtHandler = null;
@@ -48,12 +51,12 @@ class HassEmu extends utils.Adapter {
       this.onStateChange(id, state).catch((err) => this.log.error(`stateChange unhandled: ${String(err)}`));
     });
     this.on("objectChange", (id, obj) => {
-      var _a, _b;
+      var _a2, _b;
       if (!(id == null ? void 0 : id.startsWith("system.adapter."))) {
         return;
       }
       const isUrlSourceAdapter = id.startsWith("system.adapter.admin.") || id.startsWith("system.adapter.web.") || id.startsWith("system.adapter.vis.") || id.startsWith("system.adapter.vis-2.");
-      const isAddOrRemove = !obj || obj.type === "instance" && !((_a = obj.common) == null ? void 0 : _a.host);
+      const isAddOrRemove = !obj || obj.type === "instance" && !((_a2 = obj.common) == null ? void 0 : _a2.host);
       if (isUrlSourceAdapter || isAddOrRemove) {
         (_b = this.urlDiscovery) == null ? void 0 : _b.scheduleRefresh();
       }
@@ -74,7 +77,7 @@ class HassEmu extends utils.Adapter {
     }
   }
   async onReady() {
-    var _a, _b, _c;
+    var _a2, _b, _c;
     if (this.webServer) {
       await this.webServer.stop().catch(() => {
       });
@@ -84,7 +87,7 @@ class HassEmu extends utils.Adapter {
       this.mdnsService.stop();
       this.mdnsService = null;
     }
-    (_a = this.urlDiscovery) == null ? void 0 : _a.cancelRefresh();
+    (_a2 = this.urlDiscovery) == null ? void 0 : _a2.cancelRefresh();
     this.urlDiscovery = null;
     await this.setState("info.connection", { val: false, ack: true });
     this.globalConfig = new import_global_config.GlobalConfig(this);
@@ -100,8 +103,8 @@ class HassEmu extends utils.Adapter {
       `Config: port=${this.config.port}, auth=${this.config.authRequired}, mdns=${this.config.mdnsEnabled}`
     );
     this.urlDiscovery = new import_url_discovery.UrlDiscovery(this, async (states) => {
-      var _a2, _b2;
-      await ((_a2 = this.globalConfig) == null ? void 0 : _a2.syncUrlDropdown(states));
+      var _a3, _b2;
+      await ((_a3 = this.globalConfig) == null ? void 0 : _a3.syncUrlDropdown(states));
       await ((_b2 = this.registry) == null ? void 0 : _b2.syncUrlDropdown(states));
     });
     this.registry.setNewClientModeProvider(() => this.computeNewClientMode());
@@ -176,8 +179,8 @@ class HassEmu extends utils.Adapter {
    * - `global.enabled=false` → first discovered URL, fallback `'manual'`
    */
   computeNewClientMode() {
-    var _a, _b;
-    if ((_a = this.globalConfig) == null ? void 0 : _a.isEnabled()) {
+    var _a2, _b;
+    if ((_a2 = this.globalConfig) == null ? void 0 : _a2.isEnabled()) {
       return import_constants.MODE_GLOBAL;
     }
     const first = (_b = this.urlDiscovery) == null ? void 0 : _b.getFirstDiscoveredUrl();
@@ -192,10 +195,10 @@ class HassEmu extends utils.Adapter {
    * which is fine for a setup-hint page that most users see once.
    */
   async readSystemLanguage() {
-    var _a;
+    var _a2;
     try {
       const cfg = await this.getForeignObjectAsync("system.config");
-      const lang = (_a = cfg == null ? void 0 : cfg.common) == null ? void 0 : _a.language;
+      const lang = (_a2 = cfg == null ? void 0 : cfg.common) == null ? void 0 : _a2.language;
       return typeof lang === "string" && lang.length > 0 ? lang : "en";
     } catch {
       return "en";
@@ -272,18 +275,16 @@ class HassEmu extends utils.Adapter {
    * upgraded to 'mixed'. Idempotent — does nothing on subsequent starts.
    */
   async migrateVisUrlToMode() {
-    var _a, _b;
+    var _a2, _b;
     try {
       const legacyGlobal = await this.getStateAsync("global.visUrl");
-      if (legacyGlobal && legacyGlobal.val !== void 0 && legacyGlobal.val !== null && legacyGlobal.val !== "") {
-        const safe = (0, import_coerce.coerceSafeUrl)(legacyGlobal.val);
-        if (safe) {
-          await this.globalConfig.migrationSet(import_constants.MODE_MANUAL, safe);
-          this.log.info(`Migration: global.visUrl \u2192 mode='manual', manualUrl='${safe}'`);
-        } else {
-          await this.globalConfig.migrationSet(import_constants.MODE_MANUAL, null);
-          this.log.warn(`Migration: legacy global.visUrl rejected as unsafe \u2014 set global.manualUrl manually`);
-        }
+      const decision = (0, import_coerce.decideLegacyVisMigration)(legacyGlobal == null ? void 0 : legacyGlobal.val);
+      if (decision.kind === "safe-url") {
+        await this.globalConfig.migrationSet(import_constants.MODE_MANUAL, decision.safe);
+        this.log.info(`Migration: global.visUrl \u2192 mode='manual', manualUrl='${decision.safe}'`);
+      } else if (decision.kind === "unsafe-rejected") {
+        await this.globalConfig.migrationSet(import_constants.MODE_MANUAL, null);
+        this.log.warn(`Migration: legacy global.visUrl rejected as unsafe \u2014 set global.manualUrl manually`);
       }
     } catch {
     }
@@ -291,25 +292,23 @@ class HassEmu extends utils.Adapter {
       await this.delObjectAsync("global.visUrl");
     } catch {
     }
-    const records = (_b = (_a = this.registry) == null ? void 0 : _a.listAll()) != null ? _b : [];
+    const records = (_b = (_a2 = this.registry) == null ? void 0 : _a2.listAll()) != null ? _b : [];
     for (const record of records) {
       try {
         const legacy = await this.getStateAsync(`clients.${record.id}.visUrl`);
-        if (legacy && legacy.val !== void 0 && legacy.val !== null && legacy.val !== "") {
-          const safe = (0, import_coerce.coerceSafeUrl)(legacy.val);
-          if (safe) {
-            record.mode = import_constants.MODE_MANUAL;
-            record.manualUrl = safe;
-            await this.setStateAsync(`clients.${record.id}.mode`, { val: import_constants.MODE_MANUAL, ack: true });
-            await this.setStateAsync(`clients.${record.id}.manualUrl`, { val: safe, ack: true });
-            this.log.info(
-              `Migration: client ${record.id} visUrl='${safe}' \u2192 mode='manual', manualUrl='${safe}'`
-            );
-          } else {
-            this.log.warn(
-              `Migration: client ${record.id} legacy visUrl rejected as unsafe \u2014 set clients.${record.id}.manualUrl manually`
-            );
-          }
+        const decision = (0, import_coerce.decideLegacyVisMigration)(legacy == null ? void 0 : legacy.val);
+        if (decision.kind === "safe-url") {
+          record.mode = import_constants.MODE_MANUAL;
+          record.manualUrl = decision.safe;
+          await this.setStateAsync(`clients.${record.id}.mode`, { val: import_constants.MODE_MANUAL, ack: true });
+          await this.setStateAsync(`clients.${record.id}.manualUrl`, { val: decision.safe, ack: true });
+          this.log.info(
+            `Migration: client ${record.id} visUrl='${decision.safe}' \u2192 mode='manual', manualUrl='${decision.safe}'`
+          );
+        } else if (decision.kind === "unsafe-rejected") {
+          this.log.warn(
+            `Migration: client ${record.id} legacy visUrl rejected as unsafe \u2014 set clients.${record.id}.manualUrl manually`
+          );
         }
       } catch {
       }
@@ -330,57 +329,33 @@ class HassEmu extends utils.Adapter {
    * Idempotent — extending an already-complete object is a no-op write.
    */
   async repairGlobalSchemas() {
-    const needsRepair = async (id, expectedCommonType) => {
-      var _a;
+    const repair = async (id, expectedCommonType) => {
+      var _a2, _b;
       try {
         const obj = await this.getObjectAsync(id);
-        if (!obj || obj.type !== "state") {
-          return true;
+        if (obj && obj.type === "state" && ((_a2 = obj.common) == null ? void 0 : _a2.type) === expectedCommonType) {
+          return;
         }
-        if (((_a = obj.common) == null ? void 0 : _a.type) !== expectedCommonType) {
-          return true;
-        }
-        return false;
       } catch {
-        return true;
+      }
+      const fullId = `${this.namespace}.${id}`;
+      const schema = instanceObjectsList.find((o) => o._id === id || o._id === fullId);
+      if (!schema) {
+        this.log.debug(`repair ${id}: no instanceObjects-schema found, skipping`);
+        return;
+      }
+      try {
+        await this.extendObjectAsync(id, {
+          type: schema.type,
+          common: schema.common,
+          native: (_b = schema.native) != null ? _b : {}
+        });
+      } catch (err) {
+        this.log.debug(`repair ${id} failed: ${String(err)}`);
       }
     };
-    if (await needsRepair("global.mode", "mixed")) {
-      try {
-        await this.extendObjectAsync("global.mode", {
-          type: "state",
-          common: {
-            name: "Global redirect mode",
-            type: "mixed",
-            role: "value",
-            read: true,
-            write: true,
-            def: 0
-          },
-          native: {}
-        });
-      } catch (err) {
-        this.log.debug(`repair global.mode failed: ${String(err)}`);
-      }
-    }
-    if (await needsRepair("global.manualUrl", "string")) {
-      try {
-        await this.extendObjectAsync("global.manualUrl", {
-          type: "state",
-          common: {
-            name: "Global manual URL (used when mode='manual')",
-            type: "string",
-            role: "url",
-            read: true,
-            write: true,
-            def: ""
-          },
-          native: {}
-        });
-      } catch (err) {
-        this.log.debug(`repair global.manualUrl failed: ${String(err)}`);
-      }
-    }
+    await repair("global.mode", "mixed");
+    await repair("global.manualUrl", "string");
   }
   /**
    * Removes clients that are clearly stale: `native.lastSeen` older than
@@ -396,20 +371,18 @@ class HassEmu extends utils.Adapter {
    * lastSeen 30 Tage zurückliegt, ist der Token längst abgelaufen.
    */
   async gcStaleClients() {
-    var _a, _b, _c;
+    var _a2, _b, _c;
     const now = Date.now();
-    const records = (_b = (_a = this.registry) == null ? void 0 : _a.listAll()) != null ? _b : [];
+    const records = (_b = (_a2 = this.registry) == null ? void 0 : _a2.listAll()) != null ? _b : [];
     let removed = 0;
     for (const record of records) {
       try {
         const obj = await this.getObjectAsync(`clients.${record.id}`);
         const native = (_c = obj == null ? void 0 : obj.native) != null ? _c : {};
-        const lastSeen = typeof native.lastSeen === "number" ? native.lastSeen : 0;
-        if (lastSeen === 0) {
+        const action = (0, import_coerce.decideGcAction)(native.lastSeen, now, import_constants.STALE_CLIENT_TTL_MS);
+        if (action === "seed") {
           await this.registry.seedLastSeen(record.id, now);
-          continue;
-        }
-        if (now - lastSeen > import_constants.STALE_CLIENT_TTL_MS) {
+        } else if (action === "stale") {
           await this.registry.remove(record.id);
           removed++;
         }
@@ -429,7 +402,7 @@ class HassEmu extends utils.Adapter {
    * @param enabled New value of `global.enabled`.
    */
   async applyMasterSwitch(enabled) {
-    var _a;
+    var _a2;
     if (!this.registry) {
       return;
     }
@@ -437,7 +410,7 @@ class HassEmu extends utils.Adapter {
       await this.registry.bulkSetMode(import_constants.MODE_GLOBAL);
       return;
     }
-    const first = (_a = this.urlDiscovery) == null ? void 0 : _a.getFirstDiscoveredUrl();
+    const first = (_a2 = this.urlDiscovery) == null ? void 0 : _a2.getFirstDiscoveredUrl();
     if (first) {
       await this.registry.bulkSetMode(first);
     } else {
@@ -503,14 +476,14 @@ class HassEmu extends utils.Adapter {
     }
   }
   onUnload(callback) {
-    var _a;
+    var _a2;
     try {
       void this.setState("info.connection", { val: false, ack: true });
       void this.unsubscribeStatesAsync("clients.*");
       void this.unsubscribeStatesAsync("global.*");
       void this.unsubscribeStatesAsync("info.refresh_urls");
       void this.unsubscribeForeignObjectsAsync("system.adapter.*");
-      (_a = this.urlDiscovery) == null ? void 0 : _a.cancelRefresh();
+      (_a2 = this.urlDiscovery) == null ? void 0 : _a2.cancelRefresh();
       this.urlDiscovery = null;
       if (this.mdnsService) {
         this.mdnsService.stop();
