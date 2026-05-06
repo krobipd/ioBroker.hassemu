@@ -102,9 +102,9 @@ The master switch `global.enabled` is a bulk action: **on** sets every client's 
 
 ## When things refresh
 
-When you change `mode` or `manualUrl`, the display takes up to ~30 s to pick up the change — it polls in that interval and reloads itself, no display reboot needed.
+When you change a display's URL, the display takes up to ~30 seconds to switch over — it checks for changes in that interval and reloads itself, no reboot needed.
 
-The dropdown of available URLs updates automatically when adapters are installed, removed or re-configured. **VIS-2 project/view edits are the exception** — those live in files, not in the object tree, so the adapter can't see them. Set `info.refresh_urls` to `true` after adding or renaming a VIS-2 project or view.
+The dropdown of available URLs refreshes by itself when you install, remove or reconfigure another adapter. The only thing it doesn't notice on its own is when you add or rename a **VIS-2 project or view** — for those, set `info.refresh_urls` to `true` afterwards and the dropdown picks them up.
 
 ---
 
