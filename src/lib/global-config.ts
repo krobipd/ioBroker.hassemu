@@ -23,6 +23,7 @@ import {
 } from './coerce';
 import { MODE_GLOBAL, MODE_MANUAL } from './constants';
 import { tLog } from './i18n-logs';
+import { tLabel } from './i18n-states';
 import type { AdapterInterface, ClientRecord, UrlStates } from './types';
 
 /** Extended adapter interface — needs state I/O and object extend. */
@@ -201,7 +202,7 @@ export class GlobalConfig {
         // hatten client-registry und global-config identische `0='---' +
         // sentinels + states`-Composition. Hier nur `manual`-Sentinel weil
         // `global` in global-config self-referential wäre.
-        const merged = buildDropdownStates({ [MODE_MANUAL]: 'Manual URL' }, states);
+        const merged = buildDropdownStates({ [MODE_MANUAL]: tLabel('manualUrl') as unknown as string }, states);
         // v1.27.2: extendObjectAsync mergt `common.states` tief — alte
         // URL-Schlüssel bleiben drin nach Format-Wechsel (z.B. v1.26→v1.27).
         // Object lesen, common.states ersetzen, setObjectAsync.

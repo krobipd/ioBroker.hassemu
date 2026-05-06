@@ -630,8 +630,8 @@ describe('ClientRegistry', () => {
             const obj = store.objects.get(`hassemu.0.clients.${rec.id}.mode`);
             expect(obj?.common?.states).to.deep.equal({
                 0: '---',
-                [MODE_GLOBAL]: 'Global URL',
-                [MODE_MANUAL]: 'Manual URL',
+                [MODE_GLOBAL]: { en: 'Global URL', de: 'Globale URL', ru: 'Глобальный URL', pt: 'URL global', nl: 'Globale URL', fr: 'URL globale', it: 'URL globale', es: 'URL global', pl: 'Globalny URL', uk: 'Глобальний URL', 'zh-cn': '全局 URL' },
+                [MODE_MANUAL]: { en: 'Manual URL', de: 'Manuelle URL', ru: 'Ручной URL', pt: 'URL manual', nl: 'Handmatige URL', fr: 'URL manuelle', it: 'URL manuale', es: 'URL manual', pl: 'Ręczny URL', uk: 'Ручний URL', 'zh-cn': '手动 URL' },
                 'http://a.local/': 'A',
                 'http://b.local/': 'B',
             });
@@ -643,8 +643,8 @@ describe('ClientRegistry', () => {
             const obj = store.objects.get(`hassemu.0.clients.${rec.id}.mode`);
             expect(obj?.common?.states).to.deep.equal({
                 0: '---',
-                [MODE_GLOBAL]: 'Global URL',
-                [MODE_MANUAL]: 'Manual URL',
+                [MODE_GLOBAL]: { en: 'Global URL', de: 'Globale URL', ru: 'Глобальный URL', pt: 'URL global', nl: 'Globale URL', fr: 'URL globale', it: 'URL globale', es: 'URL global', pl: 'Globalny URL', uk: 'Глобальний URL', 'zh-cn': '全局 URL' },
+                [MODE_MANUAL]: { en: 'Manual URL', de: 'Manuelle URL', ru: 'Ручной URL', pt: 'URL manual', nl: 'Handmatige URL', fr: 'URL manuelle', it: 'URL manuale', es: 'URL manual', pl: 'Ręczny URL', uk: 'Ручний URL', 'zh-cn': '手动 URL' },
                 'http://a.local/': 'A',
             });
         });

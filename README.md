@@ -127,6 +127,10 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 ---
 
 ## Changelog
+### **WORK IN PROGRESS**
+
+- **Mehrsprachig**: Datenpunkt-Namen, -Beschreibungen und Dropdown-Werte jetzt in der ioBroker-Systemsprache (11 Sprachen). Logs sind seit v1.27.0 lokalisiert.
+
 ### 1.27.3 (2026-05-06)
 
 - **Doku**: README in User-Sicht umgeschrieben — kürzer, direkter, ohne Implementierungs-Trivia. Keine Code-Änderungen.
