@@ -111,7 +111,9 @@ After adding or renaming a VIS-2 project or view, set `info.refresh_urls` to `tr
 
 ## Upgrade
 
-Migrations run on adapter start. If you have scripts writing the old `visUrl` datapoint, switch them to `mode` / `manualUrl`.
+Migration runs automatically when the adapter starts.
+
+Got scripts that still write to `visUrl`? Update them — write to `manualUrl` instead and set `mode` to `manual`.
 
 ---
 
