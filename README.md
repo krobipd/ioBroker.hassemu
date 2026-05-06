@@ -155,7 +155,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.25.0 (2026-05-06)
 
 - **Reverse-Proxy-Support** (optional, Default aus): neuer Config-Toggle „Trust Reverse Proxy Headers". `req.ip`/`req.protocol` aus `X-Forwarded-*`, Cookies `Secure` bei `X-Forwarded-Proto=https`.
 - **Schema-Repair via instanceObjects**: `repairGlobalSchemas` liest jetzt aus `io-package.json:instanceObjects` statt zu duplizieren — kein stille Drift mehr.
@@ -177,10 +177,6 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 
 - **Pending-Create-Errors diagnostizierbar**: schlägt das parallele Erst-Anlegen eines Clients fehl, kommt der Fehler jetzt einmalig im Log statt als unhandled rejection.
 - **Docker-Bridge-IPs nicht mehr ins mDNS**: `getLocalIp` deprioritisiert `172.17.x.x`/`172.18.x.x` gegenüber LAN-IPs — kein unreachable Container-Advertise mehr.
-
-### 1.20.0 (2026-05-05)
-
-- **Interne Aufräumung**: drei Helpers nach `coerce.ts` extrahiert — `buildDropdownStates`, `parseAdapterStateId`, `safeGetState`. `client-registry` und `global-config` teilen sie statt zu duplizieren.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
