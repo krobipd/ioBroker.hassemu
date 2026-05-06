@@ -1,4 +1,8 @@
 # Older Changes
+## 1.20.0 (2026-05-05)
+
+- **Interne Aufräumung**: drei Helpers nach `coerce.ts` extrahiert — `buildDropdownStates`, `parseAdapterStateId`, `safeGetState`. `client-registry` und `global-config` teilen sie statt zu duplizieren.
+
 ## 1.19.1 (2026-05-05)
 
 - **Test-Coverage**: 7 neue Unit-Tests für v1.19.0-Features — `seedLastSeen`-Pfad und Per-IP-Burst-Erkennung (Schwelle, Cooldown, per-IP-unabhängig, FIFO-Cap).

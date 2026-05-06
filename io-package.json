@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.24.0",
+    "version": "1.25.0",
     "news": {
-      "NEXT": {
+      "1.25.0": {
         "en": "Final wave: optional `trustProxy` toggle for reverse-proxy setups. Plus schema-from-instanceObjects + 11 new tests for migration / GC / mDNS-error.",
         "de": "Finale Welle: optionaler `trustProxy`-Toggle für Reverse-Proxy (Cookies Secure wenn X-Forwarded-Proto=https). Plus schema-from-instanceObjects + 11 neue Tests für Migration / GC / mDNS-Error.",
         "ru": "Финальная волна: опциональный `trustProxy` для reverse-proxy. Plus schema-from-instanceObjects + 11 новых тестов.",
@@ -93,19 +93,6 @@
         "pl": "Test coverage: 7 nowych unit tests dla funkcji v1.19.0 — sciezka seedLastSeen + detekcja burst per-IP (4 cases).",
         "uk": "Test coverage: 7 нових unit-тестів для v1.19.0 features — seedLastSeen path + per-IP burst-detection (4 cases).",
         "zh-cn": "测试覆盖：v1.19.0 特性新增 7 个单元测试 — seedLastSeen 路径 + 按 IP 突发检测（4 个用例）。"
-      },
-      "1.19.0": {
-        "en": "Diagnostics: per-IP burst-detection — display creating >3 clients in <1h (broken cookie) gets one warn with cause. Plus: README single-instance-per-host hint.",
-        "de": "Diagnose: Per-IP-Burst-Erkennung — Display mit >3 Clients in <1h (kaputter Cookie) bekommt einen warn mit Ursache. Plus: README Single-Instance-pro-Host-Hinweis.",
-        "ru": "Диагностика: per-IP burst-detection — display с >3 clients в <1h (broken cookie) получает warn с причиной. Plus: README single-instance-per-host hint.",
-        "pt": "Diagnostico: burst-detection per-IP — display com >3 clients em <1h (cookie quebrado) recebe warn. Plus: README single-instance-per-host hint.",
-        "nl": "Diagnostiek: per-IP burst-detectie — display met >3 clients in <1u (kapotte cookie) krijgt warn. Plus: README single-instance-per-host hint.",
-        "fr": "Diagnostic : detection burst par IP — si un display cree >3 clients en <1h (cookie non persistant), un warn explique. Plus : README clarifie single-instance-par-host, chemin lastSeen consolide.",
-        "it": "Diagnostica: rilevamento burst per IP — se un display crea >3 client in <1h (cookie non persistente), un warn spiega la causa. Plus: README single-instance-per-host, percorso lastSeen consolidato.",
-        "es": "Diagnostico: deteccion burst per-IP — si un display crea >3 clients en <1h (cookie no persistente), un warn explica la causa. Plus: README single-instance-per-host, ruta lastSeen consolidada.",
-        "pl": "Diagnostyka: detekcja burst per-IP — jesli display tworzy >3 clients w <1h (cookie nie utrzymuje sie), warn wyjasnia przyczyne. Plus: README single-instance-per-host, sciezka lastSeen skonsolidowana.",
-        "uk": "Діагностика: per-IP burst-detection — якщо display створює >3 clients за <1h (cookie не зберігається), warn пояснює причину. Plus: README single-instance-per-host, шлях lastSeen консолідовано.",
-        "zh-cn": "诊断：按 IP 突发检测 — 显示器在 1 小时内创建 >3 个客户端（Cookie 未持久化）时，单条 warn 给出原因。另：README 提示每主机单实例，lastSeen 更新路径合并。"
       }
     },
     "titleLang": {
