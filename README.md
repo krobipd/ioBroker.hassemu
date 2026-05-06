@@ -91,9 +91,9 @@ Master switch:
 
 ## Refresh
 
-URL change: the display reloads itself within ~30 seconds.
+The display reloads itself within ~30 seconds after a URL change.
 
-Dropdown of available URLs: refreshes by itself. The exception is VIS-2 project/view edits — set `info.refresh_urls` to `true` after adding or renaming one.
+After adding or renaming a VIS-2 project or view, set `info.refresh_urls` to `true` so it shows up in the dropdown.
 
 ---
 
