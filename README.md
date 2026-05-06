@@ -155,7 +155,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.26.0 (2026-05-06)
 
 - **VIS-2-URLs im Mode-Dropdown nach echtem VIS-2-Routing**: Projekt als Pfad-Segment, View als Hash-Fragment (`#<view>`). Vorher `?<projekt>` als Query — Deep-Links liefen ins Leere.
 - **Default-Mode für neue Clients = no-choice-Eintrag** → Landing-Page bis der User im Dropdown eine URL wählt. Vorher fiel der Default auf die erste discovered URL, Landing war praktisch nie sichtbar.
@@ -178,11 +178,6 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ### 1.22.0 (2026-05-05)
 
 - **Interne Aufräumung**: `safeStringEqual` (timing-safe Credentials-Vergleich) ist von `webserver.ts` nach `coerce.ts` umgezogen — generischer Crypto-Helper. Plus 5 neue Unit-Tests.
-
-### 1.21.0 (2026-05-05)
-
-- **Pending-Create-Errors diagnostizierbar**: schlägt das parallele Erst-Anlegen eines Clients fehl, kommt der Fehler jetzt einmalig im Log statt als unhandled rejection.
-- **Docker-Bridge-IPs nicht mehr ins mDNS**: `getLocalIp` deprioritisiert `172.17.x.x`/`172.18.x.x` gegenüber LAN-IPs — kein unreachable Container-Advertise mehr.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 

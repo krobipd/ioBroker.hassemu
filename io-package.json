@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.25.0",
+    "version": "1.26.0",
     "news": {
-      "NEXT": {
+      "1.26.0": {
         "en": "Bugfixes: VIS-2 dropdown URLs use the real routing (project=path, view=#hash). New clients start on the empty entry → landing page until you pick a URL. iframe wrapper without bottom/right gap.",
         "de": "Bugfixes: VIS-2-Dropdown-URLs nutzen das echte Routing (Projekt=Pfad, View=#Hash). Neue Clients starten auf Null-Eintrag → Landing-Page, bis Du eine URL wählst. iframe-Wrapper ohne Rand unten/rechts.",
         "ru": "Bugfixes: VIS-2-URL в dropdown с реальным routing (project=путь, view=#hash). Новые клиенты на пустой записи → landing-page. iframe без чёрной полосы снизу/справа.",
@@ -93,19 +93,6 @@
         "pl": "Wewnetrzne sprzatanie: 3 helpers (buildDropdownStates, parseAdapterStateId, safeGetState) przeniesione do coerce.ts — client-registry i global-config wspoldzielca implementacje.",
         "uk": "Внутрішнє прибирання: 3 helpers (buildDropdownStates, parseAdapterStateId, safeGetState) винесено в coerce.ts — client-registry та global-config ділять implementation.",
         "zh-cn": "内部清理：3 个辅助函数（buildDropdownStates、parseAdapterStateId、safeGetState）提取到 coerce.ts — client-registry 和 global-config 共享实现，不再重复。"
-      },
-      "1.19.1": {
-        "en": "Test coverage: 7 new unit tests for v1.19.0 features — seedLastSeen path + per-IP burst-detection (4 cases: no-warn-under-3, warn-on-4th, no-double-warn, per-IP-independent, FIFO-cap).",
-        "de": "Test-Coverage: 7 neue Unit-Tests für v1.19.0-Features — seedLastSeen-Pfad + Per-IP-Burst-Erkennung (4 Cases: kein-warn-unter-3, warn-bei-4-tem, kein-double-warn, per-IP-unabhängig, FIFO-cap).",
-        "ru": "Test coverage: 7 новых unit-tests для v1.19.0 features — seedLastSeen path + per-IP burst-detection (4 cases).",
-        "pt": "Test coverage: 7 novos unit tests para features de v1.19.0 — caminho seedLastSeen + deteccao de burst per-IP (4 casos).",
-        "nl": "Test coverage: 7 nieuwe unit tests voor v1.19.0 features — seedLastSeen pad + per-IP burst-detectie (4 cases).",
-        "fr": "Test coverage : 7 nouveaux unit tests pour les features v1.19.0 — chemin seedLastSeen + detection burst par IP (4 cas).",
-        "it": "Test coverage: 7 nuovi unit test per le feature v1.19.0 — percorso seedLastSeen + rilevamento burst per IP (4 casi).",
-        "es": "Test coverage: 7 nuevos unit tests para features de v1.19.0 — ruta seedLastSeen + deteccion burst per-IP (4 casos).",
-        "pl": "Test coverage: 7 nowych unit tests dla funkcji v1.19.0 — sciezka seedLastSeen + detekcja burst per-IP (4 cases).",
-        "uk": "Test coverage: 7 нових unit-тестів для v1.19.0 features — seedLastSeen path + per-IP burst-detection (4 cases).",
-        "zh-cn": "测试覆盖：v1.19.0 特性新增 7 个单元测试 — seedLastSeen 路径 + 按 IP 突发检测（4 个用例）。"
       }
     },
     "titleLang": {
