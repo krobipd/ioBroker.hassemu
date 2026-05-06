@@ -39,6 +39,7 @@ var import_formbody = __toESM(require("@fastify/formbody"));
 var import_fastify = __toESM(require("fastify"));
 var import_constants = require("./constants");
 var import_coerce = require("./coerce");
+var import_i18n_logs = require("./i18n-logs");
 var import_landing_page = require("./landing-page");
 var import_network = require("./network");
 function renderRedirectWrapper(target) {
@@ -170,7 +171,7 @@ class WebServer {
       await this.app.listen({ port: this.config.port, host: bindAddress });
     } catch (err) {
       const e = err;
-      const msg = e.code === "EADDRINUSE" ? `Port ${this.config.port} is already in use!` : `Server error: ${e.message}`;
+      const msg = e.code === "EADDRINUSE" ? (0, import_i18n_logs.tLog)(this.systemLanguage, "portAlreadyInUse", { port: this.config.port }) : (0, import_i18n_logs.tLog)(this.systemLanguage, "serverStartError", { error: e.message });
       this.adapter.log.error(msg);
       throw err;
     }
@@ -332,7 +333,11 @@ class WebServer {
     if (entry.failedCount >= import_constants.LOGIN_LOCKOUT_THRESHOLD) {
       entry.lockedUntil = now + import_constants.LOGIN_LOCKOUT_WINDOW_MS;
       this.adapter.log.warn(
-        `Login lockout: IP ${ip} reached ${import_constants.LOGIN_LOCKOUT_THRESHOLD} failed attempts \u2014 locked for ${Math.round(import_constants.LOGIN_LOCKOUT_WINDOW_MS / 6e4)} min`
+        (0, import_i18n_logs.tLog)(this.systemLanguage, "loginLockoutTriggered", {
+          ip,
+          threshold: import_constants.LOGIN_LOCKOUT_THRESHOLD,
+          minutes: Math.round(import_constants.LOGIN_LOCKOUT_WINDOW_MS / 6e4)
+        })
       );
     }
     if (!this.loginAttempts.has(key)) {
@@ -459,7 +464,7 @@ class WebServer {
       }
       const key = error.message || "unknown";
       if (this.shouldEmitRequestErrorWarn(key, Date.now())) {
-        this.adapter.log.warn(`Request error: ${error.message}`);
+        this.adapter.log.warn((0, import_i18n_logs.tLog)(this.systemLanguage, "requestError", { message: error.message }));
       } else {
         this.adapter.log.debug(`Request error (repeat): ${error.message}`);
       }
@@ -548,7 +553,7 @@ class WebServer {
         if (this.config.authRequired) {
           const ip = WebServer.getClientIp(req);
           if (this.isIpLocked(ip)) {
-            this.adapter.log.warn(`Login rejected: IP ${ip} is currently locked out`);
+            this.adapter.log.warn((0, import_i18n_logs.tLog)(this.systemLanguage, "loginRejectedLockout", { ip }));
             reply.status(429);
             return { type: "abort", flow_id: flowId, reason: "too_many_failed_attempts" };
           }
@@ -561,7 +566,7 @@ class WebServer {
             const failCount = (_b = entry == null ? void 0 : entry.failedCount) != null ? _b : 0;
             const ipSuffix = ip ? ` (IP ${ip})` : "";
             if (failCount <= import_constants.LOGIN_LOCKOUT_THRESHOLD) {
-              this.adapter.log.warn(`Invalid credentials${ipSuffix}`);
+              this.adapter.log.warn((0, import_i18n_logs.tLog)(this.systemLanguage, "invalidCredentials", { ipSuffix }));
             } else {
               this.adapter.log.debug(`Invalid credentials${ipSuffix} (post-lockout-threshold)`);
             }

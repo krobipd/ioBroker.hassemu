@@ -4,6 +4,7 @@ import { ClientRegistry, parseClientStateId } from './lib/client-registry';
 import { coerceSafeUrl, decideGcAction, decideLegacyVisMigration } from './lib/coerce';
 import { MODE_GLOBAL, MODE_MANUAL, STALE_CLIENT_TTL_MS } from './lib/constants';
 import { GlobalConfig, parseGlobalStateId } from './lib/global-config';
+import { tLog } from './lib/i18n-logs';
 import { MDNSService } from './lib/mdns';
 import { UrlDiscovery } from './lib/url-discovery';
 import { WebServer } from './lib/webserver';
@@ -25,6 +26,14 @@ let installedUnhandledHandler: ((reason: unknown) => void) | null = null;
 let installedUncaughtHandler: ((err: Error) => void) | null = null;
 
 class HassEmu extends utils.Adapter {
+    /**
+     * ioBroker system language, used to localize info/warn/error log output
+     * (debug stays English). Read in `onReady` from `system.config.language`,
+     * EN-Fallback. Public so library modules can access it via the
+     * `AdapterInterface` they receive.
+     */
+    public systemLanguage: string = 'en';
+
     private mdnsService: MDNSService | null = null;
     private webServer: WebServer | null = null;
     private registry: ClientRegistry | null = null;
@@ -100,6 +109,11 @@ class HassEmu extends utils.Adapter {
 
         await this.setState('info.connection', { val: false, ack: true });
 
+        // System-Sprache als ALLERERSTES lesen — alle nachfolgenden info/warn/
+        // error-Logs in Library-Modulen brauchen `this.systemLanguage` für
+        // tLog()-Lookups. Default 'en' bleibt nur, wenn das Lesen failed.
+        this.systemLanguage = await this.readSystemLanguage();
+
         this.globalConfig = new GlobalConfig(this);
         await this.globalConfig.restore();
 
@@ -139,8 +153,6 @@ class HassEmu extends utils.Adapter {
         this.registry.setNewClientModeProvider(() => this.computeNewClientMode());
         await this.urlDiscovery.collect();
 
-        const systemLanguage = await this.readSystemLanguage();
-
         try {
             this.webServer = new WebServer(
                 this,
@@ -148,11 +160,11 @@ class HassEmu extends utils.Adapter {
                 this.registry,
                 this.globalConfig,
                 instanceUuid,
-                systemLanguage,
+                this.systemLanguage,
             );
             await this.webServer.start();
         } catch (err) {
-            this.log.error(`Web server failed to start: ${String(err)}`);
+            this.log.error(tLog(this.systemLanguage, 'webServerFailedToStart', { error: String(err) }));
             // v1.10.0 (B4): nicht stumm zurückkehren — der Adapter wäre sonst
             // zombie (info.connection=false, kein Server, keine Subscriptions,
             // kein Restart-Signal an js-controller). terminate() signalisiert
@@ -187,8 +199,12 @@ class HassEmu extends utils.Adapter {
             // running-Meldung.
             mdnsActive = this.mdnsService.isActive();
             if (!mdnsActive) {
+                // Use mdnsStartFailed (User-Hint) — `error` slot uses generic phrase since
+                // the underlying cause was already warn'd by MDNSService itself.
                 this.log.warn(
-                    'mDNS broadcast failed — clients must enter the URL manually. Auth/connection still works.',
+                    tLog(this.systemLanguage, 'mdnsStartFailed', {
+                        error: 'see preceding mDNS warning',
+                    }),
                 );
             }
         } else {
@@ -198,7 +214,13 @@ class HassEmu extends utils.Adapter {
         await this.setState('info.connection', { val: true, ack: true });
         const bindAddr = this.config.bindAddress || '0.0.0.0';
         const mdnsSuffix = this.config.mdnsEnabled ? (mdnsActive ? ', mDNS active' : ', mDNS FAILED') : '';
-        this.log.info(`HA emulation running on ${bindAddr}:${this.config.port}${mdnsSuffix}`);
+        this.log.info(
+            tLog(this.systemLanguage, 'serverStarted', {
+                bindAddr,
+                port: this.config.port,
+                mdnsSuffix,
+            }),
+        );
     }
 
     /**
@@ -229,9 +251,9 @@ class HassEmu extends utils.Adapter {
             // info.serverUuid is an instanceObject — should always exist. Falls
             // doch nicht: log + fortfahren mit der frischen UUID, sie wird beim
             // nächsten Start erneut generiert (kein bleibender Schaden).
-            this.log.warn(`Could not persist info.serverUuid: ${String(err)}`);
+            this.log.warn(tLog(this.systemLanguage, 'serverUuidPersistFailed', { error: String(err) }));
         });
-        this.log.info(`Generated and persisted server UUID: ${fresh}`);
+        this.log.info(tLog(this.systemLanguage, 'serverUuidGenerated', { uuid: fresh }));
         return fresh;
     }
 
@@ -288,9 +310,7 @@ class HassEmu extends utils.Adapter {
         // sichtbar sein, und die native-Cleanup ist unbedingt.
         const safe = coerceSafeUrl(url);
         if (!safe) {
-            this.log.warn(
-                `Legacy URL rejected as unsafe — dropping native.defaultVisUrl/visUrl without migration: ${String(url)}`,
-            );
+            this.log.warn(tLog(this.systemLanguage, 'migrationGlobalUrlRejected'));
             try {
                 const id = `system.adapter.${this.namespace}`;
                 const obj = await this.getForeignObjectAsync(id);
@@ -300,12 +320,12 @@ class HassEmu extends utils.Adapter {
                     await this.setForeignObjectAsync(id, obj);
                 }
             } catch (err) {
-                this.log.warn(`Legacy config cleanup failed: ${String(err)}`);
+                this.log.warn(tLog(this.systemLanguage, 'legacyConfigCleanupFailed', { error: String(err) }));
             }
             return;
         }
 
-        this.log.info('Migrating legacy native.defaultVisUrl/visUrl → global.visUrl');
+        this.log.info(tLog(this.systemLanguage, 'migrationStarted'));
         // We cannot call globalConfig.handleVisUrlWrite — that method is gone in
         // v1.2.0. Write the legacy state directly so migrateVisUrlToMode picks it up.
         // Wichtig: wenn der State-Write FEHLSCHLÄGT (z.B. weil global.visUrl-Object
@@ -322,20 +342,20 @@ class HassEmu extends utils.Adapter {
             try {
                 if (this.globalConfig) {
                     await this.globalConfig.migrationSet(MODE_MANUAL, safe);
-                    this.log.info(
-                        `Migration shortcut: global.visUrl-state missing → wrote directly to global.mode='manual', manualUrl='${safe}'`,
+                    // Tech-Internal-Pfad: shortcut wenn global.visUrl-state fehlt — debug-only.
+                    this.log.debug(
+                        `Migration shortcut: global.visUrl-state missing — wrote directly to manualUrl=${safe}`,
                     );
                     stateWritten = true;
                 }
             } catch (err) {
-                this.log.warn(`Legacy URL migration failed at fallback: ${String(err)}`);
+                this.log.debug(`Legacy URL migration fallback failed: ${String(err)}`);
             }
         }
 
         if (!stateWritten) {
-            // Both paths failed — keep native values as a recovery anchor for
-            // the user. Don't clean up.
-            this.log.warn('Legacy URL preserved in native — neither global.visUrl nor global.mode write succeeded');
+            // Both paths failed — keep native values as a recovery anchor for the user.
+            this.log.warn(tLog(this.systemLanguage, 'migrationLegacyUrlPreserved'));
             return;
         }
 
@@ -348,7 +368,7 @@ class HassEmu extends utils.Adapter {
                 await this.setForeignObjectAsync(id, obj);
             }
         } catch (err) {
-            this.log.warn(`Legacy config cleanup failed: ${String(err)}`);
+            this.log.warn(tLog(this.systemLanguage, 'legacyConfigCleanupFailed', { error: String(err) }));
         }
     }
 
@@ -367,10 +387,10 @@ class HassEmu extends utils.Adapter {
             const decision = decideLegacyVisMigration(legacyGlobal?.val);
             if (decision.kind === 'safe-url') {
                 await this.globalConfig!.migrationSet(MODE_MANUAL, decision.safe);
-                this.log.info(`Migration: global.visUrl → mode='manual', manualUrl='${decision.safe}'`);
+                this.log.info(tLog(this.systemLanguage, 'migrationGlobalUrlSucceeded', { url: decision.safe }));
             } else if (decision.kind === 'unsafe-rejected') {
                 await this.globalConfig!.migrationSet(MODE_MANUAL, null);
-                this.log.warn(`Migration: legacy global.visUrl rejected as unsafe — set global.manualUrl manually`);
+                this.log.warn(tLog(this.systemLanguage, 'migrationGlobalUrlRejected'));
             }
         } catch {
             /* state didn't exist — fresh install or already migrated */
@@ -393,12 +413,13 @@ class HassEmu extends utils.Adapter {
                     await this.setStateAsync(`clients.${record.id}.mode`, { val: MODE_MANUAL, ack: true });
                     await this.setStateAsync(`clients.${record.id}.manualUrl`, { val: decision.safe, ack: true });
                     this.log.info(
-                        `Migration: client ${record.id} visUrl='${decision.safe}' → mode='manual', manualUrl='${decision.safe}'`,
+                        tLog(this.systemLanguage, 'migrationClientUrlSucceeded', {
+                            id: record.id,
+                            url: decision.safe,
+                        }),
                     );
                 } else if (decision.kind === 'unsafe-rejected') {
-                    this.log.warn(
-                        `Migration: client ${record.id} legacy visUrl rejected as unsafe — set clients.${record.id}.manualUrl manually`,
-                    );
+                    this.log.warn(tLog(this.systemLanguage, 'migrationClientUrlRejected', { id: record.id }));
                 }
             } catch {
                 /* state didn't exist for this client */
@@ -505,7 +526,7 @@ class HassEmu extends utils.Adapter {
             }
         }
         if (removed > 0) {
-            this.log.info(`Stale-Client-GC: removed ${removed} client(s) (idle >30 days)`);
+            this.log.info(tLog(this.systemLanguage, 'staleClientGcRemoved', { count: removed }));
         }
     }
 
@@ -543,10 +564,7 @@ class HassEmu extends utils.Adapter {
                 // is obvious without digging through the resolver code.
                 const record = this.registry!.getById(clientParsed.id);
                 if (record?.mode === MODE_GLOBAL && this.globalConfig!.resolveUrlFor(record) === null) {
-                    this.log.warn(
-                        `Client ${record.id}: mode='global' but global has no resolvable URL — ` +
-                            'fill global.mode/manualUrl, or pick a different client mode',
-                    );
+                    this.log.warn(tLog(this.systemLanguage, 'clientGlobalButGlobalEmpty', { id: record.id }));
                 }
             } else if (clientParsed.kind === 'manualUrl') {
                 await this.registry!.handleManualUrlWrite(clientParsed.id, state.val);
@@ -586,9 +604,13 @@ class HassEmu extends utils.Adapter {
         }
         try {
             await this.urlDiscovery.collect();
-            this.log.info('URL discovery refreshed on user request');
+            this.log.info(tLog(this.systemLanguage, 'urlRefreshDone'));
         } catch (err) {
-            this.log.warn(`URL refresh failed: ${err instanceof Error ? err.message : String(err)}`);
+            this.log.warn(
+                tLog(this.systemLanguage, 'urlRefreshFailed', {
+                    error: err instanceof Error ? err.message : String(err),
+                }),
+            );
         } finally {
             await this.setStateAsync('info.refresh_urls', { val: false, ack: true }).catch(() => {});
         }

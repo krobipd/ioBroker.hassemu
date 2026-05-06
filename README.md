@@ -155,6 +155,12 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
+### **WORK IN PROGRESS**
+
+- **VIS-2-URLs im Mode-Dropdown jetzt korrekt**: `vis-2/index.html#<view>` (kein `.0`-Suffix, kein Projekt-Pfad-Segment). Quelle ist die io-package.json des VIS-2-Adapters (`localLinks.Runtime.link`).
+- **VIS-1 (klassisch) vollständig unterstützt**: pro Projekt ein `?<projekt>`-Eintrag im Dropdown plus Sub-Views als `?<projekt>#<view>`. Quelle ist `visEdit.js:2225`.
+- **Logs in Systemsprache**: `info`/`warn`/`error` jetzt anhand `system.config.language` lokalisiert (11 Sprachen), `debug` bleibt englisch. Tech-Internas wie `mode='X'` und Modul-Präfixe sind raus.
+
 ### 1.26.0 (2026-05-06)
 
 - **VIS-2-URLs im Mode-Dropdown nach echtem VIS-2-Routing**: Projekt als Pfad-Segment, View als Hash-Fragment (`#<view>`). Vorher `?<projekt>` als Query — Deep-Links liefen ins Leere.

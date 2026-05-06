@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.26.0",
     "news": {
+      "NEXT": {
+        "en": "Bugfixes: VIS-2 URLs in dropdown now correct (vis-2/index.html#view). VIS-1 fully supported (?<project> + #view). info/warn/error logs in system language, debug stays English.",
+        "de": "Bugfixes: VIS-2-URLs im Dropdown jetzt korrekt (vis-2/index.html#view). VIS-1 voll unterstützt (?<projekt> + #view). info/warn/error-Logs in Systemsprache, debug bleibt englisch.",
+        "ru": "Bugfixes: URL VIS-2 в dropdown теперь корректные (vis-2/index.html#view). VIS-1 поддержан полностью (?<project> + #view). info/warn/error-логи на языке системы, debug остаётся английским.",
+        "pt": "Bugfixes: URLs VIS-2 no dropdown agora corretos (vis-2/index.html#view). VIS-1 totalmente suportado (?<project> + #view). Logs info/warn/error no idioma do sistema, debug permanece em inglês.",
+        "nl": "Bugfixes: VIS-2-URLs in dropdown nu correct (vis-2/index.html#view). VIS-1 volledig ondersteund (?<project> + #view). info/warn/error-logs in systeemtaal, debug blijft Engels.",
+        "fr": "Bugfixes : URL VIS-2 du dropdown correctes (vis-2/index.html#view). VIS-1 entièrement pris en charge (?<projet> + #view). Logs info/warn/error dans la langue système, debug reste en anglais.",
+        "it": "Bugfixes: URL VIS-2 nel dropdown ora corretti (vis-2/index.html#view). VIS-1 completamente supportato (?<progetto> + #view). Log info/warn/error nella lingua di sistema, debug resta in inglese.",
+        "es": "Bugfixes: URLs VIS-2 en el dropdown ahora correctas (vis-2/index.html#view). VIS-1 totalmente soportado (?<proyecto> + #view). Logs info/warn/error en el idioma del sistema, debug en inglés.",
+        "pl": "Bugfixy: URL-e VIS-2 w dropdown teraz poprawne (vis-2/index.html#view). VIS-1 w pełni obsługiwany (?<projekt> + #view). Logi info/warn/error w języku systemu, debug pozostaje angielski.",
+        "uk": "Bugfixes: URL VIS-2 у dropdown тепер коректні (vis-2/index.html#view). VIS-1 повністю підтримано (?<project> + #view). Логи info/warn/error мовою системи, debug залишається англійським.",
+        "zh-cn": "Bug 修复：VIS-2 下拉框 URL 现在正确（vis-2/index.html#view）。完整支持 VIS-1（?<project> + #view）。info/warn/error 日志使用系统语言，debug 保留英文。"
+      },
       "1.26.0": {
         "en": "Bugfixes: VIS-2 dropdown URLs use the real routing (project=path, view=#hash). New clients start on the empty entry → landing page until you pick a URL. iframe wrapper without bottom/right gap.",
         "de": "Bugfixes: VIS-2-Dropdown-URLs nutzen das echte Routing (Projekt=Pfad, View=#Hash). Neue Clients starten auf Null-Eintrag → Landing-Page, bis Du eine URL wählst. iframe-Wrapper ohne Rand unten/rechts.",

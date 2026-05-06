@@ -21,6 +21,7 @@ import {
 import { coerceString, coerceUuid, safeStringEqual } from './coerce';
 import type { ClientRegistry } from './client-registry';
 import type { GlobalConfig } from './global-config';
+import { tLog } from './i18n-logs';
 import { renderLandingPage } from './landing-page';
 import { getLocalIp, isWildcardBind } from './network';
 import type { AdapterConfig, AdapterInterface, ClientRecord, SessionData } from './types';
@@ -214,7 +215,9 @@ export class WebServer {
         } catch (err) {
             const e = err as NodeJS.ErrnoException;
             const msg =
-                e.code === 'EADDRINUSE' ? `Port ${this.config.port} is already in use!` : `Server error: ${e.message}`;
+                e.code === 'EADDRINUSE'
+                    ? tLog(this.systemLanguage, 'portAlreadyInUse', { port: this.config.port })
+                    : tLog(this.systemLanguage, 'serverStartError', { error: e.message });
             this.adapter.log.error(msg);
             throw err;
         }
@@ -398,8 +401,11 @@ export class WebServer {
         if (entry.failedCount >= LOGIN_LOCKOUT_THRESHOLD) {
             entry.lockedUntil = now + LOGIN_LOCKOUT_WINDOW_MS;
             this.adapter.log.warn(
-                `Login lockout: IP ${ip} reached ${LOGIN_LOCKOUT_THRESHOLD} failed attempts — ` +
-                    `locked for ${Math.round(LOGIN_LOCKOUT_WINDOW_MS / 60000)} min`,
+                tLog(this.systemLanguage, 'loginLockoutTriggered', {
+                    ip,
+                    threshold: LOGIN_LOCKOUT_THRESHOLD,
+                    minutes: Math.round(LOGIN_LOCKOUT_WINDOW_MS / 60000),
+                }),
             );
         }
         // Cap loginAttempts before insert to avoid unbounded growth from stray
@@ -567,7 +573,7 @@ export class WebServer {
             // im 60s-Fenster auf debug. Memory `feedback_no_log_spam`.
             const key = error.message || 'unknown';
             if (this.shouldEmitRequestErrorWarn(key, Date.now())) {
-                this.adapter.log.warn(`Request error: ${error.message}`);
+                this.adapter.log.warn(tLog(this.systemLanguage, 'requestError', { message: error.message }));
             } else {
                 this.adapter.log.debug(`Request error (repeat): ${error.message}`);
             }
@@ -677,7 +683,7 @@ export class WebServer {
                 if (this.config.authRequired) {
                     const ip = WebServer.getClientIp(req);
                     if (this.isIpLocked(ip)) {
-                        this.adapter.log.warn(`Login rejected: IP ${ip} is currently locked out`);
+                        this.adapter.log.warn(tLog(this.systemLanguage, 'loginRejectedLockout', { ip }));
                         reply.status(429);
                         return { type: 'abort', flow_id: flowId, reason: 'too_many_failed_attempts' };
                     }
@@ -693,7 +699,7 @@ export class WebServer {
                         const failCount = entry?.failedCount ?? 0;
                         const ipSuffix = ip ? ` (IP ${ip})` : '';
                         if (failCount <= LOGIN_LOCKOUT_THRESHOLD) {
-                            this.adapter.log.warn(`Invalid credentials${ipSuffix}`);
+                            this.adapter.log.warn(tLog(this.systemLanguage, 'invalidCredentials', { ipSuffix }));
                         } else {
                             this.adapter.log.debug(`Invalid credentials${ipSuffix} (post-lockout-threshold)`);
                         }

@@ -551,13 +551,16 @@ describe('ClientRegistry', () => {
             expect(info).to.be.undefined;
         });
 
-        it('logs info with count on actual changes', async () => {
+        it('logs debug with count on actual changes', async () => {
+            // bulkSetMode-Trigger ist Tech-Internal — auf debug seit v1.27.0
+            // (User wollte mode-Werte aus dem User-Log raus). Test prüft den
+            // debug-Output mit Count statt info.
             await registry.identifyOrCreate(null, '1.1.1.1', null);
             await registry.identifyOrCreate(null, '1.1.1.2', null);
             store.logs.length = 0;
             await registry.bulkSetMode('http://new/');
-            const info = store.logs.find(l => l.level === 'info' && l.msg.includes('bulk-set'));
-            expect(info?.msg).to.match(/2 client/);
+            const dbg = store.logs.find(l => l.level === 'debug' && l.msg.includes('bulkSetMode'));
+            expect(dbg?.msg).to.match(/2 client/);
         });
 
         it('is a no-op with no clients', async () => {

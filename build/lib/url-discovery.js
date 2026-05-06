@@ -104,8 +104,8 @@ class UrlDiscovery {
       if (!shortName.startsWith("web.")) {
         continue;
       }
-      await this.addVisProjects(result, native, hostIp, "vis-2.0", "VIS-2");
-      await this.addVisProjects(result, native, hostIp, "vis.0", "VIS");
+      await this.addVisProjects(result, native, hostIp, "vis-2.0", "vis-2", "VIS-2");
+      await this.addVisProjects(result, native, hostIp, "vis.0", "vis", "VIS");
     }
     this.cached = result;
     if (this.onChange) {
@@ -117,7 +117,7 @@ class UrlDiscovery {
     }
     return result;
   }
-  async addVisProjects(result, webInstance, hostIp, adapterName, label) {
+  async addVisProjects(result, webInstance, hostIp, adapterName, urlPath, label) {
     var _a;
     if (!webInstance) {
       return;
@@ -153,21 +153,19 @@ class UrlDiscovery {
       if (!name || name.startsWith("_")) {
         continue;
       }
-      const projectBase = `${protocol}://${ip}:${port}/${adapterName}/${encodeURIComponent(name)}`;
-      const url = `${projectBase}/index.html`;
-      const safe = (0, import_coerce.coerceSafeUrl)(url);
-      if (!safe) {
+      const isVis1 = adapterName === "vis.0";
+      const runtimeUrl = isVis1 ? `${protocol}://${ip}:${port}/${urlPath}/index.html?${encodeURIComponent(name)}` : `${protocol}://${ip}:${port}/${urlPath}/index.html`;
+      const safeBase = (0, import_coerce.coerceSafeUrl)(runtimeUrl);
+      if (!safeBase) {
         continue;
       }
-      result[safe] = `${label}: ${name}`;
-      if (adapterName === "vis-2.0") {
-        await this.addVisViews(result, adapterName, name, projectBase, label);
-      }
+      result[safeBase] = `${label}: ${name}`;
+      await this.addVisViews(result, adapterName, name, safeBase, label);
     }
   }
   /**
    * Lese `<project>/vis-views.json` und füge pro View einen Dropdown-Eintrag
-   * `<projectBase>/index.html#<viewName>` ein. Defensive — alle Fehler silently caught.
+   * `<runtimeUrl>#<viewName>` ein. Defensive — alle Fehler silently caught.
    *
    * VIS-2-Hash-Routing-Quelle: iobroker.vis-2 v2.13.19+
    * src-vis/src/Vis/visEngine.tsx:430-455 (`getCurrentPath` parst
@@ -175,11 +173,11 @@ class UrlDiscovery {
    *
    * @param result Output-Map (mutated)
    * @param adapterName VIS-Adapter (z.B. `vis-2.0`)
-   * @param projectName Top-level-Projekt-Folder
-   * @param projectBase URL-Präfix bis Project-Folder, ohne `/index.html` (z.B. `http://host:8082/vis-2.0/main`)
+   * @param projectName Project-Folder-Name (für vis-views.json-Lookup, NICHT in URL)
+   * @param runtimeUrl Komplette Runtime-URL inkl. `/index.html` (z.B. `http://host:8082/vis-2/index.html`)
    * @param label Sprach-Label für Dropdown (`VIS-2`)
    */
-  async addVisViews(result, adapterName, projectName, projectBase, label) {
+  async addVisViews(result, adapterName, projectName, runtimeUrl, label) {
     let raw;
     try {
       raw = await this.adapter.readFileAsync(adapterName, `${projectName}/vis-views.json`);
@@ -218,7 +216,7 @@ class UrlDiscovery {
       if (!(0, import_coerce.isPlainObject)(v)) {
         continue;
       }
-      const viewUrl = `${projectBase}/index.html#${encodeURIComponent(viewName)}`;
+      const viewUrl = `${runtimeUrl}#${encodeURIComponent(viewName)}`;
       const safe = (0, import_coerce.coerceSafeUrl)(viewUrl);
       if (!safe) {
         continue;
