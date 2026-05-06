@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.27.2",
+    "version": "1.27.3",
     "news": {
-      "NEXT": {
+      "1.27.3": {
         "en": "Docs: README rewritten in plain user voice — shorter, direct, no implementation trivia. No code changes.",
         "de": "Doku: README komplett auf User-Sicht umgeschrieben — kürzer, direkt, keine Implementierungs-Details. Keine Code-Änderungen.",
         "ru": "Документация: README переписан в простом пользовательском стиле — короче, прямее, без деталей реализации.",
@@ -93,19 +93,6 @@
         "pl": "Test coverage: 2 nowe unit tests dla ochrony NAT-cookie v1.17.0.",
         "uk": "Test coverage: 2 нові unit-тести для NAT-cookie protection v1.17.0.",
         "zh-cn": "测试覆盖：v1.17.0 NAT-cookie 保护新增 2 个单元测试。"
-      },
-      "1.23.0": {
-        "en": "Internal cleanup: parseModeWrite helper in coerce.ts — both handleModeWrite handlers (client-registry + global-config) delegate to one validator instead of duplicating ~80% of the logic.",
-        "de": "Interne Aufräumung: parseModeWrite-Helper in coerce.ts — beide handleModeWrite-Handler (client-registry + global-config) delegieren an einen Validator statt ~80% der Logik zu duplizieren.",
-        "ru": "Внутренняя уборка: parseModeWrite helper в coerce.ts — оба handleModeWrite-handler делегируют на единый validator вместо дублирования ~80% логики.",
-        "pt": "Limpeza interna: parseModeWrite helper em coerce.ts — ambos handleModeWrite-handlers delegam a um validator em vez de duplicar ~80% da logica.",
-        "nl": "Interne opruiming: parseModeWrite helper in coerce.ts — beide handleModeWrite-handlers delegeren naar een validator i.p.v. ~80% logica te dupliceren.",
-        "fr": "Nettoyage interne : parseModeWrite helper dans coerce.ts — les deux handleModeWrite-handlers deleguent a un seul validator au lieu de dupliquer ~80% de la logique.",
-        "it": "Pulizia interna: parseModeWrite helper in coerce.ts — entrambi gli handleModeWrite-handler delegano a un validator invece di duplicare ~80% della logica.",
-        "es": "Limpieza interna: parseModeWrite helper en coerce.ts — ambos handleModeWrite-handlers delegan a un validator en lugar de duplicar ~80% de la logica.",
-        "pl": "Wewnetrzne sprzatanie: parseModeWrite helper w coerce.ts — oba handleModeWrite-handlery deleguja do jednego validatora zamiast duplikowac ~80% logiki.",
-        "uk": "Внутрішнє прибирання: parseModeWrite helper у coerce.ts — обидва handleModeWrite-handlers делегують одному validator замість дублювання ~80% логіки.",
-        "zh-cn": "内部清理：coerce.ts 中新增 parseModeWrite 辅助函数 — 两个 handleModeWrite 处理器委托给单一验证器，不再重复约 80% 的逻辑。"
       }
     },
     "titleLang": {
