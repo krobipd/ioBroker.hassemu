@@ -102,6 +102,19 @@ When `global.enabled` is **on**, every client's `mode` is set to `global` and al
 
 ---
 
+## When things refresh — and how long it takes
+
+| Action | Where | Latency | Trigger |
+| --- | --- | --- | --- |
+| **You change a `mode` or `manualUrl` state** | display reloads | up to ~30 s | each display polls `/api/redirect_check` every 30 s and reloads itself when the target changes. No display reboot needed. |
+| **You install / rename a VIS or VIS-2 project, add an admin tile, install a new web-aware adapter** | dropdown updates | ~2 s | adapter listens on `system.adapter.*` object changes, debounces, then re-runs discovery. |
+| **You want the dropdown refreshed immediately** | dropdown updates | < 1 s | set `info.refresh_urls` to `true` — runs discovery now. The button auto-resets to `false`. |
+| **A new display connects for the first time** | new entry under `clients.*` | immediate | new `clients.<id>` channel is created on the first request, dropdown gets seeded with the current URL list. |
+
+The dropdown content (`common.states` on every `clients.<id>.mode` and on `global.mode`) is fully replaced on each discovery run — stale URLs from old setups don't accumulate.
+
+---
+
 ## Troubleshooting
 
 ### Display cannot find the server
@@ -131,9 +144,7 @@ Empty `mode` serves the landing page — pick one of the above.
 
 ### URL was changed but the display still shows the old dashboard
 
-Since v1.7.0 the adapter wraps the target URL in an HTML page that polls `/api/redirect_check` every 30 seconds — on a `mode` or `manualUrl` change the display reloads itself within ~30s, no soft-reboot needed.
-
-If a display is still stuck on the old URL after that, it was probably wired to the target dashboard directly (bypassing the adapter) or it's caching aggressively. Reboot the display, or use its built-in "reload" function if it has one.
+The auto-reload happens within ~30 s (see *When things refresh*). If a display is still stuck after that, it was probably wired to the target dashboard directly (bypassing the adapter) or it's caching aggressively. Reboot the display, or use its built-in "reload" function if it has one.
 
 ### Display keeps getting a new ID
 
