@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.27.2",
     "news": {
+      "NEXT": {
+        "en": "Docs: README rewritten in plain user voice — shorter, direct, no implementation trivia. No code changes.",
+        "de": "Doku: README komplett auf User-Sicht umgeschrieben — kürzer, direkt, keine Implementierungs-Details. Keine Code-Änderungen.",
+        "ru": "Документация: README переписан в простом пользовательском стиле — короче, прямее, без деталей реализации.",
+        "pt": "Doc: README reescrito em linguagem do utilizador — mais curto, directo, sem detalhes de implementação.",
+        "nl": "Doc: README herschreven in gebruikerstaal — korter, direct, zonder implementatiedetails.",
+        "fr": "Doc : README réécrit en langage utilisateur — plus court, direct, sans détails d’implémentation.",
+        "it": "Doc: README riscritto in linguaggio utente — più corto, diretto, senza dettagli implementativi.",
+        "es": "Doc: README reescrito en lenguaje de usuario — más corto, directo, sin detalles de implementación.",
+        "pl": "Dokumentacja: README przepisany w języku użytkownika — krótszy, prostszy, bez szczegółów implementacji.",
+        "uk": "Документація: README переписано простою мовою користувача — коротше, пряміше, без деталей реалізації.",
+        "zh-cn": "文档：README 改写为用户视角语言 — 更简短直接，无实现细节。无代码变更。"
+      },
       "1.27.2": {
         "en": "Bugfix: dropdown common.states is now fully replaced on each refresh. Stale URLs from earlier format versions (v1.26 path-segment, intermediate ?<project>/<view> etc.) are removed.",
         "de": "Bugfix: Dropdown-common.states wird bei jedem Refresh komplett ersetzt. Veraltete URLs aus früheren Format-Versionen (v1.26 Pfad-Segment, Zwischen-Form ?<projekt>/<view> usw.) werden entfernt.",
