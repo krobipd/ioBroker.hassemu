@@ -203,20 +203,16 @@ export class UrlDiscovery {
             //   vis-2: http(s)://<ip>:<port>/vis-2/index.html
             //   vis-1: http(s)://<ip>:<port>/vis/index.html
             //
-            // Project-Switch:
-            //   VIS-2 wechselt Projekt nicht via URL (active project lebt in
-            //     localStorage/State). Alle Projekte teilen den gleichen
-            //     Runtime-Link, der Hash-lose Link zeigt auf das aktive Projekt.
-            //   VIS-1 nutzt `?<project>` als Query-Param für Project-Switch
-            //     (visEdit.js:1539, 1562, 2225). Pro Project-Folder eine
-            //     eigene Runtime-URL mit explizitem Query.
+            // Project-Switch via `?<project>` Query — funktioniert in BEIDEN:
+            //   VIS-2: `Runtime.tsx:920-923` parst `window.location.search`
+            //          (`projectName = window.location.search.replace('?', '')`).
+            //   VIS-1: `visEdit.js:1539, 1562, 2225` setzt `?<project>` beim Switch.
+            // Pro Project-Folder eine eigene Runtime-URL mit explizitem Query —
+            // damit ist jedes Projekt ohne localStorage-Trick direkt erreichbar.
             //
-            // View ist in beiden Fällen Hash-Fragment (visEngine.tsx:430-455
+            // View ist Hash-Fragment hinter dem Query (visEngine.tsx:430-455
             // für VIS-2; visEdit.js:2225 für VIS-1).
-            const isVis1 = adapterName === 'vis.0';
-            const runtimeUrl = isVis1
-                ? `${protocol}://${ip}:${port}/${urlPath}/index.html?${encodeURIComponent(name)}`
-                : `${protocol}://${ip}:${port}/${urlPath}/index.html`;
+            const runtimeUrl = `${protocol}://${ip}:${port}/${urlPath}/index.html?${encodeURIComponent(name)}`;
             const safeBase = coerceSafeUrl(runtimeUrl);
             if (!safeBase) {
                 continue;
