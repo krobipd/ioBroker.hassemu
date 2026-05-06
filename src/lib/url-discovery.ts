@@ -128,10 +128,16 @@ export class UrlDiscovery {
         // v1.17.0 (E10): über alle `web.*`-Instances iterieren statt nur `web.0`
         // hardcoded. User mit `web.1` (zweite Web-Instance, z.B. separat für VIS)
         // hatten vorher keine VIS-Projekte im Dropdown.
-        for (const [shortName, native] of crossRefs.entries()) {
-            if (!shortName.startsWith('web.')) {
-                continue;
-            }
+        //
+        // v1.27.2: bei MEHREREN web-Instances die Instance-ID ins Label nehmen
+        // (sonst landen die User mit 2-3 web-Instances bei identischen Labels
+        // im Dropdown — drei Mal `VIS-2: main / Wohnzimmer` ohne Hinweis welche
+        // welcher web-Instance gehört). Bei nur einer web-Instance bleibt das
+        // Label minimal (`VIS-2: main / Wohnzimmer`).
+        const webInstances = Array.from(crossRefs.entries()).filter(([n]) => n.startsWith('web.'));
+        const showWebSuffix = webInstances.length > 1;
+        for (const [shortName, native] of webInstances) {
+            const labelSuffix = showWebSuffix ? ` (${shortName})` : '';
             // URL-Pfad-Komponente kommt aus `common.localLinks.Runtime.link`
             // bzw. `common.welcomeScreen.link` der jeweiligen vis-Instance:
             //   vis-2: `/vis-2/index.html`     (NICHT `/vis-2.0/`)
@@ -139,8 +145,8 @@ export class UrlDiscovery {
             // Verifiziert in iobroker.vis-2 + iobroker.vis io-package.json.
             // adapterName (`vis-2.0`/`vis.0`) wird für `readDirAsync` /
             // `readFileAsync` gebraucht (Folder-Lookup), urlPath nur für die URL.
-            await this.addVisProjects(result, native, hostIp, 'vis-2.0', 'vis-2', 'VIS-2');
-            await this.addVisProjects(result, native, hostIp, 'vis.0', 'vis', 'VIS');
+            await this.addVisProjects(result, native, hostIp, 'vis-2.0', 'vis-2', `VIS-2${labelSuffix}`);
+            await this.addVisProjects(result, native, hostIp, 'vis.0', 'vis', `VIS${labelSuffix}`);
         }
 
         this.cached = result;

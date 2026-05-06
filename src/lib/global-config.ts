@@ -27,7 +27,10 @@ import type { AdapterInterface, ClientRecord, UrlStates } from './types';
 
 /** Extended adapter interface — needs state I/O and object extend. */
 export type GlobalConfigAdapter = AdapterInterface &
-    Pick<ioBroker.Adapter, 'getStateAsync' | 'setStateAsync' | 'extendObjectAsync'>;
+    Pick<
+        ioBroker.Adapter,
+        'getStateAsync' | 'setStateAsync' | 'getObjectAsync' | 'setObjectAsync' | 'extendObjectAsync'
+    >;
 
 /** Kinds of state IDs the GlobalConfig reacts to. */
 export type GlobalStateKind = 'mode' | 'manualUrl' | 'enabled';
@@ -199,9 +202,15 @@ export class GlobalConfig {
         // sentinels + states`-Composition. Hier nur `manual`-Sentinel weil
         // `global` in global-config self-referential wäre.
         const merged = buildDropdownStates({ [MODE_MANUAL]: 'Manual URL' }, states);
-        await this.adapter.extendObjectAsync('global.mode', {
-            common: { states: merged },
-        });
+        // v1.27.2: extendObjectAsync mergt `common.states` tief — alte
+        // URL-Schlüssel bleiben drin nach Format-Wechsel (z.B. v1.26→v1.27).
+        // Object lesen, common.states ersetzen, setObjectAsync.
+        const existing = await this.adapter.getObjectAsync('global.mode');
+        if (!existing) {
+            return;
+        }
+        existing.common.states = merged;
+        await this.adapter.setObjectAsync('global.mode', existing);
     }
 
     /**

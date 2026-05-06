@@ -39,6 +39,8 @@ function createMockAdapter(namespace = 'hassemu.0'): {
         clearTimeout: () => undefined;
         getStateAsync: (id: string) => Promise<{ val: unknown; ack: boolean } | null>;
         setStateAsync: (id: string, value: { val: unknown; ack?: boolean }) => Promise<void>;
+        getObjectAsync: (id: string) => Promise<ObjEntry | null>;
+        setObjectAsync: (id: string, obj: ObjEntry) => Promise<void>;
         extendObjectAsync: (id: string, obj: Partial<ObjEntry>) => Promise<void>;
     } {
         return {
@@ -66,6 +68,14 @@ function createMockAdapter(namespace = 'hassemu.0'): {
                     common: { ...(existing.common ?? {}), ...(obj.common ?? {}) },
                     native: { ...(existing.native ?? {}), ...(obj.native ?? {}) },
                 });
+            },
+            getObjectAsync: async (id: string) => {
+                const fullId = id.includes('.') && id.startsWith(`${namespace}.`) ? id : `${namespace}.${id}`;
+                return store.objects.get(fullId) ?? null;
+            },
+            setObjectAsync: async (id: string, obj: ObjEntry) => {
+                const fullId = id.includes('.') && id.startsWith(`${namespace}.`) ? id : `${namespace}.${id}`;
+                store.objects.set(fullId, obj);
             },
         };
     }
@@ -332,6 +342,17 @@ describe('GlobalConfig', () => {
     });
 
     describe('syncUrlDropdown', () => {
+        // global.mode is an instanceObject — always present in real installs.
+        // Seed it in tests so syncUrlDropdown's getObjectAsync→setObjectAsync
+        // flow has something to read.
+        beforeEach(() => {
+            store.objects.set('hassemu.0.global.mode', {
+                type: 'state',
+                common: { type: 'mixed', name: 'mode', role: 'value', read: true, write: true, states: {} },
+                native: {},
+            });
+        });
+
         it("writes common.states to global.mode with 0='---' + 'manual' sentinel added", async () => {
             await g.syncUrlDropdown({ 'http://a/': 'A', 'http://b/': 'B' });
             const obj = store.objects.get('hassemu.0.global.mode');
@@ -348,6 +369,31 @@ describe('GlobalConfig', () => {
             const obj = store.objects.get('hassemu.0.global.mode');
             const states = obj?.common?.states as Record<string, string>;
             expect(states[MODE_GLOBAL]).to.be.undefined;
+        });
+
+        it('replaces stale URL keys (extendObject would have leaked them)', async () => {
+            // Pre-seed with old URL format that no longer comes back from discovery.
+            store.objects.set('hassemu.0.global.mode', {
+                type: 'state',
+                common: {
+                    type: 'mixed',
+                    name: 'mode',
+                    role: 'value',
+                    read: true,
+                    write: true,
+                    states: {
+                        0: '---',
+                        'http://old.local/vis-2.0/main/index.html#X': 'VIS-2: main / X',
+                        [MODE_MANUAL]: 'Manual URL',
+                    },
+                },
+                native: {},
+            });
+            await g.syncUrlDropdown({ 'http://new.local/vis-2/index.html?main': 'VIS-2: main' });
+            const states = store.objects.get('hassemu.0.global.mode')?.common?.states as Record<string, string>;
+            // Old URL must be gone, new URL present
+            expect(states['http://old.local/vis-2.0/main/index.html#X']).to.be.undefined;
+            expect(states['http://new.local/vis-2/index.html?main']).to.equal('VIS-2: main');
         });
     });
 });

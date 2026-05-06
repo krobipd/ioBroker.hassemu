@@ -170,9 +170,12 @@ class GlobalConfig {
    */
   async syncUrlDropdown(states) {
     const merged = (0, import_coerce.buildDropdownStates)({ [import_constants.MODE_MANUAL]: "Manual URL" }, states);
-    await this.adapter.extendObjectAsync("global.mode", {
-      common: { states: merged }
-    });
+    const existing = await this.adapter.getObjectAsync("global.mode");
+    if (!existing) {
+      return;
+    }
+    existing.common.states = merged;
+    await this.adapter.setObjectAsync("global.mode", existing);
   }
   /**
    * Convenience for migration: set mode + manualUrl together. Skips the
