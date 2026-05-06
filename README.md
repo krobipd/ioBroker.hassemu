@@ -147,7 +147,9 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 
 - Bugfix: VIS-2 dropdown now lists each project separately via a `?<project>` query plus sub-views as `?<project>#<view>`. Pre-v1.27.1 only the active project was reachable.
 
-Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).## Support
+Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
+
+## Support
 
 - [ioBroker Forum](https://forum.iobroker.net/)
 - [GitHub Issues](https://github.com/krobipd/ioBroker.hassemu/issues)
