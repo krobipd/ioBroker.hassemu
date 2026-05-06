@@ -132,8 +132,12 @@ export class UrlDiscovery {
             if (!shortName.startsWith('web.')) {
                 continue;
             }
-            await this.addVisProjects(result, native, hostIp, 'vis-2.0', 'vis-2', 'VIS-2');
-            await this.addVisProjects(result, native, hostIp, 'vis.0', 'vis', 'VIS');
+            // urlPath == adapterName: ioBroker liefert Adapter-Files unter
+            // `/<adapter>.<inst>/<path>` aus (nicht `/<adapter>/...`). Pre-v1.26.0
+            // hat hier `vis-2` / `vis` ohne `.0` gestanden — Display ging dann
+            // ins Leere, sobald jemand die URL aus dem Dropdown geöffnet hat.
+            await this.addVisProjects(result, native, hostIp, 'vis-2.0', 'VIS-2');
+            await this.addVisProjects(result, native, hostIp, 'vis.0', 'VIS');
         }
 
         this.cached = result;
@@ -152,7 +156,6 @@ export class UrlDiscovery {
         webInstance: Record<string, unknown> | undefined,
         hostIp: string,
         adapterName: string,
-        urlPath: string,
         label: string,
     ): Promise<void> {
         if (!webInstance) {
@@ -191,38 +194,52 @@ export class UrlDiscovery {
             if (!name || name.startsWith('_')) {
                 continue;
             }
-            const url = `${protocol}://${ip}:${port}/${urlPath}/index.html?${name}`;
+            // VIS-2 routing (Quelle: iobroker.vis-2 v2.13.19+
+            // src-vis/src/Vis/visEngine.tsx:430-455 — `getCurrentPath` und
+            // `buildPath`):
+            //   - Project ist Pfad-Segment unter `/<adapter>.<inst>/<project>/`
+            //     (Default-Project ist `main`).
+            //   - View ist Hash-Fragment `#<encodeURIComponent(viewName)>`.
+            // Pre-v1.26.0 wurde `?<project>` als Query gebaut — funktional
+            // toleriert, aber eigentlich falsch und bei Reload mit Hash-Wechsel
+            // fragil.
+            const projectBase = `${protocol}://${ip}:${port}/${adapterName}/${encodeURIComponent(name)}`;
+            const url = `${projectBase}/index.html`;
             const safe = coerceSafeUrl(url);
             if (!safe) {
                 continue;
             }
             result[safe] = `${label}: ${name}`;
 
-            // VIS-2 hat sub-views in <project>/vis-views.json. Pro View einen
-            // zusätzlichen Dropdown-Eintrag mit `?<project>/<view>` (path-routing).
+            // VIS-2 hat sub-views in <project>/vis-views.json. Pro View ein
+            // zusätzlicher Dropdown-Eintrag `<project>/index.html#<viewName>`.
             // Wenn die Datei fehlt oder malformed ist → silently skip,
             // Top-level-Projekt-Eintrag bleibt funktional.
             if (adapterName === 'vis-2.0') {
-                await this.addVisViews(result, adapterName, name, url, label);
+                await this.addVisViews(result, adapterName, name, projectBase, label);
             }
         }
     }
 
     /**
      * Lese `<project>/vis-views.json` und füge pro View einen Dropdown-Eintrag
-     * `?<project>/<viewName>` ein. Defensive — alle Fehler silently caught.
+     * `<projectBase>/index.html#<viewName>` ein. Defensive — alle Fehler silently caught.
+     *
+     * VIS-2-Hash-Routing-Quelle: iobroker.vis-2 v2.13.19+
+     * src-vis/src/Vis/visEngine.tsx:430-455 (`getCurrentPath` parst
+     * `window.location.hash`, `buildPath` baut `#encodeURIComponent(view)`).
      *
      * @param result Output-Map (mutated)
      * @param adapterName VIS-Adapter (z.B. `vis-2.0`)
      * @param projectName Top-level-Projekt-Folder
-     * @param projectUrl Bereits berechneter Projekt-URL (`...?projectName`)
+     * @param projectBase URL-Präfix bis Project-Folder, ohne `/index.html` (z.B. `http://host:8082/vis-2.0/main`)
      * @param label Sprach-Label für Dropdown (`VIS-2`)
      */
     private async addVisViews(
         result: UrlStates,
         adapterName: string,
         projectName: string,
-        projectUrl: string,
+        projectBase: string,
         label: string,
     ): Promise<void> {
         let raw: unknown;
@@ -277,7 +294,7 @@ export class UrlDiscovery {
             if (!isPlainObject(v)) {
                 continue;
             }
-            const viewUrl = `${projectUrl}/${encodeURIComponent(viewName)}`;
+            const viewUrl = `${projectBase}/index.html#${encodeURIComponent(viewName)}`;
             const safe = coerceSafeUrl(viewUrl);
             if (!safe) {
                 continue;

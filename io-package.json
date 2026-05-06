@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.25.0",
     "news": {
+      "NEXT": {
+        "en": "Bugfixes: VIS-2 dropdown URLs use the real routing (project=path, view=#hash). New clients start on the empty entry → landing page until you pick a URL. iframe wrapper without bottom/right gap.",
+        "de": "Bugfixes: VIS-2-Dropdown-URLs nutzen das echte Routing (Projekt=Pfad, View=#Hash). Neue Clients starten auf Null-Eintrag → Landing-Page, bis Du eine URL wählst. iframe-Wrapper ohne Rand unten/rechts.",
+        "ru": "Bugfixes: VIS-2-URL в dropdown с реальным routing (project=путь, view=#hash). Новые клиенты на пустой записи → landing-page. iframe без чёрной полосы снизу/справа.",
+        "pt": "Bugfixes: URLs VIS-2 no dropdown com routing real (projecto=path, view=#hash). Novos clientes em entrada vazia → landing-page. iframe sem barra preta em baixo/direita.",
+        "nl": "Bugfixes: VIS-2-dropdown-URLs met echt routing (project=path, view=#hash). Nieuwe clients op lege ingang → landing-page. iframe zonder zwarte rand onder/rechts.",
+        "fr": "Bugfixes : URL VIS-2 dans le dropdown avec le vrai routing (projet=path, vue=#hash). Nouveaux clients sur entree vide → page d'accueil. iframe sans bande noire en bas/droite.",
+        "it": "Bugfixes: URL VIS-2 nel dropdown con routing reale (progetto=path, view=#hash). Nuovi client su voce vuota → landing-page. iframe senza striscia nera in basso/destra.",
+        "es": "Bugfixes: URL VIS-2 en el dropdown con routing real (proyecto=path, vista=#hash). Clientes nuevos en entrada vacia → landing-page. iframe sin franja negra abajo/derecha.",
+        "pl": "Bugfixy: URL-e VIS-2 w dropdown z faktycznym routingiem (projekt=path, view=#hash). Nowi klienci na pustym wpisie → landing-page. iframe bez czarnego paska na dole/po prawej.",
+        "uk": "Bugfixes: URL VIS-2 у dropdown із реальним routing (project=path, view=#hash). Нові клієнти на порожньому записі → landing-page. iframe без чорної смуги знизу/справа.",
+        "zh-cn": "Bug 修复：VIS-2 下拉框 URL 使用真实路由（project=路径，view=#hash）。新客户端默认空条目 → 着陆页。iframe 无底部/右侧黑边。"
+      },
       "1.25.0": {
         "en": "Final wave: optional `trustProxy` toggle for reverse-proxy setups. Plus schema-from-instanceObjects + 11 new tests for migration / GC / mDNS-error.",
         "de": "Finale Welle: optionaler `trustProxy`-Toggle für Reverse-Proxy (Cookies Secure wenn X-Forwarded-Proto=https). Plus schema-from-instanceObjects + 11 neue Tests für Migration / GC / mDNS-Error.",

@@ -155,6 +155,12 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
+### **WORK IN PROGRESS**
+
+- **VIS-2-URLs im Mode-Dropdown nach echtem VIS-2-Routing**: Projekt als Pfad-Segment, View als Hash-Fragment (`#<view>`). Vorher `?<projekt>` als Query — Deep-Links liefen ins Leere.
+- **Default-Mode für neue Clients = no-choice-Eintrag** → Landing-Page bis der User im Dropdown eine URL wählt. Vorher fiel der Default auf die erste discovered URL, Landing war praktisch nie sichtbar.
+- **iframe-Wrapper ohne sichtbaren Rahmen**: `display:block` + `position:fixed` + `100vw/100vh` — kein schwarzer Streifen mehr unten/rechts auf WebView-Displays.
+
 ### 1.25.0 (2026-05-06)
 
 - **Reverse-Proxy-Support** (optional, Default aus): neuer Config-Toggle „Trust Reverse Proxy Headers". `req.ip`/`req.protocol` aus `X-Forwarded-*`, Cookies `Secure` bei `X-Forwarded-Proto=https`.
