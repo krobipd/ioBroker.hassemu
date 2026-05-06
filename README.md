@@ -127,7 +127,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.28.0 (2026-05-06)
 
 - **Mehrsprachig**: Datenpunkt-Namen, -Beschreibungen und Dropdown-Werte jetzt in der ioBroker-Systemsprache (11 Sprachen). Logs sind seit v1.27.0 lokalisiert.
 
@@ -148,12 +148,6 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 - **VIS-2-URLs im Mode-Dropdown jetzt korrekt**: `vis-2/index.html#<view>` (kein `.0`-Suffix, kein Projekt-Pfad-Segment). Quelle ist die io-package.json des VIS-2-Adapters (`localLinks.Runtime.link`).
 - **VIS-1 (klassisch) vollständig unterstützt**: pro Projekt ein `?<projekt>`-Eintrag im Dropdown plus Sub-Views als `?<projekt>#<view>`. Quelle ist `visEdit.js:2225`.
 - **Logs in Systemsprache**: `info`/`warn`/`error` jetzt anhand `system.config.language` lokalisiert (11 Sprachen), `debug` bleibt englisch. Tech-Internas wie `mode='X'` und Modul-Präfixe sind raus.
-
-### 1.26.0 (2026-05-06)
-
-- **VIS-2-URLs im Mode-Dropdown nach echtem VIS-2-Routing**: Projekt als Pfad-Segment, View als Hash-Fragment (`#<view>`). Vorher `?<projekt>` als Query — Deep-Links liefen ins Leere.
-- **Default-Mode für neue Clients = no-choice-Eintrag** → Landing-Page bis der User im Dropdown eine URL wählt. Vorher fiel der Default auf die erste discovered URL, Landing war praktisch nie sichtbar.
-- **iframe-Wrapper ohne sichtbaren Rahmen**: `display:block` + `position:fixed` + `100vw/100vh` — kein schwarzer Streifen mehr unten/rechts auf WebView-Displays.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
