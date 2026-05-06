@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.27.0",
     "news": {
+      "NEXT": {
+        "en": "Bugfix: VIS-2 dropdown now lists each project separately via ?<project> query (Runtime.tsx:920-923 parses location.search). Pre-v1.27.1 only the active project was usable.",
+        "de": "Bugfix: VIS-2-Dropdown listet jedes Projekt einzeln per ?<projekt>-Query (Runtime.tsx:920-923 parst location.search). Vor v1.27.1 war nur das aktive Projekt nutzbar.",
+        "ru": "Bugfix: VIS-2-dropdown теперь показывает каждый проект отдельно через ?<project> (Runtime.tsx:920-923 парсит location.search). До v1.27.1 был доступен только активный проект.",
+        "pt": "Bugfix: dropdown VIS-2 lista cada projeto separadamente via ?<project> (Runtime.tsx:920-923 parseia location.search). Antes da v1.27.1 só o projeto ativo era usável.",
+        "nl": "Bugfix: VIS-2-dropdown toont nu elk project apart via ?<project> (Runtime.tsx:920-923 parseert location.search). Vóór v1.27.1 was alleen het actieve project bruikbaar.",
+        "fr": "Bugfix : le dropdown VIS-2 liste chaque projet séparément via ?<project> (Runtime.tsx:920-923 analyse location.search). Avant v1.27.1 seul le projet actif était utilisable.",
+        "it": "Bugfix: il dropdown VIS-2 elenca ora ogni progetto separatamente tramite ?<project> (Runtime.tsx:920-923 analizza location.search). Prima della v1.27.1 solo il progetto attivo era utilizzabile.",
+        "es": "Bugfix: el dropdown VIS-2 lista cada proyecto por separado vía ?<project> (Runtime.tsx:920-923 analiza location.search). Antes de v1.27.1 solo el proyecto activo era usable.",
+        "pl": "Bugfix: dropdown VIS-2 wyświetla teraz każdy projekt osobno przez ?<project> (Runtime.tsx:920-923 parsuje location.search). Przed v1.27.1 tylko aktywny projekt był dostępny.",
+        "uk": "Bugfix: dropdown VIS-2 тепер перелічує кожен проект окремо через ?<project> (Runtime.tsx:920-923 парсить location.search). До v1.27.1 був доступний лише активний проект.",
+        "zh-cn": "Bug 修复：VIS-2 下拉框现在通过 ?<project> 单独列出每个项目（Runtime.tsx:920-923 解析 location.search）。v1.27.1 之前仅能访问活动项目。"
+      },
       "1.27.0": {
         "en": "Bugfixes: VIS-2 URLs in dropdown now correct (vis-2/index.html#view). VIS-1 fully supported (?<project> + #view). info/warn/error logs in system language, debug stays English.",
         "de": "Bugfixes: VIS-2-URLs im Dropdown jetzt korrekt (vis-2/index.html#view). VIS-1 voll unterstützt (?<projekt> + #view). info/warn/error-Logs in Systemsprache, debug bleibt englisch.",

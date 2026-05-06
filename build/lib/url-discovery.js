@@ -153,8 +153,7 @@ class UrlDiscovery {
       if (!name || name.startsWith("_")) {
         continue;
       }
-      const isVis1 = adapterName === "vis.0";
-      const runtimeUrl = isVis1 ? `${protocol}://${ip}:${port}/${urlPath}/index.html?${encodeURIComponent(name)}` : `${protocol}://${ip}:${port}/${urlPath}/index.html`;
+      const runtimeUrl = `${protocol}://${ip}:${port}/${urlPath}/index.html?${encodeURIComponent(name)}`;
       const safeBase = (0, import_coerce.coerceSafeUrl)(runtimeUrl);
       if (!safeBase) {
         continue;

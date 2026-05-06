@@ -356,25 +356,27 @@ describe('UrlDiscovery', () => {
             expect(debugs.some(l => l.includes('getForeignObjectsAsync failed'))).to.be.true;
         });
 
-        it('finds VIS-2 and builds the runtime URL (single top-level entry, no project in path)', async () => {
+        it('finds VIS-2 multi-project with ?<project> query (Runtime.tsx:920-923 parses window.location.search)', async () => {
             adapter._instances = {
                 'system.adapter.web.0': enabledInstance({
                     native: { bind: '192.168.1.10', port: 8082, secure: false },
                 }),
             };
-            // _globals must be skipped (starts with `_`); readme.txt is not a folder.
-            // Multiple project folders share the same runtime URL — VIS-2 picks the
-            // active project via stored config, not via URL. Last-folder-wins for the label.
+            // Each project gets its own URL via ?<project> — VIS-2 reads it from
+            // window.location.search at startup. Without the query, the runtime
+            // falls back to localStorage/main, which is not navigable from the
+            // hassemu dropdown.
             adapter._dirs['vis-2.0'] = [
                 { file: 'main', isDir: true },
+                { file: 'kitchen', isDir: true },
                 { file: '_globals', isDir: true },
                 { file: 'readme.txt', isDir: false },
             ];
             const result = await discovery.collect();
-            expect(result['http://192.168.1.10:8082/vis-2/index.html']).to.equal('VIS-2: main');
-            // Project-named URLs are not built (project is not in the path):
-            expect(result['http://192.168.1.10:8082/vis-2.0/main/index.html']).to.be.undefined;
-            expect(result['http://192.168.1.10:8082/vis-2/index.html?main']).to.be.undefined;
+            expect(result['http://192.168.1.10:8082/vis-2/index.html?main']).to.equal('VIS-2: main');
+            expect(result['http://192.168.1.10:8082/vis-2/index.html?kitchen']).to.equal('VIS-2: kitchen');
+            // _globals filtered (starts with '_')
+            expect(Object.keys(result).some(k => k.includes('_globals'))).to.be.false;
         });
 
         it('finds VIS-1 projects with ?<project> query (one URL per project)', async () => {
@@ -419,7 +421,7 @@ describe('UrlDiscovery', () => {
             };
             adapter._dirs['vis-2.0'] = [{ file: 'main', isDir: true }];
             const result = await discovery.collect();
-            expect(result['https://192.168.1.10:8082/vis-2/index.html']).to.equal('VIS-2: main');
+            expect(result['https://192.168.1.10:8082/vis-2/index.html?main']).to.equal('VIS-2: main');
         });
 
         it('skips VIS discovery when web.0 is missing', async () => {
@@ -450,10 +452,10 @@ describe('UrlDiscovery', () => {
             });
             const result = await discovery.collect();
             // Top-level project still listed
-            expect(result['http://192.168.1.10:8082/vis-2/index.html']).to.equal('VIS-2: main');
+            expect(result['http://192.168.1.10:8082/vis-2/index.html?main']).to.equal('VIS-2: main');
             // Plus per-view entries
-            expect(result['http://192.168.1.10:8082/vis-2/index.html#Lights']).to.equal('VIS-2: main / Lights');
-            expect(result['http://192.168.1.10:8082/vis-2/index.html#Kitchen']).to.equal('VIS-2: main / Kitchen');
+            expect(result['http://192.168.1.10:8082/vis-2/index.html?main#Lights']).to.equal('VIS-2: main / Lights');
+            expect(result['http://192.168.1.10:8082/vis-2/index.html?main#Kitchen']).to.equal('VIS-2: main / Kitchen');
         });
 
         it('handles vis-views.json without `views` wrapper (legacy VIS-2 layout)', async () => {
@@ -468,10 +470,10 @@ describe('UrlDiscovery', () => {
                 __settings: { foo: 'bar' }, // Meta-Key, sollte gefiltert
             });
             const result = await discovery.collect();
-            expect(result['http://192.168.1.10:8082/vis-2/index.html#MainView']).to.equal(
+            expect(result['http://192.168.1.10:8082/vis-2/index.html?home#MainView']).to.equal(
                 'VIS-2: home / MainView',
             );
-            expect(result['http://192.168.1.10:8082/vis-2/index.html#BedRoom']).to.equal('VIS-2: home / BedRoom');
+            expect(result['http://192.168.1.10:8082/vis-2/index.html?home#BedRoom']).to.equal('VIS-2: home / BedRoom');
             // __settings should not become a view-URL
             expect(Object.values(result).some(v => v.includes('__settings'))).to.be.false;
         });
@@ -483,7 +485,7 @@ describe('UrlDiscovery', () => {
             adapter._dirs['vis-2.0'] = [{ file: 'minimal', isDir: true }];
             // No file registered → readFileAsync throws → addVisViews skips silently
             const result = await discovery.collect();
-            expect(result['http://192.168.1.10:8082/vis-2/index.html']).to.equal('VIS-2: minimal');
+            expect(result['http://192.168.1.10:8082/vis-2/index.html?minimal']).to.equal('VIS-2: minimal');
             expect(Object.keys(result)).to.have.lengthOf(1); // only top-level
         });
 
@@ -495,7 +497,7 @@ describe('UrlDiscovery', () => {
             adapter._files['vis-2.0:broken/vis-views.json'] = '{ this is not json';
             const result = await discovery.collect();
             // Top-level still works, but no view-entries because parse failed
-            expect(result['http://192.168.1.10:8082/vis-2/index.html']).to.equal('VIS-2: broken');
+            expect(result['http://192.168.1.10:8082/vis-2/index.html?broken']).to.equal('VIS-2: broken');
             expect(Object.keys(result)).to.have.lengthOf(1);
         });
 

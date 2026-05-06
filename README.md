@@ -155,6 +155,10 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
+### **WORK IN PROGRESS**
+
+- **VIS-2 Multi-Project im Dropdown**: jedes Projekt bekommt jetzt eine eigene URL `?<projekt>` plus Sub-Views als `?<projekt>#<view>`. v1.27.0 hatte nur das aktive Projekt zugänglich.
+
 ### 1.27.0 (2026-05-06)
 
 - **VIS-2-URLs im Mode-Dropdown jetzt korrekt**: `vis-2/index.html#<view>` (kein `.0`-Suffix, kein Projekt-Pfad-Segment). Quelle ist die io-package.json des VIS-2-Adapters (`localLinks.Runtime.link`).
