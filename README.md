@@ -11,153 +11,107 @@
 
 <img src="https://raw.githubusercontent.com/krobipd/ioBroker.hassemu/main/admin/hassemu.svg" width="100" />
 
-ioBroker adapter that emulates a [Home Assistant](https://www.home-assistant.io) server so displays which only accept an HA server can show any web URL on your network instead.
+Emulates a Home Assistant server so displays that only accept an HA dashboard show any web URL instead.
 
 ---
 
-## When to use this adapter
+## What it's for
 
-**Use it for displays that only speak the HA dashboard protocol but should render something else** — VIS, Grafana, a Node-RED dashboard, anything served over HTTP. Examples: Shelly Wall Display, Amazon Echo Show with the HA Companion App, Android tablets running the HA app, in-wall panels with built-in HA support.
-
----
-
-## Features
-
-- **One URL per display** — each display gets its own channel under `clients.*` with a dropdown of discovered ioBroker URLs (VIS, VIS-2, Admin tiles) or a free-text URL
-- **Master switch** — `global.enabled` points every display at the same URL; flip it back and each display picks up its own again
-- **mDNS discovery** — displays find the adapter automatically on the LAN
-- **Home Assistant OAuth2 flow** — optional username/password
-- **Cookie-based identification** — displays keep their URL across restarts, IP changes and renames
+Displays that speak only the HA dashboard protocol — Shelly Wall Display, Echo Show with the HA Companion App, Android tablets running the HA app, in-wall HA panels. The adapter pretends to be HA; the display ends up showing whatever URL you set (VIS, Grafana, Node-RED, anything HTTP).
 
 ---
 
 ## Requirements
 
-- **Node.js >= 22**
-- **ioBroker js-controller >= 7.0.7**
-- **ioBroker Admin >= 7.8.23**
-- **ioBroker web >= 8.0.0**
+- Node.js ≥ 22
+- ioBroker js-controller ≥ 7.0.7
+- ioBroker Admin ≥ 7.8.23
+- ioBroker web ≥ 8.0.0
 
 ---
 
 ## Ports
 
-| Port | Protocol | Purpose                                       | Configurable |
-| ---- | -------- | --------------------------------------------- | ------------ |
-| 8123 | TCP/HTTP | Home Assistant emulation (HA standard port)   | No — fixed   |
-| 5353 | UDP      | mDNS service broadcast (only if mDNS enabled) | No           |
+| Port | Use |
+| --- | --- |
+| 8123 / TCP | HA emulation (fixed, HA standard) |
+| 5353 / UDP | mDNS broadcast (only if mDNS is on) |
 
-> **Single instance per host.** Port 8123 is the HA standard and required for displays to find the server. Running a second hassemu instance on the same host fails with `EADDRINUSE` — js-controller will keep restarting it. If you have multiple ioBroker hosts in the same LAN, only one of them can run hassemu (or assign different bind addresses).
+One instance per host. Port 8123 is HA-fixed. With multiple ioBroker hosts on the same LAN, only one of them runs hassemu.
 
 ---
 
 ## Configuration
 
-The Admin UI configures the server. Redirect URLs are set via the state tree (see below).
-
-| Option                  | Description                                                      | Default       |
-| ----------------------- | ---------------------------------------------------------------- | ------------- |
-| **Bind to Interface**   | Network interface to listen on                                   | 0.0.0.0 (all) |
-| **Service Name**        | Name broadcast via mDNS, shown as the server name on the display | `ioBroker`    |
-| **mDNS Enabled**        | Broadcast `_home-assistant._tcp` on the LAN. When **off**, displays must be configured manually with the adapter URL (`http://<ioBroker-IP>:8123`) — no auto-discovery. | `true`        |
-| **Auth Required**       | Check credentials the display sends during login                 | `false`       |
-| **Username / Password** | Used when _Auth Required_ is on (password encrypted at rest)     | `admin` / —   |
+| Option | What | Default |
+| --- | --- | --- |
+| Bind | Network interface | 0.0.0.0 |
+| Service Name | Name the display sees | ioBroker |
+| mDNS | LAN auto-discovery. Off → set `http://<ioBroker-IP>:8123` on the display by hand. | on |
+| Auth | Login required | off |
+| Username / Password | When Auth is on | admin / — |
 
 ---
 
-## State Tree
+## State tree
 
 ```
 hassemu.0.
 ├── info.
-│   ├── connection      — Server is running (bool)
-│   ├── serverUuid      — Stable server identity (read-only, persists across restarts)
-│   └── refresh_urls    — Button: re-scan VIS / Admin URLs (see "When things refresh")
+│   ├── connection      — server is running
+│   ├── serverUuid      — server identity (read-only)
+│   └── refresh_urls    — re-scan URL list (button, set to true)
 ├── global.
-│   ├── enabled         — Master switch (see "How the redirect resolves")
-│   ├── mode            — Dropdown URL choice — applies to every client whose mode is `global`
-│   └── manualUrl       — Free-text URL, used when global.mode = `manual`
+│   ├── enabled         — master switch
+│   ├── mode            — URL choice used by every client whose mode is `global`
+│   └── manualUrl       — free-text URL, used when global.mode = `manual`
 └── clients.
-    └── <id>            — One channel per display. Channel name = reverse-DNS hostname if resolvable, else the IP
-        ├── mode        — Per-client URL choice (dropdown)
-        ├── manualUrl   — Free-text URL, used when mode = `manual`
-        ├── ip          — Last observed client IP
-        └── remove      — Button: forget this client (channel + cookie + token deleted)
+    └── <id>            — one channel per display (channel name = hostname or IP)
+        ├── mode        — per-client URL choice
+        ├── manualUrl   — free-text URL, used when mode = `manual`
+        ├── ip          — last seen client IP
+        └── remove      — forget this client (button, set to true)
 ```
 
-### How the redirect resolves
+### Which URL does the display get?
 
-For every visit the adapter looks at `clients.<id>.mode`:
+| `mode`        | URL                            |
+| ------------- | ------------------------------ |
+| `global`      | use `global.mode`              |
+| `manual`      | use `manualUrl`                |
+| a URL         | that URL                       |
+| empty (`---`) | landing page                   |
 
-| `mode`         | redirect target                  |
-| -------------- | -------------------------------- |
-| `global`       | use `global.mode` (one level up) |
-| `manual`       | `clients.<id>.manualUrl`         |
-| a URL          | that URL                         |
-| empty (`---`)  | landing page                     |
-
-Master switch `global.enabled`:
+Master switch:
 - **on** — all displays follow `global.mode`
-- **off** — all displays go back to `---` (landing page until you pick a URL)
+- **off** — all displays go back to `---`
 - new displays always start at `---`
 
 ---
 
-## When things refresh
+## Refresh
 
-When you change a display's URL, the display takes up to ~30 seconds to switch over — it checks for changes in that interval and reloads itself, no reboot needed.
+URL change: the display reloads itself within ~30 seconds.
 
-The dropdown of available URLs refreshes by itself when you install, remove or reconfigure another adapter. The only thing it doesn't notice on its own is when you add or rename a **VIS-2 project or view** — for those, set `info.refresh_urls` to `true` afterwards and the dropdown picks them up.
-
----
-
-## Troubleshooting
-
-### Display cannot find the server
-
-The adapter broadcasts `_home-assistant._tcp` via mDNS. If the display does not find the server automatically:
-
-1. Check the adapter log for `mDNS: Broadcasting`.
-2. Verify the service is visible from another host:
-    ```bash
-    # macOS
-    dns-sd -B _home-assistant._tcp
-    # Linux (with avahi-utils)
-    avahi-browse _home-assistant._tcp -r -t
-    ```
-3. Make sure UDP 5353 is not blocked by a firewall.
-4. If mDNS is not usable on your LAN, set the URL manually on the display: `http://<ioBroker-IP>:8123`.
-
-### Display is redirected to the wrong dashboard
-
-Look at `clients.<id>.mode` (the device id is shown on the landing page, or read it from `clients.<id>.ip`):
-
-- `global` → look at `global.mode` / `global.manualUrl`
-- `manual` → look at `clients.<id>.manualUrl`
-- a URL → that's where the display goes
-
-Empty `mode` serves the landing page — pick one of the above.
-
-### URL was changed but the display still shows the old dashboard
-
-The auto-reload happens within ~30 s (see *When things refresh*). If a display is still stuck after that, it was probably wired to the target dashboard directly (bypassing the adapter) or it's caching aggressively. Reboot the display, or use its built-in "reload" function if it has one.
-
-### Display keeps getting a new ID
-
-The display's WebView is dropping the cookie on restart (aggressive privacy settings). Delete stale channels via the `remove` button — there's nothing the adapter can do beyond that.
-
-### Reverse DNS shows nothing
-
-Reverse DNS on a home LAN depends on your router/DHCP server and often fails. The IP is used as the client's name when no hostname is available.
+Dropdown of available URLs: refreshes by itself. The exception is VIS-2 project/view edits — set `info.refresh_urls` to `true` after adding or renaming one.
 
 ---
 
-## Upgrading
+## When something is off
 
-- **1.2.0 → 1.15.x** — no manual migration needed. New datapoints (`info.refresh_urls`, `info.serverUuid`) appear automatically. If the mode-dropdown is empty after upgrading from v1.2.x or v1.3.0/v1.3.1, restart the adapter once — the v1.3.2 schema-repair runs on every startup since v1.3.2.
-- **1.1.6 → 1.2.0** — `clients.<id>.visUrl` and `global.visUrl` replaced by `mode` (dropdown) + `manualUrl` (free text). Migration runs automatically. Scripts pointing at the old `visUrl` paths need to be updated to the new datapoints in the State Tree above.
-- **1.1.1 → 1.1.2** — `clients.<id>.hostname` datapoint dropped, value moves into the channel name. Migrates automatically.
-- **1.0.x / 1.1.0 → 1.1.1** — existing redirect URL is moved into the state tree. 1.2.0 then migrates further as above.
+**Display can't find the server** — check the log for `mDNS: Broadcasting`. If mDNS doesn't work on your LAN, set `http://<ioBroker-IP>:8123` on the display by hand.
+
+**Display shows the wrong page** — check `clients.<id>.mode`. The device id is on the landing page (or in `clients.<id>.ip`).
+
+**URL changed, display still shows the old one** — the auto-reload takes up to 30 seconds. After that, reboot the display.
+
+**Display gets a new ID every time** — display isn't keeping its cookie. Delete stale channels via the `remove` button.
+
+---
+
+## Upgrade
+
+Migrations run on adapter start. If you have scripts writing the old `visUrl` datapoint, switch them to `mode` / `manualUrl`.
 
 ---
 
