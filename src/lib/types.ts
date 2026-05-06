@@ -77,7 +77,15 @@ export interface SessionData {
 export type AdapterInterface = Pick<
     ioBroker.Adapter,
     'log' | 'setInterval' | 'clearInterval' | 'setTimeout' | 'clearTimeout'
->;
+> & {
+    /**
+     * ioBroker system language (`'en'`, `'de'`, …). Read once in `onReady` from
+     * `system.config.language`, EN-Fallback. Library modules use this for
+     * `tLog()` lookups so info/warn/error messages appear in the user's
+     * language. Debug stays English (Maintainer-Diagnose).
+     */
+    readonly systemLanguage: string;
+};
 
 /** Entry returned by URL discovery: key = URL, value = human-readable label. */
 export type UrlStates = Record<string, string>;

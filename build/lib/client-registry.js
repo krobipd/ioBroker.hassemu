@@ -35,6 +35,7 @@ module.exports = __toCommonJS(client_registry_exports);
 var import_node_crypto = __toESM(require("node:crypto"));
 var import_coerce = require("./coerce");
 var import_constants = require("./constants");
+var import_i18n_logs = require("./i18n-logs");
 var import_network = require("./network");
 const CLIENTS_PREFIX = "clients.";
 class ClientRegistry {
@@ -166,7 +167,7 @@ class ClientRegistry {
       try {
         return await promise;
       } catch (err) {
-        this.adapter.log.warn(
+        this.adapter.log.debug(
           `client-registry: createClient failed for IP ${ip}: ${err instanceof Error ? err.message : String(err)}`
         );
         throw err;
@@ -254,15 +255,13 @@ class ClientRegistry {
         return;
       case "sentinel":
         if (result.value === import_constants.MODE_MANUAL && !record.manualUrl) {
-          this.adapter.log.warn(
-            `client-registry: ${id} mode set to 'manual' but manualUrl is empty \u2014 fill clients.${id}.manualUrl to redirect`
-          );
+          this.adapter.log.warn((0, import_i18n_logs.tLog)(this.adapter.systemLanguage, "clientModeManualButEmpty", { id }));
         }
         record.mode = result.value;
         await this.adapter.setStateAsync(`clients.${id}.mode`, { val: result.value, ack: true });
         return;
       case "rejected-unsafe-url":
-        this.adapter.log.warn(`client-registry: rejected unsafe mode value for ${id}: '${result.raw}'`);
+        this.adapter.log.warn((0, import_i18n_logs.tLog)(this.adapter.systemLanguage, "clientModeUnsafe", { id, value: result.raw }));
         await this.adapter.setStateAsync(`clients.${id}.mode`, { val: record.mode, ack: true });
         return;
       case "url":
@@ -290,16 +289,14 @@ class ClientRegistry {
     }
     const result = (0, import_coerce.parseManualUrlWrite)(rawValue);
     if (!result.ok) {
-      this.adapter.log.warn(`client-registry: rejected unsafe manualUrl for ${id}`);
+      this.adapter.log.warn((0, import_i18n_logs.tLog)(this.adapter.systemLanguage, "clientManualUrlUnsafe", { id }));
       await this.adapter.setStateAsync(`clients.${id}.manualUrl`, { val: (_a = record.manualUrl) != null ? _a : "", ack: true });
       return;
     }
     record.manualUrl = result.safe;
     await this.adapter.setStateAsync(`clients.${id}.manualUrl`, { val: (_b = result.safe) != null ? _b : "", ack: true });
     if (record.mode === import_constants.MODE_MANUAL && !result.safe) {
-      this.adapter.log.warn(
-        `client-registry: ${id} manualUrl cleared while mode='manual' \u2014 display will hit the setup page`
-      );
+      this.adapter.log.warn((0, import_i18n_logs.tLog)(this.adapter.systemLanguage, "clientManualUrlClearedWhileManual", { id }));
     }
   }
   /**
@@ -326,7 +323,7 @@ class ClientRegistry {
       await Promise.all(writes);
     }
     if (changed > 0) {
-      this.adapter.log.info(`client-registry: bulk-set mode='${value}' on ${changed} client(s)`);
+      this.adapter.log.debug(`bulkSetMode applied to ${changed} client(s)`);
     }
   }
   /**
@@ -348,9 +345,9 @@ class ClientRegistry {
     try {
       await this.adapter.delObjectAsync(`clients.${id}`, { recursive: true });
     } catch (err) {
-      this.adapter.log.warn(`client-registry: delObject failed for ${id}: ${String(err)}`);
+      this.adapter.log.debug(`client-registry: delObject failed for ${id}: ${String(err)}`);
     }
-    this.adapter.log.info(`Client forgotten: ${id}`);
+    this.adapter.log.info((0, import_i18n_logs.tLog)(this.adapter.systemLanguage, "clientForgotten", { id }));
   }
   /**
    * Updates the mode dropdown states (`common.states`) on every client's mode datapoint.
@@ -386,7 +383,9 @@ class ClientRegistry {
     this.trackInMemory(record);
     await this.createObjects(record);
     this.touchLastSeen(record);
-    this.adapter.log.info(`New client registered: ${id}${ip ? ` (${hostname != null ? hostname : ip})` : ""}, mode='${mode}'`);
+    this.adapter.log.info(
+      ip ? (0, import_i18n_logs.tLog)(this.adapter.systemLanguage, "newClientRegisteredWithHost", { id, hostname: hostname != null ? hostname : ip }) : (0, import_i18n_logs.tLog)(this.adapter.systemLanguage, "newClientRegistered", { id })
+    );
     if (ip) {
       this.recordNewClientIp(ip);
     }
@@ -410,9 +409,7 @@ class ClientRegistry {
     }
     entry.count += 1;
     if (entry.count > 3 && now - entry.warnedAt > HOUR) {
-      this.adapter.log.warn(
-        `client-registry: IP ${ip} created ${entry.count} clients in <1h \u2014 display likely not persisting cookies (privacy mode? refresh bug?)`
-      );
+      this.adapter.log.warn((0, import_i18n_logs.tLog)(this.adapter.systemLanguage, "cookieBurstDetected", { ip, count: entry.count }));
       entry.warnedAt = now;
     }
     this.newClientBurst.set(ip, entry);
