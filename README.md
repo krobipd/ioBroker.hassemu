@@ -98,7 +98,7 @@ The adapter reads `clients.<id>.mode` on every visit:
 
 ### Master switch
 
-When `global.enabled` is **on**, every client's `mode` is set to `global` and all displays follow `global.mode`. When **off**, every client's `mode` is set to the first discovered URL (or `manual` if nothing was discovered). New clients pick up the same default.
+When `global.enabled` is **on**, every client's `mode` is set to `global` and all displays follow `global.mode`. When **off**, every client's `mode` is reset to the empty entry (`---`) — each display shows the landing page until you pick a URL for it. New clients also start on that empty entry; the adapter never auto-picks a URL for you.
 
 ---
 

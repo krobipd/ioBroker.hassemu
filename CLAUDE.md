@@ -6,7 +6,7 @@
 
 **ioBroker HASS Emulator** — emuliert einen minimalen HA-Server für Geräte, die ein HA-Dashboard erwarten → leitet auf beliebige URL um.
 
-- **Version:** 1.25.0 npm latest (deploy success 2026-05-06). 28 Releases in einer Auto-Mode-Welle (2026-05-05/06). **81/81 Roadmap-Items 100% durch — alle 10 Phasen komplett (A+B+C+D+E+F+G+H+I+J).** Roadmap: `/Volumes/ssd/ioBroker/Ressourcen/hassemu/features-roadmap.md`
+- **Version:** 1.26.0 npm latest (deploy 2026-05-06). v1.26.0 Post-Roadmap-Bugfix: VIS-2-URLs (Pfad+Hash statt Query, Quelle visEngine.tsx:430-455), Default-Mode für neue Clients = no-choice → Landing-Page (vorher fiel Default auf erste discovered URL), iframe-CSS gegen baseline-gap. Roadmap: `/Volumes/ssd/ioBroker/Ressourcen/hassemu/features-roadmap.md` (81/81 → in v1.25.0 abgeschlossen)
 - **GitHub:** https://github.com/krobipd/ioBroker.hassemu
 - **npm:** https://www.npmjs.com/package/iobroker.hassemu
 - **Repository PR:** ioBroker/ioBroker.repositories#5793
@@ -72,7 +72,7 @@ src/lib/webserver.ts         → Fastify HTTP Server + HA API Emulation + Cookie
     3. `clients.<id>.mode = <URL>` → diese URL
     4. sonst → 200 HTML mit der Landing-Seite
 
-## Tests (352 unit + 57 package + 1 integration = 410)
+## Tests (353 unit + 57 package + 1 integration = 411)
 
 Tests leben seit v1.1.6 neben dem Source als `src/lib/*.test.ts` und laufen direkt via `ts-node/register` (offizieller `ioBroker.example/TypeScript`-Standard).
 
@@ -93,6 +93,7 @@ test/integration.js              → @iobroker/testing Integration-Tests
 
 | Version | Highlights                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.26.0  | Bugfix-Bundle: VIS-2-URLs nach echtem Routing (Pfad-Segment + Hash-Fragment, Quelle iobroker.vis-2 v2.13.19 visEngine.tsx:430-455 — vorher `?<projekt>` Query, Deep-Links kaputt), Default-Mode für neue Clients ist `'0'` (no-choice → Landing-Page, vorher erste discovered URL), Master-Switch=off räumt analog auf no-choice, iframe-Wrapper-CSS gegen baseline-gap (display:block, position:fixed, 100vw/100vh). Tests 352→353                                                                                                                                                                                                                                                                                                                                                                |
 | 1.25.0  | Final wave: optionaler `trustProxy`-Config-Toggle (C11), schema-from-instanceObjects via JSON-Import (F3), F7 re-reviewed-no-doubles, `decideGcAction`+`decideLegacyVisMigration` als pure decision-helpers (J1+J2), J4 covered by J6. Tests 342→352                                                                                                                                                                                                                                                                                                                                                |
 | 1.24.0  | J3: 2 neue Tests für NAT-Cookie-Schutz (UA-Hash-Bucket-Trennung — different-UA-distinct-clients, same-UA-collapse). Tests 339→341                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | 1.23.0  | F2: `parseModeWrite`-Helper in coerce.ts — handleModeWrite in beiden Klassen delegiert an einen Validator (no-choice/non-string/sentinel/disallowed/unsafe-url/url). Vorher ~80% dupliziert                                                                                                                                                                                                                                                                                                                                                                                                          |
