@@ -36,6 +36,7 @@ var import_node_crypto = __toESM(require("node:crypto"));
 var import_coerce = require("./coerce");
 var import_constants = require("./constants");
 var import_i18n_logs = require("./i18n-logs");
+var import_i18n_states = require("./i18n-states");
 var import_network = require("./network");
 const CLIENTS_PREFIX = "clients.";
 class ClientRegistry {
@@ -469,8 +470,8 @@ class ClientRegistry {
   buildModeStates() {
     return (0, import_coerce.buildDropdownStates)(
       {
-        [import_constants.MODE_GLOBAL]: "Global URL",
-        [import_constants.MODE_MANUAL]: "Manual URL"
+        [import_constants.MODE_GLOBAL]: (0, import_i18n_states.tLabel)("globalUrl"),
+        [import_constants.MODE_MANUAL]: (0, import_i18n_states.tLabel)("manualUrl")
       },
       this.currentUrlStates
     );
@@ -496,7 +497,7 @@ class ClientRegistry {
       this.adapter.extendObjectAsync(`clients.${id}.mode`, {
         type: "state",
         common: {
-          name: "Redirect mode",
+          name: (0, import_i18n_states.tName)("clientMode"),
           // 'mixed' future-proofs against the upcoming js-controller
           // strict-type cast (see govee-smart v1.11.0 pattern).
           type: "mixed",
@@ -511,7 +512,7 @@ class ClientRegistry {
       this.adapter.extendObjectAsync(`clients.${id}.manualUrl`, {
         type: "state",
         common: {
-          name: "Manual URL",
+          name: (0, import_i18n_states.tName)("clientManualUrl"),
           type: "string",
           role: "url",
           read: true,
@@ -522,13 +523,20 @@ class ClientRegistry {
       }),
       this.adapter.setObjectNotExistsAsync(`clients.${id}.ip`, {
         type: "state",
-        common: { name: "Client IP", type: "string", role: "info.ip", read: true, write: false, def: "" },
+        common: {
+          name: (0, import_i18n_states.tName)("clientIp"),
+          type: "string",
+          role: "info.ip",
+          read: true,
+          write: false,
+          def: ""
+        },
         native: {}
       }),
       this.adapter.setObjectNotExistsAsync(`clients.${id}.remove`, {
         type: "state",
         common: {
-          name: "Forget this client",
+          name: (0, import_i18n_states.tName)("clientRemove"),
           type: "boolean",
           role: "button",
           read: false,

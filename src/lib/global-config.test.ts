@@ -360,7 +360,7 @@ describe('GlobalConfig', () => {
                 0: '---',
                 'http://a/': 'A',
                 'http://b/': 'B',
-                [MODE_MANUAL]: 'Manual URL',
+                [MODE_MANUAL]: { en: 'Manual URL', de: 'Manuelle URL', ru: 'Ручной URL', pt: 'URL manual', nl: 'Handmatige URL', fr: 'URL manuelle', it: 'URL manuale', es: 'URL manual', pl: 'Ręczny URL', uk: 'Ручний URL', 'zh-cn': '手动 URL' },
             });
         });
 
@@ -384,7 +384,7 @@ describe('GlobalConfig', () => {
                     states: {
                         0: '---',
                         'http://old.local/vis-2.0/main/index.html#X': 'VIS-2: main / X',
-                        [MODE_MANUAL]: 'Manual URL',
+                        [MODE_MANUAL]: { en: 'Manual URL', de: 'Manuelle URL', ru: 'Ручной URL', pt: 'URL manual', nl: 'Handmatige URL', fr: 'URL manuelle', it: 'URL manuale', es: 'URL manual', pl: 'Ręczny URL', uk: 'Ручний URL', 'zh-cn': '手动 URL' },
                     },
                 },
                 native: {},

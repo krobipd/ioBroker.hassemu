@@ -23,6 +23,7 @@ import {
 } from './coerce';
 import { MODE_GLOBAL, MODE_MANUAL } from './constants';
 import { tLog } from './i18n-logs';
+import { tLabel, tName } from './i18n-states';
 import { generateClientId } from './network';
 import type { AdapterInterface, ClientRecord, UrlStates } from './types';
 
@@ -563,10 +564,13 @@ export class ClientRegistry {
         // v1.20.0 (F4): Helper aus coerce.ts. Vorher dupliziert mit global-config
         // (bis auf den zusätzlichen `global`-Sentinel hier, weil clients per
         // `mode='global'` an global delegieren können — global selbst nicht).
+        // v1.28.0: Sentinel-Werte sind Translation-Objects (`tLabel`) — Cast
+        // via `unknown as string` weil `UrlStates` aus Test-Stabilitäts-Gründen
+        // string-typed bleibt; Admin v6+ rendert Translation-Object korrekt.
         return buildDropdownStates(
             {
-                [MODE_GLOBAL]: 'Global URL',
-                [MODE_MANUAL]: 'Manual URL',
+                [MODE_GLOBAL]: tLabel('globalUrl') as unknown as string,
+                [MODE_MANUAL]: tLabel('manualUrl') as unknown as string,
             },
             this.currentUrlStates,
         );
@@ -602,7 +606,7 @@ export class ClientRegistry {
             this.adapter.extendObjectAsync(`clients.${id}.mode`, {
                 type: 'state',
                 common: {
-                    name: 'Redirect mode',
+                    name: tName('clientMode') as unknown as string,
                     // 'mixed' future-proofs against the upcoming js-controller
                     // strict-type cast (see govee-smart v1.11.0 pattern).
                     type: 'mixed',
@@ -617,7 +621,7 @@ export class ClientRegistry {
             this.adapter.extendObjectAsync(`clients.${id}.manualUrl`, {
                 type: 'state',
                 common: {
-                    name: 'Manual URL',
+                    name: tName('clientManualUrl') as unknown as string,
                     type: 'string',
                     role: 'url',
                     read: true,
@@ -628,13 +632,20 @@ export class ClientRegistry {
             }),
             this.adapter.setObjectNotExistsAsync(`clients.${id}.ip`, {
                 type: 'state',
-                common: { name: 'Client IP', type: 'string', role: 'info.ip', read: true, write: false, def: '' },
+                common: {
+                    name: tName('clientIp'),
+                    type: 'string',
+                    role: 'info.ip',
+                    read: true,
+                    write: false,
+                    def: '',
+                },
                 native: {},
             }),
             this.adapter.setObjectNotExistsAsync(`clients.${id}.remove`, {
                 type: 'state',
                 common: {
-                    name: 'Forget this client',
+                    name: tName('clientRemove'),
                     type: 'boolean',
                     role: 'button',
                     read: false,
