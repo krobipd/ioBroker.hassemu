@@ -127,7 +127,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.28.1 (2026-05-06)
 
 - Documentation: changelog entries (v1.27.x–v1.28.0) restored to English — a few bullets had been left in German. No code changes.
 
@@ -147,15 +147,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 
 - Bugfix: VIS-2 dropdown now lists each project separately via a `?<project>` query plus sub-views as `?<project>#<view>`. Pre-v1.27.1 only the active project was reachable.
 
-### 1.27.0 (2026-05-06)
-
-- Bugfix: VIS-2 URLs in the mode dropdown are now correct (`vis-2/index.html#<view>`, no `.0` suffix, no project path segment). Source is the VIS-2 adapter's `io-package.json` (`localLinks.Runtime.link`).
-- VIS-1 (classic) fully supported: one `?<project>` entry per project in the dropdown plus sub-views as `?<project>#<view>`. Source is `visEdit.js:2225`.
-- Logs in system language: `info`/`warn`/`error` are now localized via `system.config.language` (11 languages), `debug` stays English. Tech internals like `mode='X'` and module prefixes were dropped.
-
-Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
-
-## Support
+Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).## Support
 
 - [ioBroker Forum](https://forum.iobroker.net/)
 - [GitHub Issues](https://github.com/krobipd/ioBroker.hassemu/issues)

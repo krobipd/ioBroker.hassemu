@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.28.0",
+    "version": "1.28.1",
     "news": {
-      "NEXT": {
+      "1.28.1": {
         "en": "Documentation: changelog entries (v1.27.x–v1.28.0) restored to English — a few bullets had been left in German. No code changes.",
         "de": "Dokumentation: Changelog-Einträge (v1.27.x–v1.28.0) auf Englisch korrigiert — einige Bullets waren auf Deutsch geblieben. Keine Code-Änderungen.",
         "ru": "Документация: записи журнала изменений (v1.27.x–v1.28.0) восстановлены на английском — несколько пунктов оставались на немецком. Изменений в коде нет.",
@@ -93,19 +93,6 @@
         "pl": "Bugfixy: URL-e VIS-2 w dropdown z faktycznym routingiem (projekt=path, view=#hash). Nowi klienci na pustym wpisie → landing-page. iframe bez czarnego paska na dole/po prawej.",
         "uk": "Bugfixes: URL VIS-2 у dropdown із реальним routing (project=path, view=#hash). Нові клієнти на порожньому записі → landing-page. iframe без чорної смуги знизу/справа.",
         "zh-cn": "Bug 修复：VIS-2 下拉框 URL 使用真实路由（project=路径，view=#hash）。新客户端默认空条目 → 着陆页。iframe 无底部/右侧黑边。"
-      },
-      "1.25.0": {
-        "en": "Final wave: optional `trustProxy` toggle for reverse-proxy setups. Plus schema-from-instanceObjects + 11 new tests for migration / GC / mDNS-error.",
-        "de": "Finale Welle: optionaler `trustProxy`-Toggle für Reverse-Proxy (Cookies Secure wenn X-Forwarded-Proto=https). Plus schema-from-instanceObjects + 11 neue Tests für Migration / GC / mDNS-Error.",
-        "ru": "Финальная волна: опциональный `trustProxy` для reverse-proxy. Plus schema-from-instanceObjects + 11 новых тестов.",
-        "pt": "Onda final: toggle `trustProxy` opcional para reverse-proxy. Plus schema-from-instanceObjects + 11 novos testes.",
-        "nl": "Finale golf: optionele `trustProxy` voor reverse-proxy. Plus schema-from-instanceObjects + 11 nieuwe tests.",
-        "fr": "Vague finale : `trustProxy` optionnel pour reverse-proxy. Plus schema-from-instanceObjects + 11 nouveaux tests.",
-        "it": "Onda finale: `trustProxy` opzionale per reverse-proxy. Plus schema-from-instanceObjects + 11 nuovi test.",
-        "es": "Onda final: `trustProxy` opcional para reverse-proxy. Plus schema-from-instanceObjects + 11 nuevos tests.",
-        "pl": "Finalna fala: opcjonalny `trustProxy` dla reverse-proxy. Plus schema-from-instanceObjects + 11 nowych testow.",
-        "uk": "Фінальна хвиля: опціональний `trustProxy` для reverse-proxy. Plus schema-from-instanceObjects + 11 нових тестів.",
-        "zh-cn": "最后一波：可选 `trustProxy` 反向代理开关。另：schema-from-instanceObjects + 11 个新测试。"
       }
     },
     "titleLang": {

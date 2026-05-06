@@ -1,4 +1,10 @@
 # Older Changes
+## 1.27.0 (2026-05-06)
+
+- Bugfix: VIS-2 URLs in the mode dropdown are now correct (`vis-2/index.html#<view>`, no `.0` suffix, no project path segment). Source is the VIS-2 adapter's `io-package.json` (`localLinks.Runtime.link`).
+- VIS-1 (classic) fully supported: one `?<project>` entry per project in the dropdown plus sub-views as `?<project>#<view>`. Source is `visEdit.js:2225`.
+- Logs in system language: `info`/`warn`/`error` are now localized via `system.config.language` (11 languages), `debug` stays English. Tech internals like `mode='X'` and module prefixes were dropped.
+
 ## 1.26.0 (2026-05-06)
 
 - **VIS-2-URLs im Mode-Dropdown nach echtem VIS-2-Routing**: Projekt als Pfad-Segment, View als Hash-Fragment (`#<view>`). Vorher `?<projekt>` als Query — Deep-Links liefen ins Leere.
