@@ -70,48 +70,41 @@ The Admin UI configures the server. Redirect URLs are set via the state tree (se
 ```
 hassemu.0.
 ├── info.
-│   ├── connection               — Server is running (bool)
-│   ├── serverUuid               — Stable server identity reported via mDNS / discovery_info (read-only, persists across restarts)
-│   └── refresh_urls             — Button: re-scan VIS / VIS-2 / Admin URLs without restarting the adapter (set to true)
+│   ├── connection      — Server is running (bool)
+│   ├── serverUuid      — Stable server identity (read-only, persists across restarts)
+│   └── refresh_urls    — Button: re-scan VIS / Admin URLs (see "When things refresh")
 ├── global.
-│   ├── enabled                  — Master switch (see below)
-│   ├── mode                     — Dropdown of discovered URLs + 'manual'
-│   └── manualUrl                — Free-text URL used when global.mode='manual'
+│   ├── enabled         — Master switch (see "How the redirect resolves")
+│   ├── mode            — Dropdown URL choice — applies to every client whose mode is `global`
+│   └── manualUrl       — Free-text URL, used when global.mode = `manual`
 └── clients.
-    └── <id>                     — One channel per display. Channel name = reverse-DNS hostname if resolvable, else the IP
-        ├── mode                 — Dropdown: discovered URLs + 'global' (follow master) + 'manual' (use manualUrl)
-        ├── manualUrl            — Free-text URL used when mode='manual'
-        ├── ip                   — Last observed client IP
-        └── remove               — Button: forget this client (channel + cookie + token deleted)
+    └── <id>            — One channel per display. Channel name = reverse-DNS hostname if resolvable, else the IP
+        ├── mode        — Per-client URL choice (dropdown)
+        ├── manualUrl   — Free-text URL, used when mode = `manual`
+        ├── ip          — Last observed client IP
+        └── remove      — Button: forget this client (channel + cookie + token deleted)
 ```
 
-### How the display gets its URL
+### How the redirect resolves
 
-The adapter reads `clients.<id>.mode` on every visit:
+For every visit the adapter looks at `clients.<id>.mode`:
 
-| `mode` value    | redirect target                                                |
-| --------------- | -------------------------------------------------------------- |
-| `global`        | `global.mode` / `global.manualUrl` (same rules, one level up)  |
-| `manual`        | `clients.<id>.manualUrl`                                       |
-| a URL           | that URL                                                       |
-| empty / unknown | landing page (small HTML with device ID, refreshes every 15 s) |
+| `mode`         | redirect target                                                |
+| -------------- | -------------------------------------------------------------- |
+| `global`       | follow `global.mode` / `global.manualUrl` (same rules one level up) |
+| `manual`       | `clients.<id>.manualUrl`                                       |
+| a URL          | that URL                                                       |
+| empty (`---`)  | landing page (small HTML with device ID, refreshes every 15 s) |
 
-### Master switch
-
-When `global.enabled` is **on**, every client's `mode` is set to `global` and all displays follow `global.mode`. When **off**, every client's `mode` is reset to the empty entry (`---`) — each display shows the landing page until you pick a URL for it. New clients also start on that empty entry; the adapter never auto-picks a URL for you.
+The master switch `global.enabled` is a bulk action: **on** sets every client's `mode` to `global` (all displays follow `global.mode` together); **off** resets every client's `mode` to `---` so each display lands on the setup page until you pick a URL for it. New clients also start on `---` — the adapter never auto-picks a URL.
 
 ---
 
-## When things refresh — and how long it takes
+## When things refresh
 
-| Action | Where | Latency | Trigger |
-| --- | --- | --- | --- |
-| **You change a `mode` or `manualUrl` state** | display reloads | up to ~30 s | each display polls `/api/redirect_check` every 30 s and reloads itself when the target changes. No display reboot needed. |
-| **You install / rename a VIS or VIS-2 project, add an admin tile, install a new web-aware adapter** | dropdown updates | ~2 s | adapter listens on `system.adapter.*` object changes, debounces, then re-runs discovery. |
-| **You want the dropdown refreshed immediately** | dropdown updates | < 1 s | set `info.refresh_urls` to `true` — runs discovery now. The button auto-resets to `false`. |
-| **A new display connects for the first time** | new entry under `clients.*` | immediate | new `clients.<id>` channel is created on the first request, dropdown gets seeded with the current URL list. |
+When you change `mode` or `manualUrl`, the display takes up to ~30 s to pick up the change — it polls in that interval and reloads itself, no display reboot needed.
 
-The dropdown content (`common.states` on every `clients.<id>.mode` and on `global.mode`) is fully replaced on each discovery run — stale URLs from old setups don't accumulate.
+The dropdown of available URLs updates automatically when adapters are installed, removed or re-configured. **VIS-2 project/view edits are the exception** — those live in files, not in the object tree, so the adapter can't see them. Set `info.refresh_urls` to `true` after adding or renaming a VIS-2 project or view.
 
 ---
 
