@@ -129,25 +129,25 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 ## Changelog
 ### 1.28.0 (2026-05-06)
 
-- **Mehrsprachig**: Datenpunkt-Namen, -Beschreibungen und Dropdown-Werte jetzt in der ioBroker-Systemsprache (11 Sprachen). Logs sind seit v1.27.0 lokalisiert.
+- Multi-language: state names, descriptions and dropdown labels are now in your ioBroker system language (11 languages). Logs were already localized in v1.27.0.
 
 ### 1.27.3 (2026-05-06)
 
-- **Doku**: README in User-Sicht umgeschrieben — kürzer, direkter, ohne Implementierungs-Trivia. Keine Code-Änderungen.
+- Docs: README rewritten in plain user voice — shorter, direct, no implementation trivia. No code changes.
 
 ### 1.27.2 (2026-05-06)
 
-- **Dropdown-Cleanup**: `common.states` wird bei jedem URL-Refresh komplett ersetzt statt gemerget — veraltete URLs aus früheren Format-Versionen werden jetzt entfernt.
+- Bugfix: dropdown `common.states` is now fully replaced on each URL-refresh instead of merged — stale URLs from earlier format versions are now removed.
 
 ### 1.27.1 (2026-05-06)
 
-- **VIS-2 Multi-Project im Dropdown**: jedes Projekt bekommt jetzt eine eigene URL `?<projekt>` plus Sub-Views als `?<projekt>#<view>`. v1.27.0 hatte nur das aktive Projekt zugänglich.
+- Bugfix: VIS-2 dropdown now lists each project separately via a `?<project>` query plus sub-views as `?<project>#<view>`. Pre-v1.27.1 only the active project was reachable.
 
 ### 1.27.0 (2026-05-06)
 
-- **VIS-2-URLs im Mode-Dropdown jetzt korrekt**: `vis-2/index.html#<view>` (kein `.0`-Suffix, kein Projekt-Pfad-Segment). Quelle ist die io-package.json des VIS-2-Adapters (`localLinks.Runtime.link`).
-- **VIS-1 (klassisch) vollständig unterstützt**: pro Projekt ein `?<projekt>`-Eintrag im Dropdown plus Sub-Views als `?<projekt>#<view>`. Quelle ist `visEdit.js:2225`.
-- **Logs in Systemsprache**: `info`/`warn`/`error` jetzt anhand `system.config.language` lokalisiert (11 Sprachen), `debug` bleibt englisch. Tech-Internas wie `mode='X'` und Modul-Präfixe sind raus.
+- Bugfix: VIS-2 URLs in the mode dropdown are now correct (`vis-2/index.html#<view>`, no `.0` suffix, no project path segment). Source is the VIS-2 adapter's `io-package.json` (`localLinks.Runtime.link`).
+- VIS-1 (classic) fully supported: one `?<project>` entry per project in the dropdown plus sub-views as `?<project>#<view>`. Source is `visEdit.js:2225`.
+- Logs in system language: `info`/`warn`/`error` are now localized via `system.config.language` (11 languages), `debug` stays English. Tech internals like `mode='X'` and module prefixes were dropped.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
