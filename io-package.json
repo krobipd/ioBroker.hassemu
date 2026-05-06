@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.27.1",
+    "version": "1.27.2",
     "news": {
-      "NEXT": {
+      "1.27.2": {
         "en": "Bugfix: dropdown common.states is now fully replaced on each refresh. Stale URLs from earlier format versions (v1.26 path-segment, intermediate ?<project>/<view> etc.) are removed.",
         "de": "Bugfix: Dropdown-common.states wird bei jedem Refresh komplett ersetzt. Veraltete URLs aus früheren Format-Versionen (v1.26 Pfad-Segment, Zwischen-Form ?<projekt>/<view> usw.) werden entfernt.",
         "ru": "Bugfix: dropdown common.states теперь полностью заменяется при каждом обновлении. Устаревшие URL из прежних форматов удаляются.",
@@ -93,19 +93,6 @@
         "pl": "Wewnetrzne sprzatanie: parseModeWrite helper w coerce.ts — oba handleModeWrite-handlery deleguja do jednego validatora zamiast duplikowac ~80% logiki.",
         "uk": "Внутрішнє прибирання: parseModeWrite helper у coerce.ts — обидва handleModeWrite-handlers делегують одному validator замість дублювання ~80% логіки.",
         "zh-cn": "内部清理：coerce.ts 中新增 parseModeWrite 辅助函数 — 两个 handleModeWrite 处理器委托给单一验证器，不再重复约 80% 的逻辑。"
-      },
-      "1.22.0": {
-        "en": "Internal cleanup: safeStringEqual moved from webserver.ts into coerce.ts (generic crypto helper). Plus 5 new unit tests covering identical/different/length-mismatch/empty/UTF-8 cases.",
-        "de": "Interne Aufräumung: safeStringEqual von webserver.ts nach coerce.ts verschoben (generischer Crypto-Helper). Plus 5 neue Unit-Tests für identisch/unterschiedlich/length-mismatch/leer/UTF-8.",
-        "ru": "Внутренняя уборка: safeStringEqual перенесен из webserver.ts в coerce.ts (generic crypto helper). Plus 5 новых unit-tests.",
-        "pt": "Limpeza interna: safeStringEqual movido de webserver.ts para coerce.ts (generic crypto helper). Plus 5 novos unit tests.",
-        "nl": "Interne opruiming: safeStringEqual verhuisd van webserver.ts naar coerce.ts (generieke crypto helper). Plus 5 nieuwe unit tests.",
-        "fr": "Nettoyage interne : safeStringEqual deplace de webserver.ts vers coerce.ts (helper crypto generique). Plus 5 nouveaux unit tests.",
-        "it": "Pulizia interna: safeStringEqual spostato da webserver.ts a coerce.ts (helper crypto generico). Plus 5 nuovi unit test.",
-        "es": "Limpieza interna: safeStringEqual movido de webserver.ts a coerce.ts (helper crypto generico). Plus 5 nuevos unit tests.",
-        "pl": "Wewnetrzne sprzatanie: safeStringEqual przeniesione z webserver.ts do coerce.ts (generic crypto helper). Plus 5 nowych unit tests.",
-        "uk": "Внутрішнє прибирання: safeStringEqual перенесено з webserver.ts до coerce.ts (generic crypto helper). Plus 5 нових unit-тестів.",
-        "zh-cn": "内部清理：safeStringEqual 从 webserver.ts 迁移到 coerce.ts（通用 crypto 辅助）。另：5 个新单元测试覆盖相同/不同/长度差异/空/UTF-8 用例。"
       }
     },
     "titleLang": {
