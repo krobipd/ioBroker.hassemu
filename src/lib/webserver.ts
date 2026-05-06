@@ -153,7 +153,13 @@ export class WebServer {
         this.globalConfig = globalConfig;
         this.instanceUuid = instanceUuid;
         this.systemLanguage = systemLanguage;
-        this.app = Fastify({ logger: false, trustProxy: false });
+        // v1.25.0 (C11): trustProxy ist Opt-In über config — nur aktivieren
+        // wenn der Adapter HINTER einem trusted Reverse-Proxy mit TLS-
+        // Termination läuft. Mit trustProxy=true holt Fastify `req.ip` aus
+        // `X-Forwarded-For` (statt aus dem Socket), `req.protocol` aus
+        // `X-Forwarded-Proto` etc. — Voraussetzung: der Proxy bereinigt diese
+        // Header (sonst kann jeder Client den Lockout umgehen).
+        this.app = Fastify({ logger: false, trustProxy: this.config.trustProxy === true });
         // v1.14.0 (H8): inject einmal binden, nicht pro Getter-Access.
         (this as { inject: FastifyInstance['inject'] }).inject = this.app.inject.bind(this.app);
     }
@@ -429,10 +435,17 @@ export class WebServer {
         const userAgent = coerceString(req.headers['user-agent']);
         const record = await this.registry.identifyOrCreate(cookie, ip, null, userAgent);
         if (cookie !== record.cookie) {
+            // v1.25.0 (C11): Cookie `secure: true` wenn TLS — Browser sendet
+            // den Cookie dann nur über HTTPS. Bei trustProxy=true kommt
+            // `req.protocol` aus `X-Forwarded-Proto`-Header. Default ohne
+            // trustProxy: `req.protocol === 'http'` (Adapter ist HTTP only),
+            // also Cookie nicht-secure — sonst würde der Browser ihn nie senden.
+            const useSecure = req.protocol === 'https';
             reply.setCookie(CLIENT_COOKIE, record.cookie, {
                 path: '/',
                 httpOnly: true,
                 sameSite: 'lax',
+                secure: useSecure,
                 maxAge: COOKIE_MAX_AGE_S,
             });
         }

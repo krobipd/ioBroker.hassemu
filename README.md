@@ -155,6 +155,12 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
+### **WORK IN PROGRESS**
+
+- **Reverse-Proxy-Support** (optional, Default aus): neuer Config-Toggle „Trust Reverse Proxy Headers". `req.ip`/`req.protocol` aus `X-Forwarded-*`, Cookies `Secure` bei `X-Forwarded-Proto=https`.
+- **Schema-Repair via instanceObjects**: `repairGlobalSchemas` liest jetzt aus `io-package.json:instanceObjects` statt zu duplizieren — kein stille Drift mehr.
+- **Test-Coverage** (+11 Tests): `decideGcAction` (Stale-GC), `decideLegacyVisMigration` (Legacy-URL-Migration), mDNS async-publish-error.
+
 ### 1.24.0 (2026-05-05)
 
 - **Test-Coverage**: 2 neue Unit-Tests für den v1.17.0 NAT-Cookie-Schutz — unterschiedliche User-Agents auf derselben IP bekommen distinct Clients, gleiche UA collapsed parallele Bursts.

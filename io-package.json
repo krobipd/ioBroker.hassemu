@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.24.0",
     "news": {
+      "NEXT": {
+        "en": "Final wave: optional `trustProxy` toggle for reverse-proxy setups. Plus schema-from-instanceObjects + 11 new tests for migration / GC / mDNS-error.",
+        "de": "Finale Welle: optionaler `trustProxy`-Toggle für Reverse-Proxy (Cookies Secure wenn X-Forwarded-Proto=https). Plus schema-from-instanceObjects + 11 neue Tests für Migration / GC / mDNS-Error.",
+        "ru": "Финальная волна: опциональный `trustProxy` для reverse-proxy. Plus schema-from-instanceObjects + 11 новых тестов.",
+        "pt": "Onda final: toggle `trustProxy` opcional para reverse-proxy. Plus schema-from-instanceObjects + 11 novos testes.",
+        "nl": "Finale golf: optionele `trustProxy` voor reverse-proxy. Plus schema-from-instanceObjects + 11 nieuwe tests.",
+        "fr": "Vague finale : `trustProxy` optionnel pour reverse-proxy. Plus schema-from-instanceObjects + 11 nouveaux tests.",
+        "it": "Onda finale: `trustProxy` opzionale per reverse-proxy. Plus schema-from-instanceObjects + 11 nuovi test.",
+        "es": "Onda final: `trustProxy` opcional para reverse-proxy. Plus schema-from-instanceObjects + 11 nuevos tests.",
+        "pl": "Finalna fala: opcjonalny `trustProxy` dla reverse-proxy. Plus schema-from-instanceObjects + 11 nowych testow.",
+        "uk": "Фінальна хвиля: опціональний `trustProxy` для reverse-proxy. Plus schema-from-instanceObjects + 11 нових тестів.",
+        "zh-cn": "最后一波：可选 `trustProxy` 反向代理开关。另：schema-from-instanceObjects + 11 个新测试。"
+      },
       "1.24.0": {
         "en": "Test coverage: 2 new unit tests for the v1.17.0 NAT-cookie protection — different-UA-on-same-IP yields distinct clients, same-UA-on-same-IP still collapses parallel bursts.",
         "de": "Test-Coverage: 2 neue Unit-Tests für den v1.17.0 NAT-Cookie-Schutz — unterschiedliche-UA-auf-gleicher-IP ergibt verschiedene Clients, gleiche-UA collapsed parallele Bursts.",

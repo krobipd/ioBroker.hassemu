@@ -6,6 +6,8 @@ import {
     coerceUuid,
     coerceSafeUrl,
     coerceSafeUrlReason,
+    decideGcAction,
+    decideLegacyVisMigration,
     isPlainObject,
     safeStringEqual,
 } from './coerce';
@@ -216,6 +218,66 @@ describe('coerce', () => {
             const r = coerceSafeUrlReason(42);
             expect(r.safe).to.be.null;
             expect(r.reason).to.equal('not-a-string');
+        });
+    });
+
+    describe('decideGcAction (J1 v1.25.0)', () => {
+        const TTL = 30 * 24 * 60 * 60 * 1000;
+        it('returns seed for missing/undefined lastSeen', () => {
+            expect(decideGcAction(undefined, 1_000_000, TTL)).to.equal('seed');
+            expect(decideGcAction(null, 1_000_000, TTL)).to.equal('seed');
+            expect(decideGcAction(0, 1_000_000, TTL)).to.equal('seed');
+        });
+
+        it('returns seed for non-number values (string, object)', () => {
+            expect(decideGcAction('1234567', 1_000_000, TTL)).to.equal('seed');
+            expect(decideGcAction({}, 1_000_000, TTL)).to.equal('seed');
+            expect(decideGcAction(NaN, 1_000_000, TTL)).to.equal('seed');
+        });
+
+        it('returns stale when now-lastSeen > ttl', () => {
+            const now = Date.now();
+            const oldLastSeen = now - TTL - 1; // just past the TTL
+            expect(decideGcAction(oldLastSeen, now, TTL)).to.equal('stale');
+        });
+
+        it('returns keep when within window', () => {
+            const now = Date.now();
+            expect(decideGcAction(now - 1000, now, TTL)).to.equal('keep');
+            expect(decideGcAction(now - TTL + 1, now, TTL)).to.equal('keep');
+        });
+    });
+
+    describe('decideLegacyVisMigration (J2 v1.25.0)', () => {
+        it('returns empty for undefined/null/empty-string', () => {
+            expect(decideLegacyVisMigration(undefined).kind).to.equal('empty');
+            expect(decideLegacyVisMigration(null).kind).to.equal('empty');
+            expect(decideLegacyVisMigration('').kind).to.equal('empty');
+        });
+
+        it('returns safe-url for http/https URLs', () => {
+            const r = decideLegacyVisMigration('https://example.com/');
+            expect(r.kind).to.equal('safe-url');
+            if (r.kind === 'safe-url') {
+                expect(r.safe).to.equal('https://example.com/');
+            }
+        });
+
+        it('returns unsafe-rejected for javascript: scheme', () => {
+            expect(decideLegacyVisMigration('javascript:alert(1)').kind).to.equal('unsafe-rejected');
+        });
+
+        it('returns unsafe-rejected for data: URLs', () => {
+            expect(decideLegacyVisMigration('data:text/html,<script>x</script>').kind).to.equal('unsafe-rejected');
+        });
+
+        it('returns unsafe-rejected for credentials in URL', () => {
+            expect(decideLegacyVisMigration('https://user:pass@example.com/').kind).to.equal('unsafe-rejected');
+        });
+
+        it('returns unsafe-rejected for non-string types', () => {
+            expect(decideLegacyVisMigration(42).kind).to.equal('unsafe-rejected');
+            expect(decideLegacyVisMigration({}).kind).to.equal('unsafe-rejected');
         });
     });
 

@@ -9,14 +9,18 @@
     "donatePaypal": "Faire un don via PayPal",
     "header_auth": "Authentification",
     "header_mdns": "Découverte mDNS",
+    "header_proxy": "Reverse Proxy",
     "header_server": "Serveur",
     "mdnsEnabled": "Activer la Découverte mDNS",
     "mdnsEnabledTooltip": "Diffuser le service via mDNS pour que les appareils le trouvent automatiquement (fonctionne sur toutes les plateformes)",
     "mdnsInfo": "mDNS diffuse le service sur le réseau local pour que les appareils puissent le découvrir automatiquement.\n\nSi mDNS est désactivé ou ne fonctionne pas, entrez l'URL manuellement sur l'écran:\n`http://YOUR_IP:8123`",
     "password": "Mot de passe",
+    "proxyInfo": "A activer uniquement quand l'adaptateur tourne DERRIERE un reverse proxy de confiance avec terminaison TLS (nginx, Traefik). Le proxy doit supprimer les en-tetes X-Forwarded-* entrants — sinon les clients peuvent usurper leur IP et contourner le verrouillage brute-force. Avec cette option, le cookie est marque `Secure` quand X-Forwarded-Proto est `https`.",
     "redirectInfo": "Les cibles de redirection se configurent via les points de données, pas ici. Utilisez `global.visUrl` + `global.enabled` pour envoyer tous les clients vers la même URL, ou configurez chaque écran individuellement sous `clients.<id>.visUrl`. Les deux champs proposent un menu déroulant des URL ioBroker connues.",
     "serviceName": "Nom du Service",
     "serviceNameTooltip": "Nom affiché sur l'écran pendant la découverte",
     "supportHeader": "Soutien",
+    "trustProxy": "Faire confiance aux en-tetes du reverse proxy",
+    "trustProxyTooltip": "Si actif, req.ip / req.protocol viennent des en-tetes X-Forwarded-*. A activer uniquement derriere un reverse proxy de confiance.",
     "username": "Nom d'utilisateur"
 }

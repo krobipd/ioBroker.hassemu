@@ -113,6 +113,31 @@
             "lg": 12,
             "xl": 12
         },
+        "_headerProxy": {
+            "type": "header",
+            "text": "header_proxy",
+            "size": 4
+        },
+        "trustProxy": {
+            "type": "checkbox",
+            "label": "trustProxy",
+            "tooltip": "trustProxyTooltip",
+            "default": false,
+            "xs": 12,
+            "sm": 12,
+            "md": 12,
+            "lg": 12,
+            "xl": 12
+        },
+        "_proxyInfo": {
+            "type": "staticText",
+            "text": "proxyInfo",
+            "xs": 12,
+            "sm": 12,
+            "md": 12,
+            "lg": 12,
+            "xl": 12
+        },
         "_supportHeader": {
             "type": "header",
             "text": "supportHeader",

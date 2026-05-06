@@ -130,7 +130,7 @@ class WebServer {
     this.globalConfig = globalConfig;
     this.instanceUuid = instanceUuid;
     this.systemLanguage = systemLanguage;
-    this.app = (0, import_fastify.default)({ logger: false, trustProxy: false });
+    this.app = (0, import_fastify.default)({ logger: false, trustProxy: this.config.trustProxy === true });
     this.inject = this.app.inject.bind(this.app);
   }
   /** Human-readable service name advertised in responses and mDNS. */
@@ -360,10 +360,12 @@ class WebServer {
     const userAgent = (0, import_coerce.coerceString)(req.headers["user-agent"]);
     const record = await this.registry.identifyOrCreate(cookie, ip, null, userAgent);
     if (cookie !== record.cookie) {
+      const useSecure = req.protocol === "https";
       reply.setCookie(CLIENT_COOKIE, record.cookie, {
         path: "/",
         httpOnly: true,
         sameSite: "lax",
+        secure: useSecure,
         maxAge: import_constants.COOKIE_MAX_AGE_S
       });
     }

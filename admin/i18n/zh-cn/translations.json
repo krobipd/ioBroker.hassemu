@@ -9,14 +9,18 @@
     "donatePaypal": "通过PayPal捐赠",
     "header_auth": "验证",
     "header_mdns": "mDNS 发现",
+    "header_proxy": "反向代理",
     "header_server": "服务器",
     "mdnsEnabled": "启用 mDNS 发现",
     "mdnsEnabledTooltip": "通过 mDNS 广播服务，使设备能够自动找到它（适用于所有平台）",
     "mdnsInfo": "mDNS 在本地网络上广播服务，使设备能够自动发现它。\n\n如果 mDNS 已禁用或无法正常工作，请在显示屏上手动输入 URL：\n`http://YOUR_IP:8123`",
     "password": "密码",
+    "proxyInfo": "仅在适配器位于带有 TLS 终止的可信反向代理（如 nginx、Traefik）后面时启用。代理必须移除入站的 X-Forwarded-* 头 — 否则客户端可伪造 IP 并绕过暴力锁定。启用后，当 X-Forwarded-Proto 为 `https` 时 cookie 标记为 `Secure`。",
     "redirectInfo": "重定向目标通过数据点配置，不在此处。使用 `global.visUrl` + `global.enabled` 将所有客户端发送到同一 URL，或在 `clients.<id>.visUrl` 下单独为每个显示器设置。两个字段都提供已知 ioBroker URL 的下拉列表。",
     "serviceName": "服务名称",
     "serviceNameTooltip": "发现期间在显示屏上显示的名称",
     "supportHeader": "支持",
+    "trustProxy": "信任反向代理头",
+    "trustProxyTooltip": "若启用，req.ip / req.protocol 来自 X-Forwarded-* 头。仅在可信反向代理后启用。",
     "username": "用户名"
 }

@@ -9,14 +9,18 @@
     "donatePaypal": "Donate via PayPal",
     "header_auth": "Authentication",
     "header_mdns": "mDNS Discovery",
+    "header_proxy": "Reverse Proxy",
     "header_server": "Server",
     "mdnsEnabled": "Enable mDNS Discovery",
     "mdnsEnabledTooltip": "Broadcast the service via mDNS so devices can find it automatically (works on all platforms)",
     "mdnsInfo": "mDNS broadcasts the service on the local network so devices can discover it automatically.\n\nIf mDNS is disabled or not working, enter the URL manually on the display:\n`http://YOUR_IP:8123`",
     "password": "Password",
+    "proxyInfo": "Only enable when running BEHIND a trusted reverse proxy that terminates TLS (e.g. nginx, Traefik). The proxy must strip incoming X-Forwarded-* headers — otherwise clients can spoof their IP and bypass the brute-force lockout. With this on, cookies are marked `Secure` when X-Forwarded-Proto is `https`.",
     "redirectInfo": "Redirect targets are configured via datapoints, not here. Use `global.visUrl` + `global.enabled` to send every client to the same URL, or set each display individually under `clients.<id>.visUrl`. Both fields provide a dropdown of known ioBroker URLs.",
     "serviceName": "Service Name",
     "serviceNameTooltip": "Name shown on the display during discovery",
     "supportHeader": "Support",
+    "trustProxy": "Trust Reverse Proxy Headers",
+    "trustProxyTooltip": "If on, req.ip / req.protocol come from X-Forwarded-* headers. Only enable when behind a trusted reverse proxy.",
     "username": "Username"
 }
