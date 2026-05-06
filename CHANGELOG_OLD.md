@@ -1,4 +1,8 @@
 # Older Changes
+## 1.23.0 (2026-05-05)
+
+- **Interne Aufräumung**: `parseModeWrite`-Helper in `coerce.ts` — beide `handleModeWrite`-Handler (`client-registry` + `global-config`) delegieren jetzt an einen Validator statt ~80% der Logik zu duplizieren.
+
 ## 1.22.0 (2026-05-05)
 
 - **Interne Aufräumung**: `safeStringEqual` (timing-safe Credentials-Vergleich) ist von `webserver.ts` nach `coerce.ts` umgezogen — generischer Crypto-Helper. Plus 5 neue Unit-Tests.
