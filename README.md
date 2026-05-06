@@ -155,7 +155,7 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 1.27.0 (2026-05-06)
 
 - **VIS-2-URLs im Mode-Dropdown jetzt korrekt**: `vis-2/index.html#<view>` (kein `.0`-Suffix, kein Projekt-Pfad-Segment). Quelle ist die io-package.json des VIS-2-Adapters (`localLinks.Runtime.link`).
 - **VIS-1 (klassisch) vollständig unterstützt**: pro Projekt ein `?<projekt>`-Eintrag im Dropdown plus Sub-Views als `?<projekt>#<view>`. Quelle ist `visEdit.js:2225`.
@@ -180,10 +180,6 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ### 1.23.0 (2026-05-05)
 
 - **Interne Aufräumung**: `parseModeWrite`-Helper in `coerce.ts` — beide `handleModeWrite`-Handler (`client-registry` + `global-config`) delegieren jetzt an einen Validator statt ~80% der Logik zu duplizieren.
-
-### 1.22.0 (2026-05-05)
-
-- **Interne Aufräumung**: `safeStringEqual` (timing-safe Credentials-Vergleich) ist von `webserver.ts` nach `coerce.ts` umgezogen — generischer Crypto-Helper. Plus 5 neue Unit-Tests.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 

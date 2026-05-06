@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.26.0",
+    "version": "1.27.0",
     "news": {
-      "NEXT": {
+      "1.27.0": {
         "en": "Bugfixes: VIS-2 URLs in dropdown now correct (vis-2/index.html#view). VIS-1 fully supported (?<project> + #view). info/warn/error logs in system language, debug stays English.",
         "de": "Bugfixes: VIS-2-URLs im Dropdown jetzt korrekt (vis-2/index.html#view). VIS-1 voll unterstützt (?<projekt> + #view). info/warn/error-Logs in Systemsprache, debug bleibt englisch.",
         "ru": "Bugfixes: URL VIS-2 в dropdown теперь корректные (vis-2/index.html#view). VIS-1 поддержан полностью (?<project> + #view). info/warn/error-логи на языке системы, debug остаётся английским.",
@@ -93,19 +93,6 @@
         "pl": "Niezawodnosc: pending-create rejections logowane raz i rethrown. Plus: getLocalIp depriorytetuje IP Docker-bridge (172.17/172.18) — mDNS nie ogłasza nieosiagalnego adresu kontenera.",
         "uk": "Надійність: pending-create rejections логуються один раз і rethrown. Plus: getLocalIp деприоритизує Docker-bridge IPs (172.17/172.18) — mDNS не advertise unreachable container address.",
         "zh-cn": "稳健性：pending 创建的拒绝现在只记录一次并重新抛出。另：getLocalIp 降低 Docker 桥接地址（172.17/172.18）的优先级 — mDNS 不再广播 LAN 无法访问的容器地址。"
-      },
-      "1.20.0": {
-        "en": "Internal cleanup: 3 helpers (buildDropdownStates, parseAdapterStateId, safeGetState) extracted into coerce.ts — client-registry + global-config share them instead of duplicating.",
-        "de": "Interne Aufräumung: 3 Helpers (buildDropdownStates, parseAdapterStateId, safeGetState) nach coerce.ts extrahiert — client-registry + global-config teilen sie sich.",
-        "ru": "Внутренняя уборка: 3 helpers (buildDropdownStates, parseAdapterStateId, safeGetState) вынесены в coerce.ts — client-registry и global-config делят implementation.",
-        "pt": "Limpeza interna: 3 helpers (buildDropdownStates, parseAdapterStateId, safeGetState) extraidos para coerce.ts — client-registry e global-config compartilham a implementacao.",
-        "nl": "Interne opruiming: 3 helpers (buildDropdownStates, parseAdapterStateId, safeGetState) naar coerce.ts — client-registry en global-config delen de implementatie.",
-        "fr": "Nettoyage interne : 3 helpers (buildDropdownStates, parseAdapterStateId, safeGetState) extraits vers coerce.ts — client-registry et global-config partagent l'implementation.",
-        "it": "Pulizia interna: 3 helpers (buildDropdownStates, parseAdapterStateId, safeGetState) estratti in coerce.ts — client-registry e global-config condividono l'implementazione.",
-        "es": "Limpieza interna: 3 helpers (buildDropdownStates, parseAdapterStateId, safeGetState) extraidos a coerce.ts — client-registry y global-config comparten la implementacion.",
-        "pl": "Wewnetrzne sprzatanie: 3 helpers (buildDropdownStates, parseAdapterStateId, safeGetState) przeniesione do coerce.ts — client-registry i global-config wspoldzielca implementacje.",
-        "uk": "Внутрішнє прибирання: 3 helpers (buildDropdownStates, parseAdapterStateId, safeGetState) винесено в coerce.ts — client-registry та global-config ділять implementation.",
-        "zh-cn": "内部清理：3 个辅助函数（buildDropdownStates、parseAdapterStateId、safeGetState）提取到 coerce.ts — client-registry 和 global-config 共享实现，不再重复。"
       }
     },
     "titleLang": {
