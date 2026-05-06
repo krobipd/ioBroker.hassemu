@@ -21,6 +21,15 @@ Displays that speak only the HA dashboard protocol — Shelly Wall Display, Echo
 
 ---
 
+## Features
+
+- One URL per display, or one global URL for all
+- Auto-discovery via mDNS
+- Optional login (HA OAuth2 flow)
+- Cookie-based: displays keep their URL across reboots, IP changes, renames
+
+---
+
 ## Requirements
 
 - Node.js ≥ 22
