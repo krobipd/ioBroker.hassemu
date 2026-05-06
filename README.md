@@ -96,7 +96,10 @@ For every visit the adapter looks at `clients.<id>.mode`:
 | a URL          | that URL                                                       |
 | empty (`---`)  | landing page (small HTML with device ID, refreshes every 15 s) |
 
-The master switch `global.enabled` is a bulk action: **on** sets every client's `mode` to `global` (all displays follow `global.mode` together); **off** resets every client's `mode` to `---` so each display lands on the setup page until you pick a URL for it. New clients also start on `---` — the adapter never auto-picks a URL.
+Master switch `global.enabled`:
+- **on** — all displays follow `global.mode`
+- **off** — all displays go back to `---` (landing page until you pick a URL)
+- new displays always start at `---`
 
 ---
 
