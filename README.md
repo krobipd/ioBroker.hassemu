@@ -118,6 +118,10 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 ---
 
 ## Changelog
+### **WORK IN PROGRESS**
+
+- **Doku**: README in User-Sicht umgeschrieben — kürzer, direkter, ohne Implementierungs-Trivia. Keine Code-Änderungen.
+
 ### 1.27.2 (2026-05-06)
 
 - **Dropdown-Cleanup**: `common.states` wird bei jedem URL-Refresh komplett ersetzt statt gemerget — veraltete URLs aus früheren Format-Versionen werden jetzt entfernt.
