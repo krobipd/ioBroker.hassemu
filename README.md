@@ -155,6 +155,10 @@ Reverse DNS on a home LAN depends on your router/DHCP server and often fails. Th
 ---
 
 ## Changelog
+### **WORK IN PROGRESS**
+
+- **Dropdown-Cleanup**: `common.states` wird bei jedem URL-Refresh komplett ersetzt statt gemerget — veraltete URLs aus früheren Format-Versionen werden jetzt entfernt.
+
 ### 1.27.1 (2026-05-06)
 
 - **VIS-2 Multi-Project im Dropdown**: jedes Projekt bekommt jetzt eine eigene URL `?<projekt>` plus Sub-Views als `?<projekt>#<view>`. v1.27.0 hatte nur das aktive Projekt zugänglich.

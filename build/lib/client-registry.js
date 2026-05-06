@@ -359,9 +359,13 @@ class ClientRegistry {
     this.currentUrlStates = states;
     const merged = this.buildModeStates();
     for (const id of this.byId.keys()) {
-      await this.adapter.extendObjectAsync(`clients.${id}.mode`, {
-        common: { states: merged }
-      });
+      const stateId = `clients.${id}.mode`;
+      const existing = await this.adapter.getObjectAsync(stateId);
+      if (!existing) {
+        continue;
+      }
+      existing.common.states = merged;
+      await this.adapter.setObjectAsync(stateId, existing);
     }
   }
   // --- internal ---

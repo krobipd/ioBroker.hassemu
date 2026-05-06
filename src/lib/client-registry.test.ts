@@ -47,6 +47,8 @@ function createMockAdapter(namespace = 'hassemu.0'): {
         clearTimeout: () => undefined;
         getForeignObjectsAsync: (pattern: string, type: 'channel') => Promise<Record<string, ObjEntry>>;
         getStateAsync: (id: string) => Promise<{ val: unknown; ack: boolean } | null>;
+        getObjectAsync: (id: string) => Promise<ObjEntry | null>;
+        setObjectAsync: (id: string, obj: ObjEntry) => Promise<void>;
         setObjectNotExistsAsync: (id: string, obj: ObjEntry) => Promise<void>;
         extendObjectAsync: (id: string, obj: Partial<ObjEntry>) => Promise<void>;
         setStateAsync: (id: string, value: { val: unknown; ack?: boolean }, _ack?: boolean) => Promise<void>;
@@ -75,6 +77,14 @@ function createMockAdapter(namespace = 'hassemu.0'): {
                 return out;
             },
             getStateAsync: async (id: string) => store.states.get(`${namespace}.${id}`) ?? null,
+            getObjectAsync: async (id: string) => {
+                const fullId = id.startsWith(`${namespace}.`) ? id : `${namespace}.${id}`;
+                return store.objects.get(fullId) ?? null;
+            },
+            setObjectAsync: async (id: string, obj: ObjEntry) => {
+                const fullId = id.startsWith(`${namespace}.`) ? id : `${namespace}.${id}`;
+                store.objects.set(fullId, obj);
+            },
             setObjectNotExistsAsync: async (id: string, obj: ObjEntry) => {
                 const fullId = `${namespace}.${id}`;
                 if (!store.objects.has(fullId)) {

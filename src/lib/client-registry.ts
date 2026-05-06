@@ -33,7 +33,9 @@ export type RegistryAdapter = AdapterInterface &
         | 'namespace'
         | 'getForeignObjectsAsync'
         | 'getStateAsync'
+        | 'getObjectAsync'
         | 'setObjectNotExistsAsync'
+        | 'setObjectAsync'
         | 'extendObjectAsync'
         | 'setStateAsync'
         | 'delObjectAsync'
@@ -429,9 +431,18 @@ export class ClientRegistry {
         this.currentUrlStates = states;
         const merged = this.buildModeStates();
         for (const id of this.byId.keys()) {
-            await this.adapter.extendObjectAsync(`clients.${id}.mode`, {
-                common: { states: merged },
-            });
+            // v1.27.2: extendObjectAsync mergt `common.states` tief — alte
+            // URL-Schlüssel die nicht mehr discovered werden, blieben sonst im
+            // Dropdown stehen (sichtbar nach v1.26→v1.27 URL-Format-Wechsel:
+            // alte `vis-2.0/main/index.html`-Keys neben neuen `vis-2/index.html?main`).
+            // Object lesen, common.states komplett ersetzen, dann setObjectAsync.
+            const stateId = `clients.${id}.mode`;
+            const existing = await this.adapter.getObjectAsync(stateId);
+            if (!existing) {
+                continue;
+            }
+            existing.common.states = merged;
+            await this.adapter.setObjectAsync(stateId, existing);
         }
     }
 
