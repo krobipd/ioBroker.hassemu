@@ -89,12 +89,12 @@ hassemu.0.
 
 For every visit the adapter looks at `clients.<id>.mode`:
 
-| `mode`         | redirect target                                                |
-| -------------- | -------------------------------------------------------------- |
-| `global`       | follow `global.mode` / `global.manualUrl` (same rules one level up) |
-| `manual`       | `clients.<id>.manualUrl`                                       |
-| a URL          | that URL                                                       |
-| empty (`---`)  | landing page (small HTML with device ID, refreshes every 15 s) |
+| `mode`         | redirect target                  |
+| -------------- | -------------------------------- |
+| `global`       | use `global.mode` (one level up) |
+| `manual`       | `clients.<id>.manualUrl`         |
+| a URL          | that URL                         |
+| empty (`---`)  | landing page                     |
 
 Master switch `global.enabled`:
 - **on** — all displays follow `global.mode`
