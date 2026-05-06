@@ -165,6 +165,11 @@ describe('GlobalConfig', () => {
             expect(g.resolveUrlFor(rec)).to.be.null;
         });
 
+        it("returns null when mode is the no-choice sentinel '0' (default for new clients ≥ v1.26.0)", () => {
+            const rec = makeRecord({ mode: '0' });
+            expect(g.resolveUrlFor(rec)).to.be.null;
+        });
+
         it("delegates to global when mode='global' (URL value)", async () => {
             await g.handleModeWrite('http://global/');
             const rec = makeRecord({ mode: MODE_GLOBAL });

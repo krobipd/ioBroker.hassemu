@@ -176,15 +176,18 @@ class HassEmu extends utils.Adapter {
   /**
    * Default mode for newly registered clients. Respects the master switch:
    * - `global.enabled=true`  → `'global'` (follow master)
-   * - `global.enabled=false` → first discovered URL, fallback `'manual'`
+   * - sonst                  → `'0'` (no-choice) → Resolver returnt null →
+   *   Landing-Page bis der User im Mode-Dropdown explizit eine URL wählt.
+   *   Pre-v1.26.0 fiel der Default auf die erste discovered URL — das hat
+   *   die Landing-Page für neue Displays praktisch unsichtbar gemacht und
+   *   den User mit einer ungewollten Auto-Wahl überrascht.
    */
   computeNewClientMode() {
-    var _a2, _b;
+    var _a2;
     if ((_a2 = this.globalConfig) == null ? void 0 : _a2.isEnabled()) {
       return import_constants.MODE_GLOBAL;
     }
-    const first = (_b = this.urlDiscovery) == null ? void 0 : _b.getFirstDiscoveredUrl();
-    return first != null ? first : import_constants.MODE_MANUAL;
+    return "0";
   }
   /**
    * Read the ioBroker system language (set in Admin → Main Settings).
@@ -402,7 +405,6 @@ class HassEmu extends utils.Adapter {
    * @param enabled New value of `global.enabled`.
    */
   async applyMasterSwitch(enabled) {
-    var _a2;
     if (!this.registry) {
       return;
     }
@@ -410,15 +412,7 @@ class HassEmu extends utils.Adapter {
       await this.registry.bulkSetMode(import_constants.MODE_GLOBAL);
       return;
     }
-    const first = (_a2 = this.urlDiscovery) == null ? void 0 : _a2.getFirstDiscoveredUrl();
-    if (first) {
-      await this.registry.bulkSetMode(first);
-    } else {
-      await this.registry.bulkSetMode(import_constants.MODE_MANUAL);
-      this.log.warn(
-        "global.enabled=false but no discovered VIS URL \u2014 clients set to 'manual'; fill clients.<id>.manualUrl per client"
-      );
-    }
+    await this.registry.bulkSetMode("0");
   }
   async onStateChange(id, state) {
     if (!state || state.ack) {
