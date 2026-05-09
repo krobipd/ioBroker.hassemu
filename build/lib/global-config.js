@@ -26,7 +26,6 @@ __export(global_config_exports, {
 module.exports = __toCommonJS(global_config_exports);
 var import_coerce = require("./coerce");
 var import_constants = require("./constants");
-var import_i18n_logs = require("./i18n-logs");
 var import_i18n_states = require("./i18n-states");
 var import_constants2 = require("./constants");
 class GlobalConfig {
@@ -107,22 +106,26 @@ class GlobalConfig {
         await this.adapter.setStateAsync("global.mode", { val: 0, ack: true });
         return;
       case "rejected-non-string":
-        this.adapter.log.warn((0, import_i18n_logs.tLog)(this.adapter.systemLanguage, "globalModeNonString"));
+        this.adapter.log.warn(`global.mode rejected \u2014 non-string value`);
         await this.adapter.setStateAsync("global.mode", { val: this.mode || 0, ack: true });
         return;
       case "rejected-disallowed-sentinel":
-        this.adapter.log.warn((0, import_i18n_logs.tLog)(this.adapter.systemLanguage, "globalModeSelfRef"));
+        this.adapter.log.warn(
+          `global.mode rejected \u2014 "global" is not allowed at the global level (self-referential)`
+        );
         await this.adapter.setStateAsync("global.mode", { val: this.mode, ack: true });
         return;
       case "sentinel":
         if (result.value === import_constants.MODE_MANUAL && !this.manualUrl) {
-          this.adapter.log.warn((0, import_i18n_logs.tLog)(this.adapter.systemLanguage, "globalModeManualButEmpty"));
+          this.adapter.log.warn(
+            `global.mode is "manual" but global.manualUrl is empty \u2014 fill global.manualUrl to redirect`
+          );
         }
         this.mode = result.value;
         await this.adapter.setStateAsync("global.mode", { val: result.value, ack: true });
         return;
       case "rejected-unsafe-url":
-        this.adapter.log.warn((0, import_i18n_logs.tLog)(this.adapter.systemLanguage, "globalModeUnsafe", { value: result.raw }));
+        this.adapter.log.warn(`global.mode rejected \u2014 unsafe URL value "${result.raw}"`);
         await this.adapter.setStateAsync("global.mode", { val: this.mode, ack: true });
         return;
       case "url":
@@ -141,14 +144,16 @@ class GlobalConfig {
     var _a, _b;
     const result = (0, import_coerce.parseManualUrlWrite)(rawValue);
     if (!result.ok) {
-      this.adapter.log.warn((0, import_i18n_logs.tLog)(this.adapter.systemLanguage, "globalManualUrlUnsafe"));
+      this.adapter.log.warn(`global.manualUrl rejected \u2014 unsafe URL`);
       await this.adapter.setStateAsync("global.manualUrl", { val: (_a = this.manualUrl) != null ? _a : "", ack: true });
       return;
     }
     this.manualUrl = result.safe;
     await this.adapter.setStateAsync("global.manualUrl", { val: (_b = result.safe) != null ? _b : "", ack: true });
     if (this.mode === import_constants.MODE_MANUAL && !result.safe) {
-      this.adapter.log.warn((0, import_i18n_logs.tLog)(this.adapter.systemLanguage, "globalManualUrlClearedWhileManual"));
+      this.adapter.log.warn(
+        `global.manualUrl cleared while global.mode is "manual" \u2014 clients delegating to global will see the setup page`
+      );
     }
   }
   /**

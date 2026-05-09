@@ -33,7 +33,6 @@ __export(mdns_exports, {
 module.exports = __toCommonJS(mdns_exports);
 var import_bonjour_service = __toESM(require("bonjour-service"));
 var import_constants = require("./constants");
-var import_i18n_logs = require("./i18n-logs");
 var import_network = require("./network");
 class MDNSService {
   adapter;
@@ -90,9 +89,7 @@ class MDNSService {
       });
       (_b = (_a = this.published).on) == null ? void 0 : _b.call(_a, "error", (err) => {
         var _a2;
-        this.adapter.log.warn(
-          (0, import_i18n_logs.tLog)(this.adapter.systemLanguage, "mdnsAsyncPublishError", { error: err.message })
-        );
+        this.adapter.log.warn(`mDNS async publish error: ${err.message}`);
         this.active = false;
         try {
           (_a2 = this.bonjour) == null ? void 0 : _a2.destroy();
@@ -108,7 +105,7 @@ class MDNSService {
       this.adapter.log.debug(`mDNS: UUID: ${this.uuid}`);
     } catch (error) {
       const err = error;
-      this.adapter.log.warn((0, import_i18n_logs.tLog)(this.adapter.systemLanguage, "mdnsStartFailed", { error: err.message }));
+      this.adapter.log.warn(`mDNS failed to start: ${err.message}`);
       try {
         (_c = this.bonjour) == null ? void 0 : _c.destroy();
       } catch {
@@ -135,7 +132,7 @@ class MDNSService {
       this.adapter.log.debug("mDNS: Service stopped");
     } catch (error) {
       const err = error;
-      this.adapter.log.warn((0, import_i18n_logs.tLog)(this.adapter.systemLanguage, "mdnsStopFailed", { error: err.message }));
+      this.adapter.log.warn(`mDNS could not stop cleanly: ${err.message}`);
     }
     this.active = false;
   }

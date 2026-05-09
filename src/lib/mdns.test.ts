@@ -219,9 +219,7 @@ describe('MDNSService cross-platform', () => {
             internal.published?.emit?.('error', new Error('mock dgram bind failure'));
 
             expect(localService.isActive()).to.be.false;
-            const warns = localAdapter._logs.filter(
-                l => l.level === 'warn' && l.msg.includes('async publish error'),
-            );
+            const warns = localAdapter._logs.filter(l => l.level === 'warn' && l.msg.includes('async publish error'));
             expect(warns).to.have.length(1);
             expect(warns[0].msg).to.include('mock dgram bind failure');
 

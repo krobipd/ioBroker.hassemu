@@ -127,13 +127,21 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 ---
 
 ## Changelog
+<!--
+    Placeholder for the next version (at the beginning of the line):
+    ### **WORK IN PROGRESS**
+-->
+### **WORK IN PROGRESS**
+
+- Adapter log messages are now English only, in line with the ioBroker community standard. Localized state names, descriptions and dropdown labels (11 languages) are unchanged. The user-facing HA landing page also remains localized.
+
 ### 1.28.1 (2026-05-06)
 
 - Documentation: changelog entries (v1.27.x–v1.28.0) restored to English — a few bullets had been left in German. No code changes.
 
 ### 1.28.0 (2026-05-06)
 
-- Multi-language: state names, descriptions and dropdown labels are now in your ioBroker system language (11 languages). Logs were already localized in v1.27.0.
+- Multi-language: state names, descriptions and dropdown labels are now in your ioBroker system language (11 languages).
 
 ### 1.27.3 (2026-05-06)
 
