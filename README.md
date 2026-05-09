@@ -131,7 +131,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
-### **WORK IN PROGRESS**
+### 1.28.2 (2026-05-09)
 
 - Adapter log messages are now English only, in line with the ioBroker community standard. Localized state names, descriptions and dropdown labels (11 languages) are unchanged. The user-facing HA landing page also remains localized.
 
@@ -150,10 +150,6 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 ### 1.27.2 (2026-05-06)
 
 - Bugfix: dropdown `common.states` is now fully replaced on each URL-refresh instead of merged — stale URLs from earlier format versions are now removed.
-
-### 1.27.1 (2026-05-06)
-
-- Bugfix: VIS-2 dropdown now lists each project separately via a `?<project>` query plus sub-views as `?<project>#<view>`. Pre-v1.27.1 only the active project was reachable.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 

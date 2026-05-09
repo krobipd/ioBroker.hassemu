@@ -1,6 +1,6 @@
 {
   "name": "iobroker.hassemu",
-  "version": "1.28.1",
+  "version": "1.28.2",
   "description": "Emulates a minimal Home Assistant server so devices expecting a Home Assistant dashboard can display any custom web URL.",
   "author": {
     "name": "krobi",

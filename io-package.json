@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.28.1",
+    "version": "1.28.2",
     "news": {
-      "NEXT": {
+      "1.28.2": {
         "en": "Adapter log messages are now English only, in line with the ioBroker community standard. Localized state names, descriptions and dropdown labels (11 languages) and the user-facing landing page remain unchanged.",
         "de": "Adapter-Logs sind jetzt nur noch auf Englisch, gemäß ioBroker-Community-Standard. Lokalisierte Datenpunkt-Namen, Beschreibungen und Dropdown-Labels (11 Sprachen) sowie die User-facing Landing-Seite bleiben erhalten.",
         "ru": "Сообщения журнала теперь только на английском, согласно стандарту сообщества ioBroker. Локализованные имена состояний, описания и подписи (11 языков), а также страница для пользователя сохраняются.",
