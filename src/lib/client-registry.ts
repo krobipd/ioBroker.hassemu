@@ -22,7 +22,6 @@ import {
     safeGetState,
 } from './coerce';
 import { MODE_GLOBAL, MODE_MANUAL } from './constants';
-import { tLog } from './i18n-logs';
 import { tLabel, tName } from './i18n-states';
 import { generateClientId } from './network';
 import type { AdapterInterface, ClientRecord, UrlStates } from './types';
@@ -317,13 +316,15 @@ export class ClientRegistry {
                 return;
             case 'sentinel':
                 if (result.value === MODE_MANUAL && !record.manualUrl) {
-                    this.adapter.log.warn(tLog(this.adapter.systemLanguage, 'clientModeManualButEmpty', { id }));
+                    this.adapter.log.warn(
+                        `Client ${id}: mode set to "manual" but manualUrl is empty — fill clients.${id}.manualUrl to redirect`,
+                    );
                 }
                 record.mode = result.value;
                 await this.adapter.setStateAsync(`clients.${id}.mode`, { val: result.value, ack: true });
                 return;
             case 'rejected-unsafe-url':
-                this.adapter.log.warn(tLog(this.adapter.systemLanguage, 'clientModeUnsafe', { id, value: result.raw }));
+                this.adapter.log.warn(`Client ${id}: rejected unsafe mode value "${result.raw}"`);
                 await this.adapter.setStateAsync(`clients.${id}.mode`, { val: record.mode, ack: true });
                 return;
             case 'url':
@@ -351,14 +352,16 @@ export class ClientRegistry {
         }
         const result = parseManualUrlWrite(rawValue);
         if (!result.ok) {
-            this.adapter.log.warn(tLog(this.adapter.systemLanguage, 'clientManualUrlUnsafe', { id }));
+            this.adapter.log.warn(`Client ${id}: rejected unsafe manualUrl value`);
             await this.adapter.setStateAsync(`clients.${id}.manualUrl`, { val: record.manualUrl ?? '', ack: true });
             return;
         }
         record.manualUrl = result.safe;
         await this.adapter.setStateAsync(`clients.${id}.manualUrl`, { val: result.safe ?? '', ack: true });
         if (record.mode === MODE_MANUAL && !result.safe) {
-            this.adapter.log.warn(tLog(this.adapter.systemLanguage, 'clientManualUrlClearedWhileManual', { id }));
+            this.adapter.log.warn(
+                `Client ${id}: manualUrl cleared while mode is "manual" — display will see the setup page`,
+            );
         }
     }
 
@@ -419,7 +422,7 @@ export class ClientRegistry {
             // Stack-trace level — Maintainer-Diagnose, EN bleibt.
             this.adapter.log.debug(`client-registry: delObject failed for ${id}: ${String(err)}`);
         }
-        this.adapter.log.info(tLog(this.adapter.systemLanguage, 'clientForgotten', { id }));
+        this.adapter.log.info(`Client forgotten: ${id}`);
     }
 
     /**
@@ -468,11 +471,7 @@ export class ClientRegistry {
         this.trackInMemory(record);
         await this.createObjects(record);
         this.touchLastSeen(record);
-        this.adapter.log.info(
-            ip
-                ? tLog(this.adapter.systemLanguage, 'newClientRegisteredWithHost', { id, hostname: hostname ?? ip })
-                : tLog(this.adapter.systemLanguage, 'newClientRegistered', { id }),
-        );
+        this.adapter.log.info(ip ? `New client connected: ${id} (${hostname ?? ip})` : `New client connected: ${id}`);
         // v1.19.0 (G5): IP-Burst-Detection für broken-cookie-Displays. Wenn
         // dieselbe IP > 3 neue Clients in einer Stunde erzeugt, ist der Cookie-
         // Mechanismus auf dem Display kaputt (aggressive Privacy, refresh-bug).
@@ -502,7 +501,9 @@ export class ClientRegistry {
         }
         entry.count += 1;
         if (entry.count > 3 && now - entry.warnedAt > HOUR) {
-            this.adapter.log.warn(tLog(this.adapter.systemLanguage, 'cookieBurstDetected', { ip, count: entry.count }));
+            this.adapter.log.warn(
+                `IP ${ip} created ${entry.count} clients within an hour — display likely is not persisting cookies (privacy mode? refresh bug?)`,
+            );
             entry.warnedAt = now;
         }
         this.newClientBurst.set(ip, entry);

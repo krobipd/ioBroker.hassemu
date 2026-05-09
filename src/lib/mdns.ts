@@ -1,6 +1,5 @@
 import Bonjour, { type Service } from 'bonjour-service';
 import { HA_VERSION } from './constants';
-import { tLog } from './i18n-logs';
 import { getLocalIp } from './network';
 import type { AdapterConfig, AdapterInterface } from './types';
 
@@ -71,9 +70,7 @@ export class MDNSService {
             // ASYNCHRON in dgram-Sockets — der sync try/catch oben fängt das
             // nicht. Listener auf 'error' anhängen, dann active=false zurücksetzen.
             this.published.on?.('error', (err: Error) => {
-                this.adapter.log.warn(
-                    tLog(this.adapter.systemLanguage, 'mdnsAsyncPublishError', { error: err.message }),
-                );
+                this.adapter.log.warn(`mDNS async publish error: ${err.message}`);
                 this.active = false;
                 try {
                     this.bonjour?.destroy();
@@ -92,7 +89,7 @@ export class MDNSService {
             this.adapter.log.debug(`mDNS: UUID: ${this.uuid}`);
         } catch (error) {
             const err = error as Error;
-            this.adapter.log.warn(tLog(this.adapter.systemLanguage, 'mdnsStartFailed', { error: err.message }));
+            this.adapter.log.warn(`mDNS failed to start: ${err.message}`);
             // Wichtig: bonjour-instance freigeben sonst leakt der UDP-Socket
             // über die Adapter-Lifetime. `stop()` short-circuit'd auf
             // `!this.active` und würde nichts cleanen.
@@ -124,7 +121,7 @@ export class MDNSService {
             this.adapter.log.debug('mDNS: Service stopped');
         } catch (error) {
             const err = error as Error;
-            this.adapter.log.warn(tLog(this.adapter.systemLanguage, 'mdnsStopFailed', { error: err.message }));
+            this.adapter.log.warn(`mDNS could not stop cleanly: ${err.message}`);
         }
 
         this.active = false;

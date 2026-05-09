@@ -80,9 +80,9 @@ export type AdapterInterface = Pick<
 > & {
     /**
      * ioBroker system language (`'en'`, `'de'`, …). Read once in `onReady` from
-     * `system.config.language`, EN-Fallback. Library modules use this for
-     * `tLog()` lookups so info/warn/error messages appear in the user's
-     * language. Debug stays English (Maintainer-Diagnose).
+     * `system.config.language`, EN-Fallback. Used to render the user-facing
+     * landing page (HTML) in the user's language. Adapter logs themselves
+     * stay English by ioBroker convention.
      */
     readonly systemLanguage: string;
 };

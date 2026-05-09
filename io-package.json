@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.28.1",
     "news": {
+      "NEXT": {
+        "en": "Adapter log messages are now English only, in line with the ioBroker community standard. Localized state names, descriptions and dropdown labels (11 languages) and the user-facing landing page remain unchanged.",
+        "de": "Adapter-Logs sind jetzt nur noch auf Englisch, gemäß ioBroker-Community-Standard. Lokalisierte Datenpunkt-Namen, Beschreibungen und Dropdown-Labels (11 Sprachen) sowie die User-facing Landing-Seite bleiben erhalten.",
+        "ru": "Сообщения журнала теперь только на английском, согласно стандарту сообщества ioBroker. Локализованные имена состояний, описания и подписи (11 языков), а также страница для пользователя сохраняются.",
+        "pt": "As mensagens de log do adaptador agora são apenas em inglês, conforme o padrão da comunidade ioBroker. Nomes de estados, descrições e rótulos localizados (11 idiomas) e a página inicial visível ao utilizador permanecem inalterados.",
+        "nl": "Adapter-logberichten zijn nu alleen Engels, conform de ioBroker-communitystandaard. Gelokaliseerde statusnamen, beschrijvingen en dropdown-labels (11 talen) en de landingspagina blijven ongewijzigd.",
+        "fr": "Les messages de log de l'adaptateur sont désormais uniquement en anglais, conformément au standard de la communauté ioBroker. Les noms d'états, descriptions et libellés localisés (11 langues) ainsi que la page d'accueil restent inchangés.",
+        "it": "I messaggi di log dell'adattatore sono ora solo in inglese, secondo lo standard della community ioBroker. I nomi degli stati, descrizioni ed etichette localizzati (11 lingue) e la landing page rimangono invariati.",
+        "es": "Los mensajes de registro del adaptador ahora son solo en inglés, conforme al estándar de la comunidad ioBroker. Los nombres de estados, descripciones y etiquetas localizados (11 idiomas) y la página de inicio para el usuario permanecen sin cambios.",
+        "pl": "Komunikaty dziennika adaptera są teraz wyłącznie po angielsku, zgodnie ze standardem społeczności ioBroker. Zlokalizowane nazwy stanów, opisy i etykiety (11 języków) oraz strona docelowa pozostają bez zmian.",
+        "uk": "Повідомлення журналу адаптера тепер лише англійською, відповідно до стандарту спільноти ioBroker. Локалізовані назви станів, описи та мітки (11 мов) і цільова сторінка для користувача залишаються без змін.",
+        "zh-cn": "适配器日志消息现在仅为英文，符合 ioBroker 社区标准。本地化的数据点名称、描述和下拉标签（11 种语言）以及用户登录页面保持不变。"
+      },
       "1.28.1": {
         "en": "Documentation: changelog entries (v1.27.x–v1.28.0) restored to English — a few bullets had been left in German. No code changes.",
         "de": "Dokumentation: Changelog-Einträge (v1.27.x–v1.28.0) auf Englisch korrigiert — einige Bullets waren auf Deutsch geblieben. Keine Code-Änderungen.",
@@ -80,19 +93,6 @@
         "pl": "Bugfixy: URL-e VIS-2 w dropdown teraz poprawne (vis-2/index.html#view). VIS-1 w pełni obsługiwany (?<projekt> + #view). Logi info/warn/error w języku systemu, debug pozostaje angielski.",
         "uk": "Bugfixes: URL VIS-2 у dropdown тепер коректні (vis-2/index.html#view). VIS-1 повністю підтримано (?<project> + #view). Логи info/warn/error мовою системи, debug залишається англійським.",
         "zh-cn": "Bug 修复：VIS-2 下拉框 URL 现在正确（vis-2/index.html#view）。完整支持 VIS-1（?<project> + #view）。info/warn/error 日志使用系统语言，debug 保留英文。"
-      },
-      "1.26.0": {
-        "en": "Bugfixes: VIS-2 dropdown URLs use the real routing (project=path, view=#hash). New clients start on the empty entry → landing page until you pick a URL. iframe wrapper without bottom/right gap.",
-        "de": "Bugfixes: VIS-2-Dropdown-URLs nutzen das echte Routing (Projekt=Pfad, View=#Hash). Neue Clients starten auf Null-Eintrag → Landing-Page, bis Du eine URL wählst. iframe-Wrapper ohne Rand unten/rechts.",
-        "ru": "Bugfixes: VIS-2-URL в dropdown с реальным routing (project=путь, view=#hash). Новые клиенты на пустой записи → landing-page. iframe без чёрной полосы снизу/справа.",
-        "pt": "Bugfixes: URLs VIS-2 no dropdown com routing real (projecto=path, view=#hash). Novos clientes em entrada vazia → landing-page. iframe sem barra preta em baixo/direita.",
-        "nl": "Bugfixes: VIS-2-dropdown-URLs met echt routing (project=path, view=#hash). Nieuwe clients op lege ingang → landing-page. iframe zonder zwarte rand onder/rechts.",
-        "fr": "Bugfixes : URL VIS-2 dans le dropdown avec le vrai routing (projet=path, vue=#hash). Nouveaux clients sur entree vide → page d'accueil. iframe sans bande noire en bas/droite.",
-        "it": "Bugfixes: URL VIS-2 nel dropdown con routing reale (progetto=path, view=#hash). Nuovi client su voce vuota → landing-page. iframe senza striscia nera in basso/destra.",
-        "es": "Bugfixes: URL VIS-2 en el dropdown con routing real (proyecto=path, vista=#hash). Clientes nuevos en entrada vacia → landing-page. iframe sin franja negra abajo/derecha.",
-        "pl": "Bugfixy: URL-e VIS-2 w dropdown z faktycznym routingiem (projekt=path, view=#hash). Nowi klienci na pustym wpisie → landing-page. iframe bez czarnego paska na dole/po prawej.",
-        "uk": "Bugfixes: URL VIS-2 у dropdown із реальним routing (project=path, view=#hash). Нові клієнти на порожньому записі → landing-page. iframe без чорної смуги знизу/справа.",
-        "zh-cn": "Bug 修复：VIS-2 下拉框 URL 使用真实路由（project=路径，view=#hash）。新客户端默认空条目 → 着陆页。iframe 无底部/右侧黑边。"
       }
     },
     "titleLang": {

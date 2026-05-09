@@ -6,7 +6,7 @@
 
 **ioBroker HASS Emulator** — emuliert einen minimalen HA-Server für Geräte, die ein HA-Dashboard erwarten → leitet auf beliebige URL um.
 
-- **Version:** 1.28.0 npm latest (deploy 2026-05-06). v1.28.0 Multi-Language-Welle für State-Namen + Descs + Dropdown-Labels (`lib/i18n-states.ts`, 18 Keys × 11 Sprachen, plus io-package.json:instanceObjects mit Translation-Objects). Logs sind seit v1.27.0 lokalisiert. VIS-URL-Routing korrekt (Pfad `/vis-2/` bzw. `/vis/`, Project als `?<project>` Query, View als `#<view>`). Roadmap: `/Volumes/ssd/ioBroker/Ressourcen/hassemu/features-roadmap.md` (81/81 → in v1.25.0 abgeschlossen).
+- **Version:** 1.28.1 (released 2026-05-07, npm latest) — Patch: README changelog English + tsconfig/node22 bump. v1.28.0 (2026-05-06) Multi-Language-Welle für State-Namen + Descs + Dropdown-Labels (`lib/i18n-states.ts`, 18 Keys × 11 Sprachen, plus io-package.json:instanceObjects mit Translation-Objects). Logs sind seit v1.27.0 lokalisiert. VIS-URL-Routing korrekt (Pfad `/vis-2/` bzw. `/vis/`, Project als `?<project>` Query, View als `#<view>`). Roadmap: archiviert unter `/Volumes/ssd/ioBroker/Ressourcen/hassemu/_archive/features-roadmap-v1.28.0.md` (81/81 in v1.25.0 abgeschlossen).
 - **GitHub:** https://github.com/krobipd/ioBroker.hassemu
 - **npm:** https://www.npmjs.com/package/iobroker.hassemu
 - **Repository PR:** ioBroker/ioBroker.repositories#5793
