@@ -1,4 +1,8 @@
 # Older Changes
+## 1.27.1 (2026-05-06)
+
+- Bugfix: VIS-2 dropdown now lists each project separately via a `?<project>` query plus sub-views as `?<project>#<view>`. Pre-v1.27.1 only the active project was reachable.
+
 ## 1.27.0 (2026-05-06)
 
 - Bugfix: VIS-2 URLs in the mode dropdown are now correct (`vis-2/index.html#<view>`, no `.0` suffix, no project path segment). Source is the VIS-2 adapter's `io-package.json` (`localLinks.Runtime.link`).
