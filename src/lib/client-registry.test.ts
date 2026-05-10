@@ -819,6 +819,45 @@ describe('ClientRegistry', () => {
             await registry.restore();
             expect(registry.getById(id)?.manualUrl).to.be.null;
         });
+
+        it('a single broken client does not abort restore for the rest (HE1 v1.28.3)', async () => {
+            // Three clients in store. The middle one's ensureObjects throws
+            // (simulated broker hiccup mid-restore). Before HE1 the rejection
+            // in the per-client body aborted the surrounding for-loop and
+            // charlie never got restored.
+            const cookieA = crypto.randomUUID();
+            const cookieB = crypto.randomUUID();
+            const cookieC = crypto.randomUUID();
+
+            const localBuilt = createMockAdapter();
+            localBuilt.store.objects.set(`hassemu.0.clients.alpha`, {
+                type: 'channel',
+                native: { cookie: cookieA },
+            });
+            localBuilt.store.objects.set(`hassemu.0.clients.bravo`, {
+                type: 'channel',
+                native: { cookie: cookieB },
+            });
+            localBuilt.store.objects.set(`hassemu.0.clients.charlie`, {
+                type: 'channel',
+                native: { cookie: cookieC },
+            });
+            const original = localBuilt.adapter.setObjectNotExistsAsync;
+            (
+                localBuilt.adapter as { setObjectNotExistsAsync: typeof original }
+            ).setObjectNotExistsAsync = async (id: string, obj) => {
+                if (id.startsWith('clients.bravo')) {
+                    throw new Error('simulated broker hiccup mid-restore');
+                }
+                return original(id, obj);
+            };
+            const localReg = new ClientRegistry(localBuilt.adapter as never);
+            await localReg.restore();
+            expect(localReg.getById('alpha'), 'alpha must restore').to.not.be.null;
+            expect(localReg.getById('charlie'), 'charlie must restore').to.not.be.null;
+            // bravo's trackInMemory ran before the failing ensureObjects.
+            // Per-client try/catch ensures the other two still made it through.
+        });
     });
 
     // --- v1.19.0 (J-Phase Test-Coverage) ---

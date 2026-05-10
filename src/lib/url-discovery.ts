@@ -136,18 +136,26 @@ export class UrlDiscovery {
         // Label minimal (`VIS-2: main / Wohnzimmer`).
         const webInstances = Array.from(crossRefs.entries()).filter(([n]) => n.startsWith('web.'));
         const showWebSuffix = webInstances.length > 1;
-        for (const [shortName, native] of webInstances) {
-            const labelSuffix = showWebSuffix ? ` (${shortName})` : '';
-            // URL-Pfad-Komponente kommt aus `common.localLinks.Runtime.link`
-            // bzw. `common.welcomeScreen.link` der jeweiligen vis-Instance:
-            //   vis-2: `/vis-2/index.html`     (NICHT `/vis-2.0/`)
-            //   vis-1: `/vis/index.html`       (NICHT `/vis.0/`)
-            // Verifiziert in iobroker.vis-2 + iobroker.vis io-package.json.
-            // adapterName (`vis-2.0`/`vis.0`) wird für `readDirAsync` /
-            // `readFileAsync` gebraucht (Folder-Lookup), urlPath nur für die URL.
-            await this.addVisProjects(result, native, hostIp, 'vis-2.0', 'vis-2', `VIS-2${labelSuffix}`);
-            await this.addVisProjects(result, native, hostIp, 'vis.0', 'vis', `VIS${labelSuffix}`);
-        }
+        // v1.28.3 (UD1): pro web-Instance vis-2- und vis-1-Discovery parallel.
+        // addVisProjects mutiert `result` direkt — der Output bleibt deterministisch
+        // weil jede Project-URL ein eigener key ist (keine Race auf identischen
+        // keys möglich, da vis-2 und vis-1 unterschiedliche urlPaths benutzen).
+        // URL-Pfad-Komponente kommt aus `common.localLinks.Runtime.link`
+        // bzw. `common.welcomeScreen.link` der jeweiligen vis-Instance:
+        //   vis-2: `/vis-2/index.html`     (NICHT `/vis-2.0/`)
+        //   vis-1: `/vis/index.html`       (NICHT `/vis.0/`)
+        // Verifiziert in iobroker.vis-2 + iobroker.vis io-package.json.
+        // adapterName (`vis-2.0`/`vis.0`) wird für `readDirAsync` /
+        // `readFileAsync` gebraucht (Folder-Lookup), urlPath nur für die URL.
+        await Promise.all(
+            webInstances.flatMap(([shortName, native]) => {
+                const labelSuffix = showWebSuffix ? ` (${shortName})` : '';
+                return [
+                    this.addVisProjects(result, native, hostIp, 'vis-2.0', 'vis-2', `VIS-2${labelSuffix}`),
+                    this.addVisProjects(result, native, hostIp, 'vis.0', 'vis', `VIS${labelSuffix}`),
+                ];
+            }),
+        );
 
         this.cached = result;
         if (this.onChange) {

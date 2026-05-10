@@ -189,6 +189,7 @@ class WebServer {
     } catch (err) {
       this.adapter.log.debug(`Web server stop error: ${String(err)}`);
     }
+    this.dnsInFlight.clear();
   }
   // v1.14.0 (H8): `inject` ist jetzt ein readonly Field (oben deklariert,
   // im Constructor einmalig gebunden). Der frühere Getter allokierte bei
@@ -314,6 +315,22 @@ class WebServer {
     }
     this.loginAttempts.delete(key);
     return false;
+  }
+  /**
+   * v1.28.3 (HW13): Seconds remaining until the lockout for `ip` expires,
+   * or 0 if the IP isn't currently locked. Used to set the HTTP `Retry-After`
+   * header on 429 responses so well-behaved clients back off correctly
+   * instead of hammering the endpoint and prolonging the lockout.
+   *
+   * @param ip Remote IP whose lockout window is being queried.
+   */
+  retryAfterSeconds(ip) {
+    const entry = this.loginAttempts.get(WebServer.normalizeLockoutKey(ip));
+    if (!entry || entry.lockedUntil === 0) {
+      return 0;
+    }
+    const remaining = entry.lockedUntil - Date.now();
+    return remaining > 0 ? Math.max(1, Math.ceil(remaining / 1e3)) : 0;
   }
   /**
    * Records a failed login attempt for `ip`. When the running count reaches
@@ -551,6 +568,10 @@ class WebServer {
             this.adapter.log.warn(
               `Login rejected: IP ${ip} is currently locked out (too many failed attempts)`
             );
+            const retry = this.retryAfterSeconds(ip);
+            if (retry > 0) {
+              reply.header("Retry-After", String(retry));
+            }
             reply.status(429);
             return { type: "abort", flow_id: flowId, reason: "too_many_failed_attempts" };
           }
@@ -602,6 +623,10 @@ class WebServer {
         const { code, grant_type, refresh_token } = (_a = req.body) != null ? _a : {};
         const ip = WebServer.getClientIp(req);
         if (this.isIpLocked(ip)) {
+          const retry = this.retryAfterSeconds(ip);
+          if (retry > 0) {
+            reply.header("Retry-After", String(retry));
+          }
           reply.status(429);
           return { error: "rate_limited", error_description: "Too many failures, try again later" };
         }
@@ -631,11 +656,15 @@ class WebServer {
             reply.status(400);
             return { error: "invalid_grant", error_description: "Invalid refresh token" };
           }
+          this.refreshTokens.delete(incoming);
           const newAccess = import_node_crypto.default.randomUUID();
+          const newRefresh = import_node_crypto.default.randomUUID();
+          this.storeRefreshToken(newRefresh, ownerId);
           await this.registry.setToken(ownerId, newAccess);
           return {
             access_token: newAccess,
             token_type: "Bearer",
+            refresh_token: newRefresh,
             expires_in: import_constants.OAUTH_ACCESS_TOKEN_TTL_S
           };
         }
