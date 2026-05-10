@@ -1,4 +1,8 @@
 # Older Changes
+## 1.27.2 (2026-05-06)
+
+- Bugfix: dropdown `common.states` is now fully replaced on each URL-refresh instead of merged — stale URLs from earlier format versions are now removed.
+
 ## 1.27.1 (2026-05-06)
 
 - Bugfix: VIS-2 dropdown now lists each project separately via a `?<project>` query plus sub-views as `?<project>#<view>`. Pre-v1.27.1 only the active project was reachable.
