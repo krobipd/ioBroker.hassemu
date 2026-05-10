@@ -240,6 +240,12 @@ export class WebServer {
             // ohne Konsequenz. Caller (main.ts onUnload) loggt nicht doppelt.
             this.adapter.log.debug(`Web server stop error: ${String(err)}`);
         }
+        // v1.28.3 (HW1): drop in-flight DNS markers so a slow reverse-lookup
+        // started just before stop() doesn't keep an IP entry pinned for the
+        // whole process lifetime. The Promise.race(timeout) finally-handler
+        // would do that eventually, but only after up to 5s — racy if the
+        // adapter is restarted during that window.
+        this.dnsInFlight.clear();
     }
 
     // v1.14.0 (H8): `inject` ist jetzt ein readonly Field (oben deklariert,
@@ -382,6 +388,23 @@ export class WebServer {
         // Lockout window passed — drop the entry, IP gets a fresh budget.
         this.loginAttempts.delete(key);
         return false;
+    }
+
+    /**
+     * v1.28.3 (HW13): Seconds remaining until the lockout for `ip` expires,
+     * or 0 if the IP isn't currently locked. Used to set the HTTP `Retry-After`
+     * header on 429 responses so well-behaved clients back off correctly
+     * instead of hammering the endpoint and prolonging the lockout.
+     *
+     * @param ip Remote IP whose lockout window is being queried.
+     */
+    private retryAfterSeconds(ip: string | null): number {
+        const entry = this.loginAttempts.get(WebServer.normalizeLockoutKey(ip));
+        if (!entry || entry.lockedUntil === 0) {
+            return 0;
+        }
+        const remaining = entry.lockedUntil - Date.now();
+        return remaining > 0 ? Math.max(1, Math.ceil(remaining / 1000)) : 0;
     }
 
     /**
@@ -681,6 +704,13 @@ export class WebServer {
                         this.adapter.log.warn(
                             `Login rejected: IP ${ip} is currently locked out (too many failed attempts)`,
                         );
+                        // v1.28.3 (HW13): RFC 7231 Retry-After header — well-behaved
+                        // clients back off until the window passes instead of
+                        // re-trying the same lockout-IP every second.
+                        const retry = this.retryAfterSeconds(ip);
+                        if (retry > 0) {
+                            reply.header('Retry-After', String(retry));
+                        }
                         reply.status(429);
                         return { type: 'abort', flow_id: flowId, reason: 'too_many_failed_attempts' };
                     }
@@ -742,6 +772,12 @@ export class WebServer {
                 // Asymmetrie ist riskant (massive Probes, Side-Channel-Risk).
                 // Jetzt: dieselbe Lockout-Mechanik wie /auth/login_flow/:flowId.
                 if (this.isIpLocked(ip)) {
+                    // v1.28.3 (HW13): see /auth/login_flow/:flowId — same Retry-After
+                    // signal so /auth/token brute-force probes back off identically.
+                    const retry = this.retryAfterSeconds(ip);
+                    if (retry > 0) {
+                        reply.header('Retry-After', String(retry));
+                    }
                     reply.status(429);
                     return { error: 'rate_limited', error_description: 'Too many failures, try again later' };
                 }
@@ -779,11 +815,22 @@ export class WebServer {
                         reply.status(400);
                         return { error: 'invalid_grant', error_description: 'Invalid refresh token' };
                     }
+                    // v1.28.3 (HW5): rotate refresh_token on every refresh-grant
+                    // (OAuth 2.0 BCP — RFC 6819 §5.2.2.3 / draft-ietf-oauth-security-topics).
+                    // Each refresh_token is single-use: on success the old token is
+                    // invalidated and a fresh one returned alongside the new
+                    // access_token. Limits the window of a leaked refresh_token to
+                    // exactly one use; replay of the old token after rotation is
+                    // rejected as `invalid_grant`.
+                    this.refreshTokens.delete(incoming);
                     const newAccess = crypto.randomUUID();
+                    const newRefresh = crypto.randomUUID();
+                    this.storeRefreshToken(newRefresh, ownerId);
                     await this.registry.setToken(ownerId, newAccess);
                     return {
                         access_token: newAccess,
                         token_type: 'Bearer',
+                        refresh_token: newRefresh,
                         expires_in: OAUTH_ACCESS_TOKEN_TTL_S,
                     };
                 }

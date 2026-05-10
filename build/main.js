@@ -376,25 +376,32 @@ class HassEmu extends utils.Adapter {
    * lastSeen 30 Tage zurückliegt, ist der Token längst abgelaufen.
    */
   async gcStaleClients() {
-    var _a2, _b, _c;
+    var _a2, _b;
     const now = Date.now();
     const records = (_b = (_a2 = this.registry) == null ? void 0 : _a2.listAll()) != null ? _b : [];
-    let removed = 0;
-    for (const record of records) {
-      try {
-        const obj = await this.getObjectAsync(`clients.${record.id}`);
-        const native = (_c = obj == null ? void 0 : obj.native) != null ? _c : {};
-        const action = (0, import_coerce.decideGcAction)(native.lastSeen, now, import_constants.STALE_CLIENT_TTL_MS);
-        if (action === "seed") {
-          await this.registry.seedLastSeen(record.id, now);
-        } else if (action === "stale") {
-          await this.registry.remove(record.id);
-          removed++;
+    const results = await Promise.all(
+      records.map(async (record) => {
+        var _a3;
+        try {
+          const obj = await this.getObjectAsync(`clients.${record.id}`);
+          const native = (_a3 = obj == null ? void 0 : obj.native) != null ? _a3 : {};
+          const action = (0, import_coerce.decideGcAction)(native.lastSeen, now, import_constants.STALE_CLIENT_TTL_MS);
+          if (action === "seed") {
+            await this.registry.seedLastSeen(record.id, now);
+            return 0;
+          }
+          if (action === "stale") {
+            await this.registry.remove(record.id);
+            return 1;
+          }
+          return 0;
+        } catch (err) {
+          this.log.debug(`Stale-GC: failed for ${record.id}: ${String(err)}`);
+          return 0;
         }
-      } catch (err) {
-        this.log.debug(`Stale-GC: failed for ${record.id}: ${String(err)}`);
-      }
-    }
+      })
+    );
+    const removed = results.reduce((acc, n) => acc + n, 0);
     if (removed > 0) {
       this.log.info(`Removed ${removed} inactive client(s) (idle longer than 30 days)`);
     }

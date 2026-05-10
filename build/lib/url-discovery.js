@@ -102,11 +102,15 @@ class UrlDiscovery {
     }
     const webInstances = Array.from(crossRefs.entries()).filter(([n]) => n.startsWith("web."));
     const showWebSuffix = webInstances.length > 1;
-    for (const [shortName, native] of webInstances) {
-      const labelSuffix = showWebSuffix ? ` (${shortName})` : "";
-      await this.addVisProjects(result, native, hostIp, "vis-2.0", "vis-2", `VIS-2${labelSuffix}`);
-      await this.addVisProjects(result, native, hostIp, "vis.0", "vis", `VIS${labelSuffix}`);
-    }
+    await Promise.all(
+      webInstances.flatMap(([shortName, native]) => {
+        const labelSuffix = showWebSuffix ? ` (${shortName})` : "";
+        return [
+          this.addVisProjects(result, native, hostIp, "vis-2.0", "vis-2", `VIS-2${labelSuffix}`),
+          this.addVisProjects(result, native, hostIp, "vis.0", "vis", `VIS${labelSuffix}`)
+        ];
+      })
+    );
     this.cached = result;
     if (this.onChange) {
       try {

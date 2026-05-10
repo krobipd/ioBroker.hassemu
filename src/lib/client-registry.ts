@@ -107,55 +107,64 @@ export class ClientRegistry {
             if (!id || id.includes('.')) {
                 continue;
             }
-            const native = isPlainObject(obj.native) ? obj.native : {};
-            const cookie = coerceUuid(native.cookie);
-            if (!cookie) {
-                continue;
-            }
-            // v1.9.0 (D8): vier readState-Calls parallel statt sequenziell.
-            // Mit 50 Clients waren das vorher 200 sequenzielle Round-Trips
-            // bevor der WebServer up war; jetzt 50 parallele 4er-Gruppen.
-            const [modeRaw, manualUrlRaw, ipRaw, hostnameRaw] = await Promise.all([
-                this.readState(`${id}.mode`),
-                this.readState(`${id}.manualUrl`),
-                this.readState(`${id}.ip`),
-                this.readState(`${id}.hostname`),
-            ]);
-            const mode = typeof modeRaw === 'string' ? modeRaw : '';
-            const manualUrl = coerceSafeUrl(manualUrlRaw);
-            const ip = coerceString(ipRaw);
-            const token = coerceUuid(native.token);
-
-            // Legacy migration (<=1.1.1): hostname lived in its own state. If present,
-            // move the value into common.name and drop the state.
-            const legacyHostname = coerceString(hostnameRaw);
-            let channelName = coerceString(obj.common?.name);
-            if (legacyHostname) {
-                if (legacyHostname !== channelName) {
-                    await this.adapter.extendObjectAsync(`clients.${id}`, { common: { name: legacyHostname } });
-                    channelName = legacyHostname;
+            // v1.28.3 (HE1): per-client try/catch — bei Promise.all auf 4
+            // readState-Calls reicht ein einzelner Reject (z.B. corrupted state
+            // bei migrating jsonl-store), und ALLE folgenden Clients werden
+            // nicht restored. Pro-Client-Wrap entkoppelt: ein broken Client
+            // kostet nur sich selbst.
+            try {
+                const native = isPlainObject(obj.native) ? obj.native : {};
+                const cookie = coerceUuid(native.cookie);
+                if (!cookie) {
+                    continue;
                 }
-                try {
-                    await this.adapter.delObjectAsync(`clients.${id}.hostname`);
-                } catch {
-                    /* best effort — ignore */
-                }
-            }
-            const hostname = channelName && channelName !== ip && channelName !== id ? channelName : null;
+                // v1.9.0 (D8): vier readState-Calls parallel statt sequenziell.
+                // Mit 50 Clients waren das vorher 200 sequenzielle Round-Trips
+                // bevor der WebServer up war; jetzt 50 parallele 4er-Gruppen.
+                const [modeRaw, manualUrlRaw, ipRaw, hostnameRaw] = await Promise.all([
+                    this.readState(`${id}.mode`),
+                    this.readState(`${id}.manualUrl`),
+                    this.readState(`${id}.ip`),
+                    this.readState(`${id}.hostname`),
+                ]);
+                const mode = typeof modeRaw === 'string' ? modeRaw : '';
+                const manualUrl = coerceSafeUrl(manualUrlRaw);
+                const ip = coerceString(ipRaw);
+                const token = coerceUuid(native.token);
 
-            const record: ClientRecord = { id, cookie, token, mode, manualUrl, ip, hostname };
-            this.trackInMemory(record);
-            // Legacy clients (v1.1.x) only had `visUrl` + `ip` + `remove` objects;
-            // ensure the v1.2.0+ objects (`mode`, `manualUrl`) exist before any
-            // state writes from migration land — otherwise js-controller logs
-            // "State has no existing object" warnings.
-            await this.ensureObjects(record);
-            // Promote blank state-value to numeric 0 so the dropdown renders
-            // the `0='---'` option as selected. v1.2.0 installs left the value
-            // as `''` which doesn't match any common.states entry.
-            const modeStateRaw = await this.readState(`${id}.mode`);
-            if (modeStateRaw === '' || modeStateRaw === null || modeStateRaw === undefined) {
-                await this.adapter.setStateAsync(`clients.${id}.mode`, { val: 0, ack: true });
+                // Legacy migration (<=1.1.1): hostname lived in its own state. If present,
+                // move the value into common.name and drop the state.
+                const legacyHostname = coerceString(hostnameRaw);
+                let channelName = coerceString(obj.common?.name);
+                if (legacyHostname) {
+                    if (legacyHostname !== channelName) {
+                        await this.adapter.extendObjectAsync(`clients.${id}`, { common: { name: legacyHostname } });
+                        channelName = legacyHostname;
+                    }
+                    try {
+                        await this.adapter.delObjectAsync(`clients.${id}.hostname`);
+                    } catch {
+                        /* best effort — ignore */
+                    }
+                }
+                const hostname = channelName && channelName !== ip && channelName !== id ? channelName : null;
+
+                const record: ClientRecord = { id, cookie, token, mode, manualUrl, ip, hostname };
+                this.trackInMemory(record);
+                // Legacy clients (v1.1.x) only had `visUrl` + `ip` + `remove` objects;
+                // ensure the v1.2.0+ objects (`mode`, `manualUrl`) exist before any
+                // state writes from migration land — otherwise js-controller logs
+                // "State has no existing object" warnings.
+                await this.ensureObjects(record);
+                // Promote blank state-value to numeric 0 so the dropdown renders
+                // the `0='---'` option as selected. v1.2.0 installs left the value
+                // as `''` which doesn't match any common.states entry.
+                const modeStateRaw = await this.readState(`${id}.mode`);
+                if (modeStateRaw === '' || modeStateRaw === null || modeStateRaw === undefined) {
+                    await this.adapter.setStateAsync(`clients.${id}.mode`, { val: 0, ack: true });
+                }
+            } catch (err) {
+                this.adapter.log.debug(`client-registry: skipping ${id} during restore — ${String(err)}`);
             }
         }
         this.adapter.log.debug(`client-registry: restored ${this.byId.size} client(s)`);

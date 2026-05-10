@@ -493,24 +493,35 @@ class HassEmu extends utils.Adapter {
     private async gcStaleClients(): Promise<void> {
         const now = Date.now();
         const records = this.registry?.listAll() ?? [];
-        let removed = 0;
-        for (const record of records) {
-            try {
-                const obj = await this.getObjectAsync(`clients.${record.id}`);
-                const native = (obj?.native as { lastSeen?: number } | undefined) ?? {};
-                // v1.25.0 (J1): Decision-Logik in pure helper coerce.decideGcAction
-                // (testbar). Hier nur das I/O zum Broker.
-                const action = decideGcAction(native.lastSeen, now, STALE_CLIENT_TTL_MS);
-                if (action === 'seed') {
-                    await this.registry!.seedLastSeen(record.id, now);
-                } else if (action === 'stale') {
-                    await this.registry!.remove(record.id);
-                    removed++;
+        // v1.28.3 (M5): GC-Pass parallel statt sequentiell. Bei vielen Clients
+        // (Display-Farm) summierten sich die Broker-Round-Trips beim Adapter-
+        // Start zur spürbaren Pause vor `webServer.start()`. Pro-Client-try-catch
+        // bleibt — ein einzelner getObject-Fehler darf den GC-Pass nicht
+        // abbrechen. Counter ist ein primitive number unter Promise.all sicher.
+        const results: number[] = await Promise.all(
+            records.map(async (record): Promise<number> => {
+                try {
+                    const obj = await this.getObjectAsync(`clients.${record.id}`);
+                    const native = (obj?.native as { lastSeen?: number } | undefined) ?? {};
+                    // v1.25.0 (J1): Decision-Logik in pure helper coerce.decideGcAction
+                    // (testbar). Hier nur das I/O zum Broker.
+                    const action = decideGcAction(native.lastSeen, now, STALE_CLIENT_TTL_MS);
+                    if (action === 'seed') {
+                        await this.registry!.seedLastSeen(record.id, now);
+                        return 0;
+                    }
+                    if (action === 'stale') {
+                        await this.registry!.remove(record.id);
+                        return 1;
+                    }
+                    return 0;
+                } catch (err) {
+                    this.log.debug(`Stale-GC: failed for ${record.id}: ${String(err)}`);
+                    return 0;
                 }
-            } catch (err) {
-                this.log.debug(`Stale-GC: failed for ${record.id}: ${String(err)}`);
-            }
-        }
+            }),
+        );
+        const removed = results.reduce((acc, n) => acc + n, 0);
         if (removed > 0) {
             this.log.info(`Removed ${removed} inactive client(s) (idle longer than 30 days)`);
         }

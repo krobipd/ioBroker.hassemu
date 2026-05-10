@@ -94,40 +94,44 @@ class ClientRegistry {
       if (!id || id.includes(".")) {
         continue;
       }
-      const native = (0, import_coerce.isPlainObject)(obj.native) ? obj.native : {};
-      const cookie = (0, import_coerce.coerceUuid)(native.cookie);
-      if (!cookie) {
-        continue;
-      }
-      const [modeRaw, manualUrlRaw, ipRaw, hostnameRaw] = await Promise.all([
-        this.readState(`${id}.mode`),
-        this.readState(`${id}.manualUrl`),
-        this.readState(`${id}.ip`),
-        this.readState(`${id}.hostname`)
-      ]);
-      const mode = typeof modeRaw === "string" ? modeRaw : "";
-      const manualUrl = (0, import_coerce.coerceSafeUrl)(manualUrlRaw);
-      const ip = (0, import_coerce.coerceString)(ipRaw);
-      const token = (0, import_coerce.coerceUuid)(native.token);
-      const legacyHostname = (0, import_coerce.coerceString)(hostnameRaw);
-      let channelName = (0, import_coerce.coerceString)((_b = obj.common) == null ? void 0 : _b.name);
-      if (legacyHostname) {
-        if (legacyHostname !== channelName) {
-          await this.adapter.extendObjectAsync(`clients.${id}`, { common: { name: legacyHostname } });
-          channelName = legacyHostname;
+      try {
+        const native = (0, import_coerce.isPlainObject)(obj.native) ? obj.native : {};
+        const cookie = (0, import_coerce.coerceUuid)(native.cookie);
+        if (!cookie) {
+          continue;
         }
-        try {
-          await this.adapter.delObjectAsync(`clients.${id}.hostname`);
-        } catch {
+        const [modeRaw, manualUrlRaw, ipRaw, hostnameRaw] = await Promise.all([
+          this.readState(`${id}.mode`),
+          this.readState(`${id}.manualUrl`),
+          this.readState(`${id}.ip`),
+          this.readState(`${id}.hostname`)
+        ]);
+        const mode = typeof modeRaw === "string" ? modeRaw : "";
+        const manualUrl = (0, import_coerce.coerceSafeUrl)(manualUrlRaw);
+        const ip = (0, import_coerce.coerceString)(ipRaw);
+        const token = (0, import_coerce.coerceUuid)(native.token);
+        const legacyHostname = (0, import_coerce.coerceString)(hostnameRaw);
+        let channelName = (0, import_coerce.coerceString)((_b = obj.common) == null ? void 0 : _b.name);
+        if (legacyHostname) {
+          if (legacyHostname !== channelName) {
+            await this.adapter.extendObjectAsync(`clients.${id}`, { common: { name: legacyHostname } });
+            channelName = legacyHostname;
+          }
+          try {
+            await this.adapter.delObjectAsync(`clients.${id}.hostname`);
+          } catch {
+          }
         }
-      }
-      const hostname = channelName && channelName !== ip && channelName !== id ? channelName : null;
-      const record = { id, cookie, token, mode, manualUrl, ip, hostname };
-      this.trackInMemory(record);
-      await this.ensureObjects(record);
-      const modeStateRaw = await this.readState(`${id}.mode`);
-      if (modeStateRaw === "" || modeStateRaw === null || modeStateRaw === void 0) {
-        await this.adapter.setStateAsync(`clients.${id}.mode`, { val: 0, ack: true });
+        const hostname = channelName && channelName !== ip && channelName !== id ? channelName : null;
+        const record = { id, cookie, token, mode, manualUrl, ip, hostname };
+        this.trackInMemory(record);
+        await this.ensureObjects(record);
+        const modeStateRaw = await this.readState(`${id}.mode`);
+        if (modeStateRaw === "" || modeStateRaw === null || modeStateRaw === void 0) {
+          await this.adapter.setStateAsync(`clients.${id}.mode`, { val: 0, ack: true });
+        }
+      } catch (err) {
+        this.adapter.log.debug(`client-registry: skipping ${id} during restore \u2014 ${String(err)}`);
       }
     }
     this.adapter.log.debug(`client-registry: restored ${this.byId.size} client(s)`);

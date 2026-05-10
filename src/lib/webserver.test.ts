@@ -957,8 +957,10 @@ describe('WebServer', () => {
                     url: '/auth/token',
                     payload: { grant_type: 'authorization_code', code },
                 });
-                const refreshToken = (r3.json() as { refresh_token: string }).refresh_token;
-                // Use the valid token 10x — should never lockout
+                // v1.28.3 (HW5): refresh_token rotates on every grant (RFC 6819 §5.2.2.3).
+                // Walk the rotation chain — each successful refresh returns the next
+                // valid refresh_token, the previous one is invalidated.
+                let refreshToken = (r3.json() as { refresh_token: string }).refresh_token;
                 for (let i = 0; i < 10; i++) {
                     const res = await s.inject({
                         method: 'POST',
@@ -966,8 +968,104 @@ describe('WebServer', () => {
                         payload: { grant_type: 'refresh_token', refresh_token: refreshToken },
                     });
                     expect(res.statusCode).to.equal(200);
+                    refreshToken = (res.json() as { refresh_token: string }).refresh_token;
+                    expect(refreshToken).to.match(/^[0-9a-f-]{36}$/);
                 }
                 expect(s.loginAttempts.size).to.equal(0);
+            } finally {
+                await s['app'].close();
+            }
+        });
+
+        it('Retry-After header is set on 429 lockout responses (HW13 v1.28.3)', async () => {
+            const s = await buildAuthServer();
+            try {
+                for (let i = 0; i < 5; i++) {
+                    expect(await loginWith(s, 'wrong')).to.equal(400);
+                }
+                // 6th attempt → locked, must include Retry-After
+                const r1 = await s.inject({
+                    method: 'POST',
+                    url: '/auth/login_flow',
+                    payload: {},
+                    remoteAddress: '10.0.0.5',
+                });
+                const flowId = (r1.json() as { flow_id: string }).flow_id;
+                const res = await s.inject({
+                    method: 'POST',
+                    url: `/auth/login_flow/${flowId}`,
+                    payload: { username: 'admin', password: 'wrong' },
+                    remoteAddress: '10.0.0.5',
+                });
+                expect(res.statusCode).to.equal(429);
+                const retryAfter = res.headers['retry-after'];
+                expect(retryAfter).to.be.a('string');
+                const seconds = Number(retryAfter);
+                expect(seconds).to.be.greaterThan(0);
+                expect(seconds).to.be.at.most(15 * 60); // LOGIN_LOCKOUT_WINDOW_MS
+
+                // Same lockout signal on /auth/token refresh-grant 429
+                const tokenRes = await s.inject({
+                    method: 'POST',
+                    url: '/auth/token',
+                    payload: { grant_type: 'refresh_token', refresh_token: crypto.randomUUID() },
+                    remoteAddress: '10.0.0.5',
+                });
+                expect(tokenRes.statusCode).to.equal(429);
+                expect(tokenRes.headers['retry-after']).to.be.a('string');
+            } finally {
+                await s['app'].close();
+            }
+        });
+
+        it('refresh_token rotates on each grant; old token rejected after use (HW5 v1.28.3)', async () => {
+            const s = await buildAuthServer();
+            try {
+                const r1 = await s.inject({ method: 'POST', url: '/auth/login_flow', payload: {} });
+                const cookie = extractCookie(r1.headers['set-cookie'])!;
+                const flowId = (r1.json() as { flow_id: string }).flow_id;
+                const r2 = await s.inject({
+                    method: 'POST',
+                    url: `/auth/login_flow/${flowId}`,
+                    headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
+                    payload: { username: 'admin', password: 'secret' },
+                });
+                const code = (r2.json() as { result: string }).result;
+                const r3 = await s.inject({
+                    method: 'POST',
+                    url: '/auth/token',
+                    payload: { grant_type: 'authorization_code', code },
+                });
+                const initialRefresh = (r3.json() as { refresh_token: string }).refresh_token;
+
+                // First refresh → returns a NEW refresh_token, old one invalidated
+                const r4 = await s.inject({
+                    method: 'POST',
+                    url: '/auth/token',
+                    payload: { grant_type: 'refresh_token', refresh_token: initialRefresh },
+                });
+                expect(r4.statusCode).to.equal(200);
+                const rotated = r4.json() as { access_token: string; refresh_token: string };
+                expect(rotated.access_token).to.match(/^[0-9a-f-]{36}$/);
+                expect(rotated.refresh_token).to.match(/^[0-9a-f-]{36}$/);
+                expect(rotated.refresh_token).to.not.equal(initialRefresh);
+
+                // Replay of the OLD refresh_token must be rejected as invalid_grant
+                const r5 = await s.inject({
+                    method: 'POST',
+                    url: '/auth/token',
+                    payload: { grant_type: 'refresh_token', refresh_token: initialRefresh },
+                });
+                expect(r5.statusCode).to.equal(400);
+                expect((r5.json() as { error: string }).error).to.equal('invalid_grant');
+
+                // The NEW refresh_token still works
+                const r6 = await s.inject({
+                    method: 'POST',
+                    url: '/auth/token',
+                    payload: { grant_type: 'refresh_token', refresh_token: rotated.refresh_token },
+                });
+                expect(r6.statusCode).to.equal(200);
             } finally {
                 await s['app'].close();
             }
@@ -1153,6 +1251,27 @@ describe('WebServer bindAddress / start-stop', () => {
         const g = await buildGlobalConfig(built.adapter, 'http://x/');
         const s = new WebServer(built.adapter as never, baseConfig, reg, g, crypto.randomUUID());
         expect(s.boundAddress).to.be.null;
+    });
+
+    it('stop() clears the dnsInFlight set so pending lookups do not pin IPs (HW1 v1.28.3)', async () => {
+        const built = createMockAdapter();
+        const reg = new ClientRegistry(built.adapter as never);
+        const g = await buildGlobalConfig(built.adapter, 'http://x/');
+        const s = new WebServer(
+            built.adapter as never,
+            { ...baseConfig, port: 0, bindAddress: '127.0.0.1' },
+            reg,
+            g,
+            crypto.randomUUID(),
+        );
+        await s.start();
+        // Inject a marker as if a long-running reverse-DNS lookup were in-flight.
+        const access = s as unknown as { dnsInFlight: Set<string> };
+        access.dnsInFlight.add('203.0.113.42');
+        access.dnsInFlight.add('203.0.113.43');
+        expect(access.dnsInFlight.size).to.equal(2);
+        await s.stop();
+        expect(access.dnsInFlight.size).to.equal(0);
     });
 
     // --- D6: Request-error log cooldown (v1.9.x) ---
