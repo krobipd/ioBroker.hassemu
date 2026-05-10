@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.28.2",
+    "version": "1.28.3",
     "news": {
-      "NEXT": {
+      "1.28.3": {
         "en": "Adapter starts faster on installations with many displays, and a single broken client entry no longer keeps the others from being restored. Plus a security tighten-up on the HA login flow.",
         "de": "Adapter-Start mit vielen Displays läuft schneller, und ein einzelnes defektes Client-Objekt blockiert nicht mehr den Rest. Dazu eine Sicherheits-Härtung im HA-Login.",
         "ru": "Адаптер быстрее запускается при многих дисплеях, а одна повреждённая запись клиента больше не мешает восстановлению остальных. Плюс усиление безопасности входа HA.",
