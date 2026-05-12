@@ -9,6 +9,7 @@ import {
     decideGcAction,
     decideLegacyVisMigration,
     isPlainObject,
+    isValidRedirectUri,
     safeStringEqual,
 } from './coerce';
 
@@ -302,6 +303,94 @@ describe('coerce', () => {
         it('handles UTF-8 correctly', () => {
             expect(safeStringEqual('Häuser', 'Häuser')).to.be.true;
             expect(safeStringEqual('Häuser', 'Hauser')).to.be.false;
+        });
+    });
+
+    describe('isValidRedirectUri (OAuth2, v1.29.0)', () => {
+        // Source: home-assistant/core indieauth.py:verify_redirect_uri.
+        // Detail in Ressourcen/hassemu/oauth2-browser-flow-shelly-fw26.md.
+
+        it('accepts HA Companion iOS callback', () => {
+            expect(isValidRedirectUri('https://home-assistant.io/iOS', 'homeassistant://auth-callback')).to.be.true;
+        });
+
+        it('accepts HA Companion Android callback', () => {
+            expect(isValidRedirectUri('https://home-assistant.io/android', 'homeassistant://auth-callback')).to.be
+                .true;
+        });
+
+        it('accepts Wear OS callbacks for Android client', () => {
+            expect(
+                isValidRedirectUri(
+                    'https://home-assistant.io/android',
+                    'https://wear.googleapis.com/3p_auth/io.homeassistant.companion.android',
+                ),
+            ).to.be.true;
+            expect(
+                isValidRedirectUri(
+                    'https://home-assistant.io/android',
+                    'https://wear.googleapis-cn.com/3p_auth/io.homeassistant.companion.android',
+                ),
+            ).to.be.true;
+        });
+
+        it('rejects swapping iOS callback into android client and vice versa', () => {
+            // Same callback URL but wrong client_id — still rejected.
+            expect(
+                isValidRedirectUri(
+                    'https://home-assistant.io/iOS',
+                    'https://wear.googleapis.com/3p_auth/io.homeassistant.companion.android',
+                ),
+            ).to.be.false;
+        });
+
+        it('accepts same scheme + netloc per default IndieAuth rule', () => {
+            expect(isValidRedirectUri('http://10.0.0.1:8123/', 'http://10.0.0.1:8123/cb')).to.be.true;
+            expect(isValidRedirectUri('http://10.0.0.1:8123/foo', 'http://10.0.0.1:8123/bar')).to.be.true;
+        });
+
+        it('rejects different host on http(s) (open-redirect guard)', () => {
+            expect(isValidRedirectUri('http://10.0.0.1:8123/', 'http://attacker.example.com/cb')).to.be.false;
+        });
+
+        it('rejects different port on http(s)', () => {
+            expect(isValidRedirectUri('http://10.0.0.1:8123/', 'http://10.0.0.1:9999/cb')).to.be.false;
+        });
+
+        it('rejects javascript: scheme regardless of whitelist match', () => {
+            expect(isValidRedirectUri('https://home-assistant.io/android', 'javascript:alert(1)')).to.be.false;
+        });
+
+        it('rejects data: scheme', () => {
+            expect(isValidRedirectUri('https://home-assistant.io/android', 'data:text/html,<script>x</script>')).to.be
+                .false;
+        });
+
+        it('rejects vbscript: and file: schemes', () => {
+            expect(isValidRedirectUri('https://home-assistant.io/android', 'vbscript:Msgbox')).to.be.false;
+            expect(isValidRedirectUri('http://10.0.0.1:8123/', 'file:///etc/passwd')).to.be.false;
+        });
+
+        it('rejects mixed-case dangerous schemes', () => {
+            // Case-insensitive scheme check — `JavaScript:` is just as dangerous.
+            expect(isValidRedirectUri('https://home-assistant.io/android', 'JavaScript:alert(1)')).to.be.false;
+            expect(isValidRedirectUri('https://home-assistant.io/android', 'DATA:text/html,x')).to.be.false;
+        });
+
+        it('rejects empty / non-string / oversized inputs', () => {
+            expect(isValidRedirectUri('', 'homeassistant://auth-callback')).to.be.false;
+            expect(isValidRedirectUri('https://home-assistant.io/android', '')).to.be.false;
+            expect(isValidRedirectUri(null as unknown as string, 'x')).to.be.false;
+            expect(isValidRedirectUri('x', undefined as unknown as string)).to.be.false;
+            expect(isValidRedirectUri('https://home-assistant.io/android', 'homeassistant://' + 'a'.repeat(3000))).to.be
+                .false;
+        });
+
+        it('rejects custom-scheme redirects for non-whitelisted clients', () => {
+            // A self-hosted client with `client_id=http://10.0.0.1:8123/` cannot
+            // request `homeassistant://auth-callback` — that's reserved for the
+            // Companion App. Defense against client-spoofing.
+            expect(isValidRedirectUri('http://10.0.0.1:8123/', 'homeassistant://auth-callback')).to.be.false;
         });
     });
 });

@@ -81,18 +81,18 @@
         "uk": "Документація: README переписано простою мовою користувача — коротше, пряміше, без деталей реалізації.",
         "zh-cn": "文档：README 改写为用户视角语言 — 更简短直接，无实现细节。无代码变更。"
       },
-      "1.27.2": {
-        "en": "Bugfix: dropdown common.states is now fully replaced on each refresh. Stale URLs from earlier format versions (v1.26 path-segment, intermediate ?<project>/<view> etc.) are removed.",
-        "de": "Bugfix: Dropdown-common.states wird bei jedem Refresh komplett ersetzt. Veraltete URLs aus früheren Format-Versionen (v1.26 Pfad-Segment, Zwischen-Form ?<projekt>/<view> usw.) werden entfernt.",
-        "ru": "Bugfix: dropdown common.states теперь полностью заменяется при каждом обновлении. Устаревшие URL из прежних форматов удаляются.",
-        "pt": "Bugfix: o common.states do dropdown é totalmente substituído a cada refresh. URLs obsoletas de formatos anteriores são removidas.",
-        "nl": "Bugfix: dropdown common.states wordt nu volledig vervangen bij elke verversing. Verouderde URLs uit eerdere formaten worden verwijderd.",
-        "fr": "Bugfix : le common.states du dropdown est désormais entièrement remplacé à chaque refresh. Les anciennes URL des formats précédents sont supprimées.",
-        "it": "Bugfix: common.states del dropdown è ora completamente sostituito ad ogni refresh. URL obsoleti dai formati precedenti vengono rimossi.",
-        "es": "Bugfix: el common.states del dropdown ahora se reemplaza por completo en cada refresh. URLs obsoletas de formatos anteriores se eliminan.",
-        "pl": "Bugfix: common.states dropdownu jest teraz w pełni zastępowany przy każdym odświeżeniu. Stare URL-e z poprzednich formatów są usuwane.",
-        "uk": "Bugfix: common.states у dropdown тепер повністю замінюється при кожному оновленні. Застарілі URL із попередніх форматів видаляються.",
-        "zh-cn": "Bug 修复：每次刷新时下拉框 common.states 现在完全替换。旧格式版本中的过时 URL 将被移除。"
+      "NEXT": {
+        "en": "Shelly Wall Displays running firmware 2.6.0 and newer connect again. The new on-device Home Assistant app uses a browser sign-in that the adapter now answers.",
+        "de": "Shelly Wall Displays mit Firmware 2.6.0 und neuer verbinden wieder. Die neue Home-Assistant-App auf dem Display nutzt einen Browser-Login den der Adapter jetzt bedient.",
+        "ru": "Shelly Wall Display с прошивкой 2.6.0 и новее снова подключается. Новое приложение Home Assistant на устройстве использует браузерный логин, который теперь обрабатывается.",
+        "pt": "Os Shelly Wall Displays com firmware 2.6.0 e mais recente voltam a ligar. A nova app do Home Assistant no dispositivo usa um login no browser que o adaptador agora trata.",
+        "nl": "Shelly Wall Displays met firmware 2.6.0 en nieuwer verbinden weer. De nieuwe Home-Assistant-app op het apparaat gebruikt een browser-login die de adapter nu afhandelt.",
+        "fr": "Les Shelly Wall Displays avec firmware 2.6.0 et plus récent se connectent à nouveau. La nouvelle app Home Assistant sur l'appareil utilise une connexion via navigateur que l'adaptateur gère.",
+        "it": "I Shelly Wall Display con firmware 2.6.0 e successivo si connettono di nuovo. La nuova app Home Assistant sul dispositivo usa un login via browser ora gestito dall'adapter.",
+        "es": "Los Shelly Wall Displays con firmware 2.6.0 o superior vuelven a conectar. La nueva aplicación Home Assistant en el dispositivo usa un inicio de sesión por navegador que el adaptador ya atiende.",
+        "pl": "Wyświetlacze Shelly Wall Display z firmware 2.6.0 i nowszym znów się łączą. Nowa aplikacja Home Assistant na urządzeniu używa logowania w przeglądarce, które adapter teraz obsługuje.",
+        "uk": "Shelly Wall Display з прошивкою 2.6.0 і новіше знову підключається. Новий додаток Home Assistant на пристрої використовує вхід через браузер, який тепер обробляється.",
+        "zh-cn": "运行固件 2.6.0 及更新版本的 Shelly Wall Display 重新可以连接。设备上的新 Home Assistant 应用使用浏览器登录，适配器现已支持。"
       }
     },
     "titleLang": {

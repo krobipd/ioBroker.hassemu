@@ -39,6 +39,7 @@ __export(coerce_exports, {
   decideLegacyVisMigration: () => decideLegacyVisMigration,
   isNoChoice: () => isNoChoice,
   isPlainObject: () => isPlainObject,
+  isValidRedirectUri: () => isValidRedirectUri,
   parseAdapterStateId: () => parseAdapterStateId,
   parseManualUrlWrite: () => parseManualUrlWrite,
   parseModeWrite: () => parseModeWrite,
@@ -47,6 +48,37 @@ __export(coerce_exports, {
 });
 module.exports = __toCommonJS(coerce_exports);
 var import_node_crypto = __toESM(require("node:crypto"));
+function isValidRedirectUri(clientId, redirectUri) {
+  if (typeof clientId !== "string" || typeof redirectUri !== "string") {
+    return false;
+  }
+  if (clientId.length === 0 || redirectUri.length === 0) {
+    return false;
+  }
+  if (redirectUri.length > 2048 || clientId.length > 2048) {
+    return false;
+  }
+  const lower = redirectUri.toLowerCase();
+  const forbidden = ["javascript:", "data:", "vbscript:", "file:"];
+  for (const scheme of forbidden) {
+    if (lower.startsWith(scheme)) {
+      return false;
+    }
+  }
+  if (clientId === "https://home-assistant.io/iOS" && redirectUri === "homeassistant://auth-callback") {
+    return true;
+  }
+  if (clientId === "https://home-assistant.io/android" && (redirectUri === "homeassistant://auth-callback" || redirectUri === "https://wear.googleapis.com/3p_auth/io.homeassistant.companion.android" || redirectUri === "https://wear.googleapis-cn.com/3p_auth/io.homeassistant.companion.android")) {
+    return true;
+  }
+  try {
+    const cid = new URL(clientId);
+    const ru = new URL(redirectUri);
+    return cid.protocol === ru.protocol && cid.host === ru.host;
+  } catch {
+    return false;
+  }
+}
 function safeStringEqual(a, b) {
   const ah = import_node_crypto.default.createHash("sha256").update(a, "utf8").digest();
   const bh = import_node_crypto.default.createHash("sha256").update(b, "utf8").digest();
@@ -201,6 +233,7 @@ function buildDropdownStates(sentinels, urlStates) {
   decideLegacyVisMigration,
   isNoChoice,
   isPlainObject,
+  isValidRedirectUri,
   parseAdapterStateId,
   parseManualUrlWrite,
   parseModeWrite,
