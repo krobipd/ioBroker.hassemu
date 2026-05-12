@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.29.0",
+    "version": "1.29.1",
     "news": {
+      "1.29.1": {
+        "en": "Shelly Wall Display onboarding under firmware 2.6.0 and newer now completes — the on-device Home Assistant app needs a device-registration step that the adapter now provides.",
+        "de": "Shelly Wall Display Onboarding unter Firmware 2.6.0 und neuer läuft jetzt durch — die Home-Assistant-App auf dem Display braucht einen Geräte-Registrierungs-Schritt den der Adapter jetzt bedient.",
+        "ru": "Настройка Shelly Wall Display на прошивке 2.6.0 и новее теперь завершается — приложению Home Assistant на устройстве нужен шаг регистрации устройства, который теперь обрабатывается.",
+        "pt": "O onboarding do Shelly Wall Display com firmware 2.6.0+ conclui-se agora — a app Home Assistant no dispositivo precisa de um passo de registo que o adaptador agora fornece.",
+        "nl": "Onboarding van het Shelly Wall Display met firmware 2.6.0 en nieuwer loopt nu door — de Home-Assistant-app op het apparaat heeft een apparaatregistratiestap nodig die de adapter nu levert.",
+        "fr": "L'onboarding du Shelly Wall Display sous firmware 2.6.0+ se termine — l'app Home Assistant sur l'appareil a besoin d'un enregistrement que l'adaptateur fournit désormais.",
+        "it": "L'onboarding di Shelly Wall Display con firmware 2.6.0 e successivo ora si completa — l'app Home Assistant sul dispositivo richiede un passo di registrazione che l'adapter ora gestisce.",
+        "es": "El onboarding del Shelly Wall Display con firmware 2.6.0 o superior ahora se completa — la aplicación Home Assistant en el dispositivo necesita un paso de registro que el adaptador ya proporciona.",
+        "pl": "Onboarding wyświetlacza Shelly Wall Display z firmware 2.6.0 i nowszym kończy się teraz — aplikacja Home Assistant na urządzeniu wymaga rejestracji urządzenia, którą adapter teraz obsługuje.",
+        "uk": "Налаштування Shelly Wall Display з прошивкою 2.6.0 і новіше тепер завершується — додаток Home Assistant на пристрої потребує крок реєстрації, який тепер обробляється.",
+        "zh-cn": "运行固件 2.6.0 及更新版本的 Shelly Wall Display 现在可以完成初始设置——设备上的 Home Assistant 应用需要一个设备注册步骤，适配器现已支持。"
+      },
       "1.29.0": {
         "en": "Shelly Wall Displays running firmware 2.6.0 and newer connect again. The new on-device Home Assistant app uses a browser sign-in that the adapter now answers.",
         "de": "Shelly Wall Displays mit Firmware 2.6.0 und neuer verbinden wieder. Die neue Home-Assistant-App auf dem Display nutzt einen Browser-Login den der Adapter jetzt bedient.",
@@ -80,19 +93,6 @@
         "pl": "Wielojęzyczność: nazwy stanów, opisy i wartości dropdown teraz w języku systemu ioBroker (11 języków). Logi zlokalizowane od v1.27.0.",
         "uk": "Багатомовність: імена станів, описи та значення dropdown тепер мовою системи ioBroker (11 мов). Логи локалізовано з v1.27.0.",
         "zh-cn": "多语言：状态名称、描述和下拉值现在使用 ioBroker 系统语言（11 种）。日志自 v1.27.0 起已本地化。"
-      },
-      "NEXT": {
-        "en": "Shelly Wall Display onboarding under firmware 2.6.0 and newer now completes — the on-device Home Assistant app needs a device-registration step that the adapter now provides.",
-        "de": "Shelly Wall Display Onboarding unter Firmware 2.6.0 und neuer läuft jetzt durch — die Home-Assistant-App auf dem Display braucht einen Geräte-Registrierungs-Schritt den der Adapter jetzt bedient.",
-        "ru": "Настройка Shelly Wall Display на прошивке 2.6.0 и новее теперь завершается — приложению Home Assistant на устройстве нужен шаг регистрации устройства, который теперь обрабатывается.",
-        "pt": "O onboarding do Shelly Wall Display com firmware 2.6.0+ conclui-se agora — a app Home Assistant no dispositivo precisa de um passo de registo que o adaptador agora fornece.",
-        "nl": "Onboarding van het Shelly Wall Display met firmware 2.6.0 en nieuwer loopt nu door — de Home-Assistant-app op het apparaat heeft een apparaatregistratiestap nodig die de adapter nu levert.",
-        "fr": "L'onboarding du Shelly Wall Display sous firmware 2.6.0+ se termine — l'app Home Assistant sur l'appareil a besoin d'un enregistrement que l'adaptateur fournit désormais.",
-        "it": "L'onboarding di Shelly Wall Display con firmware 2.6.0 e successivo ora si completa — l'app Home Assistant sul dispositivo richiede un passo di registrazione che l'adapter ora gestisce.",
-        "es": "El onboarding del Shelly Wall Display con firmware 2.6.0 o superior ahora se completa — la aplicación Home Assistant en el dispositivo necesita un paso de registro que el adaptador ya proporciona.",
-        "pl": "Onboarding wyświetlacza Shelly Wall Display z firmware 2.6.0 i nowszym kończy się teraz — aplikacja Home Assistant na urządzeniu wymaga rejestracji urządzenia, którą adapter teraz obsługuje.",
-        "uk": "Налаштування Shelly Wall Display з прошивкою 2.6.0 і новіше тепер завершується — додаток Home Assistant на пристрої потребує крок реєстрації, який тепер обробляється.",
-        "zh-cn": "运行固件 2.6.0 及更新版本的 Shelly Wall Display 现在可以完成初始设置——设备上的 Home Assistant 应用需要一个设备注册步骤，适配器现已支持。"
       }
     },
     "titleLang": {
