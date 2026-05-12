@@ -30,6 +30,22 @@ Displays that speak only the HA dashboard protocol — Shelly Wall Display, Echo
 
 ---
 
+## Supported dashboards
+
+The mode dropdown auto-discovers what's installed on your ioBroker host. You always have the option to paste any other HTTP URL as `manual`.
+
+| Source | What gets discovered | Notes |
+| --- | --- | --- |
+| **ioBroker VIS** (`vis.0`+) | One entry per project, plus one entry per view inside each project | Works with every `web.*` instance — multiple web instances get a `(web.X)` suffix on the label |
+| **ioBroker VIS-2** (`vis-2.0`+) | Same — one entry per project, one per view | Project + view encoded into the URL (`?<project>#<view>`); deep links work |
+| **ioBroker Aura** (`aura.0`+) | One entry per running aura instance, pointing at its frontend | Reads the actual `native.port` configured in aura (default 8095, ignores the hardcoded value in aura's `localLinks` template) — works with `https` and `customUrl` overrides |
+| **Admin tiles** | Anything an adapter advertises via `common.localLinks` / `common.welcomeScreen` (jarvis, material, grafana, custom UI…) | Resolves `%ip%`, `%port%`, `%protocol%`, `%bind%`, and cross-instance refs like `%web.0_port%` |
+| **Manual URL** | A free-text URL of your choice — Grafana, Node-RED, custom HTML, anything HTTP/HTTPS | Set the display's `mode` to `manual` and the URL in `manualUrl`. `javascript:`, `data:`, `file:` are rejected for safety |
+
+Want to add a URL the adapter doesn't auto-detect? Set `manual` and paste it.
+
+---
+
 ## Requirements
 
 - Node.js ≥ 22
@@ -133,7 +149,9 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 -->
 ### **WORK IN PROGRESS**
 
-- Shelly Wall Display on firmware 2.6.0+ no longer shows the connection-error popup after the page has loaded. Plus the landing page now carries the ioBroker logo.
+- Shelly Wall Display on firmware 2.6.0+ no longer shows the connection-error popup after the page has loaded.
+- The mode dropdown now auto-discovers Aura instances (frontend at the configured port).
+- The landing page now carries the ioBroker logo, and the README has a clear table of every dashboard source the adapter recognizes.
 
 ### 1.29.1 (2026-05-12)
 
