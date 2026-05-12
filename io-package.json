@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.28.3",
+    "version": "1.28.4",
     "news": {
+      "1.28.4": {
+        "en": "The mode dropdowns in admin (global and per-client) no longer crash with \"Error in GUI\" when opened.",
+        "de": "Die Mode-Dropdowns im Admin (global und pro Client) stürzen beim Öffnen nicht mehr mit \"Error in GUI\" ab.",
+        "ru": "Выпадающие списки mode в админке (глобальный и для каждого клиента) больше не падают с \"Error in GUI\" при открытии.",
+        "pt": "Os dropdowns de mode no admin (global e por cliente) já não falham com \"Error in GUI\" ao serem abertos.",
+        "nl": "De mode-dropdowns in admin (globaal en per client) crashen niet meer met \"Error in GUI\" bij het openen.",
+        "fr": "Les dropdowns mode dans l'admin (global et par client) ne plantent plus avec \"Error in GUI\" à l'ouverture.",
+        "it": "I dropdown mode nell'admin (globale e per client) non si bloccano più con \"Error in GUI\" all'apertura.",
+        "es": "Los dropdowns de mode en el admin (global y por cliente) ya no fallan con \"Error in GUI\" al abrirse.",
+        "pl": "Listy mode w adminie (globalna i per-klient) nie zawieszają się już z \"Error in GUI\" przy otwieraniu.",
+        "uk": "Випадаючі списки mode в адміні (глобальний і для кожного клієнта) більше не падають з \"Error in GUI\" при відкритті.",
+        "zh-cn": "Admin 中的 mode 下拉框（全局和每个客户端）打开时不再因 \"Error in GUI\" 崩溃。"
+      },
       "1.28.3": {
         "en": "Adapter starts faster on installations with many displays, and a single broken client entry no longer keeps the others from being restored. Plus a security tighten-up on the HA login flow.",
         "de": "Adapter-Start mit vielen Displays läuft schneller, und ein einzelnes defektes Client-Objekt blockiert nicht mehr den Rest. Dazu eine Sicherheits-Härtung im HA-Login.",
@@ -80,19 +93,6 @@
         "pl": "Bugfix: common.states dropdownu jest teraz w pełni zastępowany przy każdym odświeżeniu. Stare URL-e z poprzednich formatów są usuwane.",
         "uk": "Bugfix: common.states у dropdown тепер повністю замінюється при кожному оновленні. Застарілі URL із попередніх форматів видаляються.",
         "zh-cn": "Bug 修复：每次刷新时下拉框 common.states 现在完全替换。旧格式版本中的过时 URL 将被移除。"
-      },
-      "NEXT": {
-        "en": "The mode dropdowns in admin (global and per-client) no longer crash with \"Error in GUI\" when opened.",
-        "de": "Die Mode-Dropdowns im Admin (global und pro Client) stürzen beim Öffnen nicht mehr mit \"Error in GUI\" ab.",
-        "ru": "Выпадающие списки mode в админке (глобальный и для каждого клиента) больше не падают с \"Error in GUI\" при открытии.",
-        "pt": "Os dropdowns de mode no admin (global e por cliente) já não falham com \"Error in GUI\" ao serem abertos.",
-        "nl": "De mode-dropdowns in admin (globaal en per client) crashen niet meer met \"Error in GUI\" bij het openen.",
-        "fr": "Les dropdowns mode dans l'admin (global et par client) ne plantent plus avec \"Error in GUI\" à l'ouverture.",
-        "it": "I dropdown mode nell'admin (globale e per client) non si bloccano più con \"Error in GUI\" all'apertura.",
-        "es": "Los dropdowns de mode en el admin (global y por cliente) ya no fallan con \"Error in GUI\" al abrirse.",
-        "pl": "Listy mode w adminie (globalna i per-klient) nie zawieszają się już z \"Error in GUI\" przy otwieraniu.",
-        "uk": "Випадаючі списки mode в адміні (глобальний і для кожного клієнта) більше не падають з \"Error in GUI\" при відкритті.",
-        "zh-cn": "Admin 中的 mode 下拉框（全局和每个客户端）打开时不再因 \"Error in GUI\" 崩溃。"
       }
     },
     "titleLang": {
