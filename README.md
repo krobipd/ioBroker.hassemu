@@ -17,15 +17,29 @@ Emulates a Home Assistant server so displays that only accept an HA dashboard sh
 
 ## What it's for
 
-Displays that speak only the HA dashboard protocol — Shelly Wall Display, Echo Show with the HA Companion App, Android tablets running the HA app, in-wall HA panels. The adapter pretends to be HA; the display ends up showing whatever URL you set (VIS, Grafana, Node-RED, anything HTTP).
+Some smart displays are hardwired to "I only speak Home Assistant". hassemu pretends to be that Home Assistant — the display connects, completes its onboarding, and then shows whatever web URL you choose (VIS, VIS-2, Aura, Grafana, Node-RED, anything HTTP).
+
+### Tested displays and clients
+
+| Device / client | Firmware / version | Status |
+| --- | --- | --- |
+| Shelly Wall Display XL (SAWD-3A1XE10EU2, 10") | 1.x – 2.5.x | works (built-in HA page) |
+| Shelly Wall Display XL | **2.6.0+** | works since hassemu 1.29.2 (on-device HA app: browser OAuth2 + mobile-app registration + WebView connection signal) |
+| Shelly Wall Display (SAWD1, 4") | 1.x – 2.5.x | works (built-in HA page) |
+| Shelly Wall Display X2 / X2i (6.95") | 1.x – 2.5.x | works |
+| Home Assistant Companion App (Android) | 2024.x+ | works since hassemu 1.29.x — sideload onto any Android-based wall panel or tablet |
+| HA Companion-style WebView (Sonoff NSPanel Pro, generic Android wall panels) | — | works since 1.29.x |
+
+Other HA-Dashboard-only clients should work too. If you run one that doesn't, open an issue with the failing endpoint trace.
 
 ---
 
 ## Features
 
 - One URL per display, or one global URL for all
-- Auto-discovery via mDNS
-- Optional login (HA OAuth2 flow)
+- Auto-discovery via mDNS, plus auto-detect of every VIS / VIS-2 / Aura instance installed on the host (see [Supported dashboards](#supported-dashboards) below)
+- Two HA login flows in parallel — the classic JSON `login_flow` for older clients, plus the browser-OAuth2 flow used by the on-device HA app on Shelly Wall Display 2.6.0+
+- Mobile-App registration emulation so the HA Companion App finishes onboarding
 - Cookie-based: displays keep their URL across reboots, IP changes, renames
 
 ---
@@ -131,6 +145,12 @@ After adding or renaming a VIS-2 project or view, set `info.refresh_urls` to `tr
 **URL changed, display still shows the old one** — the auto-reload takes up to 30 seconds. After that, reboot the display.
 
 **Display gets a new ID every time** — display isn't keeping its cookie. Delete stale channels via the `remove` button.
+
+**Shelly Wall Display 2.6.0+ shows a "Connection to Home Assistant failed" popup** (the on-device language may say it differently — same root cause) — upgrade hassemu to **≥ 1.29.2**. The on-device HA app introduced in firmware 2.6.0 needs a server-identity probe, a mobile-app registration step, and a WebView "connected" signal that earlier hassemu versions didn't answer. After the upgrade, take the display through the on-device HA onboarding once more.
+
+**HA Companion App says "Server is not Home Assistant"** — make sure you point the app at `http://<ioBroker-IP>:8123`, not the ioBroker admin port. hassemu's `/manifest.json` reports `"name": "Home Assistant"` as the app expects; if the probe still fails, your reverse proxy (if any) is probably stripping that path.
+
+**The Aura entry in the dropdown points at the wrong port** — make sure aura's `native.port` matches what the adapter is actually listening on. The adapter ignores aura's hardcoded `localLinks` template; the value comes from `native.port` directly.
 
 ---
 
