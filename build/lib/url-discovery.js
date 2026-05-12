@@ -111,6 +111,15 @@ class UrlDiscovery {
         ];
       })
     );
+    const auraInstances = Array.from(crossRefs.entries()).filter(([n]) => n.startsWith("aura."));
+    const showAuraSuffix = auraInstances.length > 1;
+    for (const [shortName, obj] of auraInstances) {
+      const enabled = (0, import_coerce.isPlainObject)(obj.common) && obj.common.enabled === true;
+      if (!enabled) {
+        continue;
+      }
+      this.addAuraInstance(result, obj, hostIp, shortName, showAuraSuffix);
+    }
     this.cached = result;
     if (this.onChange) {
       try {
@@ -120,6 +129,41 @@ class UrlDiscovery {
       }
     }
     return result;
+  }
+  /**
+   * Add a single aura adapter instance to the dropdown.
+   *
+   * Aura is a React+vite single-page dashboard with its own HTTP server.
+   * Unlike vis/vis-2 it does NOT register a web extension — the dashboard
+   * is served at `/` on the configured `native.port` (default 8095).
+   * Multi-instance setups get a `(aura.X)` suffix on the label so users
+   * can distinguish them. `native.customUrl` overrides everything (used
+   * for reverse-proxy / external-URL setups).
+   *
+   * @param result       Output map — mutated with the resolved URL.
+   * @param obj          Raw `system.adapter.aura.<n>` instance object.
+   * @param hostIp       Local host IP for the URL.
+   * @param shortName    Short instance id like `aura.0`.
+   * @param showSuffix   If true, append `(aura.X)` to the label.
+   */
+  addAuraInstance(result, obj, hostIp, shortName, showSuffix) {
+    const native = (0, import_coerce.isPlainObject)(obj.native) ? obj.native : {};
+    const customUrl = typeof native.customUrl === "string" ? native.customUrl.trim() : "";
+    let url;
+    if (customUrl) {
+      url = customUrl.endsWith("/") ? customUrl : `${customUrl}/`;
+    } else {
+      const port = Number(native.port);
+      const finalPort = Number.isFinite(port) && port > 0 ? port : 8095;
+      const protocol = native.secure === true ? "https" : "http";
+      url = `${protocol}://${hostIp}:${finalPort}/`;
+    }
+    const safe = (0, import_coerce.coerceSafeUrl)(url);
+    if (!safe) {
+      return;
+    }
+    const suffix = showSuffix ? ` (${shortName})` : "";
+    result[safe] = `Aura${suffix}`;
   }
   async addVisProjects(result, webInstance, hostIp, adapterName, urlPath, label) {
     var _a;
@@ -251,6 +295,9 @@ function collectFromInstance(id, obj, crossRefs, hostIp, result) {
     return;
   }
   const instanceId = id.startsWith("system.adapter.") ? id.substring("system.adapter.".length) : id;
+  if (instanceId.startsWith("aura.")) {
+    return;
+  }
   const native = (0, import_coerce.isPlainObject)(obj.native) ? obj.native : {};
   const ctx = { instanceId, native, crossRefs, hostIp };
   if ((0, import_coerce.isPlainObject)(common.localLinks)) {

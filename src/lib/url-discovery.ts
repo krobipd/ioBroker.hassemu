@@ -157,6 +157,23 @@ export class UrlDiscovery {
             }),
         );
 
+        // v1.29.2: aura adapter — standalone HTTP server (own port, default
+        // 8095), frontend at `/`. Discovery uses native.port + native.secure
+        // directly because aura's localLinks template has `:8095` hardcoded
+        // instead of `%port%` (would point at the wrong port if user changed
+        // it). Skipped in collectFromInstance to avoid duplicate / wrong-port
+        // entries. Source: forks/ioBroker.aura/io-package.json native = {
+        //   port: 8095, socketPort: 8082, secure: false, customUrl: "" }.
+        const auraInstances = Array.from(crossRefs.entries()).filter(([n]) => n.startsWith('aura.'));
+        const showAuraSuffix = auraInstances.length > 1;
+        for (const [shortName, obj] of auraInstances) {
+            const enabled = isPlainObject(obj.common) && obj.common.enabled === true;
+            if (!enabled) {
+                continue;
+            }
+            this.addAuraInstance(result, obj, hostIp, shortName, showAuraSuffix);
+        }
+
         this.cached = result;
         if (this.onChange) {
             try {
@@ -166,6 +183,48 @@ export class UrlDiscovery {
             }
         }
         return result;
+    }
+
+    /**
+     * Add a single aura adapter instance to the dropdown.
+     *
+     * Aura is a React+vite single-page dashboard with its own HTTP server.
+     * Unlike vis/vis-2 it does NOT register a web extension — the dashboard
+     * is served at `/` on the configured `native.port` (default 8095).
+     * Multi-instance setups get a `(aura.X)` suffix on the label so users
+     * can distinguish them. `native.customUrl` overrides everything (used
+     * for reverse-proxy / external-URL setups).
+     *
+     * @param result       Output map — mutated with the resolved URL.
+     * @param obj          Raw `system.adapter.aura.<n>` instance object.
+     * @param hostIp       Local host IP for the URL.
+     * @param shortName    Short instance id like `aura.0`.
+     * @param showSuffix   If true, append `(aura.X)` to the label.
+     */
+    private addAuraInstance(
+        result: UrlStates,
+        obj: Record<string, unknown>,
+        hostIp: string,
+        shortName: string,
+        showSuffix: boolean,
+    ): void {
+        const native = isPlainObject(obj.native) ? obj.native : {};
+        const customUrl = typeof native.customUrl === 'string' ? native.customUrl.trim() : '';
+        let url: string;
+        if (customUrl) {
+            url = customUrl.endsWith('/') ? customUrl : `${customUrl}/`;
+        } else {
+            const port = Number(native.port);
+            const finalPort = Number.isFinite(port) && port > 0 ? port : 8095;
+            const protocol = native.secure === true ? 'https' : 'http';
+            url = `${protocol}://${hostIp}:${finalPort}/`;
+        }
+        const safe = coerceSafeUrl(url);
+        if (!safe) {
+            return;
+        }
+        const suffix = showSuffix ? ` (${shortName})` : '';
+        result[safe] = `Aura${suffix}`;
     }
 
     private async addVisProjects(
@@ -372,6 +431,15 @@ export function collectFromInstance(
     }
 
     const instanceId = id.startsWith('system.adapter.') ? id.substring('system.adapter.'.length) : id;
+
+    // v1.29.2: aura adapter has hardcoded `:8095` in its localLinks template
+    // (instead of `%port%`) AND advertises a `backend` link to `#/admin` —
+    // both undesirable for hassemu's display dropdown. We handle aura
+    // explicitly in addAuraInstances() with native.port + frontend-only.
+    if (instanceId.startsWith('aura.')) {
+        return;
+    }
+
     const native = isPlainObject(obj.native) ? obj.native : {};
     const ctx: ResolveContext = { instanceId, native, crossRefs, hostIp };
 

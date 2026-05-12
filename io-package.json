@@ -82,17 +82,17 @@
         "zh-cn": "文档：将 v1.27.x–v1.28.0 的 changelog 条目恢复为英文 — 之前部分条目残留为德文。无代码更改。"
       },
       "NEXT": {
-        "en": "Shelly Wall Display on firmware 2.6.0+ no longer shows the connection-error popup after the page has loaded. Plus the landing page now carries the ioBroker logo.",
-        "de": "Shelly Wall Display unter Firmware 2.6.0+ zeigt nach geladenem Display kein \"Verbindung nicht möglich\"-Popup mehr. Außerdem trägt die Landing-Page jetzt das ioBroker-Logo.",
-        "ru": "Shelly Wall Display на прошивке 2.6.0+ больше не показывает попап ошибки подключения после загрузки страницы. Плюс на стартовой странице теперь логотип ioBroker.",
-        "pt": "Shelly Wall Display com firmware 2.6.0+ deixa de mostrar o popup de erro de ligação depois de a página carregar. Além disso, a landing page traz agora o logótipo do ioBroker.",
-        "nl": "Shelly Wall Display met firmware 2.6.0+ toont na het laden geen \"Verbinding mislukt\"-popup meer. Bovendien staat het ioBroker-logo nu op de landingspagina.",
-        "fr": "Le Shelly Wall Display sous firmware 2.6.0+ n'affiche plus la popup d'erreur de connexion après le chargement. La page d'accueil porte désormais le logo ioBroker.",
-        "it": "Shelly Wall Display con firmware 2.6.0+ non mostra più il popup di errore di connessione dopo il caricamento. La landing page ora ha anche il logo ioBroker.",
-        "es": "Shelly Wall Display con firmware 2.6.0+ ya no muestra el popup de error de conexión tras la carga. La página de inicio ahora muestra el logotipo de ioBroker.",
-        "pl": "Shelly Wall Display z firmware 2.6.0+ nie pokazuje już popupu o błędzie połączenia po załadowaniu strony. Na stronie startowej widać teraz logo ioBroker.",
-        "uk": "Shelly Wall Display з прошивкою 2.6.0+ більше не показує попап помилки з'єднання після завантаження. На стартовій сторінці тепер логотип ioBroker.",
-        "zh-cn": "运行固件 2.6.0+ 的 Shelly Wall Display 在页面加载后不再显示连接错误弹窗。同时落地页现在也显示 ioBroker 徽标。"
+        "en": "Shelly Wall Display 2.6.0+ no longer shows the connection-error popup after the page loaded. Aura is now auto-detected in the mode dropdown. Landing page carries the ioBroker logo.",
+        "de": "Shelly Wall Display unter Firmware 2.6.0+ zeigt nach geladenem Display kein Verbindungs-Fehler-Popup mehr. Aura wird jetzt automatisch im Mode-Dropdown erkannt. Landing-Page trägt das ioBroker-Logo.",
+        "ru": "Shelly Wall Display 2.6.0+ больше не показывает попап ошибки после загрузки. Aura теперь определяется автоматически в Mode-списке. Логотип ioBroker на стартовой странице.",
+        "pt": "Shelly Wall Display com firmware 2.6.0+ deixa de mostrar o popup de erro depois de a página carregar. O Aura é agora detetado automaticamente. A landing page traz o logótipo do ioBroker.",
+        "nl": "Shelly Wall Display met firmware 2.6.0+ toont na het laden geen verbinding-foutpopup meer. Aura wordt nu automatisch herkend. Landingspagina toont het ioBroker-logo.",
+        "fr": "Le Shelly Wall Display sous firmware 2.6.0+ n'affiche plus la popup d'erreur après le chargement. Aura est désormais détecté automatiquement. Le logo ioBroker apparaît sur la page d'accueil.",
+        "it": "Shelly Wall Display con firmware 2.6.0+ non mostra più il popup di errore dopo il caricamento. Aura viene ora rilevato automaticamente. Logo ioBroker sulla landing page.",
+        "es": "Shelly Wall Display con firmware 2.6.0+ ya no muestra el popup de error tras la carga. Aura ahora se detecta automáticamente. Logotipo de ioBroker en la página de inicio.",
+        "pl": "Shelly Wall Display z firmware 2.6.0+ nie pokazuje już popupu błędu po załadowaniu strony. Aura jest teraz automatycznie wykrywana. Logo ioBroker na stronie startowej.",
+        "uk": "Shelly Wall Display з прошивкою 2.6.0+ більше не показує попап помилки після завантаження. Aura тепер виявляється автоматично. Логотип ioBroker на стартовій сторінці.",
+        "zh-cn": "运行固件 2.6.0+ 的 Shelly Wall Display 在页面加载后不再显示连接错误弹窗。Aura 现在可在 Mode 下拉框中自动发现。落地页带有 ioBroker 徽标。"
       }
     },
     "titleLang": {

@@ -565,6 +565,104 @@ describe('UrlDiscovery', () => {
             expect(anyUrl).to.match(/^http:\/\/[\d.]+:8082\/jarvis\/$/);
         });
 
+        describe('aura adapter (v1.29.2)', () => {
+            it('discovers a default aura instance at its own port (frontend only)', async () => {
+                adapter._instances = {
+                    'system.adapter.aura.0': enabledInstance({
+                        native: { port: 8095, socketPort: 8082, secure: false, customUrl: '' },
+                    }),
+                };
+                const result = await discovery.collect();
+                const auraEntry = Object.entries(result).find(([, label]) => label === 'Aura');
+                expect(auraEntry, 'aura.0 not in dropdown').to.exist;
+                expect(auraEntry![0]).to.match(/^http:\/\/[\d.]+:8095\/$/);
+                // No backend / #/admin URL leaks through
+                expect(Object.keys(result).some(u => u.includes('#/admin'))).to.be.false;
+            });
+
+            it('honors custom native.port (not the hardcoded 8095 in localLinks)', async () => {
+                adapter._instances = {
+                    'system.adapter.aura.0': enabledInstance({
+                        native: { port: 8083, secure: false, customUrl: '' },
+                    }),
+                };
+                const result = await discovery.collect();
+                const entry = Object.entries(result).find(([, label]) => label === 'Aura');
+                expect(entry![0]).to.match(/^http:\/\/[\d.]+:8083\/$/);
+            });
+
+            it('uses https when native.secure is true', async () => {
+                adapter._instances = {
+                    'system.adapter.aura.0': enabledInstance({
+                        native: { port: 8443, secure: true, customUrl: '' },
+                    }),
+                };
+                const result = await discovery.collect();
+                const entry = Object.entries(result).find(([, label]) => label === 'Aura');
+                expect(entry![0]).to.match(/^https:\/\/[\d.]+:8443\/$/);
+            });
+
+            it('honors native.customUrl override (reverse-proxy / external URL)', async () => {
+                adapter._instances = {
+                    'system.adapter.aura.0': enabledInstance({
+                        native: { port: 8095, secure: false, customUrl: 'https://aura.example.com/dash' },
+                    }),
+                };
+                const result = await discovery.collect();
+                const entry = Object.entries(result).find(([, label]) => label === 'Aura');
+                expect(entry![0]).to.equal('https://aura.example.com/dash/');
+            });
+
+            it('appends (aura.X) suffix when multiple instances exist', async () => {
+                adapter._instances = {
+                    'system.adapter.aura.0': enabledInstance({
+                        native: { port: 8095, secure: false, customUrl: '' },
+                    }),
+                    'system.adapter.aura.1': enabledInstance({
+                        native: { port: 8096, secure: false, customUrl: '' },
+                    }),
+                };
+                const result = await discovery.collect();
+                const labels = Object.values(result);
+                expect(labels).to.include('Aura (aura.0)');
+                expect(labels).to.include('Aura (aura.1)');
+            });
+
+            it('skips a disabled aura instance', async () => {
+                adapter._instances = {
+                    'system.adapter.aura.0': {
+                        common: { enabled: false },
+                        native: { port: 8095, secure: false },
+                    },
+                };
+                const result = await discovery.collect();
+                expect(Object.values(result)).to.not.include('Aura');
+            });
+
+            it('does not also emit the aura backend `#/admin` URL via the generic localLinks path', async () => {
+                // aura's io-package.json carries both a `frontend` and a `backend`
+                // localLink entry; the generic collectFromInstance would normally
+                // pick up both. We explicitly skip aura there so only the curated
+                // frontend URL ends up in the dropdown.
+                adapter._instances = {
+                    'system.adapter.aura.0': enabledInstance({
+                        common: {
+                            localLinks: {
+                                frontend: { link: 'http://%ip%:8095/', name: 'Aura Frontend' },
+                                backend: { link: 'http://%ip%:8095/#/admin', name: 'Aura Backend' },
+                            },
+                        },
+                        native: { port: 8095, secure: false, customUrl: '' },
+                    }),
+                };
+                const result = await discovery.collect();
+                expect(Object.values(result)).to.not.include('aura.0: Aura Backend');
+                expect(Object.values(result)).to.not.include('aura.0: Aura Frontend');
+                // Only the curated `Aura` entry from addAuraInstance
+                expect(Object.values(result)).to.include('Aura');
+            });
+        });
+
         it('updates cache after collect()', async () => {
             adapter._instances = {
                 'system.adapter.admin.0': enabledInstance({
