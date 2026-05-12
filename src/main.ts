@@ -5,7 +5,7 @@ import { coerceSafeUrl, decideGcAction, decideLegacyVisMigration } from './lib/c
 import { MODE_GLOBAL, MODE_MANUAL, STALE_CLIENT_TTL_MS } from './lib/constants';
 import { GlobalConfig, parseGlobalStateId } from './lib/global-config';
 import { MDNSService } from './lib/mdns';
-import { UrlDiscovery } from './lib/url-discovery';
+import { isUrlSourceAdapterEvent, UrlDiscovery } from './lib/url-discovery';
 import { WebServer } from './lib/webserver';
 import type { AdapterConfig } from './lib/types';
 // v1.25.0 (F3): instanceObjects als single source of truth — repairGlobalSchemas
@@ -63,11 +63,11 @@ class HassEmu extends utils.Adapter {
             if (!id?.startsWith('system.adapter.')) {
                 return;
             }
-            const isUrlSourceAdapter =
-                id.startsWith('system.adapter.admin.') ||
-                id.startsWith('system.adapter.web.') ||
-                id.startsWith('system.adapter.vis.') ||
-                id.startsWith('system.adapter.vis-2.');
+            // v1.30.0 (R2): adapter prefix list lives in url-discovery.ts
+            // alongside the actual discovery logic. Single source of truth —
+            // adding a new URL-source adapter only requires updating the
+            // exported `URL_SOURCE_PREFIXES` (plus `collect()`).
+            const isUrlSourceAdapter = isUrlSourceAdapterEvent(id);
             const isAddOrRemove = !obj || (obj.type === 'instance' && !obj.common?.host);
             if (isUrlSourceAdapter || isAddOrRemove) {
                 this.urlDiscovery?.scheduleRefresh();
@@ -529,8 +529,10 @@ class HassEmu extends utils.Adapter {
 
     /**
      * Master-switch action: when `global.enabled` flips, propagate to every
-     * client's `mode`. true → all clients follow `'global'`. false → fall back
-     * to the first discovered URL, or `'manual'` if discovery is empty.
+     * client's `mode`. `true` → all clients follow `'global'`. `false` → all
+     * clients drop to `'0'` (no-choice) so the next display load shows the
+     * landing page until the user picks a URL again (since v1.26 — earlier
+     * versions auto-selected the first discovered URL which surprised users).
      *
      * @param enabled New value of `global.enabled`.
      */

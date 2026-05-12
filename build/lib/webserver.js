@@ -40,6 +40,7 @@ var import_fastify = __toESM(require("fastify"));
 var import_constants = require("./constants");
 var import_coerce = require("./coerce");
 var import_auth_page = require("./auth-page");
+var import_external_bridge = require("./external-bridge");
 var import_landing_page = require("./landing-page");
 var import_network = require("./network");
 function renderRedirectWrapper(target) {
@@ -63,39 +64,9 @@ iframe{display:block;border:0;margin:0;padding:0;position:fixed;top:0;left:0;wid
 </head>
 <body>
 <iframe src="${escAttr}" allow="autoplay; fullscreen; geolocation; microphone; camera"></iframe>
+${import_external_bridge.CONNECTION_STATUS_SCRIPT}
 <script>
 (function(){
-  // HA Companion App / Shelly FW 2.6.0+ injects window.externalApp (V1) or
-  // window.externalAppV2 (V2) into the WebView. The app waits for a
-  // "connection-status: connected" message; without it, after CONNECTION_TIMEOUT
-  // (10 s) the app overlays a "Verbindung zu Home Assistant nicht m\xF6glich" popup.
-  // We're not a real HA frontend, but signalling "connected" once at load
-  // gets the WebView past the timeout and lets our iframe wrapper drive the
-  // user-facing display. Source: home-assistant/android FrontendMessageHandler.kt
-  // (parses ConnectionStatusMessage) + home-assistant/frontend
-  // src/external_app/external_messaging.ts (emits connection-status events).
-  function notifyConnected(){
-    try {
-      var v1Payload = JSON.stringify({id:1,type:"connection-status",payload:{event:"connected"}});
-      if (window.externalApp && typeof window.externalApp.externalBus === "function") {
-        window.externalApp.externalBus(v1Payload);
-        return;
-      }
-      if (window.externalAppV2 && typeof window.externalAppV2.postMessage === "function") {
-        window.externalAppV2.postMessage(JSON.stringify({
-          type:"externalBus",
-          payload:{id:1,type:"connection-status",payload:{event:"connected"}}
-        }));
-      }
-    } catch (e) { /* silent \u2014 bridge not present, this is a regular browser */ }
-  }
-  notifyConnected();
-  // Some companion-app builds attach the bridge slightly after first script
-  // execution (V2 listener registration). Retry a couple of times so a slow
-  // attach still gets the signal before the 10 s timeout fires.
-  setTimeout(notifyConnected, 500);
-  setTimeout(notifyConnected, 2000);
-
   var current=${escJs};
   setInterval(function(){
     fetch('/api/redirect_check',{cache:'no-store',credentials:'same-origin'})
@@ -135,6 +106,19 @@ class WebServer {
    * Companion App requires this endpoint to complete device registration
    * after the OAuth2 sign-in. Without it the App refuses to proceed with a
    * "Mobile-App-Integration nicht verfügbar" error.
+   *
+   * **Design — in-memory only, by intent.** The map is NOT persisted across
+   * adapter restarts. Restart-recovery relies on the
+   * `POST /api/webhook/<unknown-id>` branch returning HTTP 200 with an
+   * empty body — the HA Companion App reads that as a stale webhook and
+   * re-runs `update_registration`, which on hassemu issues a fresh
+   * webhookId. (Source: home-assistant/android
+   * IntegrationRepositoryImpl.kt:170 — `200 with empty body triggers
+   * maybeReregisterDeviceOnFailedUpdate`.)
+   *
+   * If a future refactor changes the unknown-webhookId response from
+   * `200 empty` to `404`, displays will silently break across adapter
+   * restarts. Keep that response shape OR add real persistence here.
    */
   webhookRegistrations = /* @__PURE__ */ new Map();
   /**

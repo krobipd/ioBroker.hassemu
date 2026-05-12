@@ -1,7 +1,8 @@
 /**
- * URL Discovery — collects VIS/VIS-2 project URLs and Admin intro-tile URLs
- * from the running ioBroker instance. Result is used as `common.states` dropdown
- * on `clients.<id>.visUrl`.
+ * URL Discovery — collects VIS / VIS-2 project URLs, Aura adapter frontends
+ * and Admin intro-tile URLs from the running ioBroker instance. Result is
+ * used as `common.states` dropdown on `clients.<id>.mode` (and the global
+ * `global.mode`).
  *
  * All external object data is type-guarded via coerce helpers; invalid entries
  * are silently skipped.
@@ -33,6 +34,34 @@ interface ResolveContext {
 
 /** Default debounce (ms) for scheduleRefresh — groups bursts of objectChange events. */
 export const DEFAULT_REFRESH_DEBOUNCE_MS = 2000;
+
+/**
+ * Adapter id-prefixes whose `objectChange` events should trigger an
+ * automatic `scheduleRefresh`. Each entry corresponds to a URL source the
+ * discovery actually consumes — admin tiles, web instances (for VIS / VIS-2
+ * project listings), and aura standalone frontends.
+ *
+ * Adding a new source adapter here is half the work of supporting it; the
+ * other half lives in `collect()` / `addAuraInstance` etc.
+ */
+export const URL_SOURCE_PREFIXES = Object.freeze([
+    'system.adapter.admin.',
+    'system.adapter.web.',
+    'system.adapter.vis.',
+    'system.adapter.vis-2.',
+    'system.adapter.aura.',
+] as const);
+
+/**
+ * True when an `objectChange` event for `id` belongs to an adapter whose
+ * config can influence the URL discovery output. Used by main.ts to decide
+ * whether to debounce-schedule a refresh.
+ *
+ * @param id Full ioBroker object id from the `objectChange` event.
+ */
+export function isUrlSourceAdapterEvent(id: string): boolean {
+    return URL_SOURCE_PREFIXES.some(p => id.startsWith(p));
+}
 
 /** Callback invoked after each successful refresh with the newly collected URL states. */
 export type UrlStatesListener = (states: UrlStates) => void | Promise<void>;

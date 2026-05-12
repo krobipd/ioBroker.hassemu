@@ -284,24 +284,16 @@ export function tDesc(key: keyof typeof STATE_DESCS): StateName {
 }
 
 /**
- * Translation object for a UI label. Returns the full `{en, de, ...}` shape.
- *
- * ⚠ NICHT für `common.states`-VALUES verwenden. Admin rendert dort den Wert
- * direkt als React-child — Translation-Objects führen zu React Error #31
- * („Objects are not valid as a React child"). Für state-VALUES siehe
- * {@link resolveLabel}, das gibt einen plain-string in der gewählten Sprache.
- * v1.28.4-Lesson — siehe Memory `reference_common_states_plain_string_only`.
- *
- * @param key Translation key in {@link STATE_LABELS}.
- */
-export function tLabel(key: keyof typeof STATE_LABELS): StateName {
-    return STATE_LABELS[key];
-}
-
-/**
  * Plain-string label for a `common.states` map. Resolves the translation
  * for the given language with EN-fallback. Pass `adapter.systemLanguage`
  * which is sourced once from `system.config.language` at adapter start.
+ *
+ * **This is the ONLY supported path for `common.states` VALUES.** A
+ * translation-object value (the shape returned by {@link STATE_LABELS}
+ * entries directly) crashes the Admin GUI with React Error #31 — admin
+ * renders states-values as React children. v1.28.4 deleted a `tLabel`
+ * helper that returned the raw object and was easy to misuse. See
+ * memory `reference_common_states_plain_string_only` for the full story.
  *
  * @param key Translation key in {@link STATE_LABELS}.
  * @param lang Target language code (typically `adapter.systemLanguage`). Falls back to `en`.

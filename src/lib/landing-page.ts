@@ -7,6 +7,8 @@
  * jumps to the real URL the moment the state is written.
  */
 
+import { CONNECTION_STATUS_SCRIPT } from './external-bridge';
+
 /**
  * Inline ioBroker brand logo — the power-button "i" inside a ring.
  * Source: github.com/ioBroker organization avatar (the canonical mark used
@@ -450,34 +452,7 @@ footer .brand svg { width: 0.95rem; height: 0.95rem; display: block; }
         <span class="brand" aria-hidden="true">${LOGO_SVG} ioBroker</span>
     </footer>
 </main>
-<script>
-(function(){
-  // Same connection-status signal as renderRedirectWrapper — the HA Companion
-  // App on Shelly Wall Display FW 2.6.0+ shows "Verbindung zu Home Assistant
-  // nicht möglich" after 10 s if it doesn't see this message. The popup is
-  // unrelated to whether a URL is configured, so the landing page must signal
-  // "connected" too. Source: home-assistant/android FrontendMessageHandler.kt +
-  // FrontendJsBridge.kt + frontend/src/external_app/external_messaging.ts.
-  function notifyConnected(){
-    try {
-      var v1Payload = JSON.stringify({id:1,type:"connection-status",payload:{event:"connected"}});
-      if (window.externalApp && typeof window.externalApp.externalBus === "function") {
-        window.externalApp.externalBus(v1Payload);
-        return;
-      }
-      if (window.externalAppV2 && typeof window.externalAppV2.postMessage === "function") {
-        window.externalAppV2.postMessage(JSON.stringify({
-          type:"externalBus",
-          payload:{id:1,type:"connection-status",payload:{event:"connected"}}
-        }));
-      }
-    } catch (e) { /* silent — bridge not present, regular browser */ }
-  }
-  notifyConnected();
-  setTimeout(notifyConnected, 500);
-  setTimeout(notifyConnected, 2000);
-})();
-</script>
+${CONNECTION_STATUS_SCRIPT}
 </body>
 </html>`;
 }

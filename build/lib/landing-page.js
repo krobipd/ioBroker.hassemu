@@ -21,6 +21,7 @@ __export(landing_page_exports, {
   renderLandingPage: () => renderLandingPage
 });
 module.exports = __toCommonJS(landing_page_exports);
+var import_external_bridge = require("./external-bridge");
 const LOGO_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="ioBroker"><circle cx="50" cy="50" r="42" fill="none" stroke="#1F537E" stroke-width="10"/><rect x="44" y="20" width="12" height="60" rx="2" fill="#2B95C6"/><rect x="44" y="26" width="12" height="6" fill="#ffffff"/></svg>';
 const STRINGS = {
   en: {
@@ -402,34 +403,7 @@ footer .brand svg { width: 0.95rem; height: 0.95rem; display: block; }
         <span class="brand" aria-hidden="true">${LOGO_SVG} ioBroker</span>
     </footer>
 </main>
-<script>
-(function(){
-  // Same connection-status signal as renderRedirectWrapper \u2014 the HA Companion
-  // App on Shelly Wall Display FW 2.6.0+ shows "Verbindung zu Home Assistant
-  // nicht m\xF6glich" after 10 s if it doesn't see this message. The popup is
-  // unrelated to whether a URL is configured, so the landing page must signal
-  // "connected" too. Source: home-assistant/android FrontendMessageHandler.kt +
-  // FrontendJsBridge.kt + frontend/src/external_app/external_messaging.ts.
-  function notifyConnected(){
-    try {
-      var v1Payload = JSON.stringify({id:1,type:"connection-status",payload:{event:"connected"}});
-      if (window.externalApp && typeof window.externalApp.externalBus === "function") {
-        window.externalApp.externalBus(v1Payload);
-        return;
-      }
-      if (window.externalAppV2 && typeof window.externalAppV2.postMessage === "function") {
-        window.externalAppV2.postMessage(JSON.stringify({
-          type:"externalBus",
-          payload:{id:1,type:"connection-status",payload:{event:"connected"}}
-        }));
-      }
-    } catch (e) { /* silent \u2014 bridge not present, regular browser */ }
-  }
-  notifyConnected();
-  setTimeout(notifyConnected, 500);
-  setTimeout(notifyConnected, 2000);
-})();
-</script>
+${import_external_bridge.CONNECTION_STATUS_SCRIPT}
 </body>
 </html>`;
 }

@@ -1,8 +1,10 @@
 import { expect } from 'chai';
 import {
+    URL_SOURCE_PREFIXES,
     UrlDiscovery,
     buildCrossRefs,
     collectFromInstance,
+    isUrlSourceAdapterEvent,
     resolvePlaceholders,
     type DiscoveryAdapter,
 } from './url-discovery';
@@ -88,6 +90,50 @@ function enabledInstance(partial: Record<string, unknown>): Record<string, unkno
 }
 
 describe('url-discovery helpers', () => {
+    describe('isUrlSourceAdapterEvent (v1.30.0 R2)', () => {
+        // Single source of truth for the prefix list — main.ts's objectChange
+        // handler delegates here. If a new URL source adapter is supported,
+        // it MUST appear in this set; otherwise its add/remove/reconfigure
+        // events won't trigger url-discovery.scheduleRefresh and the user
+        // has to click info.refresh_urls manually (= v1.29.2 aura miss).
+
+        it('accepts admin, web, vis, vis-2 instances', () => {
+            expect(isUrlSourceAdapterEvent('system.adapter.admin.0')).to.be.true;
+            expect(isUrlSourceAdapterEvent('system.adapter.web.0')).to.be.true;
+            expect(isUrlSourceAdapterEvent('system.adapter.web.1.foo')).to.be.true;
+            expect(isUrlSourceAdapterEvent('system.adapter.vis.0')).to.be.true;
+            expect(isUrlSourceAdapterEvent('system.adapter.vis-2.0')).to.be.true;
+        });
+
+        it('accepts aura.* — v1.30.0 R2 fix for the v1.29.2 aura-wiring miss', () => {
+            expect(isUrlSourceAdapterEvent('system.adapter.aura.0')).to.be.true;
+            expect(isUrlSourceAdapterEvent('system.adapter.aura.1')).to.be.true;
+        });
+
+        it('rejects unrelated adapter events', () => {
+            expect(isUrlSourceAdapterEvent('system.adapter.hassemu.0')).to.be.false;
+            expect(isUrlSourceAdapterEvent('system.adapter.iobroker-explorer.0')).to.be.false;
+            expect(isUrlSourceAdapterEvent('system.adapter.influxdb.0')).to.be.false;
+            expect(isUrlSourceAdapterEvent('system.host.foo')).to.be.false;
+            expect(isUrlSourceAdapterEvent('')).to.be.false;
+        });
+
+        it('rejects partial-prefix matches (no dot)', () => {
+            // `system.adapter.aurafake` must NOT match `system.adapter.aura.`
+            // because the prefix in URL_SOURCE_PREFIXES ends with a literal dot.
+            expect(isUrlSourceAdapterEvent('system.adapter.aurafake.0')).to.be.false;
+            expect(isUrlSourceAdapterEvent('system.adapter.webcam.0')).to.be.false;
+            expect(isUrlSourceAdapterEvent('system.adapter.visual.0')).to.be.false;
+        });
+
+        it('URL_SOURCE_PREFIXES is frozen and matches the documented list', () => {
+            // Defensive — Object.freeze should be honored by callers
+            expect(Object.isFrozen(URL_SOURCE_PREFIXES)).to.be.true;
+            expect(URL_SOURCE_PREFIXES).to.include('system.adapter.admin.');
+            expect(URL_SOURCE_PREFIXES).to.include('system.adapter.aura.');
+        });
+    });
+
     describe('buildCrossRefs', () => {
         it('extracts short keys from system.adapter.* IDs', () => {
             const refs = buildCrossRefs({
