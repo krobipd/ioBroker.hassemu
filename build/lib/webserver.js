@@ -562,7 +562,9 @@ class WebServer {
         );
       }
       if (!(0, import_coerce.isValidRedirectUri)(client_id, redirect_uri)) {
-        this.adapter.log.debug(`Authorize rejected: redirect_uri "${redirect_uri}" not allowed for client_id "${client_id}"`);
+        this.adapter.log.debug(
+          `Authorize rejected: redirect_uri "${redirect_uri}" not allowed for client_id "${client_id}"`
+        );
         reply.status(400).type("text/html");
         return (0, import_auth_page.renderAuthorizeError)(
           "invalid_redirect_uri",
@@ -610,9 +612,7 @@ class WebServer {
       }
       const ip = WebServer.getClientIp(req);
       if (this.isIpLocked(ip)) {
-        this.adapter.log.warn(
-          `Login rejected: IP ${ip} is currently locked out (too many failed attempts)`
-        );
+        this.adapter.log.warn(`Login rejected: IP ${ip} is currently locked out (too many failed attempts)`);
         const retry = this.retryAfterSeconds(ip);
         if (retry > 0) {
           reply.header("Retry-After", String(retry));

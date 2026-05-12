@@ -1,4 +1,8 @@
 # Older Changes
+## 1.28.0 (2026-05-06)
+
+- Multi-language: state names, descriptions and dropdown labels are now in your ioBroker system language (11 languages).
+
 ## 1.27.3 (2026-05-06)
 
 - Docs: README rewritten in plain user voice — shorter, direct, no implementation trivia. No code changes.
