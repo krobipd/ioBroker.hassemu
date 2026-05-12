@@ -353,27 +353,26 @@ describe('GlobalConfig', () => {
             });
         });
 
-        it("writes common.states to global.mode with 0='---' + 'manual' sentinel added", async () => {
+        it("writes common.states to global.mode with 0='---' + 'manual' sentinel added (plain-string label, EN fallback)", async () => {
+            // v1.28.4: Sentinel-labels sind plain-strings (system-language resolved),
+            // nicht mehr Translation-Objects. Admin crasht sonst mit React Error #31.
             await g.syncUrlDropdown({ 'http://a/': 'A', 'http://b/': 'B' });
             const obj = store.objects.get('hassemu.0.global.mode');
             expect(obj?.common?.states).to.deep.equal({
                 0: '---',
                 'http://a/': 'A',
                 'http://b/': 'B',
-                [MODE_MANUAL]: {
-                    en: 'Manual URL',
-                    de: 'Manuelle URL',
-                    ru: 'Ручной URL',
-                    pt: 'URL manual',
-                    nl: 'Handmatige URL',
-                    fr: 'URL manuelle',
-                    it: 'URL manuale',
-                    es: 'URL manual',
-                    pl: 'Ręczny URL',
-                    uk: 'Ручний URL',
-                    'zh-cn': '手动 URL',
-                },
+                [MODE_MANUAL]: 'Manual URL',
             });
+        });
+
+        it('common.states VALUES sind alle plain-string (Regression-Test für React #31)', async () => {
+            await g.syncUrlDropdown({ 'http://a/': 'A', 'http://b/': 'B' });
+            const obj = store.objects.get('hassemu.0.global.mode');
+            const states = obj?.common?.states as Record<string, unknown>;
+            for (const [key, value] of Object.entries(states)) {
+                expect(typeof value, `states[${key}] must be string`).to.equal('string');
+            }
         });
 
         it("does NOT add 'global' sentinel (would be self-referential)", async () => {

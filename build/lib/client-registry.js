@@ -475,10 +475,11 @@ class ClientRegistry {
    * `'global'` + `'manual'` sentinels, and all currently discovered URLs.
    */
   buildModeStates() {
+    const lang = this.adapter.systemLanguage;
     return (0, import_coerce.buildDropdownStates)(
       {
-        [import_constants.MODE_GLOBAL]: (0, import_i18n_states.tLabel)("globalUrl"),
-        [import_constants.MODE_MANUAL]: (0, import_i18n_states.tLabel)("manualUrl")
+        [import_constants.MODE_GLOBAL]: (0, import_i18n_states.resolveLabel)("globalUrl", lang),
+        [import_constants.MODE_MANUAL]: (0, import_i18n_states.resolveLabel)("manualUrl", lang)
       },
       this.currentUrlStates
     );
@@ -500,22 +501,33 @@ class ClientRegistry {
       common: { name: (_a = hostname != null ? hostname : ip) != null ? _a : id },
       native: { cookie, token: null }
     });
+    const modeFullCommon = {
+      name: (0, import_i18n_states.tName)("clientMode"),
+      // 'mixed' future-proofs against the upcoming js-controller
+      // strict-type cast (see govee-smart v1.11.0 pattern).
+      type: "mixed",
+      role: "value",
+      read: true,
+      write: true,
+      def: 0,
+      states: mergedStates
+    };
+    const ensureModeObject = async () => {
+      const existing = await this.adapter.getObjectAsync(`clients.${id}.mode`);
+      if (existing) {
+        existing.common = { ...existing.common, ...modeFullCommon };
+        existing.type = "state";
+        await this.adapter.setObjectAsync(`clients.${id}.mode`, existing);
+      } else {
+        await this.adapter.setObjectAsync(`clients.${id}.mode`, {
+          type: "state",
+          common: modeFullCommon,
+          native: {}
+        });
+      }
+    };
     await Promise.all([
-      this.adapter.extendObjectAsync(`clients.${id}.mode`, {
-        type: "state",
-        common: {
-          name: (0, import_i18n_states.tName)("clientMode"),
-          // 'mixed' future-proofs against the upcoming js-controller
-          // strict-type cast (see govee-smart v1.11.0 pattern).
-          type: "mixed",
-          role: "value",
-          read: true,
-          write: true,
-          def: 0,
-          states: mergedStates
-        },
-        native: {}
-      }),
+      ensureModeObject(),
       this.adapter.extendObjectAsync(`clients.${id}.manualUrl`, {
         type: "state",
         common: {

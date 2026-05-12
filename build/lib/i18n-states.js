@@ -21,6 +21,7 @@ __export(i18n_states_exports, {
   STATE_DESCS: () => STATE_DESCS,
   STATE_LABELS: () => STATE_LABELS,
   STATE_NAMES: () => STATE_NAMES,
+  resolveLabel: () => resolveLabel,
   tDesc: () => tDesc,
   tLabel: () => tLabel,
   tName: () => tName
@@ -275,11 +276,21 @@ function tDesc(key) {
 function tLabel(key) {
   return STATE_LABELS[key];
 }
+function resolveLabel(key, lang) {
+  var _a, _b;
+  const obj = STATE_LABELS[key];
+  if (typeof obj === "string") {
+    return obj;
+  }
+  const dict = obj;
+  return (_b = (_a = dict[lang]) != null ? _a : dict.en) != null ? _b : key;
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   STATE_DESCS,
   STATE_LABELS,
   STATE_NAMES,
+  resolveLabel,
   tDesc,
   tLabel,
   tName

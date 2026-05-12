@@ -22,7 +22,7 @@ import {
     safeGetState,
 } from './coerce';
 import { MODE_GLOBAL, MODE_MANUAL } from './constants';
-import { tLabel, tName } from './i18n-states';
+import { resolveLabel, tName } from './i18n-states';
 import { generateClientId } from './network';
 import type { AdapterInterface, ClientRecord, UrlStates } from './types';
 
@@ -574,13 +574,16 @@ export class ClientRegistry {
         // v1.20.0 (F4): Helper aus coerce.ts. Vorher dupliziert mit global-config
         // (bis auf den zusätzlichen `global`-Sentinel hier, weil clients per
         // `mode='global'` an global delegieren können — global selbst nicht).
-        // v1.28.0: Sentinel-Werte sind Translation-Objects (`tLabel`) — Cast
-        // via `unknown as string` weil `UrlStates` aus Test-Stabilitäts-Gründen
-        // string-typed bleibt; Admin v6+ rendert Translation-Object korrekt.
+        // v1.28.4: Sentinel-Labels als plain-string in adapter.systemLanguage —
+        // Admin rendert common.states-VALUES direkt als React-child und crasht
+        // bei Translation-Objects mit React Error #31. v1.28.0 hatte tLabel hier
+        // via `as unknown as string`-Cast eingeschleust, was den Type-Check still
+        // gelassen aber den Admin-Dropdown beim Öffnen zerlegt hat.
+        const lang = this.adapter.systemLanguage;
         return buildDropdownStates(
             {
-                [MODE_GLOBAL]: tLabel('globalUrl') as unknown as string,
-                [MODE_MANUAL]: tLabel('manualUrl') as unknown as string,
+                [MODE_GLOBAL]: resolveLabel('globalUrl', lang),
+                [MODE_MANUAL]: resolveLabel('manualUrl', lang),
             },
             this.currentUrlStates,
         );
@@ -606,28 +609,45 @@ export class ClientRegistry {
             native: { cookie, token: null },
         });
 
-        // States: extendObjectAsync — REPAIRS partial objects from the v1.2.0
-        // migration bug (extendObjectAsync was called with only common.type:'mixed',
-        // creating an object without top-level type/name/role/read/write/def).
-        // Using extend instead of setObjectNotExists merges missing properties
-        // onto the existing partial object so js-controller stops warning
-        // "obj.type has to exist" and the dropdown renders correctly.
+        // States:
+        //   - `clients.<id>.mode` uses get+setObjectAsync (analog `global-config.ts`
+        //     v1.27.2-Fix): extendObjectAsync deep-merges common.states, weshalb
+        //     alte i18n-Object-Keys aus pre-v1.28.4-Installs unter den gleichen
+        //     keys hängen blieben → React Error #31 beim Admin-Dropdown-Open.
+        //     setObjectAsync ersetzt common komplett (custom-Custom-Subscriptions
+        //     wie influxdb.0 bleiben via spread aus existing erhalten).
+        //   - Repair-Pfad für partial-formed Objects (v1.2.0-Migration-Bug, common
+        //     ohne top-level type/name/role) ist auch abgedeckt: existing-fields
+        //     werden von der full schema common komplett überschrieben.
+        //   - `clients.<id>.manualUrl` bleibt extendObjectAsync — kein states-Feld,
+        //     daher kein i18n-Object-Risiko.
+        const modeFullCommon = {
+            name: tName('clientMode') as unknown as string,
+            // 'mixed' future-proofs against the upcoming js-controller
+            // strict-type cast (see govee-smart v1.11.0 pattern).
+            type: 'mixed' as const,
+            role: 'value',
+            read: true,
+            write: true,
+            def: 0,
+            states: mergedStates,
+        };
+        const ensureModeObject = async (): Promise<void> => {
+            const existing = await this.adapter.getObjectAsync(`clients.${id}.mode`);
+            if (existing) {
+                existing.common = { ...existing.common, ...modeFullCommon };
+                existing.type = 'state';
+                await this.adapter.setObjectAsync(`clients.${id}.mode`, existing);
+            } else {
+                await this.adapter.setObjectAsync(`clients.${id}.mode`, {
+                    type: 'state',
+                    common: modeFullCommon,
+                    native: {},
+                } as never);
+            }
+        };
         await Promise.all([
-            this.adapter.extendObjectAsync(`clients.${id}.mode`, {
-                type: 'state',
-                common: {
-                    name: tName('clientMode') as unknown as string,
-                    // 'mixed' future-proofs against the upcoming js-controller
-                    // strict-type cast (see govee-smart v1.11.0 pattern).
-                    type: 'mixed',
-                    role: 'value',
-                    read: true,
-                    write: true,
-                    def: 0,
-                    states: mergedStates,
-                },
-                native: {},
-            }),
+            ensureModeObject(),
             this.adapter.extendObjectAsync(`clients.${id}.manualUrl`, {
                 type: 'state',
                 common: {
