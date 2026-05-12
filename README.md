@@ -167,6 +167,11 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+### **WORK IN PROGRESS**
+
+- The "Connection to Home Assistant failed" popup on Shelly Wall Display 2.6.0+ also stays away when the landing page is shown (no URL configured yet). v1.29.2 only suppressed it when a target URL was set.
+- Replaced the landing-page emblem with the real ioBroker brand mark (power-button "i" inside a ring).
+
 ### 1.29.2 (2026-05-12)
 
 - Shelly Wall Display on firmware 2.6.0+ no longer shows the connection-error popup after the page has loaded.

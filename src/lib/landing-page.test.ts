@@ -86,8 +86,14 @@ describe('landing-page', () => {
             it('escapes namespace injection attempts', () => {
                 const html = renderLandingPage('abc', 'hassemu.0"><script>x</script>');
                 // Raw injected payload must never appear unescaped — that's the XSS guarantee.
+                // The page legitimately contains one </script> (the notifyConnected
+                // block at the bottom); the injected one would be a second.
                 expect(html).to.not.include('"><script>');
-                expect(html).to.not.include('</script>');
+                // Count `</script>` occurrences — only our legitimate one is allowed.
+                const scriptCloseCount = (html.match(/<\/script>/g) ?? []).length;
+                expect(scriptCloseCount).to.equal(1);
+                // The injected `<script>x` raw payload must not appear
+                expect(html).to.not.include('<script>x</script>');
             });
 
             it('escapes IP injection attempts', () => {
@@ -115,12 +121,14 @@ describe('landing-page', () => {
             });
         });
 
-        describe('ioBroker logo (v1.29.2)', () => {
-            it('embeds the brand SVG inline so the page is self-contained', () => {
+        describe('ioBroker logo (v1.29.3)', () => {
+            it('embeds the real ioBroker brand SVG inline (power-button "i" in a ring)', () => {
                 const html = renderLandingPage('abc123', 'hassemu.0');
-                // SVG is inlined twice: once in the banner badge, once in the footer brand
-                expect(html).to.include('viewBox="0 0 64 64"');
-                expect(html).to.include('fill="#41BDF5"'); // ioBroker brand blue
+                // 100x100 viewBox per the official mark
+                expect(html).to.include('viewBox="0 0 100 100"');
+                // Two-tone brand colors — dark navy ring + mid-blue "i"
+                expect(html).to.include('#1F537E'); // ring
+                expect(html).to.include('#2B95C6'); // i
                 expect(html.match(/role="img"/g)?.length ?? 0).to.be.at.least(1);
             });
 
@@ -128,6 +136,23 @@ describe('landing-page', () => {
                 const html = renderLandingPage('abc123', 'hassemu.0');
                 expect(html).to.include('class="brand"');
                 expect(html).to.match(/<span class="brand"[^>]*>.*ioBroker.*<\/span>/s);
+            });
+        });
+
+        describe('Companion-App bridge signal (v1.29.3)', () => {
+            it('emits connection-status:connected to V1 and V2 bridges from the landing page too', () => {
+                // Without this, FW 2.6.0+ Companion App shows the
+                // "Verbindung zu Home Assistant nicht möglich" popup even when
+                // the landing page is the displayed content (no URL configured).
+                const html = renderLandingPage('abc123', 'hassemu.0');
+                expect(html).to.include('window.externalApp');
+                expect(html).to.include('externalBus');
+                expect(html).to.include('window.externalAppV2');
+                expect(html).to.include('postMessage');
+                expect(html).to.include('type:"connection-status"');
+                expect(html).to.include('event:"connected"');
+                // Retry pattern (slow-bridge-attach)
+                expect(html).to.match(/setTimeout\(notifyConnected,\s*\d+\)/);
             });
         });
     });
