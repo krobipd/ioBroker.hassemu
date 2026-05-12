@@ -95,6 +95,18 @@ class WebServer {
    */
   refreshTokens = /* @__PURE__ */ new Map();
   /**
+   * Mobile-App webhook registrations from `POST /api/mobile_app/registrations`
+   * (v1.29.1). Key = webhookId (URL secret), Value = owning client cookie id.
+   * Subsequent `POST /api/webhook/<id>` requests are validated against this
+   * map. FIFO-capped at {@link WEBHOOK_REGISTRATIONS_CAP}.
+   *
+   * Reused for Shelly Wall Display FW 2.6.0+ onboarding — the on-device HA
+   * Companion App requires this endpoint to complete device registration
+   * after the OAuth2 sign-in. Without it the App refuses to proceed with a
+   * "Mobile-App-Integration nicht verfügbar" error.
+   */
+  webhookRegistrations = /* @__PURE__ */ new Map();
+  /**
    * Brute-force lockout state per remote IP. Each entry tracks failed login
    * attempts and the timestamp of the last failure; once
    * {@link LOGIN_LOCKOUT_THRESHOLD} is reached, `lockedUntil` is set and
@@ -442,7 +454,10 @@ class WebServer {
         return;
       }
       const path = ((_a = req.url) != null ? _a : "/").split("?")[0];
-      if (path === "/" || path === "/api/" || path === "/api/discovery_info" || path === "/manifest.json" || path === "/health" || path.startsWith("/auth/")) {
+      if (path === "/" || path === "/api/" || path === "/api/discovery_info" || path === "/manifest.json" || path === "/health" || path.startsWith("/auth/") || // v1.29.1: Mobile-App webhooks carry the secret in the URL
+      // (`webhookId`) — HA core also serves these unauthenticated.
+      // Source: home-assistant/core/.../mobile_app/webhook.py.
+      path.startsWith("/api/webhook/")) {
         return;
       }
       const authHeader = req.headers.authorization;
@@ -494,7 +509,9 @@ class WebServer {
   setupApiRoutes() {
     this.app.get("/api/", () => ({ message: "API running." }));
     this.app.get("/api/config", () => ({
-      components: ["http", "api", "frontend", "homeassistant"],
+      // `mobile_app` advertises the integration the HA Companion App
+      // probes for during onboarding (v1.29.1, Shelly FW 2.6.0+).
+      components: ["http", "api", "frontend", "homeassistant", "mobile_app"],
       config_dir: "/config",
       elevation: 0,
       latitude: 0,
@@ -525,6 +542,82 @@ class WebServer {
       this.app.get(path, () => []);
     }
     this.app.get("/api/error_log", () => "");
+    this.app.post("/api/mobile_app/registrations", async (req, reply) => {
+      var _a, _b, _c, _d, _e;
+      const body = (_a = req.body) != null ? _a : {};
+      const authHeader = (_b = req.headers.authorization) != null ? _b : "";
+      const token = authHeader.startsWith("Bearer ") ? authHeader.substring(7).trim() : "";
+      const client = this.registry.getByToken(token);
+      const ownerId = (_c = client == null ? void 0 : client.id) != null ? _c : "";
+      const webhookId = import_node_crypto.default.randomUUID().replace(/-/g, "");
+      WebServer.evictOldest(this.webhookRegistrations, import_constants.WEBHOOK_REGISTRATIONS_CAP);
+      this.webhookRegistrations.set(webhookId, ownerId);
+      this.adapter.log.debug(
+        `Mobile-App registration \u2014 client=${ownerId} app_id=${(_d = body.app_id) != null ? _d : "?"} device_name=${(_e = body.device_name) != null ? _e : "?"} \u2192 webhook=${webhookId}`
+      );
+      reply.status(201);
+      return {
+        webhook_id: webhookId,
+        cloudhook_url: null,
+        remote_ui_url: null,
+        secret: null
+      };
+    });
+    this.app.put(
+      "/api/mobile_app/registrations/:webhookId",
+      async (req, reply) => {
+        const id = req.params.webhookId;
+        if (!this.webhookRegistrations.has(id)) {
+          reply.status(404);
+          return { error: "unknown_registration" };
+        }
+        return { webhook_id: id, cloudhook_url: null, remote_ui_url: null, secret: null };
+      }
+    );
+    this.app.delete(
+      "/api/mobile_app/registrations/:webhookId",
+      async (req, reply) => {
+        this.webhookRegistrations.delete(req.params.webhookId);
+        reply.status(204);
+        return null;
+      }
+    );
+    this.app.post("/api/webhook/:webhookId", async (req, reply) => {
+      var _a;
+      const id = req.params.webhookId;
+      if (!this.webhookRegistrations.has(id)) {
+        reply.status(200);
+        return null;
+      }
+      const body = (_a = req.body) != null ? _a : {};
+      const type = typeof body.type === "string" ? body.type : "";
+      this.adapter.log.debug(`Webhook ${id.substring(0, 8)}\u2026 type=${type || "(no type)"}`);
+      switch (type) {
+        case "get_config":
+          return {
+            components: ["http", "api", "frontend", "homeassistant", "mobile_app"],
+            latitude: 0,
+            longitude: 0,
+            elevation: 0,
+            unit_system: { length: "km", mass: "g", temperature: "\xB0C", volume: "L" },
+            location_name: this.serviceName,
+            time_zone: "UTC",
+            version: import_constants.HA_VERSION
+          };
+        case "get_zones":
+          return [];
+        case "render_template":
+          return {};
+        case "update_registration":
+          return { webhook_id: id, cloudhook_url: null, remote_ui_url: null, secret: null };
+        case "register_sensor":
+          return { success: true };
+        case "update_sensor_states":
+          return {};
+        default:
+          return {};
+      }
+    });
   }
   /**
    * Issue a fresh authorization code and persist it in the sessions map.
