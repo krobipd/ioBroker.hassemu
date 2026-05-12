@@ -70,6 +70,37 @@ iframe{display:block;border:0;margin:0;padding:0;position:fixed;top:0;left:0;wid
 <iframe src="${escAttr}" allow="autoplay; fullscreen; geolocation; microphone; camera"></iframe>
 <script>
 (function(){
+  // HA Companion App / Shelly FW 2.6.0+ injects window.externalApp (V1) or
+  // window.externalAppV2 (V2) into the WebView. The app waits for a
+  // "connection-status: connected" message; without it, after CONNECTION_TIMEOUT
+  // (10 s) the app overlays a "Verbindung zu Home Assistant nicht möglich" popup.
+  // We're not a real HA frontend, but signalling "connected" once at load
+  // gets the WebView past the timeout and lets our iframe wrapper drive the
+  // user-facing display. Source: home-assistant/android FrontendMessageHandler.kt
+  // (parses ConnectionStatusMessage) + home-assistant/frontend
+  // src/external_app/external_messaging.ts (emits connection-status events).
+  function notifyConnected(){
+    try {
+      var v1Payload = JSON.stringify({id:1,type:"connection-status",payload:{event:"connected"}});
+      if (window.externalApp && typeof window.externalApp.externalBus === "function") {
+        window.externalApp.externalBus(v1Payload);
+        return;
+      }
+      if (window.externalAppV2 && typeof window.externalAppV2.postMessage === "function") {
+        window.externalAppV2.postMessage(JSON.stringify({
+          type:"externalBus",
+          payload:{id:1,type:"connection-status",payload:{event:"connected"}}
+        }));
+      }
+    } catch (e) { /* silent — bridge not present, this is a regular browser */ }
+  }
+  notifyConnected();
+  // Some companion-app builds attach the bridge slightly after first script
+  // execution (V2 listener registration). Retry a couple of times so a slow
+  // attach still gets the signal before the 10 s timeout fires.
+  setTimeout(notifyConnected, 500);
+  setTimeout(notifyConnected, 2000);
+
   var current=${escJs};
   setInterval(function(){
     fetch('/api/redirect_check',{cache:'no-store',credentials:'same-origin'})

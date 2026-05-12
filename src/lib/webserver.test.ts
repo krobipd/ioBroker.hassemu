@@ -980,6 +980,28 @@ describe('WebServer', () => {
             expect(res.body).to.include('/api/redirect_check');
         });
 
+        it('GET / wrapper notifies HA Companion App via externalApp / externalAppV2 bridge (v1.29.2)', async () => {
+            // Source: home-assistant/android FrontendMessageHandler.kt expects a
+            // `{type:"connection-status",payload:{event:"connected"}}` envelope.
+            // Without it the WebView shows „Verbindung zu Home Assistant nicht
+            // möglich" after CONNECTION_TIMEOUT=10s. The wrapper now emits this
+            // message at load through both V1 (externalApp) and V2 (externalAppV2)
+            // bridges so the WebView's timeout is preempted.
+            const res = await server.inject({ method: 'GET', url: '/' });
+            expect(res.statusCode).to.equal(200);
+            // V1 bridge
+            expect(res.body).to.include('window.externalApp');
+            expect(res.body).to.include('externalBus');
+            // V2 bridge
+            expect(res.body).to.include('window.externalAppV2');
+            expect(res.body).to.include('postMessage');
+            // Exact payload shape (JS source literal form — JSON.stringify happens client-side)
+            expect(res.body).to.include('type:"connection-status"');
+            expect(res.body).to.include('event:"connected"');
+            // Retry pattern (slow bridge attach in some companion builds)
+            expect(res.body).to.match(/setTimeout\(notifyConnected,\s*\d+\)/);
+        });
+
         it('GET / sets cookie for new clients', async () => {
             const res = await server.inject({ method: 'GET', url: '/' });
             expect(extractCookie(res.headers['set-cookie'])).to.match(/^[0-9a-f-]{36}$/);

@@ -114,5 +114,21 @@ describe('landing-page', () => {
                 expect(html).to.include('a&amp;amp;b');
             });
         });
+
+        describe('ioBroker logo (v1.29.2)', () => {
+            it('embeds the brand SVG inline so the page is self-contained', () => {
+                const html = renderLandingPage('abc123', 'hassemu.0');
+                // SVG is inlined twice: once in the banner badge, once in the footer brand
+                expect(html).to.include('viewBox="0 0 64 64"');
+                expect(html).to.include('fill="#41BDF5"'); // ioBroker brand blue
+                expect(html.match(/role="img"/g)?.length ?? 0).to.be.at.least(1);
+            });
+
+            it('renders the brand wordmark "ioBroker" in the footer', () => {
+                const html = renderLandingPage('abc123', 'hassemu.0');
+                expect(html).to.include('class="brand"');
+                expect(html).to.match(/<span class="brand"[^>]*>.*ioBroker.*<\/span>/s);
+            });
+        });
     });
 });
