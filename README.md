@@ -19,18 +19,7 @@ Emulates a Home Assistant server so displays that only accept an HA dashboard sh
 
 Some smart displays are hardwired to "I only speak Home Assistant". hassemu pretends to be that Home Assistant — the display connects, completes its onboarding, and then shows whatever web URL you choose (VIS, VIS-2, Aura, Grafana, Node-RED, anything HTTP).
 
-### Tested displays and clients
-
-| Device / client | Firmware / version | Status |
-| --- | --- | --- |
-| Shelly Wall Display XL (SAWD-3A1XE10EU2, 10") | 1.x – 2.5.x | works (built-in HA page) |
-| Shelly Wall Display XL | **2.6.0+** | works since hassemu 1.29.2 (on-device HA app: browser OAuth2 + mobile-app registration + WebView connection signal) |
-| Shelly Wall Display (SAWD1, 4") | 1.x – 2.5.x | works (built-in HA page) |
-| Shelly Wall Display X2 / X2i (6.95") | 1.x – 2.5.x | works |
-| Home Assistant Companion App (Android) | 2024.x+ | works since hassemu 1.29.x — sideload onto any Android-based wall panel or tablet |
-| HA Companion-style WebView (Sonoff NSPanel Pro, generic Android wall panels) | — | works since 1.29.x |
-
-Other HA-Dashboard-only clients should work too. If you run one that doesn't, open an issue with the failing endpoint trace.
+Typical clients are the Shelly Wall Display family (built-in HA page; on-device HA app on firmware 2.6.0+) and anything running the Home Assistant Companion App (Android wall panels, sideloaded apps). Anything that uses the same HA onboarding flow should work — if yours doesn't, open an issue with the failing endpoint trace.
 
 ---
 
