@@ -1,4 +1,8 @@
 # Older Changes
+## 1.28.2 (2026-05-09)
+
+- Adapter log messages are now English only, in line with the ioBroker community standard. Localized state names, descriptions and dropdown labels (11 languages) are unchanged. The user-facing HA landing page also remains localized.
+
 ## 1.28.1 (2026-05-06)
 
 - Documentation: changelog entries (v1.27.x–v1.28.0) restored to English — a few bullets had been left in German. No code changes.
