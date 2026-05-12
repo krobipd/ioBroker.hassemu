@@ -1,4 +1,8 @@
 # Older Changes
+## 1.28.1 (2026-05-06)
+
+- Documentation: changelog entries (v1.27.x–v1.28.0) restored to English — a few bullets had been left in German. No code changes.
+
 ## 1.28.0 (2026-05-06)
 
 - Multi-language: state names, descriptions and dropdown labels are now in your ioBroker system language (11 languages).
