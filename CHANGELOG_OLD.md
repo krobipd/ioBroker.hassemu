@@ -1,4 +1,8 @@
 # Older Changes
+## 1.28.4 (2026-05-12)
+
+- The mode dropdowns in admin (global and per-client) no longer crash with "Error in GUI" when opened.
+
 ## 1.28.3 (2026-05-10)
 
 - Adapter starts faster on installations with many displays, and a single broken client entry no longer keeps the others from being restored. Plus a security tighten-up around the HA login flow.
