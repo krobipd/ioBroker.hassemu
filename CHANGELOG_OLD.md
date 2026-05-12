@@ -1,4 +1,8 @@
 # Older Changes
+## 1.28.3 (2026-05-10)
+
+- Adapter starts faster on installations with many displays, and a single broken client entry no longer keeps the others from being restored. Plus a security tighten-up around the HA login flow.
+
 ## 1.28.2 (2026-05-09)
 
 - Adapter log messages are now English only, in line with the ioBroker community standard. Localized state names, descriptions and dropdown labels (11 languages) are unchanged. The user-facing HA landing page also remains localized.

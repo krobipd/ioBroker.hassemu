@@ -167,7 +167,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
-### **WORK IN PROGRESS**
+### 1.29.3 (2026-05-12)
 
 - The "Connection to Home Assistant failed" popup on Shelly Wall Display 2.6.0+ also stays away when the landing page is shown (no URL configured yet). v1.29.2 only suppressed it when a target URL was set.
 - Replaced the landing-page emblem with the real ioBroker brand mark (power-button "i" inside a ring).
@@ -189,10 +189,6 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 ### 1.28.4 (2026-05-12)
 
 - The mode dropdowns in admin (global and per-client) no longer crash with "Error in GUI" when opened.
-
-### 1.28.3 (2026-05-10)
-
-- Adapter starts faster on installations with many displays, and a single broken client entry no longer keeps the others from being restored. Plus a security tighten-up around the HA login flow.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
