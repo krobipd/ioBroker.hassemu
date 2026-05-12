@@ -19,15 +19,27 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var url_discovery_exports = {};
 __export(url_discovery_exports, {
   DEFAULT_REFRESH_DEBOUNCE_MS: () => DEFAULT_REFRESH_DEBOUNCE_MS,
+  URL_SOURCE_PREFIXES: () => URL_SOURCE_PREFIXES,
   UrlDiscovery: () => UrlDiscovery,
   buildCrossRefs: () => buildCrossRefs,
   collectFromInstance: () => collectFromInstance,
+  isUrlSourceAdapterEvent: () => isUrlSourceAdapterEvent,
   resolvePlaceholders: () => resolvePlaceholders
 });
 module.exports = __toCommonJS(url_discovery_exports);
 var import_coerce = require("./coerce");
 var import_network = require("./network");
 const DEFAULT_REFRESH_DEBOUNCE_MS = 2e3;
+const URL_SOURCE_PREFIXES = Object.freeze([
+  "system.adapter.admin.",
+  "system.adapter.web.",
+  "system.adapter.vis.",
+  "system.adapter.vis-2.",
+  "system.adapter.aura."
+]);
+function isUrlSourceAdapterEvent(id) {
+  return URL_SOURCE_PREFIXES.some((p) => id.startsWith(p));
+}
 class UrlDiscovery {
   adapter;
   onChange;
@@ -422,9 +434,11 @@ function primitiveToString(v) {
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   DEFAULT_REFRESH_DEBOUNCE_MS,
+  URL_SOURCE_PREFIXES,
   UrlDiscovery,
   buildCrossRefs,
   collectFromInstance,
+  isUrlSourceAdapterEvent,
   resolvePlaceholders
 });
 //# sourceMappingURL=url-discovery.js.map

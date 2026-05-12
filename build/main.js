@@ -63,12 +63,7 @@ class HassEmu extends utils.Adapter {
       if (!(id == null ? void 0 : id.startsWith("system.adapter."))) {
         return;
       }
-      const isUrlSourceAdapter = id.startsWith("system.adapter.admin.") || id.startsWith("system.adapter.web.") || id.startsWith("system.adapter.vis.") || id.startsWith("system.adapter.vis-2.") || // v1.30.0 (R2): aura adapter — own HTTP server, discovered
-      // by url-discovery.addAuraInstance. Without this filter
-      // entry, adding/removing/reconfiguring aura.X would NOT
-      // trigger a scheduleRefresh — user would have to click
-      // info.refresh_urls manually. Bug from the v1.29.2-Welle.
-      id.startsWith("system.adapter.aura.");
+      const isUrlSourceAdapter = (0, import_url_discovery.isUrlSourceAdapterEvent)(id);
       const isAddOrRemove = !obj || obj.type === "instance" && !((_a2 = obj.common) == null ? void 0 : _a2.host);
       if (isUrlSourceAdapter || isAddOrRemove) {
         (_b = this.urlDiscovery) == null ? void 0 : _b.scheduleRefresh();

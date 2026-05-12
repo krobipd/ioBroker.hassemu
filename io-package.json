@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.29.3",
+    "version": "1.30.0",
     "news": {
+      "1.30.0": {
+        "en": "Internal cleanup based on a source audit. No user-facing changes — except that adding or reconfiguring an Aura adapter now refreshes the URL dropdown automatically.",
+        "de": "Interne Aufräumarbeiten nach einem Source-Audit. Keine User-Änderungen — außer dass das Hinzufügen oder Umkonfigurieren eines Aura-Adapters das URL-Dropdown jetzt automatisch aktualisiert.",
+        "ru": "Внутренняя чистка по результатам source-аудита. Без видимых изменений — кроме того, что добавление или переконфигурация Aura-адаптера теперь обновляет URL-список автоматически.",
+        "pt": "Limpeza interna baseada numa auditoria de código. Sem alterações para o utilizador — exceto que adicionar ou reconfigurar um adaptador Aura atualiza agora o dropdown de URLs automaticamente.",
+        "nl": "Interne opruimwerkzaamheden na een broncode-audit. Geen wijzigingen voor de gebruiker — behalve dat het toevoegen of herconfigureren van een Aura-adapter de URL-dropdown nu automatisch ververst.",
+        "fr": "Nettoyage interne suite à un audit du code source. Aucun changement utilisateur — sauf que l'ajout ou la reconfiguration d'un adaptateur Aura rafraîchit désormais la liste d'URL automatiquement.",
+        "it": "Pulizia interna basata su un audit del codice sorgente. Nessuna modifica visibile — tranne che aggiungendo o riconfigurando un adapter Aura il dropdown delle URL si aggiorna ora automaticamente.",
+        "es": "Limpieza interna basada en una auditoría del código. Sin cambios para el usuario — salvo que añadir o reconfigurar un adaptador Aura ahora refresca la lista de URLs automáticamente.",
+        "pl": "Wewnętrzne porządki po audycie kodu źródłowego. Bez zmian dla użytkownika — poza tym, że dodanie lub rekonfiguracja adaptera Aura odświeża teraz listę URL automatycznie.",
+        "uk": "Внутрішнє прибирання за результатами аудиту коду. Без видимих змін — окрім того, що додавання чи переналаштування Aura-адаптера тепер оновлює список URL автоматично.",
+        "zh-cn": "基于源码审计的内部清理。无用户可见变化——但添加或重新配置 Aura 适配器现在会自动刷新 URL 下拉框。"
+      },
       "1.29.3": {
         "en": "The connection-error popup on Shelly Wall Display 2.6.0+ also stays away when the landing page is shown. Plus the landing page now uses the real ioBroker brand mark.",
         "de": "Das Verbindungsfehler-Popup auf Shelly Wall Display 2.6.0+ bleibt jetzt auch weg wenn die Landing-Page angezeigt wird. Außerdem trägt die Landing-Page nun das echte ioBroker-Markenzeichen.",
@@ -80,19 +93,6 @@
         "pl": "Adapter uruchamia się szybciej przy wielu wyświetlaczach, a pojedynczy uszkodzony wpis klienta nie blokuje już przywracania pozostałych. Plus wzmocnienie bezpieczeństwa logowania HA.",
         "uk": "Адаптер швидше стартує з багатьма дисплеями, а один пошкоджений запис клієнта більше не заважає відновленню інших. Плюс посилення безпеки входу HA.",
         "zh-cn": "在拥有多个显示设备的安装中，适配器启动更快，单个损坏的客户端条目不再阻止其他客户端被恢复。此外还包含 HA 登录流程的安全加固，让密码限流响应更规范。"
-      },
-      "NEXT": {
-        "en": "Internal cleanup based on a source audit. No user-facing changes — except that adding or reconfiguring an Aura adapter now refreshes the URL dropdown automatically.",
-        "de": "Interne Aufräumarbeiten nach einem Source-Audit. Keine User-Änderungen — außer dass das Hinzufügen oder Umkonfigurieren eines Aura-Adapters das URL-Dropdown jetzt automatisch aktualisiert.",
-        "ru": "Внутренняя чистка по результатам source-аудита. Без видимых изменений — кроме того, что добавление или переконфигурация Aura-адаптера теперь обновляет URL-список автоматически.",
-        "pt": "Limpeza interna baseada numa auditoria de código. Sem alterações para o utilizador — exceto que adicionar ou reconfigurar um adaptador Aura atualiza agora o dropdown de URLs automaticamente.",
-        "nl": "Interne opruimwerkzaamheden na een broncode-audit. Geen wijzigingen voor de gebruiker — behalve dat het toevoegen of herconfigureren van een Aura-adapter de URL-dropdown nu automatisch ververst.",
-        "fr": "Nettoyage interne suite à un audit du code source. Aucun changement utilisateur — sauf que l'ajout ou la reconfiguration d'un adaptateur Aura rafraîchit désormais la liste d'URL automatiquement.",
-        "it": "Pulizia interna basata su un audit del codice sorgente. Nessuna modifica visibile — tranne che aggiungendo o riconfigurando un adapter Aura il dropdown delle URL si aggiorna ora automaticamente.",
-        "es": "Limpieza interna basada en una auditoría del código. Sin cambios para el usuario — salvo que añadir o reconfigurar un adaptador Aura ahora refresca la lista de URLs automáticamente.",
-        "pl": "Wewnętrzne porządki po audycie kodu źródłowego. Bez zmian dla użytkownika — poza tym, że dodanie lub rekonfiguracja adaptera Aura odświeża teraz listę URL automatycznie.",
-        "uk": "Внутрішнє прибирання за результатами аудиту коду. Без видимих змін — окрім того, що додавання чи переналаштування Aura-адаптера тепер оновлює список URL автоматично.",
-        "zh-cn": "基于源码审计的内部清理。无用户可见变化——但添加或重新配置 Aura 适配器现在会自动刷新 URL 下拉框。"
       }
     },
     "titleLang": {
