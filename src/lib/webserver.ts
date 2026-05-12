@@ -18,7 +18,8 @@ import {
     REQUEST_ERROR_COOLDOWN_CAP,
     COOKIE_MAX_AGE_S,
 } from './constants';
-import { coerceString, coerceUuid, safeStringEqual } from './coerce';
+import { coerceString, coerceUuid, isValidRedirectUri, safeStringEqual } from './coerce';
+import { buildRedirectUrl, renderAuthorizeError, renderAuthorizeForm, renderAuthorizeRedirect } from './auth-page';
 import type { ClientRegistry } from './client-registry';
 import type { GlobalConfig } from './global-config';
 import { renderLandingPage } from './landing-page';
@@ -653,8 +654,159 @@ export class WebServer {
         this.app.get('/api/error_log', () => '');
     }
 
+    /**
+     * Issue a fresh authorization code and persist it in the sessions map.
+     *
+     * Single source for both the JSON login flow (`/auth/login_flow/<flowId>`
+     * → `create_entry`) and the browser OAuth2 flow (`/auth/authorize` →
+     * 302). The code is exchanged for tokens at `/auth/token` (`grant_type =
+     * authorization_code`); the existing token-view consumes the same map.
+     *
+     * @param clientId Identity cookie value of the requesting display, or
+     *                 undefined for headless OAuth2-only flows.
+     */
+    private issueAuthorizationCode(clientId: string | null): string {
+        const code = crypto.randomUUID();
+        this.storeSession(code, { created: Date.now(), clientId });
+        return code;
+    }
+
     private setupAuthRoutes(): void {
         this.app.get('/auth/providers', () => [{ name: 'Home Assistant Local', type: 'homeassistant', id: null }]);
+
+        // Browser-OAuth2 flow at GET/POST /auth/authorize. Needed by the
+        // HA Companion Android App (Shelly Wall Display FW 2.6.0+ embeds
+        // the Companion App). Source-verified flow:
+        //   home-assistant/android UrlUtil.kt:buildAuthenticationUrl
+        //   home-assistant/core indieauth.py:verify_redirect_uri
+        //   home-assistant/frontend src/data/auth.ts:redirectWithAuthCode
+        // Detail: Ressourcen/hassemu/oauth2-browser-flow-shelly-fw26.md
+        this.app.get<{
+            Querystring: { response_type?: string; client_id?: string; redirect_uri?: string; state?: string };
+        }>('/auth/authorize', async (req, reply) => {
+            const { response_type, client_id, redirect_uri, state } = req.query ?? {};
+
+            if (response_type !== 'code') {
+                reply.status(400).type('text/html');
+                return renderAuthorizeError(
+                    'unsupported_response_type',
+                    'This authorization server supports `response_type=code` only.',
+                );
+            }
+            if (typeof client_id !== 'string' || typeof redirect_uri !== 'string') {
+                reply.status(400).type('text/html');
+                return renderAuthorizeError(
+                    'invalid_request',
+                    'Missing or invalid `client_id` or `redirect_uri` parameter.',
+                );
+            }
+            if (!isValidRedirectUri(client_id, redirect_uri)) {
+                this.adapter.log.debug(
+                    `Authorize rejected: redirect_uri "${redirect_uri}" not allowed for client_id "${client_id}"`,
+                );
+                reply.status(400).type('text/html');
+                return renderAuthorizeError(
+                    'invalid_redirect_uri',
+                    'The `redirect_uri` parameter is not on the allowlist for this client.',
+                );
+            }
+
+            const client = await this.identify(req, reply);
+
+            // No auth required → issue the code right away and redirect.
+            if (!this.config.authRequired) {
+                const code = this.issueAuthorizationCode(client.id);
+                const target = buildRedirectUrl(redirect_uri, code, state);
+                this.adapter.log.debug(`Authorize auto-grant — client ${client.id}`);
+                reply.type('text/html');
+                return renderAuthorizeRedirect(target);
+            }
+
+            reply.type('text/html');
+            return renderAuthorizeForm({ clientId: client_id, redirectUri: redirect_uri, state });
+        });
+
+        this.app.post<{
+            Body: {
+                response_type?: string;
+                client_id?: string;
+                redirect_uri?: string;
+                state?: string;
+                username?: string;
+                password?: string;
+            };
+        }>('/auth/authorize', async (req, reply) => {
+            const { response_type, client_id, redirect_uri, state, username, password } = req.body ?? {};
+
+            if (response_type !== 'code') {
+                reply.status(400).type('text/html');
+                return renderAuthorizeError('unsupported_response_type', 'Only `response_type=code` is supported.');
+            }
+            if (typeof client_id !== 'string' || typeof redirect_uri !== 'string') {
+                reply.status(400).type('text/html');
+                return renderAuthorizeError(
+                    'invalid_request',
+                    'Missing or invalid `client_id` or `redirect_uri` parameter.',
+                );
+            }
+            if (!isValidRedirectUri(client_id, redirect_uri)) {
+                reply.status(400).type('text/html');
+                return renderAuthorizeError(
+                    'invalid_redirect_uri',
+                    'The `redirect_uri` parameter is not on the allowlist for this client.',
+                );
+            }
+
+            const client = await this.identify(req, reply);
+
+            // No auth required → straight to redirect even on POST.
+            if (!this.config.authRequired) {
+                const code = this.issueAuthorizationCode(client.id);
+                const target = buildRedirectUrl(redirect_uri, code, state);
+                reply.type('text/html');
+                return renderAuthorizeRedirect(target);
+            }
+
+            const ip = WebServer.getClientIp(req);
+            if (this.isIpLocked(ip)) {
+                this.adapter.log.warn(`Login rejected: IP ${ip} is currently locked out (too many failed attempts)`);
+                const retry = this.retryAfterSeconds(ip);
+                if (retry > 0) {
+                    reply.header('Retry-After', String(retry));
+                }
+                reply.status(429).type('text/html');
+                return renderAuthorizeError(
+                    'too_many_failed_attempts',
+                    'Too many failed sign-in attempts. Please wait and try again.',
+                );
+            }
+
+            const userOk = typeof username === 'string' && safeStringEqual(username, this.config.username);
+            const passOk = typeof password === 'string' && safeStringEqual(password, this.config.password);
+            if (!userOk || !passOk) {
+                this.recordLoginFailure(ip);
+                const entry = this.loginAttempts.get(WebServer.normalizeLockoutKey(ip));
+                const failCount = entry?.failedCount ?? 0;
+                const ipSuffix = ip ? ` (IP ${ip})` : '';
+                if (failCount <= LOGIN_LOCKOUT_THRESHOLD) {
+                    this.adapter.log.warn(`Invalid credentials${ipSuffix}`);
+                } else {
+                    this.adapter.log.debug(`Invalid credentials${ipSuffix} (post-lockout-threshold)`);
+                }
+                reply.status(401).type('text/html');
+                return renderAuthorizeForm(
+                    { clientId: client_id, redirectUri: redirect_uri, state },
+                    'Invalid username or password.',
+                );
+            }
+
+            this.clearLoginAttempts(ip);
+            const code = this.issueAuthorizationCode(client.id);
+            const target = buildRedirectUrl(redirect_uri, code, state);
+            this.adapter.log.debug(`Authorize grant — client ${client.id}`);
+            reply.type('text/html');
+            return renderAuthorizeRedirect(target);
+        });
 
         this.app.post('/auth/login_flow', async (req, reply) => {
             const client = await this.identify(req, reply);
@@ -858,8 +1010,14 @@ export class WebServer {
         }));
 
         this.app.get('/manifest.json', () => ({
-            name: this.serviceName,
-            short_name: this.serviceName,
+            // `name` MUST be "Home Assistant" exactly — the HA Companion App
+            // verifies the server identity by parsing this field. Source:
+            // home-assistant/android DefaultConnectivityChecker.kt:isHomeAssistant
+            // checks `name === "Home Assistant"`. Anything else (e.g. `serviceName`
+            // = "ioBroker") fails the onboarding probe with "Server ist nicht
+            // Home Assistant". Detail in Ressourcen/hassemu/oauth2-browser-flow-shelly-fw26.md.
+            name: 'Home Assistant',
+            short_name: 'Home Assistant',
             start_url: '/',
             display: 'standalone',
             background_color: '#ffffff',

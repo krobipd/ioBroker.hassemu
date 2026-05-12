@@ -489,6 +489,267 @@ describe('WebServer', () => {
         });
     });
 
+    describe('OAuth2 browser flow (v1.29.0 — Shelly FW 2.6+, HA Companion)', () => {
+        // Sources verified before coding:
+        //   home-assistant/android UrlUtil.kt:buildAuthenticationUrl
+        //   home-assistant/core indieauth.py:verify_redirect_uri
+        //   home-assistant/frontend src/data/auth.ts:redirectWithAuthCode
+        // Detail in Ressourcen/hassemu/oauth2-browser-flow-shelly-fw26.md.
+
+        const SHELLY_QUERY =
+            'response_type=code' +
+            '&client_id=' +
+            encodeURIComponent('https://home-assistant.io/android') +
+            '&redirect_uri=' +
+            encodeURIComponent('homeassistant://auth-callback') +
+            '&state=xyz123';
+
+        it('GET /auth/authorize: rejects missing response_type', async () => {
+            const res = await server.inject({ method: 'GET', url: '/auth/authorize' });
+            expect(res.statusCode).to.equal(400);
+            expect(res.headers['content-type']).to.include('text/html');
+            expect(res.body).to.include('unsupported_response_type');
+        });
+
+        it('GET /auth/authorize: rejects response_type other than `code`', async () => {
+            const res = await server.inject({
+                method: 'GET',
+                url: '/auth/authorize?response_type=token&client_id=x&redirect_uri=x',
+            });
+            expect(res.statusCode).to.equal(400);
+            expect(res.body).to.include('unsupported_response_type');
+        });
+
+        it('GET /auth/authorize: rejects javascript: redirect_uri (open-redirect guard)', async () => {
+            const res = await server.inject({
+                method: 'GET',
+                url:
+                    '/auth/authorize?response_type=code&client_id=' +
+                    encodeURIComponent('https://home-assistant.io/android') +
+                    '&redirect_uri=' +
+                    encodeURIComponent('javascript:alert(1)'),
+            });
+            expect(res.statusCode).to.equal(400);
+            expect(res.body).to.include('invalid_redirect_uri');
+            // Hard requirement: NEVER 302 on validation failure (would leak code).
+            expect(res.headers.location).to.equal(undefined);
+        });
+
+        it('GET /auth/authorize: rejects mismatched http(s) host (open-redirect guard)', async () => {
+            const res = await server.inject({
+                method: 'GET',
+                url:
+                    '/auth/authorize?response_type=code&client_id=' +
+                    encodeURIComponent('http://10.0.0.1:8123/') +
+                    '&redirect_uri=' +
+                    encodeURIComponent('http://attacker.example.com/cb'),
+            });
+            expect(res.statusCode).to.equal(400);
+            expect(res.body).to.include('invalid_redirect_uri');
+        });
+
+        it('GET /auth/authorize (authRequired=false): renders auto-redirect HTML with code + state', async () => {
+            const res = await server.inject({ method: 'GET', url: '/auth/authorize?' + SHELLY_QUERY });
+            expect(res.statusCode).to.equal(200);
+            expect(res.headers['content-type']).to.include('text/html');
+            // The auto-submit page contains the target URL twice:
+            //   - meta refresh `URL=…` with HTML-encoded ampersands
+            //   - inline JS `document.location.assign(jsonString)` with raw URL
+            expect(res.body).to.match(/document\.location\.assign/);
+            expect(res.body).to.include('homeassistant://auth-callback?code=');
+            expect(res.body).to.include('state=xyz123');
+            // Same code is in the sessions map so /auth/token can consume it.
+            const codeMatch = res.body.match(/code=([a-f0-9-]+)/);
+            expect(codeMatch, 'auth code not in body').to.not.be.null;
+            expect(server.sessions.has(codeMatch![1])).to.be.true;
+        });
+
+        it('GET /auth/authorize (authRequired=true): renders login form with hidden OAuth2 params', async () => {
+            const built = createMockAdapter();
+            const reg = new ClientRegistry(built.adapter as never);
+            const g = await buildGlobalConfig(built.adapter, 'http://example.com/vis', null, true);
+            const s = new WebServer(
+                built.adapter as never,
+                { ...baseConfig, authRequired: true },
+                reg,
+                g,
+                crypto.randomUUID(),
+            );
+            await s['app'].register((await import('@fastify/cookie')).default);
+            await s['app'].register((await import('@fastify/formbody')).default);
+            s['setupErrorHandler']();
+            s['setupRoutes']();
+            await s['app'].ready();
+            const res = await s.inject({ method: 'GET', url: '/auth/authorize?' + SHELLY_QUERY });
+            expect(res.statusCode).to.equal(200);
+            expect(res.headers['content-type']).to.include('text/html');
+            expect(res.body).to.include('<form method="POST" action="/auth/authorize"');
+            expect(res.body).to.include('name="response_type" value="code"');
+            expect(res.body).to.include('name="client_id" value="https://home-assistant.io/android"');
+            expect(res.body).to.include('name="redirect_uri" value="homeassistant://auth-callback"');
+            expect(res.body).to.include('name="state" value="xyz123"');
+            expect(res.body).to.include('name="username"');
+            expect(res.body).to.include('name="password"');
+            await s['app'].close();
+        });
+
+        it('POST /auth/authorize: valid creds → auto-redirect HTML with code + state', async () => {
+            const built = createMockAdapter();
+            const reg = new ClientRegistry(built.adapter as never);
+            const g = await buildGlobalConfig(built.adapter, 'http://example.com/vis', null, true);
+            const s = new WebServer(
+                built.adapter as never,
+                { ...baseConfig, authRequired: true },
+                reg,
+                g,
+                crypto.randomUUID(),
+            );
+            await s['app'].register((await import('@fastify/cookie')).default);
+            await s['app'].register((await import('@fastify/formbody')).default);
+            s['setupErrorHandler']();
+            s['setupRoutes']();
+            await s['app'].ready();
+            const res = await s.inject({
+                method: 'POST',
+                url: '/auth/authorize',
+                headers: { 'content-type': 'application/x-www-form-urlencoded' },
+                payload:
+                    'response_type=code' +
+                    '&client_id=' +
+                    encodeURIComponent('https://home-assistant.io/android') +
+                    '&redirect_uri=' +
+                    encodeURIComponent('homeassistant://auth-callback') +
+                    '&state=abc' +
+                    '&username=admin&password=secret',
+            });
+            expect(res.statusCode).to.equal(200);
+            expect(res.body).to.match(/document\.location\.assign/);
+            expect(res.body).to.include('homeassistant://auth-callback?code=');
+            expect(res.body).to.include('state=abc');
+            await s['app'].close();
+        });
+
+        it('POST /auth/authorize: invalid creds → form re-rendered with error banner, 401', async () => {
+            const built = createMockAdapter();
+            const reg = new ClientRegistry(built.adapter as never);
+            const g = await buildGlobalConfig(built.adapter, 'http://example.com/vis', null, true);
+            const s = new WebServer(
+                built.adapter as never,
+                { ...baseConfig, authRequired: true },
+                reg,
+                g,
+                crypto.randomUUID(),
+            );
+            await s['app'].register((await import('@fastify/cookie')).default);
+            await s['app'].register((await import('@fastify/formbody')).default);
+            s['setupErrorHandler']();
+            s['setupRoutes']();
+            await s['app'].ready();
+            const res = await s.inject({
+                method: 'POST',
+                url: '/auth/authorize',
+                headers: { 'content-type': 'application/x-www-form-urlencoded' },
+                payload:
+                    'response_type=code' +
+                    '&client_id=' +
+                    encodeURIComponent('https://home-assistant.io/android') +
+                    '&redirect_uri=' +
+                    encodeURIComponent('homeassistant://auth-callback') +
+                    '&state=abc' +
+                    '&username=admin&password=wrong',
+            });
+            expect(res.statusCode).to.equal(401);
+            expect(res.body).to.include('Invalid username or password');
+            expect(res.body).to.include('<form');
+            // No code issued on failure.
+            expect(res.body).to.not.include('document.location.assign');
+            await s['app'].close();
+        });
+
+        it('POST /auth/authorize: 5 invalid + 6th attempt → 429 with Retry-After', async () => {
+            const built = createMockAdapter();
+            const reg = new ClientRegistry(built.adapter as never);
+            const g = await buildGlobalConfig(built.adapter, 'http://example.com/vis', null, true);
+            const s = new WebServer(
+                built.adapter as never,
+                { ...baseConfig, authRequired: true },
+                reg,
+                g,
+                crypto.randomUUID(),
+            );
+            await s['app'].register((await import('@fastify/cookie')).default);
+            await s['app'].register((await import('@fastify/formbody')).default);
+            s['setupErrorHandler']();
+            s['setupRoutes']();
+            await s['app'].ready();
+            for (let i = 0; i < 5; i++) {
+                await s.inject({
+                    method: 'POST',
+                    url: '/auth/authorize',
+                    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+                    payload:
+                        'response_type=code&client_id=' +
+                        encodeURIComponent('https://home-assistant.io/android') +
+                        '&redirect_uri=' +
+                        encodeURIComponent('homeassistant://auth-callback') +
+                        '&username=admin&password=wrong',
+                });
+            }
+            const res = await s.inject({
+                method: 'POST',
+                url: '/auth/authorize',
+                headers: { 'content-type': 'application/x-www-form-urlencoded' },
+                payload:
+                    'response_type=code&client_id=' +
+                    encodeURIComponent('https://home-assistant.io/android') +
+                    '&redirect_uri=' +
+                    encodeURIComponent('homeassistant://auth-callback') +
+                    '&username=admin&password=wrong',
+            });
+            expect(res.statusCode).to.equal(429);
+            expect(res.headers['retry-after']).to.match(/^\d+$/);
+            expect(res.body).to.include('too_many_failed_attempts');
+            await s['app'].close();
+        });
+
+        it('GET /auth/authorize → POST /auth/token: full end-to-end flow yields access_token (authRequired=false)', async () => {
+            const r1 = await server.inject({ method: 'GET', url: '/auth/authorize?' + SHELLY_QUERY });
+            const codeMatch = r1.body.match(/code=([a-f0-9-]+)/);
+            expect(codeMatch).to.not.be.null;
+            const r2 = await server.inject({
+                method: 'POST',
+                url: '/auth/token',
+                headers: { 'content-type': 'application/x-www-form-urlencoded' },
+                payload: `grant_type=authorization_code&code=${codeMatch![1]}&client_id=${encodeURIComponent('https://home-assistant.io/android')}`,
+            });
+            expect(r2.statusCode).to.equal(200);
+            const body = r2.json() as { access_token: string; refresh_token: string; token_type: string };
+            expect(body.token_type).to.equal('Bearer');
+            expect(body.access_token).to.be.a('string').and.have.lengthOf.at.least(16);
+            expect(body.refresh_token).to.be.a('string').and.have.lengthOf.at.least(16);
+        });
+
+        it('state parameter round-trips verbatim when value contains URL-special characters', async () => {
+            // OAuth2 state is opaque — must be returned by the server identical bytes.
+            const exoticState = 'a%26b%3Dc'; // pre-encoded a&b=c
+            const res = await server.inject({
+                method: 'GET',
+                url:
+                    '/auth/authorize?response_type=code' +
+                    '&client_id=' +
+                    encodeURIComponent('https://home-assistant.io/android') +
+                    '&redirect_uri=' +
+                    encodeURIComponent('homeassistant://auth-callback') +
+                    '&state=' +
+                    exoticState,
+            });
+            expect(res.statusCode).to.equal(200);
+            // Fastify URL-decodes the query, so the raw state on server is `a&b=c`,
+            // and the redirect re-encodes it for the URL.
+            expect(res.body).to.include('state=a%26b%3Dc');
+        });
+    });
+
     describe('misc endpoints', () => {
         it('GET /health returns liveness without any config leak (security fix v1.5.0)', async () => {
             const res = await server.inject({ method: 'GET', url: '/health' });
@@ -500,10 +761,14 @@ describe('WebServer', () => {
             expect(body).to.not.have.property('config');
         });
 
-        it('GET /manifest.json returns PWA manifest with service name', async () => {
+        it('GET /manifest.json returns name="Home Assistant" — required by HA Companion verification (v1.29.0)', async () => {
+            // home-assistant/android DefaultConnectivityChecker.kt:isHomeAssistant
+            // checks `manifest.name === "Home Assistant"` exactly. Any other
+            // value (e.g. the user-configured serviceName) fails onboarding.
             const res = await server.inject({ method: 'GET', url: '/manifest.json' });
-            const body = res.json() as { name: string };
-            expect(body.name).to.equal('TestServer');
+            const body = res.json() as { name: string; short_name: string };
+            expect(body.name).to.equal('Home Assistant');
+            expect(body.short_name).to.equal('Home Assistant');
         });
 
         it("GET / serves wrapper HTML pointing at global URL when client default mode='global' (v1.7.0)", async () => {

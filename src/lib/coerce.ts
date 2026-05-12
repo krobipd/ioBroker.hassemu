@@ -9,6 +9,67 @@
 import crypto from 'node:crypto';
 
 /**
+ * IndieAuth-style redirect_uri validation + HA Companion App whitelist.
+ *
+ * Three accept paths (matches home-assistant/core/homeassistant/components/auth/indieauth.py:30-55):
+ * 1. Same scheme + netloc as client_id (default IndieAuth).
+ * 2. Hardcoded whitelist for HA Companion iOS/Android apps — needed because
+ *    they use custom URI scheme `homeassistant://` which can never pass rule (1).
+ * 3. IndieAuth 4.2.2 — fetch client_id URL, parse `<link rel="redirect_uri">`
+ *    tags. NOT implemented here — LAN emulation can't rely on internet fetch.
+ *
+ * Always rejects dangerous schemes (javascript:, data:, vbscript:, file:)
+ * regardless of any other rule. Defense-in-depth — defense against an
+ * accidental whitelist drift.
+ *
+ * @param clientId    Untrusted `client_id` from OAuth2 query (an absolute URL).
+ * @param redirectUri Untrusted `redirect_uri` from OAuth2 query.
+ */
+export function isValidRedirectUri(clientId: string, redirectUri: string): boolean {
+    if (typeof clientId !== 'string' || typeof redirectUri !== 'string') {
+        return false;
+    }
+    if (clientId.length === 0 || redirectUri.length === 0) {
+        return false;
+    }
+    if (redirectUri.length > 2048 || clientId.length > 2048) {
+        return false;
+    }
+    // Dangerous schemes — never accept regardless of any other rule.
+    const lower = redirectUri.toLowerCase();
+    const forbidden = ['javascript:', 'data:', 'vbscript:', 'file:'];
+    for (const scheme of forbidden) {
+        if (lower.startsWith(scheme)) {
+            return false;
+        }
+    }
+
+    // (2) HA Companion App whitelist — must be checked before (1) because
+    // these apps use `homeassistant://` which has no http(s) netloc to match.
+    // Source: home-assistant/core indieauth.py:39-50.
+    if (clientId === 'https://home-assistant.io/iOS' && redirectUri === 'homeassistant://auth-callback') {
+        return true;
+    }
+    if (
+        clientId === 'https://home-assistant.io/android' &&
+        (redirectUri === 'homeassistant://auth-callback' ||
+            redirectUri === 'https://wear.googleapis.com/3p_auth/io.homeassistant.companion.android' ||
+            redirectUri === 'https://wear.googleapis-cn.com/3p_auth/io.homeassistant.companion.android')
+    ) {
+        return true;
+    }
+
+    // (1) Default IndieAuth rule — same scheme + netloc.
+    try {
+        const cid = new URL(clientId);
+        const ru = new URL(redirectUri);
+        return cid.protocol === ru.protocol && cid.host === ru.host;
+    } catch {
+        return false;
+    }
+}
+
+/**
  * v1.22.0 (F5): vormals in webserver.ts. Constant-time string comparison
  * for credential checks. Length-leak-resistant via SHA-256-Digest-Vergleich:
  * beide Inputs werden auf eine fixe 32-Byte-Länge gehasht, dann timing-safe
