@@ -366,15 +366,17 @@ class ClientRegistry {
   async syncUrlDropdown(states) {
     this.currentUrlStates = states;
     const merged = this.buildModeStates();
-    for (const id of this.byId.keys()) {
-      const stateId = `clients.${id}.mode`;
-      const existing = await this.adapter.getObjectAsync(stateId);
-      if (!existing) {
-        continue;
-      }
-      existing.common.states = merged;
-      await this.adapter.setObjectAsync(stateId, existing);
-    }
+    await Promise.all(
+      Array.from(this.byId.keys()).map(async (id) => {
+        const stateId = `clients.${id}.mode`;
+        const existing = await this.adapter.getObjectAsync(stateId);
+        if (!existing) {
+          return;
+        }
+        existing.common.states = merged;
+        await this.adapter.setObjectAsync(stateId, existing);
+      })
+    );
   }
   // --- internal ---
   trackInMemory(record) {

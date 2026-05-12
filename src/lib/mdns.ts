@@ -30,11 +30,6 @@ export class MDNSService {
         this.uuid = uuid;
     }
 
-    /** First non-internal IPv4 address (wraps shared helper for backwards-compat). */
-    getLocalIP(): string {
-        return getLocalIp();
-    }
-
     /** Start mDNS broadcasting via bonjour-service */
     start(): void {
         const localIP = getLocalIp();

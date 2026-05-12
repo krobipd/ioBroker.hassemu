@@ -208,7 +208,7 @@ export class GlobalConfig {
         // sentinels + states`-Composition. Hier nur `manual`-Sentinel weil
         // `global` in global-config self-referential wäre.
         // v1.28.4: Sentinel-Label als plain-string in adapter.systemLanguage
-        // (NICHT tLabel-Translation-Object) — Admin rendert common.states-VALUES
+        // (NICHT als Translation-Object) — Admin rendert common.states-VALUES
         // direkt als React-child und crasht bei Objects mit React Error #31.
         const merged = buildDropdownStates(
             { [MODE_MANUAL]: resolveLabel('manualUrl', this.adapter.systemLanguage) },

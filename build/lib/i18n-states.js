@@ -23,7 +23,6 @@ __export(i18n_states_exports, {
   STATE_NAMES: () => STATE_NAMES,
   resolveLabel: () => resolveLabel,
   tDesc: () => tDesc,
-  tLabel: () => tLabel,
   tName: () => tName
 });
 module.exports = __toCommonJS(i18n_states_exports);
@@ -273,9 +272,6 @@ function tName(key) {
 function tDesc(key) {
   return STATE_DESCS[key];
 }
-function tLabel(key) {
-  return STATE_LABELS[key];
-}
 function resolveLabel(key, lang) {
   var _a, _b;
   const obj = STATE_LABELS[key];
@@ -292,7 +288,6 @@ function resolveLabel(key, lang) {
   STATE_NAMES,
   resolveLabel,
   tDesc,
-  tLabel,
   tName
 });
 //# sourceMappingURL=i18n-states.js.map

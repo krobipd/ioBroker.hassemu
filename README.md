@@ -156,6 +156,10 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+### **WORK IN PROGRESS**
+
+- Internal cleanup based on a source audit. No user-facing changes — except that adding or reconfiguring an Aura adapter now refreshes the URL dropdown automatically instead of requiring a manual refresh.
+
 ### 1.29.3 (2026-05-12)
 
 - The "Connection to Home Assistant failed" popup on Shelly Wall Display 2.6.0+ also stays away when the landing page is shown (no URL configured yet). v1.29.2 only suppressed it when a target URL was set.

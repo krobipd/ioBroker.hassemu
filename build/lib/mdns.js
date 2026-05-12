@@ -57,10 +57,6 @@ class MDNSService {
     this.config = config;
     this.uuid = uuid;
   }
-  /** First non-internal IPv4 address (wraps shared helper for backwards-compat). */
-  getLocalIP() {
-    return (0, import_network.getLocalIp)();
-  }
   /** Start mDNS broadcasting via bonjour-service */
   start() {
     var _a, _b, _c;

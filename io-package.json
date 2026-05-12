@@ -81,18 +81,18 @@
         "uk": "Адаптер швидше стартує з багатьма дисплеями, а один пошкоджений запис клієнта більше не заважає відновленню інших. Плюс посилення безпеки входу HA.",
         "zh-cn": "在拥有多个显示设备的安装中，适配器启动更快，单个损坏的客户端条目不再阻止其他客户端被恢复。此外还包含 HA 登录流程的安全加固，让密码限流响应更规范。"
       },
-      "1.28.2": {
-        "en": "Adapter log messages are now English only, in line with the ioBroker community standard. Localized state names, descriptions and dropdown labels (11 languages) and the user-facing landing page remain unchanged.",
-        "de": "Adapter-Logs sind jetzt nur noch auf Englisch, gemäß ioBroker-Community-Standard. Lokalisierte Datenpunkt-Namen, Beschreibungen und Dropdown-Labels (11 Sprachen) sowie die User-facing Landing-Seite bleiben erhalten.",
-        "ru": "Сообщения журнала теперь только на английском, согласно стандарту сообщества ioBroker. Локализованные имена состояний, описания и подписи (11 языков), а также страница для пользователя сохраняются.",
-        "pt": "As mensagens de log do adaptador agora são apenas em inglês, conforme o padrão da comunidade ioBroker. Nomes de estados, descrições e rótulos localizados (11 idiomas) e a página inicial visível ao utilizador permanecem inalterados.",
-        "nl": "Adapter-logberichten zijn nu alleen Engels, conform de ioBroker-communitystandaard. Gelokaliseerde statusnamen, beschrijvingen en dropdown-labels (11 talen) en de landingspagina blijven ongewijzigd.",
-        "fr": "Les messages de log de l'adaptateur sont désormais uniquement en anglais, conformément au standard de la communauté ioBroker. Les noms d'états, descriptions et libellés localisés (11 langues) ainsi que la page d'accueil restent inchangés.",
-        "it": "I messaggi di log dell'adattatore sono ora solo in inglese, secondo lo standard della community ioBroker. I nomi degli stati, descrizioni ed etichette localizzati (11 lingue) e la landing page rimangono invariati.",
-        "es": "Los mensajes de registro del adaptador ahora son solo en inglés, conforme al estándar de la comunidad ioBroker. Los nombres de estados, descripciones y etiquetas localizados (11 idiomas) y la página de inicio para el usuario permanecen sin cambios.",
-        "pl": "Komunikaty dziennika adaptera są teraz wyłącznie po angielsku, zgodnie ze standardem społeczności ioBroker. Zlokalizowane nazwy stanów, opisy i etykiety (11 języków) oraz strona docelowa pozostają bez zmian.",
-        "uk": "Повідомлення журналу адаптера тепер лише англійською, відповідно до стандарту спільноти ioBroker. Локалізовані назви станів, описи та мітки (11 мов) і цільова сторінка для користувача залишаються без змін.",
-        "zh-cn": "适配器日志消息现在仅为英文，符合 ioBroker 社区标准。本地化的数据点名称、描述和下拉标签（11 种语言）以及用户登录页面保持不变。"
+      "NEXT": {
+        "en": "Internal cleanup based on a source audit. No user-facing changes — except that adding or reconfiguring an Aura adapter now refreshes the URL dropdown automatically.",
+        "de": "Interne Aufräumarbeiten nach einem Source-Audit. Keine User-Änderungen — außer dass das Hinzufügen oder Umkonfigurieren eines Aura-Adapters das URL-Dropdown jetzt automatisch aktualisiert.",
+        "ru": "Внутренняя чистка по результатам source-аудита. Без видимых изменений — кроме того, что добавление или переконфигурация Aura-адаптера теперь обновляет URL-список автоматически.",
+        "pt": "Limpeza interna baseada numa auditoria de código. Sem alterações para o utilizador — exceto que adicionar ou reconfigurar um adaptador Aura atualiza agora o dropdown de URLs automaticamente.",
+        "nl": "Interne opruimwerkzaamheden na een broncode-audit. Geen wijzigingen voor de gebruiker — behalve dat het toevoegen of herconfigureren van een Aura-adapter de URL-dropdown nu automatisch ververst.",
+        "fr": "Nettoyage interne suite à un audit du code source. Aucun changement utilisateur — sauf que l'ajout ou la reconfiguration d'un adaptateur Aura rafraîchit désormais la liste d'URL automatiquement.",
+        "it": "Pulizia interna basata su un audit del codice sorgente. Nessuna modifica visibile — tranne che aggiungendo o riconfigurando un adapter Aura il dropdown delle URL si aggiorna ora automaticamente.",
+        "es": "Limpieza interna basada en una auditoría del código. Sin cambios para el usuario — salvo que añadir o reconfigurar un adaptador Aura ahora refresca la lista de URLs automáticamente.",
+        "pl": "Wewnętrzne porządki po audycie kodu źródłowego. Bez zmian dla użytkownika — poza tym, że dodanie lub rekonfiguracja adaptera Aura odświeża teraz listę URL automatycznie.",
+        "uk": "Внутрішнє прибирання за результатами аудиту коду. Без видимих змін — окрім того, що додавання чи переналаштування Aura-адаптера тепер оновлює список URL автоматично.",
+        "zh-cn": "基于源码审计的内部清理。无用户可见变化——但添加或重新配置 Aura 适配器现在会自动刷新 URL 下拉框。"
       }
     },
     "titleLang": {

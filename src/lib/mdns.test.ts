@@ -77,15 +77,6 @@ describe('MDNSService', () => {
         });
     });
 
-    describe('getLocalIP', () => {
-        it('should return an IP address string', () => {
-            const ip = service.getLocalIP();
-            expect(ip).to.be.a('string');
-            // Should be either a valid IPv4 or fallback 127.0.0.1
-            expect(ip).to.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/);
-        });
-    });
-
     describe('start/stop lifecycle', () => {
         it('should not throw on start', () => {
             expect(() => service.start()).to.not.throw();

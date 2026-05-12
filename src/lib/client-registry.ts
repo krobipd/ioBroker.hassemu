@@ -443,20 +443,25 @@ export class ClientRegistry {
     async syncUrlDropdown(states: UrlStates): Promise<void> {
         this.currentUrlStates = states;
         const merged = this.buildModeStates();
-        for (const id of this.byId.keys()) {
-            // v1.27.2: extendObjectAsync mergt `common.states` tief — alte
-            // URL-Schlüssel die nicht mehr discovered werden, blieben sonst im
-            // Dropdown stehen (sichtbar nach v1.26→v1.27 URL-Format-Wechsel:
-            // alte `vis-2.0/main/index.html`-Keys neben neuen `vis-2/index.html?main`).
-            // Object lesen, common.states komplett ersetzen, dann setObjectAsync.
-            const stateId = `clients.${id}.mode`;
-            const existing = await this.adapter.getObjectAsync(stateId);
-            if (!existing) {
-                continue;
-            }
-            existing.common.states = merged;
-            await this.adapter.setObjectAsync(stateId, existing);
-        }
+        // v1.27.2: extendObjectAsync mergt `common.states` tief — alte
+        // URL-Schlüssel die nicht mehr discovered werden, blieben sonst im
+        // Dropdown stehen (sichtbar nach v1.26→v1.27 URL-Format-Wechsel:
+        // alte `vis-2.0/main/index.html`-Keys neben neuen `vis-2/index.html?main`).
+        // Object lesen, common.states komplett ersetzen, dann setObjectAsync.
+        // v1.30.0 (R4): pro-Client get+set parallel statt sequentiell. Analog
+        // gcStaleClients in main.ts (v1.28.3 M5). Spürbar bei Display-Farmen
+        // mit 30+ Clients — vorher 2×N Broker-Round-Trips sequenziell.
+        await Promise.all(
+            Array.from(this.byId.keys()).map(async id => {
+                const stateId = `clients.${id}.mode`;
+                const existing = await this.adapter.getObjectAsync(stateId);
+                if (!existing) {
+                    return;
+                }
+                existing.common.states = merged;
+                await this.adapter.setObjectAsync(stateId, existing);
+            }),
+        );
     }
 
     // --- internal ---
@@ -576,9 +581,10 @@ export class ClientRegistry {
         // `mode='global'` an global delegieren können — global selbst nicht).
         // v1.28.4: Sentinel-Labels als plain-string in adapter.systemLanguage —
         // Admin rendert common.states-VALUES direkt als React-child und crasht
-        // bei Translation-Objects mit React Error #31. v1.28.0 hatte tLabel hier
-        // via `as unknown as string`-Cast eingeschleust, was den Type-Check still
-        // gelassen aber den Admin-Dropdown beim Öffnen zerlegt hat.
+        // bei Translation-Objects mit React Error #31. v1.28.0 hatte einen
+        // helper hier via `as unknown as string`-Cast eingeschleust, der den
+        // Type-Check still ließ aber den Admin-Dropdown beim Öffnen zerlegt
+        // hat. Memory `reference_common_states_plain_string_only`.
         const lang = this.adapter.systemLanguage;
         return buildDropdownStates(
             {

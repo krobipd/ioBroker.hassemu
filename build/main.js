@@ -63,7 +63,12 @@ class HassEmu extends utils.Adapter {
       if (!(id == null ? void 0 : id.startsWith("system.adapter."))) {
         return;
       }
-      const isUrlSourceAdapter = id.startsWith("system.adapter.admin.") || id.startsWith("system.adapter.web.") || id.startsWith("system.adapter.vis.") || id.startsWith("system.adapter.vis-2.");
+      const isUrlSourceAdapter = id.startsWith("system.adapter.admin.") || id.startsWith("system.adapter.web.") || id.startsWith("system.adapter.vis.") || id.startsWith("system.adapter.vis-2.") || // v1.30.0 (R2): aura adapter — own HTTP server, discovered
+      // by url-discovery.addAuraInstance. Without this filter
+      // entry, adding/removing/reconfiguring aura.X would NOT
+      // trigger a scheduleRefresh — user would have to click
+      // info.refresh_urls manually. Bug from the v1.29.2-Welle.
+      id.startsWith("system.adapter.aura.");
       const isAddOrRemove = !obj || obj.type === "instance" && !((_a2 = obj.common) == null ? void 0 : _a2.host);
       if (isUrlSourceAdapter || isAddOrRemove) {
         (_b = this.urlDiscovery) == null ? void 0 : _b.scheduleRefresh();
@@ -408,8 +413,10 @@ class HassEmu extends utils.Adapter {
   }
   /**
    * Master-switch action: when `global.enabled` flips, propagate to every
-   * client's `mode`. true → all clients follow `'global'`. false → fall back
-   * to the first discovered URL, or `'manual'` if discovery is empty.
+   * client's `mode`. `true` → all clients follow `'global'`. `false` → all
+   * clients drop to `'0'` (no-choice) so the next display load shows the
+   * landing page until the user picks a URL again (since v1.26 — earlier
+   * versions auto-selected the first discovered URL which surprised users).
    *
    * @param enabled New value of `global.enabled`.
    */
