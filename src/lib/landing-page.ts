@@ -7,6 +7,22 @@
  * jumps to the real URL the moment the state is written.
  */
 
+/**
+ * Inline ioBroker / hassemu logo SVG. Mirrors admin/hassemu.svg so the landing
+ * page is self-contained (no extra HTTP request, works behind a strict CSP).
+ * Background circle is the ioBroker brand blue (#41BDF5); inner glyph is a
+ * Home-Assistant-style house with a connection arc — a deliberate nod to what
+ * this adapter does.
+ */
+const LOGO_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ioBroker">' +
+    '<circle cx="32" cy="32" r="30" fill="#41BDF5"/>' +
+    '<path d="M32 12 L12 28 L12 52 L24 52 L24 38 L40 38 L40 52 L52 52 L52 28 Z" fill="#ffffff" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>' +
+    '<path d="M20 44 Q32 36 44 44" fill="none" stroke="#41BDF5" stroke-width="3" stroke-linecap="round"/>' +
+    '<circle cx="20" cy="44" r="3" fill="#41BDF5"/>' +
+    '<circle cx="44" cy="44" r="3" fill="#41BDF5"/>' +
+    '</svg>';
+
 /** Supported languages — matches the 11 io-package.json translations. */
 export type LandingLanguage = 'en' | 'de' | 'ru' | 'pt' | 'nl' | 'fr' | 'it' | 'es' | 'pl' | 'uk' | 'zh-cn';
 
@@ -282,18 +298,28 @@ main {
     align-items: center;
     gap: 1rem;
 }
-.banner .check {
-    width: 3rem;
-    height: 3rem;
+.banner .logo {
+    width: 3.2rem;
+    height: 3.2rem;
+    flex-shrink: 0;
+    background: #ffffff;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.18);
+    padding: 0.25rem;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+.banner .logo svg { display: block; width: 100%; height: 100%; }
+.banner .check {
+    width: 1.8rem;
+    height: 1.8rem;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.22);
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    font-size: 1.8rem;
+    font-size: 1.1rem;
     line-height: 1;
-    font-weight: 600;
+    font-weight: 700;
 }
 .banner h1 {
     margin: 0;
@@ -369,6 +395,15 @@ footer {
     color: var(--muted);
     text-align: center;
 }
+footer .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-left: 0.6rem;
+    color: var(--accent);
+    font-weight: 500;
+}
+footer .brand svg { width: 0.95rem; height: 0.95rem; display: block; }
 @media (max-width: 30rem) {
     body { padding: 0; }
     main { border-radius: 0; box-shadow: none; height: 100%; }
@@ -383,6 +418,7 @@ footer {
 <body>
 <main>
     <div class="banner" role="status" aria-live="polite">
+        <div class="logo" aria-hidden="true">${LOGO_SVG}</div>
         <div class="check" aria-hidden="true">✓</div>
         <div>
             <h1>${escapeHtml(s.heading)}</h1>
@@ -409,7 +445,10 @@ footer {
             </ol>
         </section>
     </div>
-    <footer>${escapeHtml(s.autoRefresh)}</footer>
+    <footer>
+        ${escapeHtml(s.autoRefresh)}
+        <span class="brand" aria-hidden="true">${LOGO_SVG} ioBroker</span>
+    </footer>
 </main>
 </body>
 </html>`;
