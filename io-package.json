@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.29.2",
+    "version": "1.29.3",
     "news": {
+      "1.29.3": {
+        "en": "The connection-error popup on Shelly Wall Display 2.6.0+ also stays away when the landing page is shown. Plus the landing page now uses the real ioBroker brand mark.",
+        "de": "Das Verbindungsfehler-Popup auf Shelly Wall Display 2.6.0+ bleibt jetzt auch weg wenn die Landing-Page angezeigt wird. Außerdem trägt die Landing-Page nun das echte ioBroker-Markenzeichen.",
+        "ru": "Попап ошибки подключения на Shelly Wall Display 2.6.0+ теперь не появляется и когда показывается стартовая страница. На стартовой странице — настоящий логотип ioBroker.",
+        "pt": "O popup de erro de ligação no Shelly Wall Display 2.6.0+ deixa de aparecer também na landing page. Além disso, a landing page mostra agora a marca real do ioBroker.",
+        "nl": "De verbindings-foutpopup op Shelly Wall Display 2.6.0+ blijft nu ook weg wanneer de landingspagina wordt getoond. Daarnaast staat het echte ioBroker-merkteken op de landingspagina.",
+        "fr": "La popup d'erreur de connexion sur Shelly Wall Display 2.6.0+ ne s'affiche plus non plus lorsque la page d'accueil est visible. La page d'accueil porte désormais la marque officielle ioBroker.",
+        "it": "Il popup di errore di connessione su Shelly Wall Display 2.6.0+ non compare più anche quando viene mostrata la landing page. La landing page ora ha il marchio originale ioBroker.",
+        "es": "El popup de error de conexión en Shelly Wall Display 2.6.0+ ya no aparece tampoco cuando se muestra la página de inicio. La página de inicio ahora usa la marca oficial de ioBroker.",
+        "pl": "Popup błędu połączenia na Shelly Wall Display 2.6.0+ nie pojawia się także gdy wyświetlana jest strona startowa. Strona startowa pokazuje teraz prawdziwe logo ioBroker.",
+        "uk": "Попап помилки з'єднання на Shelly Wall Display 2.6.0+ більше не з'являється і коли показується стартова сторінка. На стартовій сторінці справжній логотип ioBroker.",
+        "zh-cn": "Shelly Wall Display 2.6.0+ 上的连接错误弹窗在显示落地页时也不再出现。落地页现在使用真正的 ioBroker 品牌标志。"
+      },
       "1.29.2": {
         "en": "Shelly Wall Display 2.6.0+ no longer shows the connection-error popup after the page loaded. Aura is now auto-detected in the mode dropdown. Landing page carries the ioBroker logo.",
         "de": "Shelly Wall Display unter Firmware 2.6.0+ zeigt nach geladenem Display kein Verbindungs-Fehler-Popup mehr. Aura wird jetzt automatisch im Mode-Dropdown erkannt. Landing-Page trägt das ioBroker-Logo.",
@@ -80,19 +93,6 @@
         "pl": "Komunikaty dziennika adaptera są teraz wyłącznie po angielsku, zgodnie ze standardem społeczności ioBroker. Zlokalizowane nazwy stanów, opisy i etykiety (11 języków) oraz strona docelowa pozostają bez zmian.",
         "uk": "Повідомлення журналу адаптера тепер лише англійською, відповідно до стандарту спільноти ioBroker. Локалізовані назви станів, описи та мітки (11 мов) і цільова сторінка для користувача залишаються без змін.",
         "zh-cn": "适配器日志消息现在仅为英文，符合 ioBroker 社区标准。本地化的数据点名称、描述和下拉标签（11 种语言）以及用户登录页面保持不变。"
-      },
-      "NEXT": {
-        "en": "The connection-error popup on Shelly Wall Display 2.6.0+ also stays away when the landing page is shown. Plus the landing page now uses the real ioBroker brand mark.",
-        "de": "Das Verbindungsfehler-Popup auf Shelly Wall Display 2.6.0+ bleibt jetzt auch weg wenn die Landing-Page angezeigt wird. Außerdem trägt die Landing-Page nun das echte ioBroker-Markenzeichen.",
-        "ru": "Попап ошибки подключения на Shelly Wall Display 2.6.0+ теперь не появляется и когда показывается стартовая страница. На стартовой странице — настоящий логотип ioBroker.",
-        "pt": "O popup de erro de ligação no Shelly Wall Display 2.6.0+ deixa de aparecer também na landing page. Além disso, a landing page mostra agora a marca real do ioBroker.",
-        "nl": "De verbindings-foutpopup op Shelly Wall Display 2.6.0+ blijft nu ook weg wanneer de landingspagina wordt getoond. Daarnaast staat het echte ioBroker-merkteken op de landingspagina.",
-        "fr": "La popup d'erreur de connexion sur Shelly Wall Display 2.6.0+ ne s'affiche plus non plus lorsque la page d'accueil est visible. La page d'accueil porte désormais la marque officielle ioBroker.",
-        "it": "Il popup di errore di connessione su Shelly Wall Display 2.6.0+ non compare più anche quando viene mostrata la landing page. La landing page ora ha il marchio originale ioBroker.",
-        "es": "El popup de error de conexión en Shelly Wall Display 2.6.0+ ya no aparece tampoco cuando se muestra la página de inicio. La página de inicio ahora usa la marca oficial de ioBroker.",
-        "pl": "Popup błędu połączenia na Shelly Wall Display 2.6.0+ nie pojawia się także gdy wyświetlana jest strona startowa. Strona startowa pokazuje teraz prawdziwe logo ioBroker.",
-        "uk": "Попап помилки з'єднання на Shelly Wall Display 2.6.0+ більше не з'являється і коли показується стартова сторінка. На стартовій сторінці справжній логотип ioBroker.",
-        "zh-cn": "Shelly Wall Display 2.6.0+ 上的连接错误弹窗在显示落地页时也不再出现。落地页现在使用真正的 ioBroker 品牌标志。"
       }
     },
     "titleLang": {
