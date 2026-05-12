@@ -131,7 +131,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
-### **WORK IN PROGRESS**
+### 1.28.4 (2026-05-12)
 
 - The mode dropdowns in admin (global and per-client) no longer crash with "Error in GUI" when opened.
 
@@ -150,10 +150,6 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 ### 1.28.0 (2026-05-06)
 
 - Multi-language: state names, descriptions and dropdown labels are now in your ioBroker system language (11 languages).
-
-### 1.27.3 (2026-05-06)
-
-- Docs: README rewritten in plain user voice — shorter, direct, no implementation trivia. No code changes.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
