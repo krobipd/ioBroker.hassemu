@@ -8,19 +8,19 @@
  */
 
 /**
- * Inline ioBroker / hassemu logo SVG. Mirrors admin/hassemu.svg so the landing
- * page is self-contained (no extra HTTP request, works behind a strict CSP).
- * Background circle is the ioBroker brand blue (#41BDF5); inner glyph is a
- * Home-Assistant-style house with a connection arc — a deliberate nod to what
- * this adapter does.
+ * Inline ioBroker brand logo — the power-button "i" inside a ring.
+ * Source: github.com/ioBroker organization avatar (the canonical mark used
+ * across the project). Two-tone: dark navy outer ring (#1F537E), mid-blue
+ * vertical "i" (#2B95C6), white power-button gap at the top.
+ *
+ * Inlined so the landing page works behind a strict CSP and needs no extra
+ * HTTP request.
  */
 const LOGO_SVG =
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ioBroker">' +
-    '<circle cx="32" cy="32" r="30" fill="#41BDF5"/>' +
-    '<path d="M32 12 L12 28 L12 52 L24 52 L24 38 L40 38 L40 52 L52 52 L52 28 Z" fill="#ffffff" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>' +
-    '<path d="M20 44 Q32 36 44 44" fill="none" stroke="#41BDF5" stroke-width="3" stroke-linecap="round"/>' +
-    '<circle cx="20" cy="44" r="3" fill="#41BDF5"/>' +
-    '<circle cx="44" cy="44" r="3" fill="#41BDF5"/>' +
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="ioBroker">' +
+    '<circle cx="50" cy="50" r="42" fill="none" stroke="#1F537E" stroke-width="10"/>' +
+    '<rect x="44" y="20" width="12" height="60" rx="2" fill="#2B95C6"/>' +
+    '<rect x="44" y="26" width="12" height="6" fill="#ffffff"/>' +
     '</svg>';
 
 /** Supported languages — matches the 11 io-package.json translations. */
@@ -450,6 +450,34 @@ footer .brand svg { width: 0.95rem; height: 0.95rem; display: block; }
         <span class="brand" aria-hidden="true">${LOGO_SVG} ioBroker</span>
     </footer>
 </main>
+<script>
+(function(){
+  // Same connection-status signal as renderRedirectWrapper — the HA Companion
+  // App on Shelly Wall Display FW 2.6.0+ shows "Verbindung zu Home Assistant
+  // nicht möglich" after 10 s if it doesn't see this message. The popup is
+  // unrelated to whether a URL is configured, so the landing page must signal
+  // "connected" too. Source: home-assistant/android FrontendMessageHandler.kt +
+  // FrontendJsBridge.kt + frontend/src/external_app/external_messaging.ts.
+  function notifyConnected(){
+    try {
+      var v1Payload = JSON.stringify({id:1,type:"connection-status",payload:{event:"connected"}});
+      if (window.externalApp && typeof window.externalApp.externalBus === "function") {
+        window.externalApp.externalBus(v1Payload);
+        return;
+      }
+      if (window.externalAppV2 && typeof window.externalAppV2.postMessage === "function") {
+        window.externalAppV2.postMessage(JSON.stringify({
+          type:"externalBus",
+          payload:{id:1,type:"connection-status",payload:{event:"connected"}}
+        }));
+      }
+    } catch (e) { /* silent — bridge not present, regular browser */ }
+  }
+  notifyConnected();
+  setTimeout(notifyConnected, 500);
+  setTimeout(notifyConnected, 2000);
+})();
+</script>
 </body>
 </html>`;
 }

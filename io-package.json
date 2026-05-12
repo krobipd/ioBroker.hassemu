@@ -81,18 +81,18 @@
         "uk": "Повідомлення журналу адаптера тепер лише англійською, відповідно до стандарту спільноти ioBroker. Локалізовані назви станів, описи та мітки (11 мов) і цільова сторінка для користувача залишаються без змін.",
         "zh-cn": "适配器日志消息现在仅为英文，符合 ioBroker 社区标准。本地化的数据点名称、描述和下拉标签（11 种语言）以及用户登录页面保持不变。"
       },
-      "1.28.1": {
-        "en": "Documentation: changelog entries (v1.27.x–v1.28.0) restored to English — a few bullets had been left in German. No code changes.",
-        "de": "Dokumentation: Changelog-Einträge (v1.27.x–v1.28.0) auf Englisch korrigiert — einige Bullets waren auf Deutsch geblieben. Keine Code-Änderungen.",
-        "ru": "Документация: записи журнала изменений (v1.27.x–v1.28.0) восстановлены на английском — несколько пунктов оставались на немецком. Изменений в коде нет.",
-        "pt": "Documentação: entradas do changelog (v1.27.x–v1.28.0) restauradas para inglês — alguns itens haviam ficado em alemão. Sem alterações no código.",
-        "nl": "Documentatie: changelog-vermeldingen (v1.27.x–v1.28.0) hersteld naar Engels — enkele punten waren in het Duits gebleven. Geen codewijzigingen.",
-        "fr": "Documentation : entrées du changelog (v1.27.x–v1.28.0) remises en anglais — quelques points étaient restés en allemand. Aucune modification de code.",
-        "it": "Documentazione: voci del changelog (v1.27.x–v1.28.0) ripristinate in inglese — alcuni punti erano rimasti in tedesco. Nessuna modifica al codice.",
-        "es": "Documentación: entradas del changelog (v1.27.x–v1.28.0) restauradas al inglés — algunos puntos quedaron en alemán. Sin cambios en el código.",
-        "pl": "Dokumentacja: wpisy changelog (v1.27.x–v1.28.0) przywrócone na angielski — kilka punktów pozostało po niemiecku. Bez zmian w kodzie.",
-        "uk": "Документація: записи changelog (v1.27.x–v1.28.0) відновлено англійською — деякі пункти лишалися німецькою. Без змін у коді.",
-        "zh-cn": "文档：将 v1.27.x–v1.28.0 的 changelog 条目恢复为英文 — 之前部分条目残留为德文。无代码更改。"
+      "NEXT": {
+        "en": "The connection-error popup on Shelly Wall Display 2.6.0+ also stays away when the landing page is shown. Plus the landing page now uses the real ioBroker brand mark.",
+        "de": "Das Verbindungsfehler-Popup auf Shelly Wall Display 2.6.0+ bleibt jetzt auch weg wenn die Landing-Page angezeigt wird. Außerdem trägt die Landing-Page nun das echte ioBroker-Markenzeichen.",
+        "ru": "Попап ошибки подключения на Shelly Wall Display 2.6.0+ теперь не появляется и когда показывается стартовая страница. На стартовой странице — настоящий логотип ioBroker.",
+        "pt": "O popup de erro de ligação no Shelly Wall Display 2.6.0+ deixa de aparecer também na landing page. Além disso, a landing page mostra agora a marca real do ioBroker.",
+        "nl": "De verbindings-foutpopup op Shelly Wall Display 2.6.0+ blijft nu ook weg wanneer de landingspagina wordt getoond. Daarnaast staat het echte ioBroker-merkteken op de landingspagina.",
+        "fr": "La popup d'erreur de connexion sur Shelly Wall Display 2.6.0+ ne s'affiche plus non plus lorsque la page d'accueil est visible. La page d'accueil porte désormais la marque officielle ioBroker.",
+        "it": "Il popup di errore di connessione su Shelly Wall Display 2.6.0+ non compare più anche quando viene mostrata la landing page. La landing page ora ha il marchio originale ioBroker.",
+        "es": "El popup de error de conexión en Shelly Wall Display 2.6.0+ ya no aparece tampoco cuando se muestra la página de inicio. La página de inicio ahora usa la marca oficial de ioBroker.",
+        "pl": "Popup błędu połączenia na Shelly Wall Display 2.6.0+ nie pojawia się także gdy wyświetlana jest strona startowa. Strona startowa pokazuje teraz prawdziwe logo ioBroker.",
+        "uk": "Попап помилки з'єднання на Shelly Wall Display 2.6.0+ більше не з'являється і коли показується стартова сторінка. На стартовій сторінці справжній логотип ioBroker.",
+        "zh-cn": "Shelly Wall Display 2.6.0+ 上的连接错误弹窗在显示落地页时也不再出现。落地页现在使用真正的 ioBroker 品牌标志。"
       }
     },
     "titleLang": {
