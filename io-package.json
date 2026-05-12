@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.28.4",
+    "version": "1.29.0",
     "news": {
+      "1.29.0": {
+        "en": "Shelly Wall Displays running firmware 2.6.0 and newer connect again. The new on-device Home Assistant app uses a browser sign-in that the adapter now answers.",
+        "de": "Shelly Wall Displays mit Firmware 2.6.0 und neuer verbinden wieder. Die neue Home-Assistant-App auf dem Display nutzt einen Browser-Login den der Adapter jetzt bedient.",
+        "ru": "Shelly Wall Display с прошивкой 2.6.0 и новее снова подключается. Новое приложение Home Assistant на устройстве использует браузерный логин, который теперь обрабатывается.",
+        "pt": "Os Shelly Wall Displays com firmware 2.6.0 e mais recente voltam a ligar. A nova app do Home Assistant no dispositivo usa um login no browser que o adaptador agora trata.",
+        "nl": "Shelly Wall Displays met firmware 2.6.0 en nieuwer verbinden weer. De nieuwe Home-Assistant-app op het apparaat gebruikt een browser-login die de adapter nu afhandelt.",
+        "fr": "Les Shelly Wall Displays avec firmware 2.6.0 et plus récent se connectent à nouveau. La nouvelle app Home Assistant sur l'appareil utilise une connexion via navigateur que l'adaptateur gère.",
+        "it": "I Shelly Wall Display con firmware 2.6.0 e successivo si connettono di nuovo. La nuova app Home Assistant sul dispositivo usa un login via browser ora gestito dall'adapter.",
+        "es": "Los Shelly Wall Displays con firmware 2.6.0 o superior vuelven a conectar. La nueva aplicación Home Assistant en el dispositivo usa un inicio de sesión por navegador que el adaptador ya atiende.",
+        "pl": "Wyświetlacze Shelly Wall Display z firmware 2.6.0 i nowszym znów się łączą. Nowa aplikacja Home Assistant na urządzeniu używa logowania w przeglądarce, które adapter teraz obsługuje.",
+        "uk": "Shelly Wall Display з прошивкою 2.6.0 і новіше знову підключається. Новий додаток Home Assistant на пристрої використовує вхід через браузер, який тепер обробляється.",
+        "zh-cn": "运行固件 2.6.0 及更新版本的 Shelly Wall Display 重新可以连接。设备上的新 Home Assistant 应用使用浏览器登录，适配器现已支持。"
+      },
       "1.28.4": {
         "en": "The mode dropdowns in admin (global and per-client) no longer crash with \"Error in GUI\" when opened.",
         "de": "Die Mode-Dropdowns im Admin (global und pro Client) stürzen beim Öffnen nicht mehr mit \"Error in GUI\" ab.",
@@ -80,19 +93,6 @@
         "pl": "Dokumentacja: README przepisany w języku użytkownika — krótszy, prostszy, bez szczegółów implementacji.",
         "uk": "Документація: README переписано простою мовою користувача — коротше, пряміше, без деталей реалізації.",
         "zh-cn": "文档：README 改写为用户视角语言 — 更简短直接，无实现细节。无代码变更。"
-      },
-      "NEXT": {
-        "en": "Shelly Wall Displays running firmware 2.6.0 and newer connect again. The new on-device Home Assistant app uses a browser sign-in that the adapter now answers.",
-        "de": "Shelly Wall Displays mit Firmware 2.6.0 und neuer verbinden wieder. Die neue Home-Assistant-App auf dem Display nutzt einen Browser-Login den der Adapter jetzt bedient.",
-        "ru": "Shelly Wall Display с прошивкой 2.6.0 и новее снова подключается. Новое приложение Home Assistant на устройстве использует браузерный логин, который теперь обрабатывается.",
-        "pt": "Os Shelly Wall Displays com firmware 2.6.0 e mais recente voltam a ligar. A nova app do Home Assistant no dispositivo usa um login no browser que o adaptador agora trata.",
-        "nl": "Shelly Wall Displays met firmware 2.6.0 en nieuwer verbinden weer. De nieuwe Home-Assistant-app op het apparaat gebruikt een browser-login die de adapter nu afhandelt.",
-        "fr": "Les Shelly Wall Displays avec firmware 2.6.0 et plus récent se connectent à nouveau. La nouvelle app Home Assistant sur l'appareil utilise une connexion via navigateur que l'adaptateur gère.",
-        "it": "I Shelly Wall Display con firmware 2.6.0 e successivo si connettono di nuovo. La nuova app Home Assistant sul dispositivo usa un login via browser ora gestito dall'adapter.",
-        "es": "Los Shelly Wall Displays con firmware 2.6.0 o superior vuelven a conectar. La nueva aplicación Home Assistant en el dispositivo usa un inicio de sesión por navegador que el adaptador ya atiende.",
-        "pl": "Wyświetlacze Shelly Wall Display z firmware 2.6.0 i nowszym znów się łączą. Nowa aplikacja Home Assistant na urządzeniu używa logowania w przeglądarce, które adapter teraz obsługuje.",
-        "uk": "Shelly Wall Display з прошивкою 2.6.0 і новіше знову підключається. Новий додаток Home Assistant на пристрої використовує вхід через браузер, який тепер обробляється.",
-        "zh-cn": "运行固件 2.6.0 及更新版本的 Shelly Wall Display 重新可以连接。设备上的新 Home Assistant 应用使用浏览器登录，适配器现已支持。"
       }
     },
     "titleLang": {

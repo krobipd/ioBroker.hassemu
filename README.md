@@ -131,7 +131,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
-### **WORK IN PROGRESS**
+### 1.29.0 (2026-05-12)
 
 - Shelly Wall Displays running firmware 2.6.0 and newer connect again. The new on-device Home Assistant app uses a browser sign-in flow and a server identity check that the previous adapter version did not answer.
 
@@ -150,10 +150,6 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 ### 1.28.1 (2026-05-06)
 
 - Documentation: changelog entries (v1.27.x–v1.28.0) restored to English — a few bullets had been left in German. No code changes.
-
-### 1.28.0 (2026-05-06)
-
-- Multi-language: state names, descriptions and dropdown labels are now in your ioBroker system language (11 languages).
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
