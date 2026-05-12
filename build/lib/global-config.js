@@ -175,7 +175,10 @@ class GlobalConfig {
    * @param states Discovered URL → label map.
    */
   async syncUrlDropdown(states) {
-    const merged = (0, import_coerce.buildDropdownStates)({ [import_constants.MODE_MANUAL]: (0, import_i18n_states.tLabel)("manualUrl") }, states);
+    const merged = (0, import_coerce.buildDropdownStates)(
+      { [import_constants.MODE_MANUAL]: (0, import_i18n_states.resolveLabel)("manualUrl", this.adapter.systemLanguage) },
+      states
+    );
     const existing = await this.adapter.getObjectAsync("global.mode");
     if (!existing) {
       return;

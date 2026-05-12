@@ -70,6 +70,12 @@ function createMockAdapter(namespace = 'hassemu.0'): {
                     native: { ...(ex.native ?? {}), ...(obj.native ?? {}) },
                 });
             },
+            getObjectAsync: async (id: string): Promise<ObjEntry | null> => {
+                return store.objects.get(`${namespace}.${id}`) ?? null;
+            },
+            setObjectAsync: async (id: string, obj: ObjEntry) => {
+                store.objects.set(`${namespace}.${id}`, obj);
+            },
             setStateAsync: async (id: string, val: { val: unknown; ack?: boolean }) => {
                 store.states.set(`${namespace}.${id}`, { val: val.val, ack: val.ack ?? false });
             },

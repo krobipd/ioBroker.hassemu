@@ -624,38 +624,16 @@ describe('ClientRegistry', () => {
     });
 
     describe('syncUrlDropdown', () => {
-        it('updates common.states on existing mode datapoints with sentinels + URLs', async () => {
+        it('updates common.states on existing mode datapoints with sentinels + URLs (plain-string labels, EN fallback)', async () => {
+            // v1.28.4: Sentinel-labels sind plain-strings (system-language resolved),
+            // nicht mehr Translation-Objects. Admin crasht sonst mit React Error #31.
             const rec = await registry.identifyOrCreate(null, null, null);
             await registry.syncUrlDropdown({ 'http://a.local/': 'A', 'http://b.local/': 'B' });
             const obj = store.objects.get(`hassemu.0.clients.${rec.id}.mode`);
             expect(obj?.common?.states).to.deep.equal({
                 0: '---',
-                [MODE_GLOBAL]: {
-                    en: 'Global URL',
-                    de: 'Globale URL',
-                    ru: 'Глобальный URL',
-                    pt: 'URL global',
-                    nl: 'Globale URL',
-                    fr: 'URL globale',
-                    it: 'URL globale',
-                    es: 'URL global',
-                    pl: 'Globalny URL',
-                    uk: 'Глобальний URL',
-                    'zh-cn': '全局 URL',
-                },
-                [MODE_MANUAL]: {
-                    en: 'Manual URL',
-                    de: 'Manuelle URL',
-                    ru: 'Ручной URL',
-                    pt: 'URL manual',
-                    nl: 'Handmatige URL',
-                    fr: 'URL manuelle',
-                    it: 'URL manuale',
-                    es: 'URL manual',
-                    pl: 'Ręczny URL',
-                    uk: 'Ручний URL',
-                    'zh-cn': '手动 URL',
-                },
+                [MODE_GLOBAL]: 'Global URL',
+                [MODE_MANUAL]: 'Manual URL',
                 'http://a.local/': 'A',
                 'http://b.local/': 'B',
             });
@@ -667,34 +645,20 @@ describe('ClientRegistry', () => {
             const obj = store.objects.get(`hassemu.0.clients.${rec.id}.mode`);
             expect(obj?.common?.states).to.deep.equal({
                 0: '---',
-                [MODE_GLOBAL]: {
-                    en: 'Global URL',
-                    de: 'Globale URL',
-                    ru: 'Глобальный URL',
-                    pt: 'URL global',
-                    nl: 'Globale URL',
-                    fr: 'URL globale',
-                    it: 'URL globale',
-                    es: 'URL global',
-                    pl: 'Globalny URL',
-                    uk: 'Глобальний URL',
-                    'zh-cn': '全局 URL',
-                },
-                [MODE_MANUAL]: {
-                    en: 'Manual URL',
-                    de: 'Manuelle URL',
-                    ru: 'Ручной URL',
-                    pt: 'URL manual',
-                    nl: 'Handmatige URL',
-                    fr: 'URL manuelle',
-                    it: 'URL manuale',
-                    es: 'URL manual',
-                    pl: 'Ręczny URL',
-                    uk: 'Ручний URL',
-                    'zh-cn': '手动 URL',
-                },
+                [MODE_GLOBAL]: 'Global URL',
+                [MODE_MANUAL]: 'Manual URL',
                 'http://a.local/': 'A',
             });
+        });
+
+        it('common.states VALUES sind alle plain-string (Regression-Test für React #31)', async () => {
+            const rec = await registry.identifyOrCreate(null, null, null);
+            await registry.syncUrlDropdown({ 'http://a.local/': 'A', 'http://b.local/': 'B' });
+            const obj = store.objects.get(`hassemu.0.clients.${rec.id}.mode`);
+            const states = obj?.common?.states as Record<string, unknown>;
+            for (const [key, value] of Object.entries(states)) {
+                expect(typeof value, `states[${key}] must be string`).to.equal('string');
+            }
         });
 
         it('is a no-op when there are no clients', async () => {

@@ -22,7 +22,7 @@ import {
     safeGetState,
 } from './coerce';
 import { MODE_GLOBAL, MODE_MANUAL } from './constants';
-import { tLabel } from './i18n-states';
+import { resolveLabel } from './i18n-states';
 import type { AdapterInterface, ClientRecord, UrlStates } from './types';
 
 /** Extended adapter interface — needs state I/O and object extend. */
@@ -207,7 +207,13 @@ export class GlobalConfig {
         // hatten client-registry und global-config identische `0='---' +
         // sentinels + states`-Composition. Hier nur `manual`-Sentinel weil
         // `global` in global-config self-referential wäre.
-        const merged = buildDropdownStates({ [MODE_MANUAL]: tLabel('manualUrl') as unknown as string }, states);
+        // v1.28.4: Sentinel-Label als plain-string in adapter.systemLanguage
+        // (NICHT tLabel-Translation-Object) — Admin rendert common.states-VALUES
+        // direkt als React-child und crasht bei Objects mit React Error #31.
+        const merged = buildDropdownStates(
+            { [MODE_MANUAL]: resolveLabel('manualUrl', this.adapter.systemLanguage) },
+            states,
+        );
         // v1.27.2: extendObjectAsync mergt `common.states` tief — alte
         // URL-Schlüssel bleiben drin nach Format-Wechsel (z.B. v1.26→v1.27).
         // Object lesen, common.states ersetzen, setObjectAsync.
