@@ -13,6 +13,7 @@ import {
     LOGIN_LOCKOUT_WINDOW_MS,
     SESSIONS_CAP,
     REFRESH_TOKENS_CAP,
+    WEBHOOK_REGISTRATIONS_CAP,
     LOGIN_ATTEMPTS_CAP,
     REQUEST_ERROR_COOLDOWN_MS,
     REQUEST_ERROR_COOLDOWN_CAP,
@@ -108,6 +109,18 @@ export class WebServer {
      * unknown tokens are rejected (was: any string accepted).
      */
     public readonly refreshTokens: Map<string, string> = new Map();
+    /**
+     * Mobile-App webhook registrations from `POST /api/mobile_app/registrations`
+     * (v1.29.1). Key = webhookId (URL secret), Value = owning client cookie id.
+     * Subsequent `POST /api/webhook/<id>` requests are validated against this
+     * map. FIFO-capped at {@link WEBHOOK_REGISTRATIONS_CAP}.
+     *
+     * Reused for Shelly Wall Display FW 2.6.0+ onboarding — the on-device HA
+     * Companion App requires this endpoint to complete device registration
+     * after the OAuth2 sign-in. Without it the App refuses to proceed with a
+     * "Mobile-App-Integration nicht verfügbar" error.
+     */
+    public readonly webhookRegistrations: Map<string, string> = new Map();
     /**
      * Brute-force lockout state per remote IP. Each entry tracks failed login
      * attempts and the timestamp of the last failure; once
@@ -547,7 +560,11 @@ export class WebServer {
                 path === '/api/discovery_info' ||
                 path === '/manifest.json' ||
                 path === '/health' ||
-                path.startsWith('/auth/')
+                path.startsWith('/auth/') ||
+                // v1.29.1: Mobile-App webhooks carry the secret in the URL
+                // (`webhookId`) — HA core also serves these unauthenticated.
+                // Source: home-assistant/core/.../mobile_app/webhook.py.
+                path.startsWith('/api/webhook/')
             ) {
                 return;
             }
@@ -614,7 +631,9 @@ export class WebServer {
         this.app.get('/api/', () => ({ message: 'API running.' }));
 
         this.app.get('/api/config', () => ({
-            components: ['http', 'api', 'frontend', 'homeassistant'],
+            // `mobile_app` advertises the integration the HA Companion App
+            // probes for during onboarding (v1.29.1, Shelly FW 2.6.0+).
+            components: ['http', 'api', 'frontend', 'homeassistant', 'mobile_app'],
             config_dir: '/config',
             elevation: 0,
             latitude: 0,
@@ -652,6 +671,141 @@ export class WebServer {
             this.app.get(path, () => []);
         }
         this.app.get('/api/error_log', () => '');
+
+        // ---- Mobile-App integration (HA Companion + Shelly FW 2.6.0+) ----
+        //
+        // Source: home-assistant/android IntegrationRepositoryImpl.kt:120-159
+        // calls POST /api/mobile_app/registrations after the OAuth2 sign-in.
+        // A 404 here surfaces as „Mobile-App-Integration nicht verfügbar" in
+        // the App's onboarding screen and blocks the display from finishing
+        // setup. Detail in Ressourcen/hassemu/oauth2-browser-flow-shelly-fw26.md.
+        //
+        // The Bearer-token check is already done by the existing auth
+        // pre-handler — `/api/mobile_app/registrations` is protected by
+        // default, so by the time the handler runs we know the caller has
+        // a valid access_token from /auth/token.
+        this.app.post<{
+            Body: {
+                app_id?: string;
+                app_name?: string;
+                device_name?: string;
+                device_id?: string;
+                manufacturer?: string;
+                model?: string;
+                os_name?: string;
+                os_version?: string;
+            };
+        }>('/api/mobile_app/registrations', async (req, reply) => {
+            const body = req.body ?? {};
+            // Identify by Bearer token — the pre-handler already validated it.
+            const authHeader = (req.headers.authorization as string) ?? '';
+            const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7).trim() : '';
+            const client = this.registry.getByToken(token);
+            const ownerId = client?.id ?? '';
+
+            const webhookId = crypto.randomUUID().replace(/-/g, '');
+            WebServer.evictOldest(this.webhookRegistrations, WEBHOOK_REGISTRATIONS_CAP);
+            this.webhookRegistrations.set(webhookId, ownerId);
+
+            this.adapter.log.debug(
+                `Mobile-App registration — client=${ownerId} app_id=${body.app_id ?? '?'} device_name=${body.device_name ?? '?'} → webhook=${webhookId}`,
+            );
+
+            // Response shape: home-assistant/android RegisterDeviceResponse.kt
+            //   cloudhookUrl: String? (null — no Nabu Casa cloud)
+            //   remoteUiUrl:  String? (null — no remote-UI)
+            //   secret:       String? (null — webhookId itself is the secret)
+            //   webhookId:    String  (required, non-null)
+            reply.status(201);
+            return {
+                webhook_id: webhookId,
+                cloudhook_url: null,
+                remote_ui_url: null,
+                secret: null,
+            };
+        });
+
+        // PUT and DELETE on /api/mobile_app/registrations/:webhookId — the App
+        // calls PUT to update its registration on token refresh or sensor
+        // re-register. We treat both as no-ops that return success so the
+        // Companion App doesn't show registration-failure banners.
+        this.app.put<{ Params: { webhookId: string } }>(
+            '/api/mobile_app/registrations/:webhookId',
+            async (req, reply) => {
+                const id = req.params.webhookId;
+                if (!this.webhookRegistrations.has(id)) {
+                    reply.status(404);
+                    return { error: 'unknown_registration' };
+                }
+                return { webhook_id: id, cloudhook_url: null, remote_ui_url: null, secret: null };
+            },
+        );
+
+        this.app.delete<{ Params: { webhookId: string } }>(
+            '/api/mobile_app/registrations/:webhookId',
+            async (req, reply) => {
+                this.webhookRegistrations.delete(req.params.webhookId);
+                reply.status(204);
+                return null;
+            },
+        );
+
+        // POST /api/webhook/:webhookId — Companion-App sensor updates,
+        // location pings, registration updates etc. Public by design (URL
+        // contains the webhookId secret). HA core dispatches on `type` field
+        // in the JSON body and returns shape per type. For hassemu we accept
+        // any payload and respond with the minimal-correct success per type;
+        // the display use-case doesn't need actual state propagation, but
+        // returning 200 prevents the App from re-trying in a loop and
+        // surfacing onboarding-failure banners.
+        this.app.post<{
+            Params: { webhookId: string };
+            Body: { type?: string; data?: unknown };
+        }>('/api/webhook/:webhookId', async (req, reply) => {
+            const id = req.params.webhookId;
+            if (!this.webhookRegistrations.has(id)) {
+                // Unknown webhookId — match HA's 200-empty for stale webhooks
+                // so the App falls back to `update_registration` (which on
+                // hassemu re-issues a new registration). Source:
+                // home-assistant/android IntegrationRepositoryImpl.kt:170 —
+                // 200 with empty body triggers `maybeReregisterDeviceOnFailedUpdate`.
+                reply.status(200);
+                return null;
+            }
+            const body = req.body ?? {};
+            const type = typeof body.type === 'string' ? body.type : '';
+            this.adapter.log.debug(`Webhook ${id.substring(0, 8)}… type=${type || '(no type)'}`);
+
+            switch (type) {
+                case 'get_config':
+                    return {
+                        components: ['http', 'api', 'frontend', 'homeassistant', 'mobile_app'],
+                        latitude: 0,
+                        longitude: 0,
+                        elevation: 0,
+                        unit_system: { length: 'km', mass: 'g', temperature: '°C', volume: 'L' },
+                        location_name: this.serviceName,
+                        time_zone: 'UTC',
+                        version: HA_VERSION,
+                    };
+                case 'get_zones':
+                    return [];
+                case 'render_template':
+                    return {};
+                case 'update_registration':
+                    return { webhook_id: id, cloudhook_url: null, remote_ui_url: null, secret: null };
+                case 'register_sensor':
+                    return { success: true };
+                case 'update_sensor_states':
+                    return {};
+                default:
+                    // Generic success for unknown types — fire_event,
+                    // call_service, conversation_process, update_location,
+                    // get_zones-with-data, etc. The display doesn't need
+                    // their semantics, just an HTTP 200 acknowledgement.
+                    return {};
+            }
+        });
     }
 
     /**

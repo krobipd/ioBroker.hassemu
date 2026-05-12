@@ -34,6 +34,13 @@ export const COOKIE_MAX_AGE_S = 10 * 365 * 24 * 60 * 60;
 export const SESSIONS_CAP = 100;
 /** Hard cap on remembered refresh tokens. Older entries are dropped FIFO when full. */
 export const REFRESH_TOKENS_CAP = 200;
+/**
+ * Hard cap on mobile-app webhook registrations (HA Companion App). Older
+ * entries are dropped FIFO when full. Each Shelly Wall Display / HA app
+ * onboarding adds exactly one entry; a typical install has <10 active
+ * registrations.
+ */
+export const WEBHOOK_REGISTRATIONS_CAP = 200;
 /** Hard cap on tracked login-attempt entries (FIFO-eviction when full). */
 export const LOGIN_ATTEMPTS_CAP = 1000;
 /**
