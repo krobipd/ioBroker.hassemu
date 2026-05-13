@@ -125,21 +125,19 @@ After adding or renaming a VIS-2 project or view, set `info.refresh_urls` to `tr
 
 ---
 
-## When something is off
+## Troubleshooting
 
-**Display can't find the server** — check the log for `mDNS: Broadcasting`. If mDNS doesn't work on your LAN, set `http://<ioBroker-IP>:8123` on the display by hand.
+Set the instance log level to `debug` first — since v1.31.1 the adapter traces every decision point (identify, OAuth2, URL discovery, resolver chain, mobile-app webhooks, master switch). Most symptoms are triage-able from that log alone.
 
-**Display shows the wrong page** — check `clients.<id>.mode`. The device id is on the landing page (or in `clients.<id>.ip`).
+**Display can't find the server** — with mDNS on, the log should show `mDNS: Broadcasting`. If that line is missing, mDNS failed to bind (port 5353/UDP). Workaround: turn mDNS off in the instance config and point the display at `http://<ioBroker-IP>:8123` by hand.
 
-**URL changed, display still shows the old one** — the auto-reload takes up to 30 seconds. After that, reboot the display.
+**Display shows the wrong URL or the landing page** — open Object Browser, check `clients.<id>.mode` (and `manualUrl` if mode is `manual`). At `mode='global'`, also check `global.mode` / `global.manualUrl`. The device id is shown on the landing page and stored at `clients.<id>.ip`. The debug log shows the full resolver chain (`chain=global→manual→…`) per request.
 
-**Display gets a new ID every time** — display isn't keeping its cookie. Delete stale channels via the `remove` button.
+**Display lost its identity (new id on every visit)** — the display is not persisting the cookie. Common causes: aggressive privacy mode, factory reset, browser cache flush. The old `clients.<id>`-channels can be removed via their `remove` button, but the root cause is on the display side, not in hassemu.
 
-**Shelly Wall Display 2.6.0+ shows a "Connection to Home Assistant failed" popup** (the on-device language may say it differently — same root cause) — upgrade hassemu to **≥ 1.29.2**. The on-device HA app introduced in firmware 2.6.0 needs a server-identity probe, a mobile-app registration step, and a WebView "connected" signal that earlier hassemu versions didn't answer. After the upgrade, take the display through the on-device HA onboarding once more.
+**HA Companion App says „Server is not Home Assistant"** — point the app at `http://<ioBroker-IP>:8123`, not at the ioBroker Admin port. If a reverse proxy is in front of hassemu, make sure `/manifest.json` is passed through unmodified — the App parses `name === "Home Assistant"` to verify the server.
 
-**HA Companion App says "Server is not Home Assistant"** — make sure you point the app at `http://<ioBroker-IP>:8123`, not the ioBroker admin port. hassemu's `/manifest.json` reports `"name": "Home Assistant"` as the app expects; if the probe still fails, your reverse proxy (if any) is probably stripping that path.
-
-**The Aura entry in the dropdown points at the wrong port** — make sure aura's `native.port` matches what the adapter is actually listening on. The adapter ignores aura's hardcoded `localLinks` template; the value comes from `native.port` directly.
+**Aura entry in the dropdown points at the wrong port** — `native.port` of the Aura instance must match its actually-listening port. Trigger `info.refresh_urls = true` to re-run discovery after fixing the Aura config.
 
 ---
 
@@ -148,6 +146,8 @@ After adding or renaming a VIS-2 project or view, set `info.refresh_urls` to `tr
 Migration runs automatically when the adapter starts.
 
 Got scripts that still write to `visUrl`? Update them — write to `manualUrl` instead and set `mode` to `manual`.
+
+**Coming from a Shelly Wall Display on firmware 2.6.0 or newer?** Make sure you're on hassemu **≥ 1.29.2**. The on-device HA app introduced in firmware 2.6.0 needs a server-identity probe, a mobile-app registration step and a WebView „connected" signal — all three came in with v1.29.0–v1.29.2. After upgrading, run the display through the on-device HA onboarding once more.
 
 ---
 
