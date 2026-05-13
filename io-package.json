@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.31.0",
+    "version": "1.31.1",
     "news": {
-      "NEXT": {
+      "1.31.1": {
         "en": "Debug log traces every decision point that was previously silent: cookie identity, OAuth2 validation, URL discovery skips, resolver chain, mobile-app webhook flow.",
         "de": "Debug-Log spurt jetzt jeden Entscheidungspunkt der vorher silent war: Cookie-Identität, OAuth2-Validation, URL-Discovery-Skips, Resolver-Kette, Mobile-App-Webhook-Ablauf.",
         "ru": "Debug-лог теперь трассирует все ранее молчавшие решения: cookie-идентичность, OAuth2-валидация, URL-discovery-пропуски, цепочка resolver, mobile-app webhook-поток.",
