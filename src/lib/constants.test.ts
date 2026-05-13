@@ -1,13 +1,5 @@
 import { expect } from 'chai';
-import {
-    HA_VERSION,
-    SESSION_TTL_MS,
-    CLEANUP_INTERVAL_MS,
-    LOGIN_SCHEMA,
-    OAUTH_ACCESS_TOKEN_TTL_S,
-    LOGIN_LOCKOUT_THRESHOLD,
-    LOGIN_LOCKOUT_WINDOW_MS,
-} from './constants';
+import { HA_VERSION, SESSION_TTL_MS, CLEANUP_INTERVAL_MS, LOGIN_SCHEMA, OAUTH_ACCESS_TOKEN_TTL_S } from './constants';
 
 describe('constants', () => {
     describe('HA_VERSION', () => {
@@ -82,27 +74,4 @@ describe('constants', () => {
         });
     });
 
-    describe('LOGIN_LOCKOUT_THRESHOLD', () => {
-        it('should be a positive integer', () => {
-            expect(LOGIN_LOCKOUT_THRESHOLD).to.be.a('number');
-            expect(LOGIN_LOCKOUT_THRESHOLD).to.be.greaterThan(0);
-            expect(Number.isInteger(LOGIN_LOCKOUT_THRESHOLD)).to.be.true;
-        });
-
-        it('should be small enough to prevent brute-force but tolerant of typos', () => {
-            expect(LOGIN_LOCKOUT_THRESHOLD).to.be.at.most(10);
-            expect(LOGIN_LOCKOUT_THRESHOLD).to.be.at.least(3);
-        });
-    });
-
-    describe('LOGIN_LOCKOUT_WINDOW_MS', () => {
-        it('should be a positive number of milliseconds', () => {
-            expect(LOGIN_LOCKOUT_WINDOW_MS).to.be.a('number');
-            expect(LOGIN_LOCKOUT_WINDOW_MS).to.be.greaterThan(0);
-        });
-
-        it('should be longer than SESSION_TTL so attackers cannot wait it out cheaply', () => {
-            expect(LOGIN_LOCKOUT_WINDOW_MS).to.be.greaterThan(SESSION_TTL_MS);
-        });
-    });
 });

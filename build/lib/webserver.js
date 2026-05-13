@@ -92,11 +92,6 @@ class WebServer {
   app;
   sessions = /* @__PURE__ */ new Map();
   /**
-   * Issued refresh tokens → owning clientId. Validated on every refresh-grant —
-   * unknown tokens are rejected (was: any string accepted).
-   */
-  refreshTokens = /* @__PURE__ */ new Map();
-  /**
    * Mobile-App webhook registrations from `POST /api/mobile_app/registrations`
    * (v1.29.1). Key = webhookId (URL secret), Value = owning client cookie id.
    * Subsequent `POST /api/webhook/<id>` requests are validated against this
@@ -121,17 +116,6 @@ class WebServer {
    * restarts. Keep that response shape OR add real persistence here.
    */
   webhookRegistrations = /* @__PURE__ */ new Map();
-  /**
-   * Brute-force lockout state per remote IP. Each entry tracks failed login
-   * attempts and the timestamp of the last failure; once
-   * {@link LOGIN_LOCKOUT_THRESHOLD} is reached, `lockedUntil` is set and
-   * further attempts from that IP are rejected with HTTP 429 until the
-   * window passes. The map is FIFO-capped at {@link LOGIN_ATTEMPTS_CAP}
-   * (else internet-exposed instances leak slowly via stray failure counts
-   * with `lockedUntil=0`); expired and stale entries are pruned in
-   * {@link cleanupSessions}.
-   */
-  loginAttempts = /* @__PURE__ */ new Map();
   cleanupTimer = null;
   /**
    * v1.14.0 (H8): bind once im Constructor statt bei jedem Property-Access
@@ -235,21 +219,6 @@ class WebServer {
     if (cleanedSessions > 0) {
       this.adapter.log.debug(`Session cleanup: removed ${cleanedSessions} expired sessions`);
     }
-    let cleanedLockouts = 0;
-    for (const [ip, entry] of this.loginAttempts) {
-      if (entry.lockedUntil > 0 && entry.lockedUntil <= now) {
-        this.loginAttempts.delete(ip);
-        cleanedLockouts++;
-        continue;
-      }
-      if (entry.lockedUntil === 0 && entry.failedCount > 0 && now - entry.lastSeen > import_constants.LOGIN_LOCKOUT_WINDOW_MS) {
-        this.loginAttempts.delete(ip);
-        cleanedLockouts++;
-      }
-    }
-    if (cleanedLockouts > 0) {
-      this.adapter.log.debug(`Lockout cleanup: cleared ${cleanedLockouts} expired/stale IP entries`);
-    }
   }
   /**
    * Drops the oldest entry of a Map if it would exceed `cap` after the next insert.
@@ -297,103 +266,6 @@ class WebServer {
   storeSession(key, data) {
     WebServer.evictOldest(this.sessions, import_constants.SESSIONS_CAP);
     this.sessions.set(key, data);
-  }
-  /**
-   * Inserts a refresh token mapping, dropping the oldest if cap exceeded.
-   *
-   * @param token    Refresh token issued in `/auth/token`.
-   * @param clientId Owning client id.
-   */
-  storeRefreshToken(token, clientId) {
-    WebServer.evictOldest(this.refreshTokens, import_constants.REFRESH_TOKENS_CAP);
-    this.refreshTokens.set(token, clientId);
-  }
-  /**
-   * v1.12.0 (C5): Map-Key für Lockout normalisieren — IPv6-Mapped-IPv4
-   * (`::ffff:1.2.3.4`) auf IPv4 strippen, damit derselbe Client nicht zwei
-   * Buckets bekommt. Bei `null` (Unix-Socket-Bind, Test-Inject ohne
-   * remoteAddress, Fastify IPv6-Edge) eindeutiger Sentinel-Bucket statt
-   * Lockout-Bypass.
-   *
-   * @param ip Raw IP from `req.ip` oder null.
-   */
-  static normalizeLockoutKey(ip) {
-    if (!ip) {
-      return "__no-ip__";
-    }
-    if (ip.startsWith("::ffff:")) {
-      return ip.substring(7);
-    }
-    return ip;
-  }
-  /**
-   * Brute-force lockout: returns true if `ip` is currently in the timeout window.
-   * Lazy-resets entries whose lockout already expired (caller can immediately try again).
-   *
-   * @param ip Remote IP, or null when unavailable.
-   */
-  isIpLocked(ip) {
-    const key = WebServer.normalizeLockoutKey(ip);
-    const entry = this.loginAttempts.get(key);
-    if (!entry || entry.lockedUntil === 0) {
-      return false;
-    }
-    if (entry.lockedUntil > Date.now()) {
-      return true;
-    }
-    this.loginAttempts.delete(key);
-    return false;
-  }
-  /**
-   * v1.28.3 (HW13): Seconds remaining until the lockout for `ip` expires,
-   * or 0 if the IP isn't currently locked. Used to set the HTTP `Retry-After`
-   * header on 429 responses so well-behaved clients back off correctly
-   * instead of hammering the endpoint and prolonging the lockout.
-   *
-   * @param ip Remote IP whose lockout window is being queried.
-   */
-  retryAfterSeconds(ip) {
-    const entry = this.loginAttempts.get(WebServer.normalizeLockoutKey(ip));
-    if (!entry || entry.lockedUntil === 0) {
-      return 0;
-    }
-    const remaining = entry.lockedUntil - Date.now();
-    return remaining > 0 ? Math.max(1, Math.ceil(remaining / 1e3)) : 0;
-  }
-  /**
-   * Records a failed login attempt for `ip`. When the running count reaches
-   * {@link LOGIN_LOCKOUT_THRESHOLD}, the IP is locked for
-   * {@link LOGIN_LOCKOUT_WINDOW_MS}.
-   *
-   * @param ip Remote IP that failed authentication.
-   */
-  recordLoginFailure(ip) {
-    var _a;
-    const key = WebServer.normalizeLockoutKey(ip);
-    const now = Date.now();
-    const entry = (_a = this.loginAttempts.get(key)) != null ? _a : { failedCount: 0, lockedUntil: 0, lastSeen: now };
-    entry.failedCount += 1;
-    entry.lastSeen = now;
-    if (entry.failedCount >= import_constants.LOGIN_LOCKOUT_THRESHOLD) {
-      entry.lockedUntil = now + import_constants.LOGIN_LOCKOUT_WINDOW_MS;
-      this.adapter.log.warn(
-        `Login lockout: IP ${ip} reached ${import_constants.LOGIN_LOCKOUT_THRESHOLD} failed attempts \u2014 locked for ${Math.round(import_constants.LOGIN_LOCKOUT_WINDOW_MS / 6e4)} min`
-      );
-    }
-    if (!this.loginAttempts.has(key)) {
-      WebServer.evictOldest(this.loginAttempts, import_constants.LOGIN_ATTEMPTS_CAP);
-    }
-    this.loginAttempts.set(key, entry);
-  }
-  /**
-   * Resets the failure counter and any active lockout for `ip`. Called after
-   * a successful credential check so legit clients don't accumulate counts
-   * across long-lived sessions.
-   *
-   * @param ip Remote IP that just authenticated successfully.
-   */
-  clearLoginAttempts(ip) {
-    this.loginAttempts.delete(WebServer.normalizeLockoutKey(ip));
   }
   // --- client identification ---
   /**
@@ -691,7 +563,7 @@ class WebServer {
       return (0, import_auth_page.renderAuthorizeForm)({ clientId: client_id, redirectUri: redirect_uri, state });
     });
     this.app.post("/auth/authorize", async (req, reply) => {
-      var _a, _b;
+      var _a;
       const { response_type, client_id, redirect_uri, state, username, password } = (_a = req.body) != null ? _a : {};
       if (response_type !== "code") {
         reply.status(400).type("text/html");
@@ -719,37 +591,17 @@ class WebServer {
         return (0, import_auth_page.renderAuthorizeRedirect)(target2);
       }
       const ip = WebServer.getClientIp(req);
-      if (this.isIpLocked(ip)) {
-        this.adapter.log.warn(`Login rejected: IP ${ip} is currently locked out (too many failed attempts)`);
-        const retry = this.retryAfterSeconds(ip);
-        if (retry > 0) {
-          reply.header("Retry-After", String(retry));
-        }
-        reply.status(429).type("text/html");
-        return (0, import_auth_page.renderAuthorizeError)(
-          "too_many_failed_attempts",
-          "Too many failed sign-in attempts. Please wait and try again."
-        );
-      }
       const userOk = typeof username === "string" && (0, import_coerce.safeStringEqual)(username, this.config.username);
       const passOk = typeof password === "string" && (0, import_coerce.safeStringEqual)(password, this.config.password);
       if (!userOk || !passOk) {
-        this.recordLoginFailure(ip);
-        const entry = this.loginAttempts.get(WebServer.normalizeLockoutKey(ip));
-        const failCount = (_b = entry == null ? void 0 : entry.failedCount) != null ? _b : 0;
         const ipSuffix = ip ? ` (IP ${ip})` : "";
-        if (failCount <= import_constants.LOGIN_LOCKOUT_THRESHOLD) {
-          this.adapter.log.warn(`Invalid credentials${ipSuffix}`);
-        } else {
-          this.adapter.log.debug(`Invalid credentials${ipSuffix} (post-lockout-threshold)`);
-        }
+        this.adapter.log.warn(`Invalid credentials${ipSuffix}`);
         reply.status(401).type("text/html");
         return (0, import_auth_page.renderAuthorizeForm)(
           { clientId: client_id, redirectUri: redirect_uri, state },
           "Invalid username or password."
         );
       }
-      this.clearLoginAttempts(ip);
       const code = this.issueAuthorizationCode(client.id);
       const target = (0, import_auth_page.buildRedirectUrl)(redirect_uri, code, state);
       this.adapter.log.debug(`Authorize grant \u2014 client ${client.id}`);
@@ -783,7 +635,7 @@ class WebServer {
         }
       },
       async (req, reply) => {
-        var _a, _b;
+        var _a;
         const flowId = req.params.flowId;
         const session = this.sessions.get(flowId);
         if (!session) {
@@ -793,30 +645,12 @@ class WebServer {
         }
         if (this.config.authRequired) {
           const ip = WebServer.getClientIp(req);
-          if (this.isIpLocked(ip)) {
-            this.adapter.log.warn(
-              `Login rejected: IP ${ip} is currently locked out (too many failed attempts)`
-            );
-            const retry = this.retryAfterSeconds(ip);
-            if (retry > 0) {
-              reply.header("Retry-After", String(retry));
-            }
-            reply.status(429);
-            return { type: "abort", flow_id: flowId, reason: "too_many_failed_attempts" };
-          }
           const { username, password } = (_a = req.body) != null ? _a : {};
           const userOk = typeof username === "string" && (0, import_coerce.safeStringEqual)(username, this.config.username);
           const passOk = typeof password === "string" && (0, import_coerce.safeStringEqual)(password, this.config.password);
           if (!userOk || !passOk) {
-            this.recordLoginFailure(ip);
-            const entry = this.loginAttempts.get(WebServer.normalizeLockoutKey(ip));
-            const failCount = (_b = entry == null ? void 0 : entry.failedCount) != null ? _b : 0;
             const ipSuffix = ip ? ` (IP ${ip})` : "";
-            if (failCount <= import_constants.LOGIN_LOCKOUT_THRESHOLD) {
-              this.adapter.log.warn(`Invalid credentials${ipSuffix}`);
-            } else {
-              this.adapter.log.debug(`Invalid credentials${ipSuffix} (post-lockout-threshold)`);
-            }
+            this.adapter.log.warn(`Invalid credentials${ipSuffix}`);
             reply.status(400);
             return {
               type: "form",
@@ -828,7 +662,6 @@ class WebServer {
               description_placeholders: null
             };
           }
-          this.clearLoginAttempts(ip);
         }
         this.sessions.delete(flowId);
         const code = import_node_crypto.default.randomUUID();
@@ -850,15 +683,6 @@ class WebServer {
       async (req, reply) => {
         var _a;
         const { code, grant_type, refresh_token } = (_a = req.body) != null ? _a : {};
-        const ip = WebServer.getClientIp(req);
-        if (this.isIpLocked(ip)) {
-          const retry = this.retryAfterSeconds(ip);
-          if (retry > 0) {
-            reply.header("Retry-After", String(retry));
-          }
-          reply.status(429);
-          return { error: "rate_limited", error_description: "Too many failures, try again later" };
-        }
         if (grant_type === "authorization_code" && code && this.sessions.has(code)) {
           const session = this.sessions.get(code);
           this.sessions.delete(code);
@@ -866,7 +690,7 @@ class WebServer {
           const refreshToken = import_node_crypto.default.randomUUID();
           if (session.clientId) {
             await this.registry.setToken(session.clientId, token);
-            this.storeRefreshToken(refreshToken, session.clientId);
+            await this.registry.setRefreshToken(session.clientId, refreshToken);
             this.adapter.log.debug(`Display authenticated \u2014 client ${session.clientId}`);
           }
           return {
@@ -878,22 +702,18 @@ class WebServer {
         }
         if (grant_type === "refresh_token") {
           const incoming = typeof refresh_token === "string" ? refresh_token : "";
-          const ownerId = incoming ? this.refreshTokens.get(incoming) : void 0;
-          if (!ownerId) {
+          const ownerRecord = incoming ? this.registry.getByRefreshToken(incoming) : null;
+          if (!ownerRecord) {
             this.adapter.log.debug("Refresh token rejected \u2014 unknown or missing");
-            this.recordLoginFailure(ip);
             reply.status(400);
             return { error: "invalid_grant", error_description: "Invalid refresh token" };
           }
-          this.refreshTokens.delete(incoming);
           const newAccess = import_node_crypto.default.randomUUID();
-          const newRefresh = import_node_crypto.default.randomUUID();
-          this.storeRefreshToken(newRefresh, ownerId);
-          await this.registry.setToken(ownerId, newAccess);
+          await this.registry.setToken(ownerRecord.id, newAccess);
           return {
             access_token: newAccess,
             token_type: "Bearer",
-            refresh_token: newRefresh,
+            refresh_token: incoming,
             expires_in: import_constants.OAUTH_ACCESS_TOKEN_TTL_S
           };
         }

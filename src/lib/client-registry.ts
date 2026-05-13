@@ -52,6 +52,7 @@ export class ClientRegistry {
     private readonly byCookie = new Map<string, ClientRecord>();
     private readonly byId = new Map<string, ClientRecord>();
     private readonly byToken = new Map<string, ClientRecord>();
+    private readonly byRefreshToken = new Map<string, ClientRecord>();
     private currentUrlStates: UrlStates = {};
     private newClientModeProvider: NewClientModeProvider = () => MODE_GLOBAL;
     /**
@@ -131,6 +132,7 @@ export class ClientRegistry {
                 const manualUrl = coerceSafeUrl(manualUrlRaw);
                 const ip = coerceString(ipRaw);
                 const token = coerceUuid(native.token);
+                const refreshToken = coerceUuid(native.refreshToken);
 
                 // Legacy migration (<=1.1.1): hostname lived in its own state. If present,
                 // move the value into common.name and drop the state.
@@ -149,7 +151,7 @@ export class ClientRegistry {
                 }
                 const hostname = channelName && channelName !== ip && channelName !== id ? channelName : null;
 
-                const record: ClientRecord = { id, cookie, token, mode, manualUrl, ip, hostname };
+                const record: ClientRecord = { id, cookie, token, refreshToken, mode, manualUrl, ip, hostname };
                 this.trackInMemory(record);
                 // Legacy clients (v1.1.x) only had `visUrl` + `ip` + `remove` objects;
                 // ensure the v1.2.0+ objects (`mode`, `manualUrl`) exist before any
@@ -268,6 +270,15 @@ export class ClientRegistry {
         return this.byToken.get(token) ?? null;
     }
 
+    /**
+     * Lookup by refresh token issued during the auth flow.
+     *
+     * @param refreshToken Refresh token value.
+     */
+    getByRefreshToken(refreshToken: string): ClientRecord | null {
+        return this.byRefreshToken.get(refreshToken) ?? null;
+    }
+
     /** Returns a snapshot array of all registered clients. */
     listAll(): ClientRecord[] {
         return [...this.byId.values()];
@@ -292,6 +303,29 @@ export class ClientRegistry {
             this.byToken.set(token, record);
         }
         await this.adapter.extendObjectAsync(`clients.${id}`, { native: { token } });
+    }
+
+    /**
+     * Updates in-memory refresh token and persists to channel.native. Old refresh
+     * token is freed. Stored plain-text in `clients.<id>.native.refreshToken` —
+     * same exposure profile as the access token (see {@link ClientRecord.refreshToken}).
+     *
+     * @param id           Client id.
+     * @param refreshToken New refresh token, or null to clear.
+     */
+    async setRefreshToken(id: string, refreshToken: string | null): Promise<void> {
+        const record = this.byId.get(id);
+        if (!record) {
+            return;
+        }
+        if (record.refreshToken) {
+            this.byRefreshToken.delete(record.refreshToken);
+        }
+        record.refreshToken = refreshToken;
+        if (refreshToken) {
+            this.byRefreshToken.set(refreshToken, record);
+        }
+        await this.adapter.extendObjectAsync(`clients.${id}`, { native: { refreshToken } });
     }
 
     /**
@@ -420,6 +454,9 @@ export class ClientRegistry {
         if (record.token) {
             this.byToken.delete(record.token);
         }
+        if (record.refreshToken) {
+            this.byRefreshToken.delete(record.refreshToken);
+        }
         // v1.8.1 (D2): lastSeenFlushedAt war früher nicht aufgeräumt — bei
         // ID-Reuse (16M-Space, möglich nach 100+ Clients über Jahre) hätte
         // die alte Throttle-Entry den ersten lastSeen-Write des neuen Clients
@@ -472,6 +509,9 @@ export class ClientRegistry {
         if (record.token) {
             this.byToken.set(record.token, record);
         }
+        if (record.refreshToken) {
+            this.byRefreshToken.set(record.refreshToken, record);
+        }
     }
 
     private async createClient(ip: string | null, hostname: string | null): Promise<ClientRecord> {
@@ -481,7 +521,16 @@ export class ClientRegistry {
         }
         const cookie = crypto.randomUUID();
         const mode = this.newClientModeProvider();
-        const record: ClientRecord = { id, cookie, token: null, mode, manualUrl: null, ip, hostname };
+        const record: ClientRecord = {
+            id,
+            cookie,
+            token: null,
+            refreshToken: null,
+            mode,
+            manualUrl: null,
+            ip,
+            hostname,
+        };
         this.trackInMemory(record);
         await this.createObjects(record);
         this.touchLastSeen(record);

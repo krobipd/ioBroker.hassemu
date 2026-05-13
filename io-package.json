@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.30.0",
     "news": {
+      "NEXT": {
+        "en": "Companion apps now stay signed in across adapter restarts. Existing apps will sign in once after the update. Internal brute-force-lockout removed.",
+        "de": "Companion-Apps bleiben jetzt über Adapter-Restarts hinweg angemeldet. Bestehende Apps melden sich nach dem Update einmal neu an. Interne Brute-Force-Sperre entfernt.",
+        "ru": "Companion-приложения теперь остаются авторизованными после перезапуска адаптера. После обновления существующие приложения входят один раз. Внутренняя блокировка brute-force удалена.",
+        "pt": "Apps Companion permanecem conectados após reinícios do adaptador. Apps existentes fazem login uma vez após a atualização. Bloqueio interno brute-force removido.",
+        "nl": "Companion-apps blijven nu ingelogd na adapter-herstarts. Bestaande apps melden zich na de update eenmaal opnieuw aan. Interne brute-force-vergrendeling verwijderd.",
+        "fr": "Les apps Companion restent connectées après redémarrage de l'adaptateur. Les apps existantes se reconnectent une fois après la mise à jour. Verrouillage brute-force interne supprimé.",
+        "it": "Le app Companion restano collegate dopo i riavvii dell'adattatore. Le app esistenti effettuano l'accesso una volta dopo l'aggiornamento. Blocco brute-force interno rimosso.",
+        "es": "Las apps Companion permanecen conectadas tras reinicios del adaptador. Las apps existentes inician sesión una vez tras la actualización. Bloqueo brute-force interno eliminado.",
+        "pl": "Aplikacje Companion pozostają zalogowane po restartach adaptera. Istniejące aplikacje logują się raz po aktualizacji. Wewnętrzna blokada brute-force usunięta.",
+        "uk": "Companion-додатки тепер залишаються авторизованими після перезапуску адаптера. Існуючі додатки входять один раз після оновлення. Внутрішнє блокування brute-force видалено.",
+        "zh-cn": "Companion 应用现在可以在适配器重启后保持登录状态。更新后现有应用会重新登录一次。内部 brute-force 锁定已移除。"
+      },
       "1.30.0": {
         "en": "Internal cleanup based on a source audit. No user-facing changes — except that adding or reconfiguring an Aura adapter now refreshes the URL dropdown automatically.",
         "de": "Interne Aufräumarbeiten nach einem Source-Audit. Keine User-Änderungen — außer dass das Hinzufügen oder Umkonfigurieren eines Aura-Adapters das URL-Dropdown jetzt automatisch aktualisiert.",
@@ -80,19 +93,6 @@
         "pl": "Listy mode w adminie (globalna i per-klient) nie zawieszają się już z \"Error in GUI\" przy otwieraniu.",
         "uk": "Випадаючі списки mode в адміні (глобальний і для кожного клієнта) більше не падають з \"Error in GUI\" при відкритті.",
         "zh-cn": "Admin 中的 mode 下拉框（全局和每个客户端）打开时不再因 \"Error in GUI\" 崩溃。"
-      },
-      "1.28.3": {
-        "en": "Adapter starts faster on installations with many displays, and a single broken client entry no longer keeps the others from being restored. Plus a security tighten-up on the HA login flow.",
-        "de": "Adapter-Start mit vielen Displays läuft schneller, und ein einzelnes defektes Client-Objekt blockiert nicht mehr den Rest. Dazu eine Sicherheits-Härtung im HA-Login.",
-        "ru": "Адаптер быстрее запускается при многих дисплеях, а одна повреждённая запись клиента больше не мешает восстановлению остальных. Плюс усиление безопасности входа HA.",
-        "pt": "O adaptador inicia mais rápido com muitos visores e um único registo de cliente corrompido já não impede a restauração dos restantes. Acréscimo: reforço de segurança no login HA.",
-        "nl": "De adapter start sneller bij veel displays en een enkele beschadigde client blokkeert niet langer het herstel van de andere. Daarnaast een beveiligingsverbetering bij de HA-login.",
-        "fr": "L'adaptateur démarre plus vite avec beaucoup d'écrans et une fiche client corrompue n'empêche plus la restauration des autres. Plus une amélioration de sécurité côté login HA.",
-        "it": "L'adapter si avvia più rapidamente con molti display e una singola voce client danneggiata non blocca più il ripristino delle altre. In più un miglioramento di sicurezza sul login HA.",
-        "es": "El adaptador arranca más rápido con muchas pantallas y un único cliente dañado ya no impide restaurar los demás. Además, un refuerzo de seguridad en el login HA.",
-        "pl": "Adapter uruchamia się szybciej przy wielu wyświetlaczach, a pojedynczy uszkodzony wpis klienta nie blokuje już przywracania pozostałych. Plus wzmocnienie bezpieczeństwa logowania HA.",
-        "uk": "Адаптер швидше стартує з багатьма дисплеями, а один пошкоджений запис клієнта більше не заважає відновленню інших. Плюс посилення безпеки входу HA.",
-        "zh-cn": "在拥有多个显示设备的安装中，适配器启动更快，单个损坏的客户端条目不再阻止其他客户端被恢复。此外还包含 HA 登录流程的安全加固，让密码限流响应更规范。"
       }
     },
     "titleLang": {

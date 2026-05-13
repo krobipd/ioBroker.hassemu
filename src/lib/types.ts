@@ -53,6 +53,15 @@ export interface ClientRecord {
     /** Currently active OAuth2 access token, or null if not authenticated. */
     token: string | null;
     /**
+     * Currently active OAuth2 refresh token, or null if not authenticated. Stored
+     * plain-text in `clients.<id>.native.refreshToken` so it survives adapter
+     * restarts (ioBroker update, network glitch, power cut). Same exposure
+     * profile as {@link token} above; the adapter is LAN-only by design (see
+     * Design-Entscheidung 4) and object-store read access already equals server
+     * access via the stored access token.
+     */
+    refreshToken: string | null;
+    /**
      * Mode dropdown value: `'global'`, `'manual'` or a concrete URL.
      * See {@link ModeValue}. Empty string until first user choice.
      */

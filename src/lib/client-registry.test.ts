@@ -432,6 +432,80 @@ describe('ClientRegistry', () => {
         });
     });
 
+    describe('setRefreshToken (v1.31.0)', () => {
+        it('sets the refresh token and makes it findable', async () => {
+            const rec = await registry.identifyOrCreate(null, null, null);
+            const token = crypto.randomUUID();
+            await registry.setRefreshToken(rec.id, token);
+            expect(rec.refreshToken).to.equal(token);
+            expect(registry.getByRefreshToken(token)).to.equal(rec);
+        });
+
+        it('persists refresh token to channel.native.refreshToken', async () => {
+            const rec = await registry.identifyOrCreate(null, null, null);
+            const token = crypto.randomUUID();
+            await registry.setRefreshToken(rec.id, token);
+            const channel = store.objects.get(`hassemu.0.clients.${rec.id}`);
+            expect(channel?.native?.refreshToken).to.equal(token);
+        });
+
+        it('clears refresh token on null', async () => {
+            const rec = await registry.identifyOrCreate(null, null, null);
+            const token = crypto.randomUUID();
+            await registry.setRefreshToken(rec.id, token);
+            await registry.setRefreshToken(rec.id, null);
+            expect(rec.refreshToken).to.be.null;
+            expect(registry.getByRefreshToken(token)).to.be.null;
+        });
+
+        it('replaces old refresh token when new one is set (old no longer looked up)', async () => {
+            const rec = await registry.identifyOrCreate(null, null, null);
+            const t1 = crypto.randomUUID();
+            const t2 = crypto.randomUUID();
+            await registry.setRefreshToken(rec.id, t1);
+            await registry.setRefreshToken(rec.id, t2);
+            expect(registry.getByRefreshToken(t1)).to.be.null;
+            expect(registry.getByRefreshToken(t2)).to.equal(rec);
+        });
+
+        it('no-op when id is unknown', async () => {
+            await registry.setRefreshToken('xxxxxx', 'any');
+            expect(registry.listAll().length).to.equal(0);
+        });
+
+        it('restore() loads refreshToken from native field', async () => {
+            const rec = await registry.identifyOrCreate(null, null, null);
+            const token = crypto.randomUUID();
+            await registry.setRefreshToken(rec.id, token);
+
+            // Fresh registry on same store (simulates adapter restart)
+            const reg2 = new ClientRegistry(adapter as never);
+            await reg2.restore();
+            const restored = reg2.getByRefreshToken(token);
+            expect(restored?.id).to.equal(rec.id);
+            expect(restored?.refreshToken).to.equal(token);
+        });
+
+        it('restore() handles missing native.refreshToken (legacy install) without crash', async () => {
+            const rec = await registry.identifyOrCreate(null, null, null);
+            // Simulate legacy install: client exists but no refreshToken ever set
+            expect(rec.refreshToken).to.be.null;
+
+            const reg2 = new ClientRegistry(adapter as never);
+            await reg2.restore();
+            const restored = reg2.getById(rec.id);
+            expect(restored?.refreshToken).to.be.null;
+        });
+
+        it('remove(id) clears byRefreshToken lookup', async () => {
+            const rec = await registry.identifyOrCreate(null, null, null);
+            const token = crypto.randomUUID();
+            await registry.setRefreshToken(rec.id, token);
+            await registry.remove(rec.id);
+            expect(registry.getByRefreshToken(token)).to.be.null;
+        });
+    });
+
     describe('handleModeWrite', () => {
         let rec: ClientRecord;
 
