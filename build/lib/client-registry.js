@@ -115,6 +115,9 @@ class ClientRegistry {
         const legacyHostname = (0, import_coerce.coerceString)(hostnameRaw);
         let channelName = (0, import_coerce.coerceString)((_b = obj.common) == null ? void 0 : _b.name);
         if (legacyHostname) {
+          this.adapter.log.debug(
+            `restore: legacy hostname migration for client ${id} \u2014 '${legacyHostname}' moved to common.name`
+          );
           if (legacyHostname !== channelName) {
             await this.adapter.extendObjectAsync(`clients.${id}`, { common: { name: legacyHostname } });
             channelName = legacyHostname;
@@ -285,6 +288,7 @@ class ClientRegistry {
       case "no-choice":
         record.mode = "";
         await this.adapter.setStateAsync(`clients.${id}.mode`, { val: 0, ack: true });
+        this.adapter.log.debug(`Client ${id}: mode \u2192 cleared (no-choice)`);
         return;
       case "rejected-non-string":
         this.adapter.log.debug(`client-registry: rejected non-string mode for ${id}`);
@@ -298,6 +302,7 @@ class ClientRegistry {
         }
         record.mode = result.value;
         await this.adapter.setStateAsync(`clients.${id}.mode`, { val: result.value, ack: true });
+        this.adapter.log.debug(`Client ${id}: mode \u2192 '${result.value}' (sentinel)`);
         return;
       case "rejected-unsafe-url":
         this.adapter.log.warn(`Client ${id}: rejected unsafe mode value "${result.raw}"`);
@@ -306,6 +311,7 @@ class ClientRegistry {
       case "url":
         record.mode = result.value;
         await this.adapter.setStateAsync(`clients.${id}.mode`, { val: result.value, ack: true });
+        this.adapter.log.debug(`Client ${id}: mode \u2192 ${result.value} (direct URL)`);
         return;
       // 'rejected-disallowed-sentinel' kommt hier nicht vor weil beide
       // Sentinels (global/manual) erlaubt sind. Defensive: revert.
@@ -321,7 +327,7 @@ class ClientRegistry {
    * @param rawValue Value written to the state.
    */
   async handleManualUrlWrite(id, rawValue) {
-    var _a, _b;
+    var _a, _b, _c;
     const record = this.byId.get(id);
     if (!record) {
       return;
@@ -334,6 +340,7 @@ class ClientRegistry {
     }
     record.manualUrl = result.safe;
     await this.adapter.setStateAsync(`clients.${id}.manualUrl`, { val: (_b = result.safe) != null ? _b : "", ack: true });
+    this.adapter.log.debug(`Client ${id}: manualUrl \u2192 ${(_c = result.safe) != null ? _c : "cleared"}`);
     if (record.mode === import_constants.MODE_MANUAL && !result.safe) {
       this.adapter.log.warn(
         `Client ${id}: manualUrl cleared while mode is "manual" \u2014 display will see the setup page`
