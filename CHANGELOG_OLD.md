@@ -1,4 +1,8 @@
 # Older Changes
+## 1.29.1 (2026-05-12)
+
+- Shelly Wall Display onboarding under firmware 2.6.0 and newer now completes — the on-device Home Assistant app needs a device-registration step that the adapter now provides.
+
 ## 1.29.0 (2026-05-12)
 
 - Shelly Wall Displays running firmware 2.6.0 and newer connect again. The new on-device Home Assistant app uses a browser sign-in flow and a server identity check that the previous adapter version did not answer.
