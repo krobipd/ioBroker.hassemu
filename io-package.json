@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.30.0",
+    "version": "1.31.0",
     "news": {
-      "NEXT": {
+      "1.31.0": {
         "en": "Companion apps now stay signed in across adapter restarts. Existing apps will sign in once after the update. Internal brute-force-lockout removed.",
         "de": "Companion-Apps bleiben jetzt über Adapter-Restarts hinweg angemeldet. Bestehende Apps melden sich nach dem Update einmal neu an. Interne Brute-Force-Sperre entfernt.",
         "ru": "Companion-приложения теперь остаются авторизованными после перезапуска адаптера. После обновления существующие приложения входят один раз. Внутренняя блокировка brute-force удалена.",
