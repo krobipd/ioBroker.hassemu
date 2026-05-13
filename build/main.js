@@ -168,6 +168,7 @@ class HassEmu extends utils.Adapter {
       const existing = await this.getStateAsync("info.serverUuid");
       const val = existing == null ? void 0 : existing.val;
       if (typeof val === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)) {
+        this.log.debug(`Server UUID reused from info.serverUuid: ${val}`);
         return val;
       }
     } catch {
@@ -355,6 +356,7 @@ class HassEmu extends utils.Adapter {
           common: schema.common,
           native: (_b = schema.native) != null ? _b : {}
         });
+        this.log.debug(`Schema repair applied: ${id} (common.type was missing, restored from instanceObjects)`);
       } catch (err) {
         this.log.debug(`repair ${id} failed: ${String(err)}`);
       }
@@ -379,6 +381,10 @@ class HassEmu extends utils.Adapter {
     var _a2, _b;
     const now = Date.now();
     const records = (_b = (_a2 = this.registry) == null ? void 0 : _a2.listAll()) != null ? _b : [];
+    if (records.length > 0) {
+      const ttlDays = Math.round(import_constants.STALE_CLIENT_TTL_MS / (24 * 60 * 60 * 1e3));
+      this.log.debug(`gcStaleClients: scanning ${records.length} client(s) for staleness (TTL=${ttlDays}d)`);
+    }
     const results = await Promise.all(
       records.map(async (record) => {
         var _a3;
@@ -420,9 +426,11 @@ class HassEmu extends utils.Adapter {
       return;
     }
     if (enabled) {
+      this.log.debug(`applyMasterSwitch: enabled=true \u2192 propagating mode='global' to all clients`);
       await this.registry.bulkSetMode(import_constants.MODE_GLOBAL);
       return;
     }
+    this.log.debug(`applyMasterSwitch: enabled=false \u2192 propagating mode='0' (no-choice) to all clients`);
     await this.registry.bulkSetMode("0");
   }
   async onStateChange(id, state) {

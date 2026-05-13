@@ -116,6 +116,13 @@ class WebServer {
    * restarts. Keep that response shape OR add real persistence here.
    */
   webhookRegistrations = /* @__PURE__ */ new Map();
+  /**
+   * v1.32.0 F1: last redirect-target seen per client by `/api/redirect_check`.
+   * Used to log only-on-change (instead of every 30s poll). Pruned in
+   * {@link cleanupSessions} against `registry.listAll()` — stale entries from
+   * removed clients are dropped within max 5 min.
+   */
+  lastRedirectTargetByClient = /* @__PURE__ */ new Map();
   cleanupTimer = null;
   /**
    * v1.14.0 (H8): bind once im Constructor statt bei jedem Property-Access
@@ -219,6 +226,17 @@ class WebServer {
     if (cleanedSessions > 0) {
       this.adapter.log.debug(`Session cleanup: removed ${cleanedSessions} expired sessions`);
     }
+    const activeClients = new Set(this.registry.listAll().map((r) => r.id));
+    let prunedTargets = 0;
+    for (const clientId of this.lastRedirectTargetByClient.keys()) {
+      if (!activeClients.has(clientId)) {
+        this.lastRedirectTargetByClient.delete(clientId);
+        prunedTargets++;
+      }
+    }
+    if (prunedTargets > 0) {
+      this.adapter.log.debug(`Cleanup: pruned ${prunedTargets} stale redirect-target entries`);
+    }
   }
   /**
    * Drops the oldest entry of a Map if it would exceed `cap` after the next insert.
@@ -283,8 +301,15 @@ class WebServer {
     const ip = WebServer.getClientIp(req);
     const userAgent = (0, import_coerce.coerceString)(req.headers["user-agent"]);
     const record = await this.registry.identifyOrCreate(cookie, ip, null, userAgent);
+    if (cookie === record.cookie) {
+      this.adapter.log.debug(`identify: cookie-hit client=${record.id} ip=${ip != null ? ip : "?"}`);
+    } else {
+      const reason = cookie ? "cookie-stale (unknown)" : "no-cookie";
+      this.adapter.log.debug(`identify: ${reason}, new client=${record.id} ip=${ip != null ? ip : "?"}`);
+    }
     if (cookie !== record.cookie) {
       const useSecure = req.protocol === "https";
+      this.adapter.log.debug(`identify: setting cookie secure=${useSecure} (req.protocol=${req.protocol})`);
       reply.setCookie(CLIENT_COOKIE, record.cookie, {
         path: "/",
         httpOnly: true,
@@ -309,10 +334,14 @@ class WebServer {
     Promise.race([import_promises.default.reverse(ip), timeout]).then((names) => {
       const name = names[0];
       if (name) {
+        this.adapter.log.debug(`resolveHostname: ip=${ip} \u2192 hostname=${name}`);
         this.registry.identifyOrCreate(record.cookie, ip, name).catch(() => {
         });
       }
-    }).catch(() => {
+    }).catch((err) => {
+      this.adapter.log.debug(
+        `resolveHostname: ip=${ip} failed \u2014 ${err instanceof Error ? err.message : String(err)}`
+      );
     }).finally(() => {
       this.dnsInFlight.delete(ip);
     });
@@ -455,6 +484,9 @@ class WebServer {
       async (req, reply) => {
         const id = req.params.webhookId;
         if (!this.webhookRegistrations.has(id)) {
+          this.adapter.log.debug(
+            `Mobile-App PUT registration: unknown webhookId=${id.substring(0, 8)}\u2026 \u2014 returning 404`
+          );
           reply.status(404);
           return { error: "unknown_registration" };
         }
@@ -464,7 +496,12 @@ class WebServer {
     this.app.delete(
       "/api/mobile_app/registrations/:webhookId",
       async (req, reply) => {
-        this.webhookRegistrations.delete(req.params.webhookId);
+        const id = req.params.webhookId;
+        const wasPresent = this.webhookRegistrations.has(id);
+        this.webhookRegistrations.delete(id);
+        this.adapter.log.debug(
+          `Mobile-App DELETE registration: webhookId=${id.substring(0, 8)}\u2026 removed (was-present=${wasPresent})`
+        );
         reply.status(204);
         return null;
       }
@@ -473,6 +510,9 @@ class WebServer {
       var _a;
       const id = req.params.webhookId;
       if (!this.webhookRegistrations.has(id)) {
+        this.adapter.log.debug(
+          `Webhook fallthrough: stale id=${id.substring(0, 8)}\u2026 \u2014 App will trigger re-registration`
+        );
         reply.status(200);
         return null;
       }
@@ -528,6 +568,9 @@ class WebServer {
       var _a;
       const { response_type, client_id, redirect_uri, state } = (_a = req.query) != null ? _a : {};
       if (response_type !== "code") {
+        this.adapter.log.debug(
+          `Authorize GET rejected: response_type=${String(response_type)} (expected 'code')`
+        );
         reply.status(400).type("text/html");
         return (0, import_auth_page.renderAuthorizeError)(
           "unsupported_response_type",
@@ -535,6 +578,9 @@ class WebServer {
         );
       }
       if (typeof client_id !== "string" || typeof redirect_uri !== "string") {
+        this.adapter.log.debug(
+          `Authorize GET rejected: missing client_id or redirect_uri (cid=${typeof client_id}, ru=${typeof redirect_uri})`
+        );
         reply.status(400).type("text/html");
         return (0, import_auth_page.renderAuthorizeError)(
           "invalid_request",
@@ -559,6 +605,15 @@ class WebServer {
         reply.type("text/html");
         return (0, import_auth_page.renderAuthorizeRedirect)(target);
       }
+      let redirectHost = "?";
+      try {
+        redirectHost = new URL(redirect_uri).host || redirect_uri;
+      } catch {
+        redirectHost = redirect_uri;
+      }
+      this.adapter.log.debug(
+        `Authorize form rendered \u2014 client_id=${client_id} redirect_uri-host=${redirectHost}`
+      );
       reply.type("text/html");
       return (0, import_auth_page.renderAuthorizeForm)({ clientId: client_id, redirectUri: redirect_uri, state });
     });
@@ -566,10 +621,16 @@ class WebServer {
       var _a;
       const { response_type, client_id, redirect_uri, state, username, password } = (_a = req.body) != null ? _a : {};
       if (response_type !== "code") {
+        this.adapter.log.debug(
+          `Authorize POST rejected: response_type=${String(response_type)} (expected 'code')`
+        );
         reply.status(400).type("text/html");
         return (0, import_auth_page.renderAuthorizeError)("unsupported_response_type", "Only `response_type=code` is supported.");
       }
       if (typeof client_id !== "string" || typeof redirect_uri !== "string") {
+        this.adapter.log.debug(
+          `Authorize POST rejected: missing client_id or redirect_uri (cid=${typeof client_id}, ru=${typeof redirect_uri})`
+        );
         reply.status(400).type("text/html");
         return (0, import_auth_page.renderAuthorizeError)(
           "invalid_request",
@@ -577,6 +638,9 @@ class WebServer {
         );
       }
       if (!(0, import_coerce.isValidRedirectUri)(client_id, redirect_uri)) {
+        this.adapter.log.debug(
+          `Authorize POST rejected: redirect_uri "${redirect_uri}" not allowed for client_id "${client_id}"`
+        );
         reply.status(400).type("text/html");
         return (0, import_auth_page.renderAuthorizeError)(
           "invalid_redirect_uri",
@@ -710,6 +774,7 @@ class WebServer {
           }
           const newAccess = import_node_crypto.default.randomUUID();
           await this.registry.setToken(ownerRecord.id, newAccess);
+          this.adapter.log.debug(`Refresh-token-grant \u2014 client=${ownerRecord.id} new access_token issued`);
           return {
             access_token: newAccess,
             token_type: "Bearer",
@@ -745,18 +810,26 @@ class WebServer {
     }));
     this.app.get("/", async (req, reply) => {
       const client = await this.identify(req, reply);
-      const url = this.globalConfig.resolveUrlFor(client);
+      const { url, chain } = this.globalConfig.resolveUrlForWithChain(client);
       if (!url) {
-        this.adapter.log.debug(`No redirect URL for client ${client.id} \u2014 serving landing page`);
+        this.adapter.log.debug(`GET / client=${client.id} \u2192 landing (chain=${chain})`);
         return reply.status(200).type("text/html; charset=utf-8").send((0, import_landing_page.renderLandingPage)(client.id, this.adapter.namespace, this.systemLanguage, client.ip));
       }
-      this.adapter.log.debug(`Serving wrapper for client ${client.id} \u2192 ${url}`);
+      this.adapter.log.debug(`GET / client=${client.id} \u2192 URL (chain=${chain})`);
       return reply.status(200).type("text/html; charset=utf-8").send(renderRedirectWrapper(url));
     });
     this.app.get("/api/redirect_check", async (req, reply) => {
       const client = await this.identify(req, reply);
       const url = this.globalConfig.resolveUrlFor(client);
-      return { target: url != null ? url : null };
+      const prev = this.lastRedirectTargetByClient.get(client.id);
+      const next = url != null ? url : null;
+      if (prev !== next) {
+        this.adapter.log.debug(
+          `redirect_check client=${client.id}: ${prev === void 0 ? "first-poll" : prev != null ? prev : "none"} \u2192 ${next != null ? next : "none"}`
+        );
+        this.lastRedirectTargetByClient.set(client.id, next);
+      }
+      return { target: next };
     });
   }
   setupNotFound() {

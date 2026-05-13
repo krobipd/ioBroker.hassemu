@@ -97,6 +97,7 @@ class UrlDiscovery {
     var _a;
     const result = {};
     const hostIp = (0, import_network.getLocalIp)();
+    const skipped = [];
     let instances = {};
     let instancesOk = false;
     try {
@@ -110,7 +111,7 @@ class UrlDiscovery {
     }
     const crossRefs = buildCrossRefs(instances);
     for (const [id, obj] of Object.entries(instances)) {
-      collectFromInstance(id, obj, crossRefs, hostIp, result);
+      collectFromInstance(id, obj, crossRefs, hostIp, result, skipped);
     }
     const webInstances = Array.from(crossRefs.entries()).filter(([n]) => n.startsWith("web."));
     const showWebSuffix = webInstances.length > 1;
@@ -118,8 +119,8 @@ class UrlDiscovery {
       webInstances.flatMap(([shortName, native]) => {
         const labelSuffix = showWebSuffix ? ` (${shortName})` : "";
         return [
-          this.addVisProjects(result, native, hostIp, "vis-2.0", "vis-2", `VIS-2${labelSuffix}`),
-          this.addVisProjects(result, native, hostIp, "vis.0", "vis", `VIS${labelSuffix}`)
+          this.addVisProjects(result, native, hostIp, "vis-2.0", "vis-2", `VIS-2${labelSuffix}`, skipped),
+          this.addVisProjects(result, native, hostIp, "vis.0", "vis", `VIS${labelSuffix}`, skipped)
         ];
       })
     );
@@ -128,11 +129,17 @@ class UrlDiscovery {
     for (const [shortName, obj] of auraInstances) {
       const enabled = (0, import_coerce.isPlainObject)(obj.common) && obj.common.enabled === true;
       if (!enabled) {
+        skipped.push({ adapter: shortName, reason: "disabled" });
         continue;
       }
-      this.addAuraInstance(result, obj, hostIp, shortName, showAuraSuffix);
+      this.addAuraInstance(result, obj, hostIp, shortName, showAuraSuffix, skipped);
     }
     this.cached = result;
+    const entries = Object.keys(result);
+    const skippedDetail = skipped.length > 0 ? `, skipped: ${skipped.map((s) => `${s.adapter}=${s.reason}`).join(", ")}` : "";
+    this.adapter.log.debug(
+      `URL discovery: ${entries.length} entr${entries.length === 1 ? "y" : "ies"}${entries.length > 0 ? ` [${entries.map((u) => result[u]).join(", ")}]` : ""}${skippedDetail}`
+    );
     if (this.onChange) {
       try {
         await this.onChange(result);
@@ -157,8 +164,9 @@ class UrlDiscovery {
    * @param hostIp       Local host IP for the URL.
    * @param shortName    Short instance id like `aura.0`.
    * @param showSuffix   If true, append `(aura.X)` to the label.
+   * @param skipped      v1.32.0 B2: receives `{adapter, reason}` for the discovery-summary log.
    */
-  addAuraInstance(result, obj, hostIp, shortName, showSuffix) {
+  addAuraInstance(result, obj, hostIp, shortName, showSuffix, skipped) {
     const native = (0, import_coerce.isPlainObject)(obj.native) ? obj.native : {};
     const customUrl = typeof native.customUrl === "string" ? native.customUrl.trim() : "";
     let url;
@@ -172,22 +180,26 @@ class UrlDiscovery {
     }
     const safe = (0, import_coerce.coerceSafeUrl)(url);
     if (!safe) {
+      skipped.push({ adapter: shortName, reason: "unsafe-url" });
       return;
     }
     const suffix = showSuffix ? ` (${shortName})` : "";
     result[safe] = `Aura${suffix}`;
   }
-  async addVisProjects(result, webInstance, hostIp, adapterName, urlPath, label) {
+  async addVisProjects(result, webInstance, hostIp, adapterName, urlPath, label, skipped) {
     var _a;
     if (!webInstance) {
+      skipped.push({ adapter: adapterName, reason: "no-web-instance" });
       return;
     }
     const native = (0, import_coerce.isPlainObject)(webInstance.native) ? webInstance.native : null;
     if (!native) {
+      skipped.push({ adapter: adapterName, reason: "no-native" });
       return;
     }
     const port = (0, import_coerce.coerceFiniteNumber)(native.port);
     if (port === null) {
+      skipped.push({ adapter: adapterName, reason: "port-null" });
       return;
     }
     const bindRaw = (0, import_coerce.coerceString)(native.bind);
@@ -197,9 +209,11 @@ class UrlDiscovery {
     try {
       entries = (_a = await this.adapter.readDirAsync(adapterName, "/")) != null ? _a : [];
     } catch {
+      skipped.push({ adapter: adapterName, reason: "readDir-fail" });
       return;
     }
     if (!Array.isArray(entries)) {
+      skipped.push({ adapter: adapterName, reason: "readDir-non-array" });
       return;
     }
     for (const e of entries) {
@@ -295,7 +309,7 @@ function buildCrossRefs(instances) {
   }
   return map;
 }
-function collectFromInstance(id, obj, crossRefs, hostIp, result) {
+function collectFromInstance(id, obj, crossRefs, hostIp, result, skipped) {
   if (!(0, import_coerce.isPlainObject)(obj)) {
     return;
   }
@@ -303,10 +317,13 @@ function collectFromInstance(id, obj, crossRefs, hostIp, result) {
   if (!common) {
     return;
   }
+  const instanceId = id.startsWith("system.adapter.") ? id.substring("system.adapter.".length) : id;
   if (common.enabled !== true) {
+    if (skipped && ((0, import_coerce.isPlainObject)(common.localLinks) || typeof common.localLink === "string" || common.welcomeScreen || common.welcomeScreenPro)) {
+      skipped.push({ adapter: instanceId, reason: "disabled" });
+    }
     return;
   }
-  const instanceId = id.startsWith("system.adapter.") ? id.substring("system.adapter.".length) : id;
   if (instanceId.startsWith("aura.")) {
     return;
   }

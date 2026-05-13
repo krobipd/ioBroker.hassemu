@@ -64,6 +64,35 @@ class GlobalConfig {
   resolveUrlFor(record) {
     return this.resolveClientMode(record);
   }
+  /**
+   * v1.32.0 B1: Resolves the redirect URL AND returns the resolution chain
+   * for debug-tracing. Chain examples:
+   *   `direct→{url}`           — client.mode is a URL itself
+   *   `manual→{url}`           — client.mode='manual' + client.manualUrl
+   *   `global→direct→{url}`    — client.mode='global' + global.mode=URL
+   *   `global→manual→{url}`    — client.mode='global' + global.mode='manual' + global.manualUrl
+   *   `global→landing`         — client.mode='global' + global has no resolvable URL
+   *   `landing`                — client.mode is empty/no-choice
+   *
+   * @param record Client to resolve for.
+   */
+  resolveUrlForWithChain(record) {
+    var _a;
+    const m = record.mode;
+    if ((0, import_coerce.isNoChoice)(m)) {
+      return { url: null, chain: "landing" };
+    }
+    if (m === import_constants.MODE_GLOBAL) {
+      const inner = this.resolveGlobalModeWithChain();
+      return { url: inner.url, chain: `global\u2192${inner.chain}` };
+    }
+    if (m === import_constants.MODE_MANUAL) {
+      const url = (_a = record.manualUrl) != null ? _a : null;
+      return { url, chain: url ? `manual\u2192${url}` : "manual\u2192landing" };
+    }
+    const safe = (0, import_coerce.coerceSafeUrl)(m);
+    return { url: safe, chain: safe ? `direct\u2192${safe}` : "landing" };
+  }
   resolveClientMode(record) {
     var _a;
     const m = record.mode;
@@ -87,6 +116,16 @@ class GlobalConfig {
     }
     return (0, import_coerce.coerceSafeUrl)(this.mode);
   }
+  resolveGlobalModeWithChain() {
+    if ((0, import_coerce.isNoChoice)(this.mode)) {
+      return { url: null, chain: "landing" };
+    }
+    if (this.mode === import_constants.MODE_MANUAL) {
+      return { url: this.manualUrl, chain: this.manualUrl ? `manual\u2192${this.manualUrl}` : "manual\u2192landing" };
+    }
+    const safe = (0, import_coerce.coerceSafeUrl)(this.mode);
+    return { url: safe, chain: safe ? `direct\u2192${safe}` : "landing" };
+  }
   /** Returns whether the master switch is currently active. */
   isEnabled() {
     return this.enabled;
@@ -104,6 +143,7 @@ class GlobalConfig {
       case "no-choice":
         this.mode = "";
         await this.adapter.setStateAsync("global.mode", { val: 0, ack: true });
+        this.adapter.log.debug(`global.mode \u2192 cleared (no-choice)`);
         return;
       case "rejected-non-string":
         this.adapter.log.warn(`global.mode rejected \u2014 non-string value`);
@@ -123,6 +163,7 @@ class GlobalConfig {
         }
         this.mode = result.value;
         await this.adapter.setStateAsync("global.mode", { val: result.value, ack: true });
+        this.adapter.log.debug(`global.mode \u2192 '${result.value}' (sentinel)`);
         return;
       case "rejected-unsafe-url":
         this.adapter.log.warn(`global.mode rejected \u2014 unsafe URL value "${result.raw}"`);
@@ -131,6 +172,7 @@ class GlobalConfig {
       case "url":
         this.mode = result.value;
         await this.adapter.setStateAsync("global.mode", { val: result.value, ack: true });
+        this.adapter.log.debug(`global.mode \u2192 ${result.value} (direct URL)`);
         return;
     }
   }
@@ -141,7 +183,7 @@ class GlobalConfig {
    * @param rawValue Value written to the state.
    */
   async handleManualUrlWrite(rawValue) {
-    var _a, _b;
+    var _a, _b, _c;
     const result = (0, import_coerce.parseManualUrlWrite)(rawValue);
     if (!result.ok) {
       this.adapter.log.warn(`global.manualUrl rejected \u2014 unsafe URL`);
@@ -150,6 +192,7 @@ class GlobalConfig {
     }
     this.manualUrl = result.safe;
     await this.adapter.setStateAsync("global.manualUrl", { val: (_b = result.safe) != null ? _b : "", ack: true });
+    this.adapter.log.debug(`global.manualUrl \u2192 ${(_c = result.safe) != null ? _c : "cleared"}`);
     if (this.mode === import_constants.MODE_MANUAL && !result.safe) {
       this.adapter.log.warn(
         `global.manualUrl cleared while global.mode is "manual" \u2014 clients delegating to global will see the setup page`
@@ -167,6 +210,7 @@ class GlobalConfig {
     const enabled = (0, import_coerce.coerceBoolean)(rawValue) === true;
     this.enabled = enabled;
     await this.adapter.setStateAsync("global.enabled", { val: enabled, ack: true });
+    this.adapter.log.debug(`global.enabled \u2192 ${enabled} (master switch)`);
   }
   /**
    * Updates the dropdown states (`common.states`) on `global.mode`.

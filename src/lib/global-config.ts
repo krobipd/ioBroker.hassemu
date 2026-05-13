@@ -84,6 +84,35 @@ export class GlobalConfig {
         return this.resolveClientMode(record);
     }
 
+    /**
+     * v1.32.0 B1: Resolves the redirect URL AND returns the resolution chain
+     * for debug-tracing. Chain examples:
+     *   `direct→{url}`           — client.mode is a URL itself
+     *   `manual→{url}`           — client.mode='manual' + client.manualUrl
+     *   `global→direct→{url}`    — client.mode='global' + global.mode=URL
+     *   `global→manual→{url}`    — client.mode='global' + global.mode='manual' + global.manualUrl
+     *   `global→landing`         — client.mode='global' + global has no resolvable URL
+     *   `landing`                — client.mode is empty/no-choice
+     *
+     * @param record Client to resolve for.
+     */
+    resolveUrlForWithChain(record: ClientRecord): { url: string | null; chain: string } {
+        const m: unknown = record.mode;
+        if (isNoChoice(m)) {
+            return { url: null, chain: 'landing' };
+        }
+        if (m === MODE_GLOBAL) {
+            const inner = this.resolveGlobalModeWithChain();
+            return { url: inner.url, chain: `global→${inner.chain}` };
+        }
+        if (m === MODE_MANUAL) {
+            const url = record.manualUrl ?? null;
+            return { url, chain: url ? `manual→${url}` : 'manual→landing' };
+        }
+        const safe = coerceSafeUrl(m);
+        return { url: safe, chain: safe ? `direct→${safe}` : 'landing' };
+    }
+
     private resolveClientMode(record: ClientRecord): string | null {
         const m: unknown = record.mode;
         if (isNoChoice(m)) {
@@ -108,6 +137,17 @@ export class GlobalConfig {
         return coerceSafeUrl(this.mode);
     }
 
+    private resolveGlobalModeWithChain(): { url: string | null; chain: string } {
+        if (isNoChoice(this.mode)) {
+            return { url: null, chain: 'landing' };
+        }
+        if (this.mode === MODE_MANUAL) {
+            return { url: this.manualUrl, chain: this.manualUrl ? `manual→${this.manualUrl}` : 'manual→landing' };
+        }
+        const safe = coerceSafeUrl(this.mode);
+        return { url: safe, chain: safe ? `direct→${safe}` : 'landing' };
+    }
+
     /** Returns whether the master switch is currently active. */
     isEnabled(): boolean {
         return this.enabled;
@@ -129,6 +169,7 @@ export class GlobalConfig {
             case 'no-choice':
                 this.mode = '';
                 await this.adapter.setStateAsync('global.mode', { val: 0, ack: true });
+                this.adapter.log.debug(`global.mode → cleared (no-choice)`);
                 return;
             case 'rejected-non-string':
                 this.adapter.log.warn(`global.mode rejected — non-string value`);
@@ -149,6 +190,7 @@ export class GlobalConfig {
                 }
                 this.mode = result.value;
                 await this.adapter.setStateAsync('global.mode', { val: result.value, ack: true });
+                this.adapter.log.debug(`global.mode → '${result.value}' (sentinel)`);
                 return;
             case 'rejected-unsafe-url':
                 this.adapter.log.warn(`global.mode rejected — unsafe URL value "${result.raw}"`);
@@ -157,6 +199,7 @@ export class GlobalConfig {
             case 'url':
                 this.mode = result.value;
                 await this.adapter.setStateAsync('global.mode', { val: result.value, ack: true });
+                this.adapter.log.debug(`global.mode → ${result.value} (direct URL)`);
                 return;
         }
     }
@@ -176,6 +219,7 @@ export class GlobalConfig {
         }
         this.manualUrl = result.safe;
         await this.adapter.setStateAsync('global.manualUrl', { val: result.safe ?? '', ack: true });
+        this.adapter.log.debug(`global.manualUrl → ${result.safe ?? 'cleared'}`);
         if (this.mode === MODE_MANUAL && !result.safe) {
             this.adapter.log.warn(
                 `global.manualUrl cleared while global.mode is "manual" — clients delegating to global will see the setup page`,
@@ -194,6 +238,7 @@ export class GlobalConfig {
         const enabled = coerceBoolean(rawValue) === true;
         this.enabled = enabled;
         await this.adapter.setStateAsync('global.enabled', { val: enabled, ack: true });
+        this.adapter.log.debug(`global.enabled → ${enabled} (master switch)`);
     }
 
     /**

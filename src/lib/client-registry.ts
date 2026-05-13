@@ -139,6 +139,9 @@ export class ClientRegistry {
                 const legacyHostname = coerceString(hostnameRaw);
                 let channelName = coerceString(obj.common?.name);
                 if (legacyHostname) {
+                    this.adapter.log.debug(
+                        `restore: legacy hostname migration for client ${id} — '${legacyHostname}' moved to common.name`,
+                    );
                     if (legacyHostname !== channelName) {
                         await this.adapter.extendObjectAsync(`clients.${id}`, { common: { name: legacyHostname } });
                         channelName = legacyHostname;
@@ -350,6 +353,7 @@ export class ClientRegistry {
             case 'no-choice':
                 record.mode = '';
                 await this.adapter.setStateAsync(`clients.${id}.mode`, { val: 0, ack: true });
+                this.adapter.log.debug(`Client ${id}: mode → cleared (no-choice)`);
                 return;
             case 'rejected-non-string':
                 // v1.18.0 (G7): debug statt warn — nicht-string mode-Schreibungen
@@ -365,6 +369,7 @@ export class ClientRegistry {
                 }
                 record.mode = result.value;
                 await this.adapter.setStateAsync(`clients.${id}.mode`, { val: result.value, ack: true });
+                this.adapter.log.debug(`Client ${id}: mode → '${result.value}' (sentinel)`);
                 return;
             case 'rejected-unsafe-url':
                 this.adapter.log.warn(`Client ${id}: rejected unsafe mode value "${result.raw}"`);
@@ -373,6 +378,7 @@ export class ClientRegistry {
             case 'url':
                 record.mode = result.value;
                 await this.adapter.setStateAsync(`clients.${id}.mode`, { val: result.value, ack: true });
+                this.adapter.log.debug(`Client ${id}: mode → ${result.value} (direct URL)`);
                 return;
             // 'rejected-disallowed-sentinel' kommt hier nicht vor weil beide
             // Sentinels (global/manual) erlaubt sind. Defensive: revert.
@@ -401,6 +407,7 @@ export class ClientRegistry {
         }
         record.manualUrl = result.safe;
         await this.adapter.setStateAsync(`clients.${id}.manualUrl`, { val: result.safe ?? '', ack: true });
+        this.adapter.log.debug(`Client ${id}: manualUrl → ${result.safe ?? 'cleared'}`);
         if (record.mode === MODE_MANUAL && !result.safe) {
             this.adapter.log.warn(
                 `Client ${id}: manualUrl cleared while mode is "manual" — display will see the setup page`,

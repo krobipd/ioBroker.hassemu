@@ -127,6 +127,13 @@ export class WebServer {
      * restarts. Keep that response shape OR add real persistence here.
      */
     public readonly webhookRegistrations: Map<string, string> = new Map();
+    /**
+     * v1.32.0 F1: last redirect-target seen per client by `/api/redirect_check`.
+     * Used to log only-on-change (instead of every 30s poll). Pruned in
+     * {@link cleanupSessions} against `registry.listAll()` — stale entries from
+     * removed clients are dropped within max 5 min.
+     */
+    private readonly lastRedirectTargetByClient: Map<string, string | null> = new Map();
     private cleanupTimer: ioBroker.Interval | null = null;
     /**
      * v1.14.0 (H8): bind once im Constructor statt bei jedem Property-Access
@@ -273,6 +280,21 @@ export class WebServer {
         if (cleanedSessions > 0) {
             this.adapter.log.debug(`Session cleanup: removed ${cleanedSessions} expired sessions`);
         }
+
+        // v1.32.0 F1: prune lastRedirectTargetByClient against currently known
+        // clients. A removed client leaves a stale entry that would never get
+        // cleared otherwise — bounded growth over months.
+        const activeClients = new Set(this.registry.listAll().map(r => r.id));
+        let prunedTargets = 0;
+        for (const clientId of this.lastRedirectTargetByClient.keys()) {
+            if (!activeClients.has(clientId)) {
+                this.lastRedirectTargetByClient.delete(clientId);
+                prunedTargets++;
+            }
+        }
+        if (prunedTargets > 0) {
+            this.adapter.log.debug(`Cleanup: pruned ${prunedTargets} stale redirect-target entries`);
+        }
     }
 
     /**
@@ -347,6 +369,15 @@ export class WebServer {
         // im selben Pending-Lock landen (siehe identifyOrCreate-Kommentar).
         const userAgent = coerceString(req.headers['user-agent']);
         const record = await this.registry.identifyOrCreate(cookie, ip, null, userAgent);
+        // v1.32.0 A1: cookie-state explizit traced. Drei Branches:
+        //   hit          — cookie matched a known client, no setCookie needed
+        //   stale/new    — cookie present but unknown, OR no cookie at all → new client created
+        if (cookie === record.cookie) {
+            this.adapter.log.debug(`identify: cookie-hit client=${record.id} ip=${ip ?? '?'}`);
+        } else {
+            const reason = cookie ? 'cookie-stale (unknown)' : 'no-cookie';
+            this.adapter.log.debug(`identify: ${reason}, new client=${record.id} ip=${ip ?? '?'}`);
+        }
         if (cookie !== record.cookie) {
             // v1.25.0 (C11): Cookie `secure: true` wenn TLS — Browser sendet
             // den Cookie dann nur über HTTPS. Bei trustProxy=true kommt
@@ -354,6 +385,9 @@ export class WebServer {
             // trustProxy: `req.protocol === 'http'` (Adapter ist HTTP only),
             // also Cookie nicht-secure — sonst würde der Browser ihn nie senden.
             const useSecure = req.protocol === 'https';
+            // v1.32.0 A2: Cookie-Secure-Decision tracen — wenn trustProxy-config
+            // falsch ist, kriegt Display den Cookie evtl. nie zurück.
+            this.adapter.log.debug(`identify: setting cookie secure=${useSecure} (req.protocol=${req.protocol})`);
             reply.setCookie(CLIENT_COOKIE, record.cookie, {
                 path: '/',
                 httpOnly: true,
@@ -384,13 +418,21 @@ export class WebServer {
             .then(names => {
                 const name = names[0];
                 if (name) {
+                    // v1.32.0 A4: Success-Trace — bei Diagnose „warum hat Display
+                    // X den hostname Y?" ist die IP→hostname-Auflösung der Anker.
+                    this.adapter.log.debug(`resolveHostname: ip=${ip} → hostname=${name}`);
                     this.registry.identifyOrCreate(record.cookie, ip, name).catch(() => {
                         /* registry itself logs */
                     });
                 }
             })
-            .catch(() => {
-                // Reverse DNS often fails on LAN or times out — intentionally silent.
+            .catch(err => {
+                // v1.32.0 A3: vorher silent. Reverse DNS scheitert auf LAN oft
+                // legitim — daher debug-only (kein warn-Spam), aber jetzt mit
+                // Diagnose-Anker für „hostname fehlt"-Reports.
+                this.adapter.log.debug(
+                    `resolveHostname: ip=${ip} failed — ${err instanceof Error ? err.message : String(err)}`,
+                );
             })
             .finally(() => {
                 this.dnsInFlight.delete(ip);
@@ -602,6 +644,12 @@ export class WebServer {
             async (req, reply) => {
                 const id = req.params.webhookId;
                 if (!this.webhookRegistrations.has(id)) {
+                    // v1.32.0 E1: stale-id signaliert dass Companion einen Token
+                    // aus Pre-Restart-Era hat — diagnostisch wertvoll für
+                    // re-registration-loop-Bugs.
+                    this.adapter.log.debug(
+                        `Mobile-App PUT registration: unknown webhookId=${id.substring(0, 8)}… — returning 404`,
+                    );
                     reply.status(404);
                     return { error: 'unknown_registration' };
                 }
@@ -612,7 +660,13 @@ export class WebServer {
         this.app.delete<{ Params: { webhookId: string } }>(
             '/api/mobile_app/registrations/:webhookId',
             async (req, reply) => {
-                this.webhookRegistrations.delete(req.params.webhookId);
+                const id = req.params.webhookId;
+                const wasPresent = this.webhookRegistrations.has(id);
+                this.webhookRegistrations.delete(id);
+                // v1.32.0 E2: Companion-Maintenance-Trace.
+                this.adapter.log.debug(
+                    `Mobile-App DELETE registration: webhookId=${id.substring(0, 8)}… removed (was-present=${wasPresent})`,
+                );
                 reply.status(204);
                 return null;
             },
@@ -637,6 +691,11 @@ export class WebServer {
                 // hassemu re-issues a new registration). Source:
                 // home-assistant/android IntegrationRepositoryImpl.kt:170 —
                 // 200 with empty body triggers `maybeReregisterDeviceOnFailedUpdate`.
+                // v1.32.0 E3: stale-id ist DAS Symptom für re-registration-loop —
+                // Companion macht webhook-call mit Token aus Pre-Restart-Era.
+                this.adapter.log.debug(
+                    `Webhook fallthrough: stale id=${id.substring(0, 8)}… — App will trigger re-registration`,
+                );
                 reply.status(200);
                 return null;
             }
@@ -709,6 +768,10 @@ export class WebServer {
             const { response_type, client_id, redirect_uri, state } = req.query ?? {};
 
             if (response_type !== 'code') {
+                // v1.32.0 D2: rejection-Pfade traced — Triage „warum bricht OAuth ab"
+                this.adapter.log.debug(
+                    `Authorize GET rejected: response_type=${String(response_type)} (expected 'code')`,
+                );
                 reply.status(400).type('text/html');
                 return renderAuthorizeError(
                     'unsupported_response_type',
@@ -716,6 +779,9 @@ export class WebServer {
                 );
             }
             if (typeof client_id !== 'string' || typeof redirect_uri !== 'string') {
+                this.adapter.log.debug(
+                    `Authorize GET rejected: missing client_id or redirect_uri (cid=${typeof client_id}, ru=${typeof redirect_uri})`,
+                );
                 reply.status(400).type('text/html');
                 return renderAuthorizeError(
                     'invalid_request',
@@ -744,6 +810,17 @@ export class WebServer {
                 return renderAuthorizeRedirect(target);
             }
 
+            // v1.32.0 D1: Form-render Trace — wenn Companion die Form nie absendet,
+            // sieht User hier dass sie überhaupt gerendert wurde.
+            let redirectHost = '?';
+            try {
+                redirectHost = new URL(redirect_uri).host || redirect_uri;
+            } catch {
+                redirectHost = redirect_uri;
+            }
+            this.adapter.log.debug(
+                `Authorize form rendered — client_id=${client_id} redirect_uri-host=${redirectHost}`,
+            );
             reply.type('text/html');
             return renderAuthorizeForm({ clientId: client_id, redirectUri: redirect_uri, state });
         });
@@ -761,10 +838,16 @@ export class WebServer {
             const { response_type, client_id, redirect_uri, state, username, password } = req.body ?? {};
 
             if (response_type !== 'code') {
+                this.adapter.log.debug(
+                    `Authorize POST rejected: response_type=${String(response_type)} (expected 'code')`,
+                );
                 reply.status(400).type('text/html');
                 return renderAuthorizeError('unsupported_response_type', 'Only `response_type=code` is supported.');
             }
             if (typeof client_id !== 'string' || typeof redirect_uri !== 'string') {
+                this.adapter.log.debug(
+                    `Authorize POST rejected: missing client_id or redirect_uri (cid=${typeof client_id}, ru=${typeof redirect_uri})`,
+                );
                 reply.status(400).type('text/html');
                 return renderAuthorizeError(
                     'invalid_request',
@@ -772,6 +855,9 @@ export class WebServer {
                 );
             }
             if (!isValidRedirectUri(client_id, redirect_uri)) {
+                this.adapter.log.debug(
+                    `Authorize POST rejected: redirect_uri "${redirect_uri}" not allowed for client_id "${client_id}"`,
+                );
                 reply.status(400).type('text/html');
                 return renderAuthorizeError(
                     'invalid_redirect_uri',
@@ -937,6 +1023,7 @@ export class WebServer {
                     // Server-Rotation killte den Companion-Token beim ersten Refresh.
                     const newAccess = crypto.randomUUID();
                     await this.registry.setToken(ownerRecord.id, newAccess);
+                    this.adapter.log.debug(`Refresh-token-grant — client=${ownerRecord.id} new access_token issued`);
                     return {
                         access_token: newAccess,
                         token_type: 'Bearer',
@@ -996,15 +1083,18 @@ export class WebServer {
         // beim Aufruf von `/`.
         this.app.get('/', async (req, reply) => {
             const client = await this.identify(req, reply);
-            const url = this.globalConfig.resolveUrlFor(client);
+            // v1.32.0 B1: Resolver-Chain als Triage-Anker. Ohne Chain musste der
+            // Maintainer den Resolver-Code lesen um zu verstehen warum genau
+            // diese URL für diesen Client gewählt wurde.
+            const { url, chain } = this.globalConfig.resolveUrlForWithChain(client);
             if (!url) {
-                this.adapter.log.debug(`No redirect URL for client ${client.id} — serving landing page`);
+                this.adapter.log.debug(`GET / client=${client.id} → landing (chain=${chain})`);
                 return reply
                     .status(200)
                     .type('text/html; charset=utf-8')
                     .send(renderLandingPage(client.id, this.adapter.namespace, this.systemLanguage, client.ip));
             }
-            this.adapter.log.debug(`Serving wrapper for client ${client.id} → ${url}`);
+            this.adapter.log.debug(`GET / client=${client.id} → URL (chain=${chain})`);
             return reply.status(200).type('text/html; charset=utf-8').send(renderRedirectWrapper(url));
         });
 
@@ -1015,7 +1105,18 @@ export class WebServer {
         this.app.get('/api/redirect_check', async (req, reply) => {
             const client = await this.identify(req, reply);
             const url = this.globalConfig.resolveUrlFor(client);
-            return { target: url ?? null };
+            // v1.32.0 F1: only-on-change-Trace. Jeder Poll (alle 30s × N Displays)
+            // wäre Flood — diagnostisch wertvoll ist nur der Target-Wechsel.
+            // First-time-poll-pro-restart wird auch geloggt weil Map leer ist.
+            const prev = this.lastRedirectTargetByClient.get(client.id);
+            const next = url ?? null;
+            if (prev !== next) {
+                this.adapter.log.debug(
+                    `redirect_check client=${client.id}: ${prev === undefined ? 'first-poll' : (prev ?? 'none')} → ${next ?? 'none'}`,
+                );
+                this.lastRedirectTargetByClient.set(client.id, next);
+            }
+            return { target: next };
         });
     }
 

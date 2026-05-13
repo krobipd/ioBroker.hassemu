@@ -230,6 +230,7 @@ class HassEmu extends utils.Adapter {
                 typeof val === 'string' &&
                 /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)
             ) {
+                this.log.debug(`Server UUID reused from info.serverUuid: ${val}`);
                 return val;
             }
         } catch {
@@ -468,6 +469,7 @@ class HassEmu extends utils.Adapter {
                     common: schema.common,
                     native: schema.native ?? {},
                 } as never);
+                this.log.debug(`Schema repair applied: ${id} (common.type was missing, restored from instanceObjects)`);
             } catch (err) {
                 this.log.debug(`repair ${id} failed: ${String(err)}`);
             }
@@ -493,6 +495,10 @@ class HassEmu extends utils.Adapter {
     private async gcStaleClients(): Promise<void> {
         const now = Date.now();
         const records = this.registry?.listAll() ?? [];
+        if (records.length > 0) {
+            const ttlDays = Math.round(STALE_CLIENT_TTL_MS / (24 * 60 * 60 * 1000));
+            this.log.debug(`gcStaleClients: scanning ${records.length} client(s) for staleness (TTL=${ttlDays}d)`);
+        }
         // v1.28.3 (M5): GC-Pass parallel statt sequentiell. Bei vielen Clients
         // (Display-Farm) summierten sich die Broker-Round-Trips beim Adapter-
         // Start zur spürbaren Pause vor `webServer.start()`. Pro-Client-try-catch
@@ -541,12 +547,14 @@ class HassEmu extends utils.Adapter {
             return;
         }
         if (enabled) {
+            this.log.debug(`applyMasterSwitch: enabled=true → propagating mode='global' to all clients`);
             await this.registry.bulkSetMode(MODE_GLOBAL);
             return;
         }
         // Master aus → alle Clients auf no-choice. Ohne explizite User-Wahl
         // zeigt jedes Display die Landing-Page (statt automatisch auf irgendeine
         // discovered URL umzuswitchen, die der User vielleicht gar nicht meinte).
+        this.log.debug(`applyMasterSwitch: enabled=false → propagating mode='0' (no-choice) to all clients`);
         await this.registry.bulkSetMode('0');
     }
 

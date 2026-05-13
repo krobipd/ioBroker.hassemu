@@ -129,6 +129,9 @@ export class UrlDiscovery {
     async collect(): Promise<UrlStates> {
         const result: UrlStates = {};
         const hostIp = getLocalIp();
+        // v1.32.0 B2: per-Adapter-Tracking für Discovery-Summary statt N silent-skips.
+        // Skip-Sites mutieren `skipped`; finale Zeile pro collect() summarisiert.
+        const skipped: Array<{ adapter: string; reason: string }> = [];
 
         let instances: Record<string, unknown> = {};
         let instancesOk = false;
@@ -151,7 +154,7 @@ export class UrlDiscovery {
         const crossRefs = buildCrossRefs(instances);
 
         for (const [id, obj] of Object.entries(instances)) {
-            collectFromInstance(id, obj, crossRefs, hostIp, result);
+            collectFromInstance(id, obj, crossRefs, hostIp, result, skipped);
         }
 
         // v1.17.0 (E10): über alle `web.*`-Instances iterieren statt nur `web.0`
@@ -180,8 +183,8 @@ export class UrlDiscovery {
             webInstances.flatMap(([shortName, native]) => {
                 const labelSuffix = showWebSuffix ? ` (${shortName})` : '';
                 return [
-                    this.addVisProjects(result, native, hostIp, 'vis-2.0', 'vis-2', `VIS-2${labelSuffix}`),
-                    this.addVisProjects(result, native, hostIp, 'vis.0', 'vis', `VIS${labelSuffix}`),
+                    this.addVisProjects(result, native, hostIp, 'vis-2.0', 'vis-2', `VIS-2${labelSuffix}`, skipped),
+                    this.addVisProjects(result, native, hostIp, 'vis.0', 'vis', `VIS${labelSuffix}`, skipped),
                 ];
             }),
         );
@@ -198,12 +201,25 @@ export class UrlDiscovery {
         for (const [shortName, obj] of auraInstances) {
             const enabled = isPlainObject(obj.common) && obj.common.enabled === true;
             if (!enabled) {
+                skipped.push({ adapter: shortName, reason: 'disabled' });
                 continue;
             }
-            this.addAuraInstance(result, obj, hostIp, shortName, showAuraSuffix);
+            this.addAuraInstance(result, obj, hostIp, shortName, showAuraSuffix, skipped);
         }
 
         this.cached = result;
+
+        // v1.32.0 B2: Discovery-Summary mit per-Adapter-ID. Eine Zeile pro collect()
+        // statt N silent-skip-lines. Bei busy ioBroker (30+ Adapter) hätte per-skip-log
+        // ~36000 lines/Tag produziert — diese Summary ist deterministisch klein
+        // (~150 chars worst-case) und gibt volle Triage-Information.
+        const entries = Object.keys(result);
+        const skippedDetail =
+            skipped.length > 0 ? `, skipped: ${skipped.map(s => `${s.adapter}=${s.reason}`).join(', ')}` : '';
+        this.adapter.log.debug(
+            `URL discovery: ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}${entries.length > 0 ? ` [${entries.map(u => result[u]).join(', ')}]` : ''}${skippedDetail}`,
+        );
+
         if (this.onChange) {
             try {
                 await this.onChange(result);
@@ -229,6 +245,7 @@ export class UrlDiscovery {
      * @param hostIp       Local host IP for the URL.
      * @param shortName    Short instance id like `aura.0`.
      * @param showSuffix   If true, append `(aura.X)` to the label.
+     * @param skipped      v1.32.0 B2: receives `{adapter, reason}` for the discovery-summary log.
      */
     private addAuraInstance(
         result: UrlStates,
@@ -236,6 +253,7 @@ export class UrlDiscovery {
         hostIp: string,
         shortName: string,
         showSuffix: boolean,
+        skipped: Array<{ adapter: string; reason: string }>,
     ): void {
         const native = isPlainObject(obj.native) ? obj.native : {};
         const customUrl = typeof native.customUrl === 'string' ? native.customUrl.trim() : '';
@@ -250,6 +268,7 @@ export class UrlDiscovery {
         }
         const safe = coerceSafeUrl(url);
         if (!safe) {
+            skipped.push({ adapter: shortName, reason: 'unsafe-url' });
             return;
         }
         const suffix = showSuffix ? ` (${shortName})` : '';
@@ -263,16 +282,20 @@ export class UrlDiscovery {
         adapterName: string,
         urlPath: string,
         label: string,
+        skipped: Array<{ adapter: string; reason: string }>,
     ): Promise<void> {
         if (!webInstance) {
+            skipped.push({ adapter: adapterName, reason: 'no-web-instance' });
             return;
         }
         const native = isPlainObject(webInstance.native) ? webInstance.native : null;
         if (!native) {
+            skipped.push({ adapter: adapterName, reason: 'no-native' });
             return;
         }
         const port = coerceFiniteNumber(native.port);
         if (port === null) {
+            skipped.push({ adapter: adapterName, reason: 'port-null' });
             return;
         }
         const bindRaw = coerceString(native.bind);
@@ -283,9 +306,11 @@ export class UrlDiscovery {
         try {
             entries = (await this.adapter.readDirAsync(adapterName, '/')) ?? [];
         } catch {
+            skipped.push({ adapter: adapterName, reason: 'readDir-fail' });
             return;
         }
         if (!Array.isArray(entries)) {
+            skipped.push({ adapter: adapterName, reason: 'readDir-non-array' });
             return;
         }
 
@@ -440,6 +465,7 @@ export function buildCrossRefs(instances: Record<string, unknown>): Map<string, 
  * @param crossRefs Map for placeholder cross-instance lookup.
  * @param hostIp    Local host IP used for wildcard binds.
  * @param result    Output map — mutated with discovered URL → label entries.
+ * @param skipped   v1.32.0 B2: optional collector — receives `{adapter, reason}` for the summary log.
  */
 export function collectFromInstance(
     id: string,
@@ -447,6 +473,7 @@ export function collectFromInstance(
     crossRefs: Map<string, Record<string, unknown>>,
     hostIp: string,
     result: UrlStates,
+    skipped?: Array<{ adapter: string; reason: string }>,
 ): void {
     if (!isPlainObject(obj)) {
         return;
@@ -455,11 +482,23 @@ export function collectFromInstance(
     if (!common) {
         return;
     }
+    const instanceId = id.startsWith('system.adapter.') ? id.substring('system.adapter.'.length) : id;
+
     if (common.enabled !== true) {
+        // v1.32.0 B2: only track disabled non-aura adapters that COULD have been
+        // a URL-source (have localLinks/localLink/welcomeScreen). Otherwise we'd
+        // flood the summary with every disabled adapter in the system.
+        if (
+            skipped &&
+            (isPlainObject(common.localLinks) ||
+                typeof common.localLink === 'string' ||
+                common.welcomeScreen ||
+                common.welcomeScreenPro)
+        ) {
+            skipped.push({ adapter: instanceId, reason: 'disabled' });
+        }
         return;
     }
-
-    const instanceId = id.startsWith('system.adapter.') ? id.substring('system.adapter.'.length) : id;
 
     // v1.29.2: aura adapter has hardcoded `:8095` in its localLinks template
     // (instead of `%port%`) AND advertises a `backend` link to `#/admin` —

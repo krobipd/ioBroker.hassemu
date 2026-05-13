@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.31.0",
     "news": {
+      "NEXT": {
+        "en": "Debug log traces every decision point that was previously silent: cookie identity, OAuth2 validation, URL discovery skips, resolver chain, mobile-app webhook flow.",
+        "de": "Debug-Log spurt jetzt jeden Entscheidungspunkt der vorher silent war: Cookie-Identität, OAuth2-Validation, URL-Discovery-Skips, Resolver-Kette, Mobile-App-Webhook-Ablauf.",
+        "ru": "Debug-лог теперь трассирует все ранее молчавшие решения: cookie-идентичность, OAuth2-валидация, URL-discovery-пропуски, цепочка resolver, mobile-app webhook-поток.",
+        "pt": "Log de debug agora rastreia cada ponto de decisão antes silencioso: identidade do cookie, validação OAuth2, discovery URL, cadeia do resolver, fluxo de webhook mobile-app.",
+        "nl": "Debug-log traceert nu elk eerder stil beslissingsmoment: cookie-identiteit, OAuth2-validatie, URL-discovery-skips, resolver-keten, mobile-app-webhook-flow.",
+        "fr": "Le log debug trace désormais chaque point de décision auparavant silencieux: identité cookie, validation OAuth2, URL discovery, chaîne resolver, flux webhook mobile-app.",
+        "it": "Il log di debug ora traccia ogni punto decisionale prima silenzioso: identità cookie, validazione OAuth2, URL discovery, catena resolver, flusso webhook mobile-app.",
+        "es": "El log de debug ahora traza cada punto de decisión antes silencioso: identidad cookie, validación OAuth2, URL discovery, cadena resolver, flujo webhook mobile-app.",
+        "pl": "Log debug śledzi teraz każdy wcześniej cichy punkt decyzyjny: tożsamość cookie, walidacja OAuth2, URL discovery, łańcuch resolver, przepływ webhook mobile-app.",
+        "uk": "Debug-лог тепер трасує кожне рішення, яке раніше було тихим: cookie-ідентичність, OAuth2-валідація, URL-discovery, resolver-ланцюг, mobile-app webhook-потік.",
+        "zh-cn": "调试日志现在跟踪每个先前静默的决策点：cookie 身份、OAuth2 验证、URL 发现、解析器链、移动应用 webhook 流程。"
+      },
       "1.31.0": {
         "en": "Companion apps now stay signed in across adapter restarts. Existing apps will sign in once after the update. Internal brute-force-lockout removed.",
         "de": "Companion-Apps bleiben jetzt über Adapter-Restarts hinweg angemeldet. Bestehende Apps melden sich nach dem Update einmal neu an. Interne Brute-Force-Sperre entfernt.",
@@ -80,19 +93,6 @@
         "pl": "Wyświetlacze Shelly Wall Display z firmware 2.6.0 i nowszym znów się łączą. Nowa aplikacja Home Assistant na urządzeniu używa logowania w przeglądarce, które adapter teraz obsługuje.",
         "uk": "Shelly Wall Display з прошивкою 2.6.0 і новіше знову підключається. Новий додаток Home Assistant на пристрої використовує вхід через браузер, який тепер обробляється.",
         "zh-cn": "运行固件 2.6.0 及更新版本的 Shelly Wall Display 重新可以连接。设备上的新 Home Assistant 应用使用浏览器登录，适配器现已支持。"
-      },
-      "1.28.4": {
-        "en": "The mode dropdowns in admin (global and per-client) no longer crash with \"Error in GUI\" when opened.",
-        "de": "Die Mode-Dropdowns im Admin (global und pro Client) stürzen beim Öffnen nicht mehr mit \"Error in GUI\" ab.",
-        "ru": "Выпадающие списки mode в админке (глобальный и для каждого клиента) больше не падают с \"Error in GUI\" при открытии.",
-        "pt": "Os dropdowns de mode no admin (global e por cliente) já não falham com \"Error in GUI\" ao serem abertos.",
-        "nl": "De mode-dropdowns in admin (globaal en per client) crashen niet meer met \"Error in GUI\" bij het openen.",
-        "fr": "Les dropdowns mode dans l'admin (global et par client) ne plantent plus avec \"Error in GUI\" à l'ouverture.",
-        "it": "I dropdown mode nell'admin (globale e per client) non si bloccano più con \"Error in GUI\" all'apertura.",
-        "es": "Los dropdowns de mode en el admin (global y por cliente) ya no fallan con \"Error in GUI\" al abrirse.",
-        "pl": "Listy mode w adminie (globalna i per-klient) nie zawieszają się już z \"Error in GUI\" przy otwieraniu.",
-        "uk": "Випадаючі списки mode в адміні (глобальний і для кожного клієнта) більше не падають з \"Error in GUI\" при відкритті.",
-        "zh-cn": "Admin 中的 mode 下拉框（全局和每个客户端）打开时不再因 \"Error in GUI\" 崩溃。"
       }
     },
     "titleLang": {
