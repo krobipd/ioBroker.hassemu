@@ -88,6 +88,7 @@ function makeRecord(opts: Partial<ClientRecord>): ClientRecord {
         id: 'abc123',
         cookie: 'x',
         token: null,
+        refreshToken: null,
         mode: '',
         manualUrl: null,
         ip: null,

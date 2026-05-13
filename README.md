@@ -156,6 +156,11 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+### **WORK IN PROGRESS**
+
+- Companion apps now stay signed in across adapter restarts (ioBroker update, network glitch, power cut). Existing paired apps will sign in once after the update, then stay signed in.
+- Removed an internal brute-force-lockout layer that occasionally locked out legitimate companions after multiple quick restarts.
+
 ### 1.30.0 (2026-05-12)
 
 - Internal cleanup based on a source audit. No user-facing changes — except that adding or reconfiguring an Aura adapter now refreshes the URL dropdown automatically instead of requiring a manual refresh.

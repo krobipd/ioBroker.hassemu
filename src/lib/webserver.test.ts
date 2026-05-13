@@ -286,9 +286,9 @@ describe('WebServer', () => {
             const client = registry.getByCookie(cookie);
             expect(client?.token).to.equal(tokens.access_token);
 
-            // Refresh token must be stored — security fix v1.2.0
-            expect(server.refreshTokens.has(tokens.refresh_token)).to.be.true;
-            expect(server.refreshTokens.get(tokens.refresh_token)).to.equal(client!.id);
+            // Refresh token must be stored via registry — persisted in clients.<id>.native.refreshToken
+            expect(client?.refreshToken).to.equal(tokens.refresh_token);
+            expect(registry.getByRefreshToken(tokens.refresh_token)?.id).to.equal(client!.id);
         });
 
         it('POST /auth/token with VALID refresh_token issues a new access token', async () => {
@@ -663,52 +663,6 @@ describe('WebServer', () => {
             expect(res.body).to.include('<form');
             // No code issued on failure.
             expect(res.body).to.not.include('document.location.assign');
-            await s['app'].close();
-        });
-
-        it('POST /auth/authorize: 5 invalid + 6th attempt → 429 with Retry-After', async () => {
-            const built = createMockAdapter();
-            const reg = new ClientRegistry(built.adapter as never);
-            const g = await buildGlobalConfig(built.adapter, 'http://example.com/vis', null, true);
-            const s = new WebServer(
-                built.adapter as never,
-                { ...baseConfig, authRequired: true },
-                reg,
-                g,
-                crypto.randomUUID(),
-            );
-            await s['app'].register((await import('@fastify/cookie')).default);
-            await s['app'].register((await import('@fastify/formbody')).default);
-            s['setupErrorHandler']();
-            s['setupRoutes']();
-            await s['app'].ready();
-            for (let i = 0; i < 5; i++) {
-                await s.inject({
-                    method: 'POST',
-                    url: '/auth/authorize',
-                    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-                    payload:
-                        'response_type=code&client_id=' +
-                        encodeURIComponent('https://home-assistant.io/android') +
-                        '&redirect_uri=' +
-                        encodeURIComponent('homeassistant://auth-callback') +
-                        '&username=admin&password=wrong',
-                });
-            }
-            const res = await s.inject({
-                method: 'POST',
-                url: '/auth/authorize',
-                headers: { 'content-type': 'application/x-www-form-urlencoded' },
-                payload:
-                    'response_type=code&client_id=' +
-                    encodeURIComponent('https://home-assistant.io/android') +
-                    '&redirect_uri=' +
-                    encodeURIComponent('homeassistant://auth-callback') +
-                    '&username=admin&password=wrong',
-            });
-            expect(res.statusCode).to.equal(429);
-            expect(res.headers['retry-after']).to.match(/^\d+$/);
-            expect(res.body).to.include('too_many_failed_attempts');
             await s['app'].close();
         });
 
@@ -1240,7 +1194,7 @@ describe('WebServer', () => {
         });
     });
 
-    describe('brute-force lockout (security fix v1.3.0)', () => {
+    describe('auth-required setup tests', () => {
         async function buildAuthServer(): Promise<WebServer> {
             const built = createMockAdapter();
             const reg = new ClientRegistry(built.adapter as never);
@@ -1261,178 +1215,7 @@ describe('WebServer', () => {
             return s;
         }
 
-        async function loginWith(s: WebServer, password: string, remoteAddress = '10.0.0.5'): Promise<number> {
-            const r1 = await s.inject({
-                method: 'POST',
-                url: '/auth/login_flow',
-                payload: {},
-                remoteAddress,
-            });
-            const flowId = (r1.json() as { flow_id: string }).flow_id;
-            const r2 = await s.inject({
-                method: 'POST',
-                url: `/auth/login_flow/${flowId}`,
-                payload: { username: 'admin', password },
-                remoteAddress,
-            });
-            return r2.statusCode;
-        }
-
-        it('locks an IP after 5 failed attempts (returns 429)', async () => {
-            const s = await buildAuthServer();
-            try {
-                for (let i = 0; i < 5; i++) {
-                    expect(await loginWith(s, 'wrong')).to.equal(400);
-                }
-                // 6th attempt should be locked out
-                expect(await loginWith(s, 'wrong')).to.equal(429);
-                expect(await loginWith(s, 'secret')).to.equal(429); // even right password locked
-            } finally {
-                await s['app'].close();
-            }
-        });
-
-        it('clears the failure counter on a successful login', async () => {
-            const s = await buildAuthServer();
-            try {
-                for (let i = 0; i < 4; i++) {
-                    expect(await loginWith(s, 'wrong')).to.equal(400);
-                }
-                // 5th attempt: correct password — should succeed AND reset counter
-                expect(await loginWith(s, 'secret')).to.equal(200);
-                // Now we can fail again without immediate lock
-                expect(await loginWith(s, 'wrong')).to.equal(400);
-                expect(s.loginAttempts.get('10.0.0.5')?.failedCount).to.equal(1);
-            } finally {
-                await s['app'].close();
-            }
-        });
-
-        it('tracks lockouts per IP independently', async () => {
-            const s = await buildAuthServer();
-            try {
-                for (let i = 0; i < 5; i++) {
-                    await loginWith(s, 'wrong', '10.0.0.5');
-                }
-                expect(await loginWith(s, 'wrong', '10.0.0.5')).to.equal(429);
-                // Different IP should still be allowed
-                expect(await loginWith(s, 'wrong', '10.0.0.6')).to.equal(400);
-            } finally {
-                await s['app'].close();
-            }
-        });
-
-        it('does not track failures when authRequired is disabled', async () => {
-            const built = createMockAdapter();
-            const reg = new ClientRegistry(built.adapter as never);
-            const g = await buildGlobalConfig(built.adapter, 'http://example.com/vis', null, true);
-            const s = new WebServer(
-                built.adapter as never,
-                { ...baseConfig, authRequired: false },
-                reg,
-                g,
-                crypto.randomUUID(),
-            );
-            await s['app'].register((await import('@fastify/cookie')).default);
-            await s['app'].register((await import('@fastify/formbody')).default);
-            s['setupErrorHandler']();
-            s['setupRoutes']();
-            await s['app'].ready();
-            try {
-                // Even with wrong password, no auth check happens at all → no failures recorded
-                for (let i = 0; i < 10; i++) {
-                    await loginWith(s, 'wrong');
-                }
-                expect(s.loginAttempts.size).to.equal(0);
-            } finally {
-                await s['app'].close();
-            }
-        });
-
-        it('IPv6-mapped IPv4 addresses share lockout bucket with raw IPv4 (C5 v1.12.0)', async () => {
-            const s = await buildAuthServer();
-            try {
-                // Simulate failures from `::ffff:10.0.0.5` AND `10.0.0.5` —
-                // before normalization, these were two buckets and the lockout
-                // could be bypassed by alternating.
-                const access = s as unknown as {
-                    recordLoginFailure: (ip: string | null) => void;
-                    isIpLocked: (ip: string | null) => boolean;
-                };
-                for (let i = 0; i < 3; i++) access.recordLoginFailure('::ffff:10.0.0.5');
-                for (let i = 0; i < 2; i++) access.recordLoginFailure('10.0.0.5');
-                // 5 failures total → IP must be locked, identical for both keys.
-                expect(access.isIpLocked('10.0.0.5')).to.be.true;
-                expect(access.isIpLocked('::ffff:10.0.0.5')).to.be.true;
-                expect(s.loginAttempts.size).to.equal(1);
-                expect([...s.loginAttempts.keys()][0]).to.equal('10.0.0.5');
-            } finally {
-                await s['app'].close();
-            }
-        });
-
-        it('null IP gets a dedicated lockout bucket (C5 v1.12.0)', async () => {
-            const s = await buildAuthServer();
-            try {
-                const access = s as unknown as {
-                    recordLoginFailure: (ip: string | null) => void;
-                    isIpLocked: (ip: string | null) => boolean;
-                };
-                for (let i = 0; i < 5; i++) access.recordLoginFailure(null);
-                expect(access.isIpLocked(null)).to.be.true;
-                expect(s.loginAttempts.has('__no-ip__')).to.be.true;
-            } finally {
-                await s['app'].close();
-            }
-        });
-
-        it('cleanupSessions() prunes expired lockouts', async () => {
-            const s = await buildAuthServer();
-            try {
-                const now = Date.now();
-                // Inject an expired lockout entry directly
-                s.loginAttempts.set('10.0.0.99', { failedCount: 5, lockedUntil: now - 1000, lastSeen: now });
-                s.loginAttempts.set('10.0.0.100', { failedCount: 2, lockedUntil: 0, lastSeen: now }); // recent failed
-                expect(s.loginAttempts.size).to.equal(2);
-                s.cleanupSessions();
-                expect(s.loginAttempts.has('10.0.0.99')).to.be.false; // pruned (expired lockout)
-                expect(s.loginAttempts.has('10.0.0.100')).to.be.true; // still within window
-            } finally {
-                await s['app'].close();
-            }
-        });
-
-        it('POST /auth/token with refresh_token: 5 invalid attempts → 429 (C7 v1.11.0)', async () => {
-            const s = await buildAuthServer();
-            try {
-                // 5x with bogus refresh_token — each triggers recordLoginFailure
-                for (let i = 0; i < 5; i++) {
-                    const res = await s.inject({
-                        method: 'POST',
-                        url: '/auth/token',
-                        payload: { grant_type: 'refresh_token', refresh_token: crypto.randomUUID() },
-                    });
-                    // First 5 still return 400 invalid_grant (counter reaches threshold ON 5th)
-                    expect(res.statusCode).to.equal(400);
-                }
-                expect(s.loginAttempts.size).to.equal(1);
-                const entry = [...s.loginAttempts.values()][0];
-                expect(entry.failedCount).to.be.at.least(5);
-                expect(entry.lockedUntil).to.be.greaterThan(Date.now());
-                // 6th attempt → 429 because IP is now locked
-                const r6 = await s.inject({
-                    method: 'POST',
-                    url: '/auth/token',
-                    payload: { grant_type: 'refresh_token', refresh_token: crypto.randomUUID() },
-                });
-                expect(r6.statusCode).to.equal(429);
-                expect((r6.json() as { error: string }).error).to.equal('rate_limited');
-            } finally {
-                await s['app'].close();
-            }
-        });
-
-        it('POST /auth/token with VALID refresh_token does NOT count as failure (C7 v1.11.0)', async () => {
+        it('POST /auth/token with valid refresh_token returns 200 (C7 v1.11.0)', async () => {
             const s = await buildAuthServer();
             try {
                 // Real login first to obtain a valid refresh_token
@@ -1451,10 +1234,9 @@ describe('WebServer', () => {
                     url: '/auth/token',
                     payload: { grant_type: 'authorization_code', code },
                 });
-                // v1.28.3 (HW5): refresh_token rotates on every grant (RFC 6819 §5.2.2.3).
-                // Walk the rotation chain — each successful refresh returns the next
-                // valid refresh_token, the previous one is invalidated.
-                let refreshToken = (r3.json() as { refresh_token: string }).refresh_token;
+                // v1.31.0: refresh_token stays valid across grants — same token can
+                // be used repeatedly until the client logs out / is removed.
+                const refreshToken = (r3.json() as { refresh_token: string }).refresh_token;
                 for (let i = 0; i < 10; i++) {
                     const res = await s.inject({
                         method: 'POST',
@@ -1462,57 +1244,21 @@ describe('WebServer', () => {
                         payload: { grant_type: 'refresh_token', refresh_token: refreshToken },
                     });
                     expect(res.statusCode).to.equal(200);
-                    refreshToken = (res.json() as { refresh_token: string }).refresh_token;
-                    expect(refreshToken).to.match(/^[0-9a-f-]{36}$/);
+                    const body = res.json() as { access_token: string; refresh_token: string };
+                    expect(body.access_token).to.match(/^[0-9a-f-]{36}$/);
+                    expect(body.refresh_token).to.equal(refreshToken);
                 }
-                expect(s.loginAttempts.size).to.equal(0);
             } finally {
                 await s['app'].close();
             }
         });
 
-        it('Retry-After header is set on 429 lockout responses (HW13 v1.28.3)', async () => {
-            const s = await buildAuthServer();
-            try {
-                for (let i = 0; i < 5; i++) {
-                    expect(await loginWith(s, 'wrong')).to.equal(400);
-                }
-                // 6th attempt → locked, must include Retry-After
-                const r1 = await s.inject({
-                    method: 'POST',
-                    url: '/auth/login_flow',
-                    payload: {},
-                    remoteAddress: '10.0.0.5',
-                });
-                const flowId = (r1.json() as { flow_id: string }).flow_id;
-                const res = await s.inject({
-                    method: 'POST',
-                    url: `/auth/login_flow/${flowId}`,
-                    payload: { username: 'admin', password: 'wrong' },
-                    remoteAddress: '10.0.0.5',
-                });
-                expect(res.statusCode).to.equal(429);
-                const retryAfter = res.headers['retry-after'];
-                expect(retryAfter).to.be.a('string');
-                const seconds = Number(retryAfter);
-                expect(seconds).to.be.greaterThan(0);
-                expect(seconds).to.be.at.most(15 * 60); // LOGIN_LOCKOUT_WINDOW_MS
-
-                // Same lockout signal on /auth/token refresh-grant 429
-                const tokenRes = await s.inject({
-                    method: 'POST',
-                    url: '/auth/token',
-                    payload: { grant_type: 'refresh_token', refresh_token: crypto.randomUUID() },
-                    remoteAddress: '10.0.0.5',
-                });
-                expect(tokenRes.statusCode).to.equal(429);
-                expect(tokenRes.headers['retry-after']).to.be.a('string');
-            } finally {
-                await s['app'].close();
-            }
-        });
-
-        it('refresh_token rotates on each grant; old token rejected after use (HW5 v1.28.3)', async () => {
+        it('refresh_token stays valid across multiple grants (v1.31.0 — HA Companion compat)', async () => {
+            // v1.31.0: HA Companion (AuthenticationRepositoryImpl.kt:147) stores the
+            // refresh_token it SENT, not the one in the response. HA Core itself
+            // (auth/__init__.py:334-348) never returns a new refresh_token. v1.28.3
+            // (HW5) rotation was RFC 6819 §5.2.2.3 best-practice but broke Companion
+            // auth on the first refresh cycle. Token now stays valid until revoked.
             const s = await buildAuthServer();
             try {
                 const r1 = await s.inject({ method: 'POST', url: '/auth/login_flow', payload: {} });
@@ -1531,57 +1277,109 @@ describe('WebServer', () => {
                     payload: { grant_type: 'authorization_code', code },
                 });
                 const initialRefresh = (r3.json() as { refresh_token: string }).refresh_token;
+                const initialAccess = (r3.json() as { access_token: string }).access_token;
 
-                // First refresh → returns a NEW refresh_token, old one invalidated
+                // First refresh: same refresh_token is returned, new access_token is issued
                 const r4 = await s.inject({
                     method: 'POST',
                     url: '/auth/token',
                     payload: { grant_type: 'refresh_token', refresh_token: initialRefresh },
                 });
                 expect(r4.statusCode).to.equal(200);
-                const rotated = r4.json() as { access_token: string; refresh_token: string };
-                expect(rotated.access_token).to.match(/^[0-9a-f-]{36}$/);
-                expect(rotated.refresh_token).to.match(/^[0-9a-f-]{36}$/);
-                expect(rotated.refresh_token).to.not.equal(initialRefresh);
+                const tokens4 = r4.json() as { access_token: string; refresh_token: string };
+                expect(tokens4.access_token).to.match(/^[0-9a-f-]{36}$/);
+                expect(tokens4.access_token).to.not.equal(initialAccess);
+                expect(tokens4.refresh_token).to.equal(initialRefresh);
 
-                // Replay of the OLD refresh_token must be rejected as invalid_grant
+                // Same refresh_token still works on a second refresh
                 const r5 = await s.inject({
                     method: 'POST',
                     url: '/auth/token',
                     payload: { grant_type: 'refresh_token', refresh_token: initialRefresh },
                 });
-                expect(r5.statusCode).to.equal(400);
-                expect((r5.json() as { error: string }).error).to.equal('invalid_grant');
-
-                // The NEW refresh_token still works
-                const r6 = await s.inject({
-                    method: 'POST',
-                    url: '/auth/token',
-                    payload: { grant_type: 'refresh_token', refresh_token: rotated.refresh_token },
-                });
-                expect(r6.statusCode).to.equal(200);
+                expect(r5.statusCode).to.equal(200);
+                const tokens5 = r5.json() as { access_token: string; refresh_token: string };
+                expect(tokens5.access_token).to.not.equal(tokens4.access_token);
+                expect(tokens5.refresh_token).to.equal(initialRefresh);
             } finally {
                 await s['app'].close();
             }
         });
 
-        it('cleanupSessions() prunes stale failure-counts (v1.5.0)', async () => {
-            const s = await buildAuthServer();
+        it('refresh_token persists across adapter restart (v1.31.0)', async () => {
+            // End-to-end: token lives in clients.<id>.native.refreshToken — a fresh
+            // WebServer + ClientRegistry sharing the SAME ioBroker mock-store finds
+            // the token via registry.restore() and accepts the refresh-grant.
+            const built = createMockAdapter();
+            const reg = new ClientRegistry(built.adapter as never);
+            const g = await buildGlobalConfig(built.adapter, 'http://example.com/vis', null, true);
+            const s1 = new WebServer(
+                built.adapter as never,
+                { ...baseConfig, authRequired: true },
+                reg,
+                g,
+                crypto.randomUUID(),
+            );
+            await s1['app'].register((await import('@fastify/cookie')).default);
+            await s1['app'].register((await import('@fastify/formbody')).default);
+            s1['setupAuthGuard']();
+            s1['setupErrorHandler']();
+            s1['setupRoutes']();
+            await s1['app'].ready();
             try {
-                const now = Date.now();
-                // Stale: failedCount>0, no lockout, lastSeen older than the window
-                s.loginAttempts.set('10.0.0.101', {
-                    failedCount: 2,
-                    lockedUntil: 0,
-                    lastSeen: now - 16 * 60 * 1000, // > LOGIN_LOCKOUT_WINDOW_MS (15 min)
+                // Initial OAuth → obtain refresh_token persisted to native.refreshToken
+                const r1 = await s1.inject({ method: 'POST', url: '/auth/login_flow', payload: {} });
+                const cookie = extractCookie(r1.headers['set-cookie'])!;
+                const flowId = (r1.json() as { flow_id: string }).flow_id;
+                const r2 = await s1.inject({
+                    method: 'POST',
+                    url: `/auth/login_flow/${flowId}`,
+                    headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
+                    payload: { username: 'admin', password: 'secret' },
                 });
-                // Fresh failure within window — keep
-                s.loginAttempts.set('10.0.0.102', { failedCount: 2, lockedUntil: 0, lastSeen: now });
-                s.cleanupSessions();
-                expect(s.loginAttempts.has('10.0.0.101')).to.be.false; // pruned (stale)
-                expect(s.loginAttempts.has('10.0.0.102')).to.be.true; // fresh
+                const code = (r2.json() as { result: string }).result;
+                const r3 = await s1.inject({
+                    method: 'POST',
+                    url: '/auth/token',
+                    payload: { grant_type: 'authorization_code', code },
+                });
+                const refreshToken = (r3.json() as { refresh_token: string }).refresh_token;
+                await s1['app'].close();
+
+                // Simulate adapter restart: new WebServer + new Registry on same mock store
+                const reg2 = new ClientRegistry(built.adapter as never);
+                await reg2.restore();
+                const s2 = new WebServer(
+                    built.adapter as never,
+                    { ...baseConfig, authRequired: true },
+                    reg2,
+                    g,
+                    crypto.randomUUID(),
+                );
+                await s2['app'].register((await import('@fastify/cookie')).default);
+                await s2['app'].register((await import('@fastify/formbody')).default);
+                s2['setupAuthGuard']();
+                s2['setupErrorHandler']();
+                s2['setupRoutes']();
+                await s2['app'].ready();
+                try {
+                    // The previously issued refresh_token still works after restart
+                    const r4 = await s2.inject({
+                        method: 'POST',
+                        url: '/auth/token',
+                        payload: { grant_type: 'refresh_token', refresh_token: refreshToken },
+                    });
+                    expect(r4.statusCode).to.equal(200);
+                    const body = r4.json() as { access_token: string; refresh_token: string };
+                    expect(body.access_token).to.match(/^[0-9a-f-]{36}$/);
+                    expect(body.refresh_token).to.equal(refreshToken);
+                } finally {
+                    await s2['app'].close();
+                }
             } finally {
-                await s['app'].close();
+                if (s1['app'].server.listening) {
+                    await s1['app'].close();
+                }
             }
         });
 

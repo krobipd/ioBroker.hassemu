@@ -18,12 +18,6 @@ export const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 /** OAuth2 access-token TTL — 30 min, matches Home Assistant default. */
 export const OAUTH_ACCESS_TOKEN_TTL_S = 30 * 60;
 
-/** Brute-force lockout threshold: failed login attempts per IP before lock kicks in. */
-export const LOGIN_LOCKOUT_THRESHOLD = 5;
-
-/** Brute-force lockout window: how long an IP stays locked after threshold reached. */
-export const LOGIN_LOCKOUT_WINDOW_MS = 15 * 60 * 1000;
-
 /** Stale-Client-GC threshold: clients without token + lastSeen older are auto-removed. */
 export const STALE_CLIENT_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
@@ -32,8 +26,6 @@ export const COOKIE_MAX_AGE_S = 10 * 365 * 24 * 60 * 60;
 
 /** Hard cap on in-flight auth flow sessions. Older entries are dropped FIFO when full. */
 export const SESSIONS_CAP = 100;
-/** Hard cap on remembered refresh tokens. Older entries are dropped FIFO when full. */
-export const REFRESH_TOKENS_CAP = 200;
 /**
  * Hard cap on mobile-app webhook registrations (HA Companion App). Older
  * entries are dropped FIFO when full. Each Shelly Wall Display / HA app
@@ -41,8 +33,6 @@ export const REFRESH_TOKENS_CAP = 200;
  * registrations.
  */
 export const WEBHOOK_REGISTRATIONS_CAP = 200;
-/** Hard cap on tracked login-attempt entries (FIFO-eviction when full). */
-export const LOGIN_ATTEMPTS_CAP = 1000;
 /**
  * Cooldown window between repeated `warn`-level logs of the same 5xx error
  * message — first occurrence pro unique message comes through at warn, all

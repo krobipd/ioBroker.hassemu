@@ -43,6 +43,7 @@ class ClientRegistry {
   byCookie = /* @__PURE__ */ new Map();
   byId = /* @__PURE__ */ new Map();
   byToken = /* @__PURE__ */ new Map();
+  byRefreshToken = /* @__PURE__ */ new Map();
   currentUrlStates = {};
   newClientModeProvider = () => import_constants.MODE_GLOBAL;
   /**
@@ -110,6 +111,7 @@ class ClientRegistry {
         const manualUrl = (0, import_coerce.coerceSafeUrl)(manualUrlRaw);
         const ip = (0, import_coerce.coerceString)(ipRaw);
         const token = (0, import_coerce.coerceUuid)(native.token);
+        const refreshToken = (0, import_coerce.coerceUuid)(native.refreshToken);
         const legacyHostname = (0, import_coerce.coerceString)(hostnameRaw);
         let channelName = (0, import_coerce.coerceString)((_b = obj.common) == null ? void 0 : _b.name);
         if (legacyHostname) {
@@ -123,7 +125,7 @@ class ClientRegistry {
           }
         }
         const hostname = channelName && channelName !== ip && channelName !== id ? channelName : null;
-        const record = { id, cookie, token, mode, manualUrl, ip, hostname };
+        const record = { id, cookie, token, refreshToken, mode, manualUrl, ip, hostname };
         this.trackInMemory(record);
         await this.ensureObjects(record);
         const modeStateRaw = await this.readState(`${id}.mode`);
@@ -209,6 +211,15 @@ class ClientRegistry {
     var _a;
     return (_a = this.byToken.get(token)) != null ? _a : null;
   }
+  /**
+   * Lookup by refresh token issued during the auth flow.
+   *
+   * @param refreshToken Refresh token value.
+   */
+  getByRefreshToken(refreshToken) {
+    var _a;
+    return (_a = this.byRefreshToken.get(refreshToken)) != null ? _a : null;
+  }
   /** Returns a snapshot array of all registered clients. */
   listAll() {
     return [...this.byId.values()];
@@ -232,6 +243,28 @@ class ClientRegistry {
       this.byToken.set(token, record);
     }
     await this.adapter.extendObjectAsync(`clients.${id}`, { native: { token } });
+  }
+  /**
+   * Updates in-memory refresh token and persists to channel.native. Old refresh
+   * token is freed. Stored plain-text in `clients.<id>.native.refreshToken` —
+   * same exposure profile as the access token (see {@link ClientRecord.refreshToken}).
+   *
+   * @param id           Client id.
+   * @param refreshToken New refresh token, or null to clear.
+   */
+  async setRefreshToken(id, refreshToken) {
+    const record = this.byId.get(id);
+    if (!record) {
+      return;
+    }
+    if (record.refreshToken) {
+      this.byRefreshToken.delete(record.refreshToken);
+    }
+    record.refreshToken = refreshToken;
+    if (refreshToken) {
+      this.byRefreshToken.set(refreshToken, record);
+    }
+    await this.adapter.extendObjectAsync(`clients.${id}`, { native: { refreshToken } });
   }
   /**
    * Accept an external mode write on `clients.<id>.mode`.
@@ -349,6 +382,9 @@ class ClientRegistry {
     if (record.token) {
       this.byToken.delete(record.token);
     }
+    if (record.refreshToken) {
+      this.byRefreshToken.delete(record.refreshToken);
+    }
     this.lastSeenFlushedAt.delete(id);
     try {
       await this.adapter.delObjectAsync(`clients.${id}`, { recursive: true });
@@ -385,6 +421,9 @@ class ClientRegistry {
     if (record.token) {
       this.byToken.set(record.token, record);
     }
+    if (record.refreshToken) {
+      this.byRefreshToken.set(record.refreshToken, record);
+    }
   }
   async createClient(ip, hostname) {
     let id = (0, import_network.generateClientId)();
@@ -393,7 +432,16 @@ class ClientRegistry {
     }
     const cookie = import_node_crypto.default.randomUUID();
     const mode = this.newClientModeProvider();
-    const record = { id, cookie, token: null, mode, manualUrl: null, ip, hostname };
+    const record = {
+      id,
+      cookie,
+      token: null,
+      refreshToken: null,
+      mode,
+      manualUrl: null,
+      ip,
+      hostname
+    };
     this.trackInMemory(record);
     await this.createObjects(record);
     this.touchLastSeen(record);
