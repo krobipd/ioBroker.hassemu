@@ -767,7 +767,7 @@ class WebServer {
         return reply.status(200).type("text/html; charset=utf-8").send((0, import_landing_page.renderLandingPage)(client.id, this.adapter.namespace, this.systemLanguage, client.ip));
       }
       this.adapter.log.debug(`GET / client=${client.id} \u2192 URL (chain=${chain})`);
-      return reply.status(200).type("text/html; charset=utf-8").send((0, import_redirect_wrapper.renderRedirectWrapper)(url));
+      return reply.status(200).type("text/html; charset=utf-8").send((0, import_redirect_wrapper.renderRedirectWrapper)(url, client.id, this.adapter.namespace, this.systemLanguage, client.ip));
     });
     this.app.get("/api/redirect_check", async (req, reply) => {
       const client = await this.identify(req, reply);

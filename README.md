@@ -156,9 +156,13 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+### 1.32.1 (2026-05-16)
+
+- If the adapter goes offline while the display is running, the display now switches to a clear offline page with a reload button instead of just stopping to update.
+
 ### 1.32.0 (2026-05-16)
 
-- Internal: test runner switched to Vitest. Two truncated dashboard labels corrected.
+- Two state descriptions in the object tree are now complete again. Internal cleanup, no further user-facing changes.
 
 ### 1.31.1 (2026-05-13)
 
@@ -172,16 +176,6 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 ### 1.30.0 (2026-05-12)
 
 - Internal cleanup based on a source audit. No user-facing changes — except that adding or reconfiguring an Aura adapter now refreshes the URL dropdown automatically instead of requiring a manual refresh.
-
-### 1.29.3 (2026-05-12)
-
-- The "Connection to Home Assistant failed" popup on Shelly Wall Display 2.6.0+ also stays away when the landing page is shown (no URL configured yet). v1.29.2 only suppressed it when a target URL was set.
-- Replaced the landing-page emblem with the real ioBroker brand mark (power-button "i" inside a ring).
-
-Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).## Support
-
-- [ioBroker Forum](https://forum.iobroker.net/)
-- [GitHub Issues](https://github.com/krobipd/ioBroker.hassemu/issues)
 
 ### Support Development
 
