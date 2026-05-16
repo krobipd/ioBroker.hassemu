@@ -17,6 +17,10 @@
         // This is necessary for the automatic typing of the adapter config
         "resolveJsonModule": true,
 
+        // @types packages — vitest globals (from vitest.config.ts:test.globals=true)
+        // need an explicit types entry. TS 6 no longer auto-includes globals.
+        "types": ["vitest/globals", "node"],
+
         "sourceMap": true,
         "inlineSourceMap": false
     },

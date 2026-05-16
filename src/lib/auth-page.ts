@@ -20,14 +20,9 @@
  * `document.location.assign(url)` with `code=<encoded>&state=<encoded>`.
  */
 
-/**
- * Conservative HTML-attribute escape. Only the characters that matter.
- *
- * @param s Raw user-controlled string going into an `href`/`value` attribute.
- */
-function escAttr(s: string): string {
-    return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
+// v1.32.0: lokales `escAttr` (4 Char) ersetzt durch shared `escapeHtml` (5 Char)
+// aus `coerce.ts` — defense-in-depth, `'` zusätzlich gehärtet.
+import { escapeHtml as escAttr } from './coerce';
 
 /**
  * Build the final redirect URL with the auth code appended.

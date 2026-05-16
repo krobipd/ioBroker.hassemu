@@ -24,9 +24,7 @@ __export(auth_page_exports, {
   renderAuthorizeRedirect: () => renderAuthorizeRedirect
 });
 module.exports = __toCommonJS(auth_page_exports);
-function escAttr(s) {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
+var import_coerce = require("./coerce");
 function buildRedirectUrl(redirectUri, code, state) {
   let url = redirectUri;
   if (!url.includes("?")) {
@@ -53,7 +51,7 @@ button:hover{background:#039be5;}
 .loading{text-align:center;color:#888;padding:16px;}
 `.trim();
 function renderAuthorizeRedirect(target) {
-  const a = escAttr(target);
+  const a = (0, import_coerce.escapeHtml)(target);
   const j = JSON.stringify(target);
   return `<!DOCTYPE html>
 <html lang="en">
@@ -73,10 +71,10 @@ function renderAuthorizeRedirect(target) {
 </html>`;
 }
 function renderAuthorizeForm(params, errorMessage) {
-  const cid = escAttr(params.clientId);
-  const ru = escAttr(params.redirectUri);
-  const st = params.state ? escAttr(params.state) : "";
-  const errBlock = errorMessage ? `<div class="err">${escAttr(errorMessage)}</div>` : "";
+  const cid = (0, import_coerce.escapeHtml)(params.clientId);
+  const ru = (0, import_coerce.escapeHtml)(params.redirectUri);
+  const st = params.state ? (0, import_coerce.escapeHtml)(params.state) : "";
+  const errBlock = errorMessage ? `<div class="err">${(0, import_coerce.escapeHtml)(errorMessage)}</div>` : "";
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -109,14 +107,14 @@ function renderAuthorizeError(reason, detail) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Home Assistant \u2014 ${escAttr(reason)}</title>
+<title>Home Assistant \u2014 ${(0, import_coerce.escapeHtml)(reason)}</title>
 <style>${STYLE}</style>
 </head>
 <body>
 <div class="card">
 <h1>Authorization failed</h1>
-<div class="err">${escAttr(detail)}</div>
-<p class="subtitle">${escAttr(reason)}</p>
+<div class="err">${(0, import_coerce.escapeHtml)(detail)}</div>
+<p class="subtitle">${(0, import_coerce.escapeHtml)(reason)}</p>
 </div>
 </body>
 </html>`;

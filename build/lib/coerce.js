@@ -37,6 +37,8 @@ __export(coerce_exports, {
   coerceUuid: () => coerceUuid,
   decideGcAction: () => decideGcAction,
   decideLegacyVisMigration: () => decideLegacyVisMigration,
+  escapeHtml: () => escapeHtml,
+  evictOldest: () => evictOldest,
   isNoChoice: () => isNoChoice,
   isPlainObject: () => isPlainObject,
   isValidRedirectUri: () => isValidRedirectUri,
@@ -48,6 +50,7 @@ __export(coerce_exports, {
 });
 module.exports = __toCommonJS(coerce_exports);
 var import_node_crypto = __toESM(require("node:crypto"));
+var import_constants = require("./constants");
 function isValidRedirectUri(clientId, redirectUri) {
   if (typeof clientId !== "string" || typeof redirectUri !== "string") {
     return false;
@@ -141,7 +144,7 @@ function parseModeWrite(rawValue, allowedSentinels) {
   if (allowedSentinels.includes(rawValue)) {
     return { kind: "sentinel", value: rawValue };
   }
-  if (rawValue === "global" || rawValue === "manual") {
+  if (rawValue === import_constants.MODE_GLOBAL || rawValue === import_constants.MODE_MANUAL) {
     return { kind: "rejected-disallowed-sentinel", value: rawValue };
   }
   const safe = coerceSafeUrl(rawValue);
@@ -220,6 +223,31 @@ function decideLegacyVisMigration(rawValue) {
 function buildDropdownStates(sentinels, urlStates) {
   return { 0: "---", ...sentinels, ...urlStates };
 }
+function evictOldest(map, cap) {
+  while (map.size >= cap) {
+    const oldest = map.keys().next().value;
+    if (oldest === void 0) {
+      return;
+    }
+    map.delete(oldest);
+  }
+}
+function escapeHtml(s) {
+  return s.replace(/[<>&"']/g, (c) => {
+    switch (c) {
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case "&":
+        return "&amp;";
+      case '"':
+        return "&quot;";
+      default:
+        return "&#39;";
+    }
+  });
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   buildDropdownStates,
@@ -231,6 +259,8 @@ function buildDropdownStates(sentinels, urlStates) {
   coerceUuid,
   decideGcAction,
   decideLegacyVisMigration,
+  escapeHtml,
+  evictOldest,
   isNoChoice,
   isPlainObject,
   isValidRedirectUri,

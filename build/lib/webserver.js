@@ -40,49 +40,9 @@ var import_fastify = __toESM(require("fastify"));
 var import_constants = require("./constants");
 var import_coerce = require("./coerce");
 var import_auth_page = require("./auth-page");
-var import_external_bridge = require("./external-bridge");
 var import_landing_page = require("./landing-page");
 var import_network = require("./network");
-function renderRedirectWrapper(target) {
-  const escAttr = target.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
-  const escJs = JSON.stringify(target);
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta http-equiv="X-UA-Compatible" content="IE=edge">
-<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<title>ioBroker HASS Emulator</title>
-<style>
-html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden;}
-/* display:block kills the inline-baseline gap below the iframe; position:fixed +
-   100vw/100vh nimmt das Display sicher voll aus, auch wenn ein WebView die
-   100%-Berechnung subpixel-falsch macht (Shelly Wall Display zeigte sonst
-   einen schwarzen Streifen rechts/unten). */
-iframe{display:block;border:0;margin:0;padding:0;position:fixed;top:0;left:0;width:100vw;height:100vh;background:#000;}
-</style>
-</head>
-<body>
-<iframe src="${escAttr}" allow="autoplay; fullscreen; geolocation; microphone; camera"></iframe>
-${import_external_bridge.CONNECTION_STATUS_SCRIPT}
-<script>
-(function(){
-  var current=${escJs};
-  setInterval(function(){
-    fetch('/api/redirect_check',{cache:'no-store',credentials:'same-origin'})
-      .then(function(r){return r.json();})
-      .then(function(j){
-        if(j&&typeof j.target==='string'&&j.target&&j.target!==current){
-          location.reload();
-        }
-      })
-      .catch(function(){/* silent \u2014 broker hiccup, retry next tick */});
-  },30000);
-})();
-</script>
-</body>
-</html>`;
-}
+var import_redirect_wrapper = require("./redirect-wrapper");
 const CLIENT_COOKIE = "hassemu_client";
 class WebServer {
   adapter;
@@ -261,19 +221,10 @@ class WebServer {
       return false;
     }
     if (!this.errorLogCooldown.has(key)) {
-      WebServer.evictOldest(this.errorLogCooldown, import_constants.REQUEST_ERROR_COOLDOWN_CAP);
+      (0, import_coerce.evictOldest)(this.errorLogCooldown, import_constants.REQUEST_ERROR_COOLDOWN_CAP);
     }
     this.errorLogCooldown.set(key, now);
     return true;
-  }
-  static evictOldest(map, cap) {
-    while (map.size >= cap) {
-      const oldest = map.keys().next().value;
-      if (oldest === void 0) {
-        return;
-      }
-      map.delete(oldest);
-    }
   }
   /**
    * Inserts a session, dropping the oldest entry if {@link SESSIONS_CAP} is exceeded.
@@ -282,7 +233,7 @@ class WebServer {
    * @param data Session payload.
    */
   storeSession(key, data) {
-    WebServer.evictOldest(this.sessions, import_constants.SESSIONS_CAP);
+    (0, import_coerce.evictOldest)(this.sessions, import_constants.SESSIONS_CAP);
     this.sessions.set(key, data);
   }
   // --- client identification ---
@@ -466,7 +417,7 @@ class WebServer {
       const client = this.registry.getByToken(token);
       const ownerId = (_c = client == null ? void 0 : client.id) != null ? _c : "";
       const webhookId = import_node_crypto.default.randomUUID().replace(/-/g, "");
-      WebServer.evictOldest(this.webhookRegistrations, import_constants.WEBHOOK_REGISTRATIONS_CAP);
+      (0, import_coerce.evictOldest)(this.webhookRegistrations, import_constants.WEBHOOK_REGISTRATIONS_CAP);
       this.webhookRegistrations.set(webhookId, ownerId);
       this.adapter.log.debug(
         `Mobile-App registration \u2014 client=${ownerId} app_id=${(_d = body.app_id) != null ? _d : "?"} device_name=${(_e = body.device_name) != null ? _e : "?"} \u2192 webhook=${webhookId}`
@@ -816,7 +767,7 @@ class WebServer {
         return reply.status(200).type("text/html; charset=utf-8").send((0, import_landing_page.renderLandingPage)(client.id, this.adapter.namespace, this.systemLanguage, client.ip));
       }
       this.adapter.log.debug(`GET / client=${client.id} \u2192 URL (chain=${chain})`);
-      return reply.status(200).type("text/html; charset=utf-8").send(renderRedirectWrapper(url));
+      return reply.status(200).type("text/html; charset=utf-8").send((0, import_redirect_wrapper.renderRedirectWrapper)(url));
     });
     this.app.get("/api/redirect_check", async (req, reply) => {
       const client = await this.identify(req, reply);

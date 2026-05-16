@@ -156,6 +156,10 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+### 1.32.0 (2026-05-16)
+
+- Internal: test runner switched to Vitest. Two truncated dashboard labels corrected.
+
 ### 1.31.1 (2026-05-13)
 
 - Debug log traces every previously-silent decision point: cookie identity, OAuth2 validation, URL discovery skips, resolver chain, mobile-app webhook flow. Default loglevel unchanged.
@@ -174,15 +178,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 - The "Connection to Home Assistant failed" popup on Shelly Wall Display 2.6.0+ also stays away when the landing page is shown (no URL configured yet). v1.29.2 only suppressed it when a target URL was set.
 - Replaced the landing-page emblem with the real ioBroker brand mark (power-button "i" inside a ring).
 
-### 1.29.2 (2026-05-12)
-
-- Shelly Wall Display on firmware 2.6.0+ no longer shows the connection-error popup after the page has loaded.
-- The mode dropdown now auto-discovers Aura instances (frontend at the configured port).
-- The landing page now carries the ioBroker logo, and the README has a clear table of every dashboard source the adapter recognizes.
-
-Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
-
-## Support
+Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).## Support
 
 - [ioBroker Forum](https://forum.iobroker.net/)
 - [GitHub Issues](https://github.com/krobipd/ioBroker.hassemu/issues)

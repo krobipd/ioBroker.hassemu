@@ -42,6 +42,12 @@ export const WEBHOOK_REGISTRATIONS_CAP = 200;
 export const REQUEST_ERROR_COOLDOWN_MS = 60 * 1000;
 /** Hard cap on tracked unique error-message keys for cooldown deduplication. */
 export const REQUEST_ERROR_COOLDOWN_CAP = 200;
+/**
+ * Hard cap for the per-IP new-client burst tracker (`client-registry.newClientBurst`).
+ * FIFO-Eviction analog der anderen Caps; verhindert unbounded growth bei broken-cookie
+ * Display-Farmen oder Brute-Force-Burst.
+ */
+export const NEW_CLIENT_BURST_CAP = 200;
 
 /**
  * Resolver-Sentinels für `client.mode` und `global.mode`. `'global'` heißt:

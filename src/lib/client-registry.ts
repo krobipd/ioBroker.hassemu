@@ -15,13 +15,14 @@ import {
     coerceSafeUrl,
     coerceString,
     coerceUuid,
+    evictOldest,
     isPlainObject,
     parseAdapterStateId,
     parseManualUrlWrite,
     parseModeWrite,
     safeGetState,
 } from './coerce';
-import { MODE_GLOBAL, MODE_MANUAL } from './constants';
+import { MODE_GLOBAL, MODE_MANUAL, NEW_CLIENT_BURST_CAP } from './constants';
 import { resolveLabel, tName } from './i18n-states';
 import { generateClientId } from './network';
 import type { AdapterInterface, ClientRecord, UrlStates } from './types';
@@ -577,13 +578,8 @@ export class ClientRegistry {
             entry.warnedAt = now;
         }
         this.newClientBurst.set(ip, entry);
-        // Soft-cap to keep the map bounded (analog der anderen Caps).
-        if (this.newClientBurst.size > 200) {
-            const oldest = this.newClientBurst.keys().next().value;
-            if (oldest !== undefined) {
-                this.newClientBurst.delete(oldest);
-            }
-        }
+        // v1.32.0: Soft-Cap via shared `evictOldest` (vorher inline single-shot).
+        evictOldest(this.newClientBurst, NEW_CLIENT_BURST_CAP);
     }
 
     /**

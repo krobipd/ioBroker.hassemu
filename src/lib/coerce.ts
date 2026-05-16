@@ -8,6 +8,8 @@
 
 import crypto from 'node:crypto';
 
+import { MODE_GLOBAL, MODE_MANUAL } from './constants';
+
 /**
  * IndieAuth-style redirect_uri validation + HA Companion App whitelist.
  *
@@ -239,7 +241,7 @@ export function parseModeWrite(rawValue: unknown, allowedSentinels: readonly str
     // Disallowed-Sentinel-Detection: wenn der Caller MODE_GLOBAL/MODE_MANUAL
     // als known-strings hat, aber sie nicht in allowedSentinels sind, melden
     // wir das explizit (für Self-Referential-Check in global-config).
-    if (rawValue === 'global' || rawValue === 'manual') {
+    if (rawValue === MODE_GLOBAL || rawValue === MODE_MANUAL) {
         return { kind: 'rejected-disallowed-sentinel', value: rawValue };
     }
     const safe = coerceSafeUrl(rawValue);
@@ -419,4 +421,55 @@ export function buildDropdownStates(
     urlStates: Record<string, string>,
 ): Record<string, string> {
     return { 0: '---', ...sentinels, ...urlStates };
+}
+
+/**
+ * Drops oldest entries from a Map until size is below `cap`. Map iteration order
+ * in JS is insertion order, so `keys().next()` is the oldest. While-loop is
+ * defensive — if `cap` is lowered at runtime or a bulk-insert pushes multiple
+ * entries past the threshold in one call, all overflow gets evicted.
+ *
+ * v1.32.0: konsolidiert aus `webserver.ts:evictOldest` (private static, while-loop)
+ * und `client-registry.ts:recordNewClientIp` (single-shot inline) zu einem shared
+ * helper.
+ *
+ * @param map Map to evict from.
+ * @param cap Hard cap — evicts while `map.size >= cap`.
+ */
+export function evictOldest<V>(map: Map<string, V>, cap: number): void {
+    while (map.size >= cap) {
+        const oldest = map.keys().next().value;
+        if (oldest === undefined) {
+            return;
+        }
+        map.delete(oldest);
+    }
+}
+
+/**
+ * Escapes the 5 HTML-special characters `<`, `>`, `&`, `"`, `'` for safe
+ * interpolation in HTML element bodies AND in attribute values. Defensive
+ * default — the apostrophe escape covers `href='...'`-attribute uses even
+ * if the calling site uses `"..."`-attributes today.
+ *
+ * v1.32.0: konsolidiert aus `landing-page.ts:escapeHtml` (5-Char) und
+ * `auth-page.ts:escAttr` (4-Char) zu einem shared helper.
+ *
+ * @param s Untrusted string to interpolate into HTML.
+ */
+export function escapeHtml(s: string): string {
+    return s.replace(/[<>&"']/g, c => {
+        switch (c) {
+            case '<':
+                return '&lt;';
+            case '>':
+                return '&gt;';
+            case '&':
+                return '&amp;';
+            case '"':
+                return '&quot;';
+            default:
+                return '&#39;';
+        }
+    });
 }
