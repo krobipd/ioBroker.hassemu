@@ -177,6 +177,8 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 
 - Internal cleanup based on a source audit. No user-facing changes — except that adding or reconfiguring an Aura adapter now refreshes the URL dropdown automatically instead of requiring a manual refresh.
 
+Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
+
 ### Support Development
 
 This adapter is free and open source. If you find it useful, consider buying me a coffee:
