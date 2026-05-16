@@ -930,7 +930,7 @@ describe('WebServer', () => {
             const res = await server.inject({ method: 'GET', url: '/' });
             expect(res.statusCode).to.equal(200);
             expect(res.headers['content-type']).to.include('text/html');
-            expect(res.body).to.include('<iframe src="http://example.com/vis"');
+            expect(res.body).to.include('<iframe id="hassemu-iframe" src="http://example.com/vis"');
             expect(res.body).to.include('/api/redirect_check');
         });
 
@@ -985,7 +985,7 @@ describe('WebServer', () => {
                 headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
             });
             expect(r2.statusCode).to.equal(200);
-            expect(r2.body).to.include('<iframe src="http://override.local/ui"');
+            expect(r2.body).to.include('<iframe id="hassemu-iframe" src="http://override.local/ui"');
         });
 
         it('GET / wrapper uses direct-URL mode in iframe', async () => {
@@ -999,7 +999,7 @@ describe('WebServer', () => {
                 headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
             });
             expect(r2.statusCode).to.equal(200);
-            expect(r2.body).to.include('<iframe src="http://direct.local/ui"');
+            expect(r2.body).to.include('<iframe id="hassemu-iframe" src="http://direct.local/ui"');
         });
 
         it('GET /api/redirect_check returns current target (v1.7.0)', async () => {

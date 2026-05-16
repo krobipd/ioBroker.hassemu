@@ -1,20 +1,33 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.32.0",
+    "version": "1.32.1",
     "news": {
+      "1.32.1": {
+        "en": "If the adapter goes offline while the display is running, the display now switches to a clear offline page with a reload button instead of just stopping to update.",
+        "de": "Wenn der Adapter offline geht während das Display läuft, wechselt das Display jetzt auf eine klare Offline-Seite mit Neu-Laden-Button — statt einfach nicht mehr zu aktualisieren.",
+        "ru": "Если адаптер уходит в офлайн во время работы дисплея, дисплей теперь переключается на понятную офлайн-страницу с кнопкой обновления, а не просто перестаёт обновляться.",
+        "pt": "Se o adaptador ficar offline enquanto o ecrã está em uso, o ecrã muda agora para uma página offline clara com botão de recarregar — em vez de simplesmente parar de atualizar.",
+        "nl": "Als de adapter offline gaat terwijl het display in gebruik is, schakelt het display nu over op een duidelijke offline-pagina met een herlaad-knop in plaats van simpelweg niet meer bij te werken.",
+        "fr": "Si l'adaptateur passe hors ligne pendant l'utilisation, l'écran bascule désormais sur une page hors ligne explicite avec bouton de rechargement, au lieu de simplement cesser de se mettre à jour.",
+        "it": "Se l'adattatore va offline mentre il display è in uso, il display passa ora a una pagina offline chiara con pulsante di ricarica, invece di smettere semplicemente di aggiornarsi.",
+        "es": "Si el adaptador queda sin conexión mientras la pantalla está en uso, ahora la pantalla cambia a una página offline clara con botón de recarga, en lugar de dejar simplemente de actualizarse.",
+        "pl": "Jeśli adapter przestanie być dostępny podczas pracy wyświetlacza, ekran przechodzi teraz na czytelną stronę offline z przyciskiem ponownego załadowania — zamiast po prostu przestać się aktualizować.",
+        "uk": "Якщо адаптер стає недоступним поки дисплей працює, екран тепер переходить на чітку офлайн-сторінку з кнопкою перезавантаження, а не просто перестає оновлюватись.",
+        "zh-cn": "如果在显示器运行时适配器变得不可用，显示器现在会切换到带有「重新加载」按钮的清晰离线页面，而不是只停止更新。"
+      },
       "1.32.0": {
-        "en": "Internal: test runner switched to Vitest. Two truncated dashboard labels corrected.",
-        "de": "Intern: Test-Runner auf Vitest umgestellt. Zwei abgeschnittene Dashboard-Texte korrigiert.",
-        "ru": "Внутри: тест-раннер переведён на Vitest. Исправлены два усечённых текста дашборда.",
-        "pt": "Interno: test runner migrado para Vitest. Dois textos truncados do painel foram corrigidos.",
-        "nl": "Intern: test runner naar Vitest gewisseld. Twee afgekapte dashboard-teksten gecorrigeerd.",
-        "fr": "Interne : runner de tests passé à Vitest. Deux libellés tronqués du tableau de bord corrigés.",
-        "it": "Interno: test runner migrato a Vitest. Corrette due etichette troncate del dashboard.",
-        "es": "Interno: corredor de pruebas cambiado a Vitest. Corregidas dos etiquetas truncadas del panel.",
-        "pl": "Wewnętrznie: test runner zmieniony na Vitest. Poprawiono dwa skrócone teksty dashboardu.",
-        "uk": "Внутрішньо: тест-раннер змінено на Vitest. Виправлено два обрізані тексти дашборду.",
-        "zh-cn": "内部：测试运行器切换为 Vitest。修正了两个被截断的面板文本。"
+        "en": "Two state descriptions in the object tree are now complete again. Internal cleanup, no further user-facing changes.",
+        "de": "Zwei abgeschnittene State-Beschreibungen im Objektbaum sind wieder vollständig. Interne Aufräumarbeiten, sonst keine sichtbaren Änderungen.",
+        "ru": "Две обрезанные подписи стейтов в дереве объектов снова полные. Внутренняя оптимизация, без других видимых изменений.",
+        "pt": "Duas descrições de estado truncadas na árvore de objetos voltam a estar completas. Limpeza interna, sem outras mudanças visíveis.",
+        "nl": "Twee afgekapte state-beschrijvingen in de objectboom zijn weer compleet. Interne opruiming, geen andere zichtbare wijzigingen.",
+        "fr": "Deux descriptions d'état tronquées dans l'arbre des objets sont à nouveau complètes. Nettoyage interne, pas d'autres changements visibles.",
+        "it": "Due descrizioni di stato troncate nell'albero degli oggetti sono di nuovo complete. Pulizia interna, nessun'altra modifica visibile.",
+        "es": "Dos descripciones de estado truncadas en el árbol de objetos vuelven a estar completas. Limpieza interna, sin otros cambios visibles.",
+        "pl": "Dwa skrócone opisy stanów w drzewie obiektów są znów kompletne. Wewnętrzne porządki, bez innych widocznych zmian.",
+        "uk": "Два обрізані описи станів у дереві об'єктів знову повні. Внутрішнє прибирання, без інших видимих змін.",
+        "zh-cn": "对象树中两个被截断的状态描述现已完整。其余为内部清理，无用户可见更改。"
       },
       "1.31.1": {
         "en": "Debug log traces every decision point that was previously silent: cookie identity, OAuth2 validation, URL discovery skips, resolver chain, mobile-app webhook flow.",
@@ -80,19 +93,6 @@
         "pl": "Shelly Wall Display z firmware 2.6.0+ nie pokazuje już popupu błędu po załadowaniu strony. Aura jest teraz automatycznie wykrywana. Logo ioBroker na stronie startowej.",
         "uk": "Shelly Wall Display з прошивкою 2.6.0+ більше не показує попап помилки після завантаження. Aura тепер виявляється автоматично. Логотип ioBroker на стартовій сторінці.",
         "zh-cn": "运行固件 2.6.0+ 的 Shelly Wall Display 在页面加载后不再显示连接错误弹窗。Aura 现在可在 Mode 下拉框中自动发现。落地页带有 ioBroker 徽标。"
-      },
-      "1.29.1": {
-        "en": "Shelly Wall Display onboarding under firmware 2.6.0 and newer now completes — the on-device Home Assistant app needs a device-registration step that the adapter now provides.",
-        "de": "Shelly Wall Display Onboarding unter Firmware 2.6.0 und neuer läuft jetzt durch — die Home-Assistant-App auf dem Display braucht einen Geräte-Registrierungs-Schritt den der Adapter jetzt bedient.",
-        "ru": "Настройка Shelly Wall Display на прошивке 2.6.0 и новее теперь завершается — приложению Home Assistant на устройстве нужен шаг регистрации устройства, который теперь обрабатывается.",
-        "pt": "O onboarding do Shelly Wall Display com firmware 2.6.0+ conclui-se agora — a app Home Assistant no dispositivo precisa de um passo de registo que o adaptador agora fornece.",
-        "nl": "Onboarding van het Shelly Wall Display met firmware 2.6.0 en nieuwer loopt nu door — de Home-Assistant-app op het apparaat heeft een apparaatregistratiestap nodig die de adapter nu levert.",
-        "fr": "L'onboarding du Shelly Wall Display sous firmware 2.6.0+ se termine — l'app Home Assistant sur l'appareil a besoin d'un enregistrement que l'adaptateur fournit désormais.",
-        "it": "L'onboarding di Shelly Wall Display con firmware 2.6.0 e successivo ora si completa — l'app Home Assistant sul dispositivo richiede un passo di registrazione che l'adapter ora gestisce.",
-        "es": "El onboarding del Shelly Wall Display con firmware 2.6.0 o superior ahora se completa — la aplicación Home Assistant en el dispositivo necesita un paso de registro que el adaptador ya proporciona.",
-        "pl": "Onboarding wyświetlacza Shelly Wall Display z firmware 2.6.0 i nowszym kończy się teraz — aplikacja Home Assistant na urządzeniu wymaga rejestracji urządzenia, którą adapter teraz obsługuje.",
-        "uk": "Налаштування Shelly Wall Display з прошивкою 2.6.0 і новіше тепер завершується — додаток Home Assistant на пристрої потребує крок реєстрації, який тепер обробляється.",
-        "zh-cn": "运行固件 2.6.0 及更新版本的 Shelly Wall Display 现在可以完成初始设置——设备上的 Home Assistant 应用需要一个设备注册步骤，适配器现已支持。"
       }
     },
     "titleLang": {

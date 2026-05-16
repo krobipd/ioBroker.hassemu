@@ -1030,7 +1030,10 @@ export class WebServer {
                     .send(renderLandingPage(client.id, this.adapter.namespace, this.systemLanguage, client.ip));
             }
             this.adapter.log.debug(`GET / client=${client.id} → URL (chain=${chain})`);
-            return reply.status(200).type('text/html; charset=utf-8').send(renderRedirectWrapper(url));
+            return reply
+                .status(200)
+                .type('text/html; charset=utf-8')
+                .send(renderRedirectWrapper(url, client.id, this.adapter.namespace, this.systemLanguage, client.ip));
         });
 
         // /api/redirect_check — Display polled das alle 30s; wenn der target

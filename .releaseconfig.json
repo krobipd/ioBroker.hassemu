@@ -4,6 +4,7 @@
         "before_commit": [
             "python3 ../scripts/audit-krobi-consistency.py --release-mode",
             "python3 scripts/check-iopackage-i18n-sync.py",
+            "python3 ../scripts/pre-release.py --audit-current",
             "npm update",
             "npm test",
             "npm run build",
