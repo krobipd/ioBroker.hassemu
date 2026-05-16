@@ -8,6 +8,8 @@ import {
     coerceSafeUrlReason,
     decideGcAction,
     decideLegacyVisMigration,
+    escapeHtml,
+    evictOldest,
     isPlainObject,
     isValidRedirectUri,
     safeStringEqual,
@@ -391,6 +393,72 @@ describe('coerce', () => {
             // request `homeassistant://auth-callback` — that's reserved for the
             // Companion App. Defense against client-spoofing.
             expect(isValidRedirectUri('http://10.0.0.1:8123/', 'homeassistant://auth-callback')).to.be.false;
+        });
+    });
+
+    describe('evictOldest', () => {
+        it('does nothing on empty map', () => {
+            const m = new Map<string, number>();
+            evictOldest(m, 5);
+            expect(m.size).to.equal(0);
+        });
+
+        it('evicts single oldest entry when at cap', () => {
+            // Insertion order: a, b, c — at cap=3, next insert would push past;
+            // pre-evict drops 'a' (oldest by insertion order).
+            const m = new Map<string, number>([
+                ['a', 1],
+                ['b', 2],
+                ['c', 3],
+            ]);
+            evictOldest(m, 3);
+            expect([...m.keys()]).to.deep.equal(['b', 'c']);
+        });
+
+        it('while-loop evicts multiple when over cap', () => {
+            // Defensive against bulk-insert past cap or lowered cap.
+            // Loop runs while size >= cap, i.e. evicts until size < cap.
+            // size=5, cap=3 → evicts a/b/c, leaves d/e.
+            const m = new Map<string, number>([
+                ['a', 1],
+                ['b', 2],
+                ['c', 3],
+                ['d', 4],
+                ['e', 5],
+            ]);
+            evictOldest(m, 3);
+            expect([...m.keys()]).to.deep.equal(['d', 'e']);
+        });
+
+        it('handles cap=0 by emptying the map', () => {
+            const m = new Map<string, number>([
+                ['a', 1],
+                ['b', 2],
+            ]);
+            evictOldest(m, 0);
+            expect(m.size).to.equal(0);
+        });
+
+        it('is safe on map smaller than cap', () => {
+            const m = new Map<string, number>([['a', 1]]);
+            evictOldest(m, 5);
+            expect([...m.keys()]).to.deep.equal(['a']);
+        });
+    });
+
+    describe('escapeHtml', () => {
+        it('escapes the 5 HTML-special characters', () => {
+            expect(escapeHtml('<script>alert("x\'y")</script>&')).to.equal(
+                '&lt;script&gt;alert(&quot;x&#39;y&quot;)&lt;/script&gt;&amp;',
+            );
+        });
+
+        it('returns input unchanged when no special chars', () => {
+            expect(escapeHtml('plain text 123')).to.equal('plain text 123');
+        });
+
+        it('escapes apostrophe (defense-in-depth for href=\'...\' attributes)', () => {
+            expect(escapeHtml("a'b")).to.equal('a&#39;b');
         });
     });
 });

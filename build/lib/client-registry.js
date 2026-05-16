@@ -482,12 +482,7 @@ class ClientRegistry {
       entry.warnedAt = now;
     }
     this.newClientBurst.set(ip, entry);
-    if (this.newClientBurst.size > 200) {
-      const oldest = this.newClientBurst.keys().next().value;
-      if (oldest !== void 0) {
-        this.newClientBurst.delete(oldest);
-      }
-    }
+    (0, import_coerce.evictOldest)(this.newClientBurst, import_constants.NEW_CLIENT_BURST_CAP);
   }
   /**
    * Updates `native.lastSeen` on the channel, throttled to once per hour per

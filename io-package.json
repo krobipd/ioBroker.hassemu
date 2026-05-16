@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.31.1",
+    "version": "1.32.0",
     "news": {
+      "1.32.0": {
+        "en": "Internal: test runner switched to Vitest. Two truncated dashboard labels corrected.",
+        "de": "Intern: Test-Runner auf Vitest umgestellt. Zwei abgeschnittene Dashboard-Texte korrigiert.",
+        "ru": "Внутри: тест-раннер переведён на Vitest. Исправлены два усечённых текста дашборда.",
+        "pt": "Interno: test runner migrado para Vitest. Dois textos truncados do painel foram corrigidos.",
+        "nl": "Intern: test runner naar Vitest gewisseld. Twee afgekapte dashboard-teksten gecorrigeerd.",
+        "fr": "Interne : runner de tests passé à Vitest. Deux libellés tronqués du tableau de bord corrigés.",
+        "it": "Interno: test runner migrato a Vitest. Corrette due etichette troncate del dashboard.",
+        "es": "Interno: corredor de pruebas cambiado a Vitest. Corregidas dos etiquetas truncadas del panel.",
+        "pl": "Wewnętrznie: test runner zmieniony na Vitest. Poprawiono dwa skrócone teksty dashboardu.",
+        "uk": "Внутрішньо: тест-раннер змінено на Vitest. Виправлено два обрізані тексти дашборду.",
+        "zh-cn": "内部：测试运行器切换为 Vitest。修正了两个被截断的面板文本。"
+      },
       "1.31.1": {
         "en": "Debug log traces every decision point that was previously silent: cookie identity, OAuth2 validation, URL discovery skips, resolver chain, mobile-app webhook flow.",
         "de": "Debug-Log spurt jetzt jeden Entscheidungspunkt der vorher silent war: Cookie-Identität, OAuth2-Validation, URL-Discovery-Skips, Resolver-Kette, Mobile-App-Webhook-Ablauf.",
@@ -80,19 +93,6 @@
         "pl": "Onboarding wyświetlacza Shelly Wall Display z firmware 2.6.0 i nowszym kończy się teraz — aplikacja Home Assistant na urządzeniu wymaga rejestracji urządzenia, którą adapter teraz obsługuje.",
         "uk": "Налаштування Shelly Wall Display з прошивкою 2.6.0 і новіше тепер завершується — додаток Home Assistant на пристрої потребує крок реєстрації, який тепер обробляється.",
         "zh-cn": "运行固件 2.6.0 及更新版本的 Shelly Wall Display 现在可以完成初始设置——设备上的 Home Assistant 应用需要一个设备注册步骤，适配器现已支持。"
-      },
-      "1.29.0": {
-        "en": "Shelly Wall Displays running firmware 2.6.0 and newer connect again. The new on-device Home Assistant app uses a browser sign-in that the adapter now answers.",
-        "de": "Shelly Wall Displays mit Firmware 2.6.0 und neuer verbinden wieder. Die neue Home-Assistant-App auf dem Display nutzt einen Browser-Login den der Adapter jetzt bedient.",
-        "ru": "Shelly Wall Display с прошивкой 2.6.0 и новее снова подключается. Новое приложение Home Assistant на устройстве использует браузерный логин, который теперь обрабатывается.",
-        "pt": "Os Shelly Wall Displays com firmware 2.6.0 e mais recente voltam a ligar. A nova app do Home Assistant no dispositivo usa um login no browser que o adaptador agora trata.",
-        "nl": "Shelly Wall Displays met firmware 2.6.0 en nieuwer verbinden weer. De nieuwe Home-Assistant-app op het apparaat gebruikt een browser-login die de adapter nu afhandelt.",
-        "fr": "Les Shelly Wall Displays avec firmware 2.6.0 et plus récent se connectent à nouveau. La nouvelle app Home Assistant sur l'appareil utilise une connexion via navigateur que l'adaptateur gère.",
-        "it": "I Shelly Wall Display con firmware 2.6.0 e successivo si connettono di nuovo. La nuova app Home Assistant sul dispositivo usa un login via browser ora gestito dall'adapter.",
-        "es": "Los Shelly Wall Displays con firmware 2.6.0 o superior vuelven a conectar. La nueva aplicación Home Assistant en el dispositivo usa un inicio de sesión por navegador que el adaptador ya atiende.",
-        "pl": "Wyświetlacze Shelly Wall Display z firmware 2.6.0 i nowszym znów się łączą. Nowa aplikacja Home Assistant na urządzeniu używa logowania w przeglądarce, które adapter teraz obsługuje.",
-        "uk": "Shelly Wall Display з прошивкою 2.6.0 і новіше знову підключається. Новий додаток Home Assistant на пристрої використовує вхід через браузер, який тепер обробляється.",
-        "zh-cn": "运行固件 2.6.0 及更新版本的 Shelly Wall Display 重新可以连接。设备上的新 Home Assistant 应用使用浏览器登录，适配器现已支持。"
       }
     },
     "titleLang": {
@@ -313,7 +313,7 @@
           "zh-cn": "HA 服务器 UUID（重启后保持不变）"
         },
         "desc": {
-          "en": "Persistent UUID broadcast via mDNS and /api/discovery_info. Generated once on first start and re-used across restarts so HA-Clients don",
+          "en": "Persistent UUID broadcast via mDNS and /api/discovery_info. Generated once on first start and re-used across restarts so HA-Clients don't treat each restart as a new server (which would invalidate cached identity, force re-onboarding and drop tokens).",
           "de": "Persistente UUID, broadcastet via mDNS und /api/discovery_info. Wird beim ersten Start einmal erzeugt und über Neustarts hinweg wiederverwendet, sodass HA-Clients nicht jeden Neustart als neuen Server behandeln (was die gecachte Identität ungültig machen, Re-Onboarding erzwingen und Tokens verwerfen würde).",
           "ru": "Постоянный UUID, транслируемый через mDNS и /api/discovery_info. Генерируется один раз при первом старте и переиспользуется при перезапусках, чтобы HA-клиенты не считали каждый рестарт новым сервером.",
           "pt": "UUID persistente difundido via mDNS e /api/discovery_info. Gerado uma vez no primeiro arranque e reutilizado entre reinícios para que os clientes HA não tratem cada reinício como um novo servidor.",
@@ -401,17 +401,17 @@
       "type": "state",
       "common": {
         "name": {
-          "en": "Global manual URL (used when mode=",
-          "de": "Globale manuelle URL (genutzt wenn mode=",
-          "ru": "Глобальный ручной URL (используется при mode=",
-          "pt": "URL manual global (usado quando mode=",
-          "nl": "Globale handmatige URL (gebruikt als mode=",
-          "fr": "URL manuelle globale (utilisée quand mode=",
-          "it": "URL manuale globale (usato quando mode=",
-          "es": "URL manual global (se usa cuando mode=",
-          "pl": "Globalny ręczny URL (gdy mode=",
-          "uk": "Глобальний ручний URL (коли mode=",
-          "zh-cn": "全局手动 URL（当 mode="
+          "en": "Global manual URL (used when mode='manual')",
+          "de": "Globale manuelle URL (genutzt wenn mode='manual')",
+          "ru": "Глобальный ручной URL (используется при mode='manual')",
+          "pt": "URL manual global (usado quando mode='manual')",
+          "nl": "Globale handmatige URL (gebruikt als mode='manual')",
+          "fr": "URL manuelle globale (utilisée quand mode='manual')",
+          "it": "URL manuale globale (usato quando mode='manual')",
+          "es": "URL manual global (se usa cuando mode='manual')",
+          "pl": "Globalny ręczny URL (gdy mode='manual')",
+          "uk": "Глобальний ручний URL (коли mode='manual')",
+          "zh-cn": "全局手动 URL（当 mode='manual' 时使用）"
         },
         "type": "string",
         "role": "url",

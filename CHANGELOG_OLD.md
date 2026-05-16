@@ -1,4 +1,10 @@
 # Older Changes
+## 1.29.2 (2026-05-12)
+
+- Shelly Wall Display on firmware 2.6.0+ no longer shows the connection-error popup after the page has loaded.
+- The mode dropdown now auto-discovers Aura instances (frontend at the configured port).
+- The landing page now carries the ioBroker logo, and the README has a clear table of every dashboard source the adapter recognizes.
+
 ## 1.29.1 (2026-05-12)
 
 - Shelly Wall Display onboarding under firmware 2.6.0 and newer now completes — the on-device Home Assistant app needs a device-registration step that the adapter now provides.

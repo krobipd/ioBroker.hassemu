@@ -21,6 +21,7 @@ __export(landing_page_exports, {
   renderLandingPage: () => renderLandingPage
 });
 module.exports = __toCommonJS(landing_page_exports);
+var import_coerce = require("./coerce");
 var import_external_bridge = require("./external-bridge");
 const LOGO_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="ioBroker"><circle cx="50" cy="50" r="42" fill="none" stroke="#1F537E" stroke-width="10"/><rect x="44" y="20" width="12" height="60" rx="2" fill="#2B95C6"/><rect x="44" y="26" width="12" height="6" fill="#ffffff"/></svg>';
 const STRINGS = {
@@ -182,19 +183,19 @@ const STRINGS = {
 function renderLandingPage(clientId, namespace, language = "en", ip = null) {
   var _a, _b;
   const s = (_a = STRINGS[language]) != null ? _a : STRINGS.en;
-  const id = escapeHtml(clientId);
-  const ns = escapeHtml(namespace);
+  const id = (0, import_coerce.escapeHtml)(clientId);
+  const ns = (0, import_coerce.escapeHtml)(namespace);
   const datapoint = `${ns}.clients.${id}.mode`;
   const trimmedIp = (_b = ip == null ? void 0 : ip.trim()) != null ? _b : "";
   const isLoopback = trimmedIp === "" || trimmedIp === "127.0.0.1" || trimmedIp === "::1" || trimmedIp === "0.0.0.0" || trimmedIp.startsWith("127.");
-  const ipLine = isLoopback ? "" : `<tr><th scope="row">${escapeHtml(s.ipLabel)}</th><td>${escapeHtml(trimmedIp)}</td></tr>`;
+  const ipLine = isLoopback ? "" : `<tr><th scope="row">${(0, import_coerce.escapeHtml)(s.ipLabel)}</th><td>${(0, import_coerce.escapeHtml)(trimmedIp)}</td></tr>`;
   return `<!DOCTYPE html>
-<html lang="${escapeHtml(s.htmlLang)}">
+<html lang="${(0, import_coerce.escapeHtml)(s.htmlLang)}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="refresh" content="15">
-<title>${escapeHtml(s.pageTitle)}</title>
+<title>${(0, import_coerce.escapeHtml)(s.pageTitle)}</title>
 <style>
 :root {
     --bg: #f5f7fa;
@@ -374,54 +375,38 @@ footer .brand svg { width: 0.95rem; height: 0.95rem; display: block; }
         <div class="logo" aria-hidden="true">${LOGO_SVG}</div>
         <div class="check" aria-hidden="true">\u2713</div>
         <div>
-            <h1>${escapeHtml(s.heading)}</h1>
-            <p>${escapeHtml(s.subhead)}</p>
+            <h1>${(0, import_coerce.escapeHtml)(s.heading)}</h1>
+            <p>${(0, import_coerce.escapeHtml)(s.subhead)}</p>
         </div>
     </div>
     <div class="content">
         <table class="info">
             <tbody>
                 <tr>
-                    <th scope="row">${escapeHtml(s.deviceIdLabel)}</th>
+                    <th scope="row">${(0, import_coerce.escapeHtml)(s.deviceIdLabel)}</th>
                     <td><code>${id}</code></td>
                 </tr>
                 ${ipLine}
             </tbody>
         </table>
         <section class="setup">
-            <h2>${escapeHtml(s.setupTitle)}</h2>
-            <p>${escapeHtml(s.setupIntro)}</p>
+            <h2>${(0, import_coerce.escapeHtml)(s.setupTitle)}</h2>
+            <p>${(0, import_coerce.escapeHtml)(s.setupIntro)}</p>
             <ol class="steps">
-                <li>${escapeHtml(s.step1)}</li>
-                <li>${escapeHtml(s.step2)} <code>${escapeHtml(datapoint)}</code></li>
-                <li>${escapeHtml(s.step3)}</li>
+                <li>${(0, import_coerce.escapeHtml)(s.step1)}</li>
+                <li>${(0, import_coerce.escapeHtml)(s.step2)} <code>${(0, import_coerce.escapeHtml)(datapoint)}</code></li>
+                <li>${(0, import_coerce.escapeHtml)(s.step3)}</li>
             </ol>
         </section>
     </div>
     <footer>
-        ${escapeHtml(s.autoRefresh)}
+        ${(0, import_coerce.escapeHtml)(s.autoRefresh)}
         <span class="brand" aria-hidden="true">${LOGO_SVG} ioBroker</span>
     </footer>
 </main>
 ${import_external_bridge.CONNECTION_STATUS_SCRIPT}
 </body>
 </html>`;
-}
-function escapeHtml(s) {
-  return s.replace(/[<>&"']/g, (c) => {
-    switch (c) {
-      case "<":
-        return "&lt;";
-      case ">":
-        return "&gt;";
-      case "&":
-        return "&amp;";
-      case '"':
-        return "&quot;";
-      default:
-        return "&#39;";
-    }
-  });
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {

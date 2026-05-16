@@ -7,6 +7,7 @@
  * jumps to the real URL the moment the state is written.
  */
 
+import { escapeHtml } from './coerce';
 import { CONNECTION_STATUS_SCRIPT } from './external-bridge';
 
 /**
@@ -457,19 +458,5 @@ ${CONNECTION_STATUS_SCRIPT}
 </html>`;
 }
 
-function escapeHtml(s: string): string {
-    return s.replace(/[<>&"']/g, c => {
-        switch (c) {
-            case '<':
-                return '&lt;';
-            case '>':
-                return '&gt;';
-            case '&':
-                return '&amp;';
-            case '"':
-                return '&quot;';
-            default:
-                return '&#39;';
-        }
-    });
-}
+// v1.32.0: `escapeHtml` ist nach `coerce.ts` ausgelagert (shared helper für
+// landing-page, auth-page, redirect-wrapper).

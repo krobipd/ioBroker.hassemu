@@ -15,75 +15,24 @@ import {
     REQUEST_ERROR_COOLDOWN_CAP,
     COOKIE_MAX_AGE_S,
 } from './constants';
-import { coerceString, coerceUuid, isValidRedirectUri, safeStringEqual } from './coerce';
+import { coerceString, coerceUuid, evictOldest, isValidRedirectUri, safeStringEqual } from './coerce';
 import { buildRedirectUrl, renderAuthorizeError, renderAuthorizeForm, renderAuthorizeRedirect } from './auth-page';
-import { CONNECTION_STATUS_SCRIPT } from './external-bridge';
 import type { ClientRegistry } from './client-registry';
 import type { GlobalConfig } from './global-config';
 import { renderLandingPage } from './landing-page';
 import { getLocalIp, isWildcardBind } from './network';
+import { renderRedirectWrapper } from './redirect-wrapper';
 import type { AdapterConfig, AdapterInterface, ClientRecord, SessionData } from './types';
 
 // v1.22.0 (F5): `safeStringEqual` ist nach `coerce.ts` verschoben — generischer
 // crypto-Helper, kein webserver-spezifischer Belang.
 
+// v1.32.0: `renderRedirectWrapper` ist nach `lib/redirect-wrapper.ts` ausgelagert
+// für Symmetrie zu `landing-page.ts` / `auth-page.ts`. `evictOldest` ist shared
+// helper aus `coerce.ts`.
+
 /** Adapter surface the WebServer depends on — adds `namespace` for the setup page. */
 export type WebServerAdapter = AdapterInterface & Pick<ioBroker.Adapter, 'namespace'>;
-
-/**
- * HTML-Wrapper statt 302-Redirect (A3 / v1.7.0). Display lädt das HTML einmal,
- * sieht den Target im iframe, polled `/api/redirect_check` alle 30s. Bei
- * Target-Wechsel (User edit) macht es `location.reload()` und bekommt das
- * neue iframe-Target.
- *
- * `target` muss bereits durch `coerceSafeUrl` validiert sein (Resolver garantiert
- * das). Der Wrapper escaped trotzdem — defense in depth.
- *
- * @param target Vom Resolver gelieferte Ziel-URL
- */
-function renderRedirectWrapper(target: string): string {
-    // Conservative HTML-attribute escape: minimal set to make the URL safe in
-    // the `src` attribute and the JS string literal below. Sicherheits-relevant
-    // weil target letztlich aus user-konfigurierten States stammt.
-    const escAttr = target.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-    const escJs = JSON.stringify(target); // safe for inline JS string literal
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta http-equiv="X-UA-Compatible" content="IE=edge">
-<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<title>ioBroker HASS Emulator</title>
-<style>
-html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden;}
-/* display:block kills the inline-baseline gap below the iframe; position:fixed +
-   100vw/100vh nimmt das Display sicher voll aus, auch wenn ein WebView die
-   100%-Berechnung subpixel-falsch macht (Shelly Wall Display zeigte sonst
-   einen schwarzen Streifen rechts/unten). */
-iframe{display:block;border:0;margin:0;padding:0;position:fixed;top:0;left:0;width:100vw;height:100vh;background:#000;}
-</style>
-</head>
-<body>
-<iframe src="${escAttr}" allow="autoplay; fullscreen; geolocation; microphone; camera"></iframe>
-${CONNECTION_STATUS_SCRIPT}
-<script>
-(function(){
-  var current=${escJs};
-  setInterval(function(){
-    fetch('/api/redirect_check',{cache:'no-store',credentials:'same-origin'})
-      .then(function(r){return r.json();})
-      .then(function(j){
-        if(j&&typeof j.target==='string'&&j.target&&j.target!==current){
-          location.reload();
-        }
-      })
-      .catch(function(){/* silent — broker hiccup, retry next tick */});
-  },30000);
-})();
-</script>
-</body>
-</html>`;
-}
 
 /** Browser cookie name. Client identity lives here — auto-sent on every page navigation. */
 export const CLIENT_COOKIE = 'hassemu_client';
@@ -319,24 +268,10 @@ export class WebServer {
             return false;
         }
         if (!this.errorLogCooldown.has(key)) {
-            WebServer.evictOldest(this.errorLogCooldown, REQUEST_ERROR_COOLDOWN_CAP);
+            evictOldest(this.errorLogCooldown, REQUEST_ERROR_COOLDOWN_CAP);
         }
         this.errorLogCooldown.set(key, now);
         return true;
-    }
-
-    private static evictOldest<V>(map: Map<string, V>, cap: number): void {
-        // v1.9.0 (E9): while-loop statt single if. Single Eviction reicht
-        // wenn der Caller VOR jedem Insert evictet (heute der Fall), aber
-        // ein while ist defensiv robust falls cap mal nachträglich gesenkt
-        // wird oder ein Caller bulk-inserts macht.
-        while (map.size >= cap) {
-            const oldest = map.keys().next().value;
-            if (oldest === undefined) {
-                return;
-            }
-            map.delete(oldest);
-        }
     }
 
     /**
@@ -346,7 +281,7 @@ export class WebServer {
      * @param data Session payload.
      */
     private storeSession(key: string, data: SessionData): void {
-        WebServer.evictOldest(this.sessions, SESSIONS_CAP);
+        evictOldest(this.sessions, SESSIONS_CAP);
         this.sessions.set(key, data);
     }
 
@@ -614,7 +549,7 @@ export class WebServer {
             const ownerId = client?.id ?? '';
 
             const webhookId = crypto.randomUUID().replace(/-/g, '');
-            WebServer.evictOldest(this.webhookRegistrations, WEBHOOK_REGISTRATIONS_CAP);
+            evictOldest(this.webhookRegistrations, WEBHOOK_REGISTRATIONS_CAP);
             this.webhookRegistrations.set(webhookId, ownerId);
 
             this.adapter.log.debug(
