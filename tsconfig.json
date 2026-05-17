@@ -10,20 +10,13 @@
         "allowJs": true,
         "checkJs": true,
 
-        "noEmitOnError": true,
-        "outDir": "./build/",
-        "removeComments": false,
-
         // This is necessary for the automatic typing of the adapter config
         "resolveJsonModule": true,
 
-        // @types packages — vitest globals (from vitest.config.ts:test.globals=true)
-        // need an explicit types entry. TS 6 no longer auto-includes globals.
-        "types": ["vitest/globals", "node"],
-
-        "sourceMap": true,
-        "inlineSourceMap": false
+        // TS 6 no longer auto-includes globals like `describe`/`it` from
+        // @types packages — vitest globals need an explicit types entry.
+        "types": ["vitest/globals", "node"]
     },
-    "include": ["src/**/*.ts", "test/**/*.ts"],
+    "include": ["src/**/*.ts"],
     "exclude": ["build/**", "node_modules/**", "widgets/**"]
 }
