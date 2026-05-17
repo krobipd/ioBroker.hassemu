@@ -156,6 +156,9 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+### **WORK IN PROGRESS**
+* Internal cleanup. No user-facing changes.
+
 ### 1.32.2 (2026-05-16)
 
 - Internal cleanup. No user-facing changes.
