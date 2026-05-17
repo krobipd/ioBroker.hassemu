@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.32.2",
+    "version": "1.32.3",
     "news": {
-      "NEXT": {
+      "1.32.3": {
         "en": "Internal cleanup. No user-facing changes.",
         "de": "Interne Bereinigung. Keine sichtbaren Änderungen.",
         "ru": "Внутренняя очистка. Нет видимых изменений для пользователей.",
