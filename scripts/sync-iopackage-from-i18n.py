@@ -65,7 +65,7 @@ def parse_ts_dict(text: str, dict_name: str) -> dict[str, dict[str, str]]:
 
     result: dict[str, dict[str, str]] = {}
     for key_match in re.finditer(
-        r"^    ['\"]?([a-zA-Z][a-zA-Z0-9-_]*)['\"]?\s*:\s*\{(.*?)^    \},?",
+        r"^  ['\"]?([a-zA-Z][a-zA-Z0-9-_]*)['\"]?\s*:\s*\{(.*?)^  \},?",
         block,
         re.DOTALL | re.MULTILINE,
     ):
