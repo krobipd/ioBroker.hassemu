@@ -150,9 +150,7 @@ class GlobalConfig {
         await this.adapter.setStateAsync("global.mode", { val: this.mode || 0, ack: true });
         return;
       case "rejected-disallowed-sentinel":
-        this.adapter.log.warn(
-          `global.mode rejected \u2014 "global" is not allowed at the global level (self-referential)`
-        );
+        this.adapter.log.warn(`global.mode rejected \u2014 "global" is not allowed at the global level (self-referential)`);
         await this.adapter.setStateAsync("global.mode", { val: this.mode, ack: true });
         return;
       case "sentinel":

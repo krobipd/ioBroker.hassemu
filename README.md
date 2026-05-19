@@ -37,13 +37,13 @@ Typical clients: Shelly Wall Display family (built-in HA page; on-device HA app 
 
 The mode dropdown auto-discovers what's installed on your ioBroker host. You always have the option to paste any other HTTP URL as `manual`.
 
-| Source | What gets discovered | Notes |
-| --- | --- | --- |
-| **ioBroker VIS** (`vis.0`+) | One entry per project, plus one entry per view inside each project | Works with every `web.*` instance — multiple web instances get a `(web.X)` suffix on the label |
-| **ioBroker VIS-2** (`vis-2.0`+) | Same — one entry per project, one per view | Project + view encoded into the URL (`?<project>#<view>`); deep links work |
-| **ioBroker Aura** (`aura.0`+) | One entry per running aura instance, pointing at its frontend | Reads the actual `native.port` configured in aura (default 8095, ignores the hardcoded value in aura's `localLinks` template) — works with `https` and `customUrl` overrides |
-| **Admin tiles** | Anything an adapter advertises via `common.localLinks` / `common.welcomeScreen` (jarvis, material, grafana, custom UI…) | Resolves `%ip%`, `%port%`, `%protocol%`, `%bind%`, and cross-instance refs like `%web.0_port%` |
-| **Manual URL** | A free-text URL of your choice — Grafana, Node-RED, custom HTML, anything HTTP/HTTPS | Set the display's `mode` to `manual` and the URL in `manualUrl`. `javascript:`, `data:`, `file:` are rejected for safety |
+| Source                          | What gets discovered                                                                                                    | Notes                                                                                                                                                                        |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **ioBroker VIS** (`vis.0`+)     | One entry per project, plus one entry per view inside each project                                                      | Works with every `web.*` instance — multiple web instances get a `(web.X)` suffix on the label                                                                               |
+| **ioBroker VIS-2** (`vis-2.0`+) | Same — one entry per project, one per view                                                                              | Project + view encoded into the URL (`?<project>#<view>`); deep links work                                                                                                   |
+| **ioBroker Aura** (`aura.0`+)   | One entry per running aura instance, pointing at its frontend                                                           | Reads the actual `native.port` configured in aura (default 8095, ignores the hardcoded value in aura's `localLinks` template) — works with `https` and `customUrl` overrides |
+| **Admin tiles**                 | Anything an adapter advertises via `common.localLinks` / `common.welcomeScreen` (jarvis, material, grafana, custom UI…) | Resolves `%ip%`, `%port%`, `%protocol%`, `%bind%`, and cross-instance refs like `%web.0_port%`                                                                               |
+| **Manual URL**                  | A free-text URL of your choice — Grafana, Node-RED, custom HTML, anything HTTP/HTTPS                                    | Set the display's `mode` to `manual` and the URL in `manualUrl`. `javascript:`, `data:`, `file:` are rejected for safety                                                     |
 
 Want to add a URL the adapter doesn't auto-detect? Set `manual` and paste it.
 
@@ -54,15 +54,14 @@ Want to add a URL the adapter doesn't auto-detect? Set `manual` and paste it.
 - Node.js ≥ 22
 - ioBroker js-controller ≥ 7.0.7
 - ioBroker Admin ≥ 7.8.23
-- ioBroker web ≥ 8.0.0
 
 ---
 
 ## Ports
 
-| Port | Use |
-| --- | --- |
-| 8123 / TCP | HA emulation (fixed, HA standard) |
+| Port       | Use                                 |
+| ---------- | ----------------------------------- |
+| 8123 / TCP | HA emulation (fixed, HA standard)   |
 | 5353 / UDP | mDNS broadcast (only if mDNS is on) |
 
 One instance per host. Port 8123 is HA-fixed. With multiple ioBroker hosts on the same LAN, only one of them runs hassemu.
@@ -71,13 +70,13 @@ One instance per host. Port 8123 is HA-fixed. With multiple ioBroker hosts on th
 
 ## Configuration
 
-| Option | What | Default |
-| --- | --- | --- |
-| Bind | Network interface | 0.0.0.0 |
-| Service Name | Name the display sees | ioBroker |
-| mDNS | LAN auto-discovery. Off → set `http://<ioBroker-IP>:8123` on the display by hand. | on |
-| Auth | Login required | off |
-| Username / Password | When Auth is on | admin / — |
+| Option              | What                                                                              | Default   |
+| ------------------- | --------------------------------------------------------------------------------- | --------- |
+| Bind                | Network interface                                                                 | 0.0.0.0   |
+| Service Name        | Name the display sees                                                             | ioBroker  |
+| mDNS                | LAN auto-discovery. Off → set `http://<ioBroker-IP>:8123` on the display by hand. | on        |
+| Auth                | Login required                                                                    | off       |
+| Username / Password | When Auth is on                                                                   | admin / — |
 
 ---
 
@@ -103,14 +102,15 @@ hassemu.0.
 
 ### Which URL does the display get?
 
-| `mode`        | URL                            |
-| ------------- | ------------------------------ |
-| `global`      | use `global.mode`              |
-| `manual`      | use `manualUrl`                |
-| a URL         | that URL                       |
-| empty (`---`) | landing page                   |
+| `mode`        | URL               |
+| ------------- | ----------------- |
+| `global`      | use `global.mode` |
+| `manual`      | use `manualUrl`   |
+| a URL         | that URL          |
+| empty (`---`) | landing page      |
 
 Master switch:
+
 - **on** — all displays follow `global.mode`
 - **off** — all displays go back to `---`
 - new displays always start at `---`
@@ -152,12 +152,19 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 ---
 
 ## Changelog
+
 <!--
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+
+### **WORK IN PROGRESS**
+
+- Removed unnecessary web adapter dependency. Code quality enforced with standard formatting.
+
 ### 1.32.3 (2026-05-17)
-* Internal cleanup. No user-facing changes.
+
+- Internal cleanup. No user-facing changes.
 
 ### 1.32.2 (2026-05-16)
 
@@ -212,4 +219,5 @@ SOFTWARE.
 
 ---
 
+<!-- prettier-ignore -->
 *Developed with assistance from Claude.ai*

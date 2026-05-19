@@ -165,9 +165,7 @@ class ClientRegistry {
       const pending = this.pendingByIp.get(bucketKey);
       if (pending) {
         return pending.catch((err) => {
-          this.adapter.log.debug(
-            `client-registry: pending createClient for ${bucketKey} rejected: ${String(err)}`
-          );
+          this.adapter.log.debug(`client-registry: pending createClient for ${bucketKey} rejected: ${String(err)}`);
           throw err;
         });
       }
@@ -342,9 +340,7 @@ class ClientRegistry {
     await this.adapter.setStateAsync(`clients.${id}.manualUrl`, { val: (_b = result.safe) != null ? _b : "", ack: true });
     this.adapter.log.debug(`Client ${id}: manualUrl \u2192 ${(_c = result.safe) != null ? _c : "cleared"}`);
     if (record.mode === import_constants.MODE_MANUAL && !result.safe) {
-      this.adapter.log.warn(
-        `Client ${id}: manualUrl cleared while mode is "manual" \u2014 display will see the setup page`
-      );
+      this.adapter.log.warn(`Client ${id}: manualUrl cleared while mode is "manual" \u2014 display will see the setup page`);
     }
   }
   /**

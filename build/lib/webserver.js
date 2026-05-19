@@ -430,20 +430,15 @@ class WebServer {
         secret: null
       };
     });
-    this.app.put(
-      "/api/mobile_app/registrations/:webhookId",
-      async (req, reply) => {
-        const id = req.params.webhookId;
-        if (!this.webhookRegistrations.has(id)) {
-          this.adapter.log.debug(
-            `Mobile-App PUT registration: unknown webhookId=${id.substring(0, 8)}\u2026 \u2014 returning 404`
-          );
-          reply.status(404);
-          return { error: "unknown_registration" };
-        }
-        return { webhook_id: id, cloudhook_url: null, remote_ui_url: null, secret: null };
+    this.app.put("/api/mobile_app/registrations/:webhookId", async (req, reply) => {
+      const id = req.params.webhookId;
+      if (!this.webhookRegistrations.has(id)) {
+        this.adapter.log.debug(`Mobile-App PUT registration: unknown webhookId=${id.substring(0, 8)}\u2026 \u2014 returning 404`);
+        reply.status(404);
+        return { error: "unknown_registration" };
       }
-    );
+      return { webhook_id: id, cloudhook_url: null, remote_ui_url: null, secret: null };
+    });
     this.app.delete(
       "/api/mobile_app/registrations/:webhookId",
       async (req, reply) => {
@@ -519,9 +514,7 @@ class WebServer {
       var _a;
       const { response_type, client_id, redirect_uri, state } = (_a = req.query) != null ? _a : {};
       if (response_type !== "code") {
-        this.adapter.log.debug(
-          `Authorize GET rejected: response_type=${String(response_type)} (expected 'code')`
-        );
+        this.adapter.log.debug(`Authorize GET rejected: response_type=${String(response_type)} (expected 'code')`);
         reply.status(400).type("text/html");
         return (0, import_auth_page.renderAuthorizeError)(
           "unsupported_response_type",
@@ -533,10 +526,7 @@ class WebServer {
           `Authorize GET rejected: missing client_id or redirect_uri (cid=${typeof client_id}, ru=${typeof redirect_uri})`
         );
         reply.status(400).type("text/html");
-        return (0, import_auth_page.renderAuthorizeError)(
-          "invalid_request",
-          "Missing or invalid `client_id` or `redirect_uri` parameter."
-        );
+        return (0, import_auth_page.renderAuthorizeError)("invalid_request", "Missing or invalid `client_id` or `redirect_uri` parameter.");
       }
       if (!(0, import_coerce.isValidRedirectUri)(client_id, redirect_uri)) {
         this.adapter.log.debug(
@@ -562,9 +552,7 @@ class WebServer {
       } catch {
         redirectHost = redirect_uri;
       }
-      this.adapter.log.debug(
-        `Authorize form rendered \u2014 client_id=${client_id} redirect_uri-host=${redirectHost}`
-      );
+      this.adapter.log.debug(`Authorize form rendered \u2014 client_id=${client_id} redirect_uri-host=${redirectHost}`);
       reply.type("text/html");
       return (0, import_auth_page.renderAuthorizeForm)({ clientId: client_id, redirectUri: redirect_uri, state });
     });
@@ -572,9 +560,7 @@ class WebServer {
       var _a;
       const { response_type, client_id, redirect_uri, state, username, password } = (_a = req.body) != null ? _a : {};
       if (response_type !== "code") {
-        this.adapter.log.debug(
-          `Authorize POST rejected: response_type=${String(response_type)} (expected 'code')`
-        );
+        this.adapter.log.debug(`Authorize POST rejected: response_type=${String(response_type)} (expected 'code')`);
         reply.status(400).type("text/html");
         return (0, import_auth_page.renderAuthorizeError)("unsupported_response_type", "Only `response_type=code` is supported.");
       }
@@ -583,10 +569,7 @@ class WebServer {
           `Authorize POST rejected: missing client_id or redirect_uri (cid=${typeof client_id}, ru=${typeof redirect_uri})`
         );
         reply.status(400).type("text/html");
-        return (0, import_auth_page.renderAuthorizeError)(
-          "invalid_request",
-          "Missing or invalid `client_id` or `redirect_uri` parameter."
-        );
+        return (0, import_auth_page.renderAuthorizeError)("invalid_request", "Missing or invalid `client_id` or `redirect_uri` parameter.");
       }
       if (!(0, import_coerce.isValidRedirectUri)(client_id, redirect_uri)) {
         this.adapter.log.debug(

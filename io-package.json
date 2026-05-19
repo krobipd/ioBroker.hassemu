@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.32.3",
     "news": {
+      "NEXT": {
+        "en": "Removed unnecessary web adapter dependency. Code quality enforced with standard formatting.",
+        "de": "Unnötige Abhängigkeit vom Web-Adapter entfernt. Codequalität durch einheitliche Formatierung sichergestellt.",
+        "ru": "Удалена ненужная зависимость от веб-адаптера. Качество кода обеспечено единым форматированием.",
+        "pt": "Removida dependência desnecessária do adaptador web. Qualidade do código assegurada com formatação uniforme.",
+        "nl": "Onnodige afhankelijkheid van webadapter verwijderd. Codekwaliteit afgedwongen met uniforme opmaak.",
+        "fr": "Suppression de la dépendance inutile à l'adaptateur web. Qualité du code assurée par un formatage uniforme.",
+        "it": "Rimossa la dipendenza non necessaria dall'adattatore web. Qualità del codice garantita con formattazione uniforme.",
+        "es": "Eliminada la dependencia innecesaria del adaptador web. Calidad del código asegurada con formato uniforme.",
+        "pl": "Usunięto zbędną zależność od adaptera web. Jakość kodu wymuszona jednolitym formatowaniem.",
+        "uk": "Видалено непотрібну залежність від веб-адаптера. Якість коду забезпечена єдиним форматуванням.",
+        "zh-cn": "移除了不必要的 Web 适配器依赖。通过统一格式化确保代码质量。"
+      },
       "1.32.3": {
         "en": "Internal cleanup. No user-facing changes.",
         "de": "Interne Bereinigung. Keine sichtbaren Änderungen.",
@@ -80,19 +93,6 @@
         "pl": "Aplikacje Companion pozostają zalogowane po restartach adaptera. Istniejące aplikacje logują się raz po aktualizacji. Wewnętrzna blokada brute-force usunięta.",
         "uk": "Companion-додатки тепер залишаються авторизованими після перезапуску адаптера. Існуючі додатки входять один раз після оновлення. Внутрішнє блокування brute-force видалено.",
         "zh-cn": "Companion 应用现在可以在适配器重启后保持登录状态。更新后现有应用会重新登录一次。内部 brute-force 锁定已移除。"
-      },
-      "1.30.0": {
-        "en": "Internal cleanup based on a source audit. No user-facing changes — except that adding or reconfiguring an Aura adapter now refreshes the URL dropdown automatically.",
-        "de": "Interne Aufräumarbeiten nach einem Source-Audit. Keine User-Änderungen — außer dass das Hinzufügen oder Umkonfigurieren eines Aura-Adapters das URL-Dropdown jetzt automatisch aktualisiert.",
-        "ru": "Внутренняя чистка по результатам source-аудита. Без видимых изменений — кроме того, что добавление или переконфигурация Aura-адаптера теперь обновляет URL-список автоматически.",
-        "pt": "Limpeza interna baseada numa auditoria de código. Sem alterações para o utilizador — exceto que adicionar ou reconfigurar um adaptador Aura atualiza agora o dropdown de URLs automaticamente.",
-        "nl": "Interne opruimwerkzaamheden na een broncode-audit. Geen wijzigingen voor de gebruiker — behalve dat het toevoegen of herconfigureren van een Aura-adapter de URL-dropdown nu automatisch ververst.",
-        "fr": "Nettoyage interne suite à un audit du code source. Aucun changement utilisateur — sauf que l'ajout ou la reconfiguration d'un adaptateur Aura rafraîchit désormais la liste d'URL automatiquement.",
-        "it": "Pulizia interna basata su un audit del codice sorgente. Nessuna modifica visibile — tranne che aggiungendo o riconfigurando un adapter Aura il dropdown delle URL si aggiorna ora automaticamente.",
-        "es": "Limpieza interna basada en una auditoría del código. Sin cambios para el usuario — salvo que añadir o reconfigurar un adaptador Aura ahora refresca la lista de URLs automáticamente.",
-        "pl": "Wewnętrzne porządki po audycie kodu źródłowego. Bez zmian dla użytkownika — poza tym, że dodanie lub rekonfiguracja adaptera Aura odświeża teraz listę URL automatycznie.",
-        "uk": "Внутрішнє прибирання за результатами аудиту коду. Без видимих змін — окрім того, що додавання чи переналаштування Aura-адаптера тепер оновлює список URL автоматично.",
-        "zh-cn": "基于源码审计的内部清理。无用户可见变化——但添加或重新配置 Aura 适配器现在会自动刷新 URL 下拉框。"
       }
     },
     "titleLang": {
@@ -121,17 +121,8 @@
       "uk": "Емулює мінімальний сервер Home Assistant, щоб пристрої, що очікують панель Home Assistant, могли відображати будь-яку користувацьку URL-адресу.",
       "zh-cn": "模拟一个最小的Home Assistant服务器，使期望Home Assistant仪表板的设备能够显示任何自定义网址。"
     },
-    "authors": [
-      "krobi <krobi@power-dreams.com>"
-    ],
-    "keywords": [
-      "homeassistant",
-      "hass",
-      "emulator",
-      "dashboard",
-      "redirect",
-      "vis"
-    ],
+    "authors": ["krobi <krobi@power-dreams.com>"],
+    "keywords": ["homeassistant", "hass", "emulator", "dashboard", "redirect", "vis"],
     "licenseInformation": {
       "license": "MIT",
       "type": "free"
@@ -162,18 +153,11 @@
     "globalDependencies": [
       {
         "admin": ">=7.8.23"
-      },
-      {
-        "web": ">=8.0.0"
       }
     ]
   },
-  "encryptedNative": [
-    "password"
-  ],
-  "protectedNative": [
-    "password"
-  ],
+  "encryptedNative": ["password"],
+  "protectedNative": ["password"],
   "native": {
     "port": 8123,
     "bindAddress": "0.0.0.0",

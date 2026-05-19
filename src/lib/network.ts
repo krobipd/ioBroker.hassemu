@@ -1,5 +1,5 @@
-import crypto from 'node:crypto';
-import os from 'node:os';
+import crypto from "node:crypto";
+import os from "node:os";
 
 /**
  * Returns the first non-internal IPv4 address, falls back to non-internal
@@ -17,33 +17,33 @@ import os from 'node:os';
  * 172.16-31.x.x außer 172.17) haben Vorrang.
  */
 export function getLocalIp(): string {
-    const interfaces = os.networkInterfaces();
-    let dockerBridgeFallback: string | null = null;
-    let ipv6Fallback: string | null = null;
-    for (const ifaces of Object.values(interfaces)) {
-        if (!ifaces) {
-            continue;
-        }
-        for (const iface of ifaces) {
-            if (iface.internal) {
-                continue;
-            }
-            if (iface.family === 'IPv4') {
-                if (iface.address.startsWith('172.17.') || iface.address.startsWith('172.18.')) {
-                    // Default Docker-Bridge — only use as last resort.
-                    if (!dockerBridgeFallback) {
-                        dockerBridgeFallback = iface.address;
-                    }
-                    continue;
-                }
-                return iface.address;
-            }
-            if (iface.family === 'IPv6' && !ipv6Fallback) {
-                ipv6Fallback = iface.address;
-            }
-        }
+  const interfaces = os.networkInterfaces();
+  let dockerBridgeFallback: string | null = null;
+  let ipv6Fallback: string | null = null;
+  for (const ifaces of Object.values(interfaces)) {
+    if (!ifaces) {
+      continue;
     }
-    return dockerBridgeFallback ?? ipv6Fallback ?? '127.0.0.1';
+    for (const iface of ifaces) {
+      if (iface.internal) {
+        continue;
+      }
+      if (iface.family === "IPv4") {
+        if (iface.address.startsWith("172.17.") || iface.address.startsWith("172.18.")) {
+          // Default Docker-Bridge — only use as last resort.
+          if (!dockerBridgeFallback) {
+            dockerBridgeFallback = iface.address;
+          }
+          continue;
+        }
+        return iface.address;
+      }
+      if (iface.family === "IPv6" && !ipv6Fallback) {
+        ipv6Fallback = iface.address;
+      }
+    }
+  }
+  return dockerBridgeFallback ?? ipv6Fallback ?? "127.0.0.1";
 }
 
 /**
@@ -52,10 +52,10 @@ export function getLocalIp(): string {
  * @param bindAddress The configured bind address.
  */
 export function isWildcardBind(bindAddress: string | undefined | null): boolean {
-    if (!bindAddress) {
-        return true;
-    }
-    return bindAddress === '0.0.0.0' || bindAddress === '::';
+  if (!bindAddress) {
+    return true;
+  }
+  return bindAddress === "0.0.0.0" || bindAddress === "::";
 }
 
 /**
@@ -65,5 +65,5 @@ export function isWildcardBind(bindAddress: string | undefined | null): boolean 
  * of the codebase (cookies, session ids, tokens are all crypto-secure).
  */
 export function generateClientId(): string {
-    return crypto.randomBytes(3).toString('hex');
+  return crypto.randomBytes(3).toString("hex");
 }

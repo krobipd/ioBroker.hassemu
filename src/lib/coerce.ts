@@ -6,9 +6,9 @@
  * shape — these helpers guard runtime reality.
  */
 
-import crypto from 'node:crypto';
+import crypto from "node:crypto";
 
-import { MODE_GLOBAL, MODE_MANUAL } from './constants';
+import { MODE_GLOBAL, MODE_MANUAL } from "./constants";
 
 /**
  * IndieAuth-style redirect_uri validation + HA Companion App whitelist.
@@ -28,47 +28,47 @@ import { MODE_GLOBAL, MODE_MANUAL } from './constants';
  * @param redirectUri Untrusted `redirect_uri` from OAuth2 query.
  */
 export function isValidRedirectUri(clientId: string, redirectUri: string): boolean {
-    if (typeof clientId !== 'string' || typeof redirectUri !== 'string') {
-        return false;
+  if (typeof clientId !== "string" || typeof redirectUri !== "string") {
+    return false;
+  }
+  if (clientId.length === 0 || redirectUri.length === 0) {
+    return false;
+  }
+  if (redirectUri.length > 2048 || clientId.length > 2048) {
+    return false;
+  }
+  // Dangerous schemes — never accept regardless of any other rule.
+  const lower = redirectUri.toLowerCase();
+  const forbidden = ["javascript:", "data:", "vbscript:", "file:"];
+  for (const scheme of forbidden) {
+    if (lower.startsWith(scheme)) {
+      return false;
     }
-    if (clientId.length === 0 || redirectUri.length === 0) {
-        return false;
-    }
-    if (redirectUri.length > 2048 || clientId.length > 2048) {
-        return false;
-    }
-    // Dangerous schemes — never accept regardless of any other rule.
-    const lower = redirectUri.toLowerCase();
-    const forbidden = ['javascript:', 'data:', 'vbscript:', 'file:'];
-    for (const scheme of forbidden) {
-        if (lower.startsWith(scheme)) {
-            return false;
-        }
-    }
+  }
 
-    // (2) HA Companion App whitelist — must be checked before (1) because
-    // these apps use `homeassistant://` which has no http(s) netloc to match.
-    // Source: home-assistant/core indieauth.py:39-50.
-    if (clientId === 'https://home-assistant.io/iOS' && redirectUri === 'homeassistant://auth-callback') {
-        return true;
-    }
-    if (
-        clientId === 'https://home-assistant.io/android' &&
-        (redirectUri === 'homeassistant://auth-callback' ||
-            redirectUri === 'https://wear.googleapis.com/3p_auth/io.homeassistant.companion.android' ||
-            redirectUri === 'https://wear.googleapis-cn.com/3p_auth/io.homeassistant.companion.android')
-    ) {
-        return true;
-    }
+  // (2) HA Companion App whitelist — must be checked before (1) because
+  // these apps use `homeassistant://` which has no http(s) netloc to match.
+  // Source: home-assistant/core indieauth.py:39-50.
+  if (clientId === "https://home-assistant.io/iOS" && redirectUri === "homeassistant://auth-callback") {
+    return true;
+  }
+  if (
+    clientId === "https://home-assistant.io/android" &&
+    (redirectUri === "homeassistant://auth-callback" ||
+      redirectUri === "https://wear.googleapis.com/3p_auth/io.homeassistant.companion.android" ||
+      redirectUri === "https://wear.googleapis-cn.com/3p_auth/io.homeassistant.companion.android")
+  ) {
+    return true;
+  }
 
-    // (1) Default IndieAuth rule — same scheme + netloc.
-    try {
-        const cid = new URL(clientId);
-        const ru = new URL(redirectUri);
-        return cid.protocol === ru.protocol && cid.host === ru.host;
-    } catch {
-        return false;
-    }
+  // (1) Default IndieAuth rule — same scheme + netloc.
+  try {
+    const cid = new URL(clientId);
+    const ru = new URL(redirectUri);
+    return cid.protocol === ru.protocol && cid.host === ru.host;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -85,9 +85,9 @@ export function isValidRedirectUri(clientId: string, redirectUri: string): boole
  * @param b Second string to compare.
  */
 export function safeStringEqual(a: string, b: string): boolean {
-    const ah = crypto.createHash('sha256').update(a, 'utf8').digest();
-    const bh = crypto.createHash('sha256').update(b, 'utf8').digest();
-    return crypto.timingSafeEqual(ah, bh);
+  const ah = crypto.createHash("sha256").update(a, "utf8").digest();
+  const bh = crypto.createHash("sha256").update(b, "utf8").digest();
+  return crypto.timingSafeEqual(ah, bh);
 }
 
 /**
@@ -102,7 +102,7 @@ export function safeStringEqual(a: string, b: string): boolean {
  * @param value Untrusted input vom Mode-State (numeric 0 / string '0' / '' / URL / sentinel).
  */
 export function isNoChoice(value: unknown): boolean {
-    return value === 0 || value === '0' || value === '';
+  return value === 0 || value === "0" || value === "";
 }
 
 /**
@@ -122,14 +122,14 @@ const DECIMAL_NUMBER_RE = /^-?\d+(\.\d+)?$/;
  * @param value Untrusted input.
  */
 export function coerceFiniteNumber(value: unknown): number | null {
-    if (typeof value === 'number') {
-        return Number.isFinite(value) ? value : null;
-    }
-    if (typeof value === 'string' && DECIMAL_NUMBER_RE.test(value)) {
-        const n = Number(value);
-        return Number.isFinite(n) ? n : null;
-    }
-    return null;
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === "string" && DECIMAL_NUMBER_RE.test(value)) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
 }
 
 /**
@@ -138,10 +138,10 @@ export function coerceFiniteNumber(value: unknown): number | null {
  * @param value Untrusted input.
  */
 export function coerceString(value: unknown): string | null {
-    if (typeof value === 'string' && value.length > 0) {
-        return value;
-    }
-    return null;
+  if (typeof value === "string" && value.length > 0) {
+    return value;
+  }
+  return null;
 }
 
 /**
@@ -150,10 +150,10 @@ export function coerceString(value: unknown): string | null {
  * @param value Untrusted input.
  */
 export function coerceBoolean(value: unknown): boolean | null {
-    if (typeof value === 'boolean') {
-        return value;
-    }
-    return null;
+  if (typeof value === "boolean") {
+    return value;
+  }
+  return null;
 }
 
 /**
@@ -162,7 +162,7 @@ export function coerceBoolean(value: unknown): boolean | null {
  * @param value Untrusted input.
  */
 export function isPlainObject(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -173,10 +173,10 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
  * @param value Untrusted input.
  */
 export function coerceUuid(value: unknown): string | null {
-    if (typeof value !== 'string') {
-        return null;
-    }
-    return UUID_REGEX.test(value) ? value.toLowerCase() : null;
+  if (typeof value !== "string") {
+    return null;
+  }
+  return UUID_REGEX.test(value) ? value.toLowerCase() : null;
 }
 
 /** Result of {@link parseManualUrlWrite}. */
@@ -193,25 +193,25 @@ export type ManualUrlWriteResult = { ok: true; safe: string | null } | { ok: fal
  * @param rawValue Value written to the state.
  */
 export function parseManualUrlWrite(rawValue: unknown): ManualUrlWriteResult {
-    const empty = rawValue === '' || rawValue === null || rawValue === undefined;
-    if (empty) {
-        return { ok: true, safe: null };
-    }
-    const safe = coerceSafeUrl(rawValue);
-    if (!safe) {
-        return { ok: false };
-    }
-    return { ok: true, safe };
+  const empty = rawValue === "" || rawValue === null || rawValue === undefined;
+  if (empty) {
+    return { ok: true, safe: null };
+  }
+  const safe = coerceSafeUrl(rawValue);
+  if (!safe) {
+    return { ok: false };
+  }
+  return { ok: true, safe };
 }
 
 /** Result of {@link parseModeWrite}. */
 export type ModeWriteResult =
-    | { kind: 'no-choice' }
-    | { kind: 'sentinel'; value: string }
-    | { kind: 'url'; value: string }
-    | { kind: 'rejected-non-string' }
-    | { kind: 'rejected-disallowed-sentinel'; value: string }
-    | { kind: 'rejected-unsafe-url'; raw: string };
+  | { kind: "no-choice" }
+  | { kind: "sentinel"; value: string }
+  | { kind: "url"; value: string }
+  | { kind: "rejected-non-string" }
+  | { kind: "rejected-disallowed-sentinel"; value: string }
+  | { kind: "rejected-unsafe-url"; raw: string };
 
 /**
  * v1.23.0 (F2): zentralisierte Validierung für Mode-Writes. Vorher hatten
@@ -228,27 +228,27 @@ export type ModeWriteResult =
  * @param allowedSentinels Erlaubte Non-URL-Sentinels.
  */
 export function parseModeWrite(rawValue: unknown, allowedSentinels: readonly string[]): ModeWriteResult {
-    if (isNoChoice(rawValue)) {
-        return { kind: 'no-choice' };
-    }
-    if (typeof rawValue !== 'string') {
-        return { kind: 'rejected-non-string' };
-    }
-    // String-Sentinels haben Vorrang vor URL-Coerce.
-    if (allowedSentinels.includes(rawValue)) {
-        return { kind: 'sentinel', value: rawValue };
-    }
-    // Disallowed-Sentinel-Detection: wenn der Caller MODE_GLOBAL/MODE_MANUAL
-    // als known-strings hat, aber sie nicht in allowedSentinels sind, melden
-    // wir das explizit (für Self-Referential-Check in global-config).
-    if (rawValue === MODE_GLOBAL || rawValue === MODE_MANUAL) {
-        return { kind: 'rejected-disallowed-sentinel', value: rawValue };
-    }
-    const safe = coerceSafeUrl(rawValue);
-    if (!safe) {
-        return { kind: 'rejected-unsafe-url', raw: rawValue };
-    }
-    return { kind: 'url', value: safe };
+  if (isNoChoice(rawValue)) {
+    return { kind: "no-choice" };
+  }
+  if (typeof rawValue !== "string") {
+    return { kind: "rejected-non-string" };
+  }
+  // String-Sentinels haben Vorrang vor URL-Coerce.
+  if (allowedSentinels.includes(rawValue)) {
+    return { kind: "sentinel", value: rawValue };
+  }
+  // Disallowed-Sentinel-Detection: wenn der Caller MODE_GLOBAL/MODE_MANUAL
+  // als known-strings hat, aber sie nicht in allowedSentinels sind, melden
+  // wir das explizit (für Self-Referential-Check in global-config).
+  if (rawValue === MODE_GLOBAL || rawValue === MODE_MANUAL) {
+    return { kind: "rejected-disallowed-sentinel", value: rawValue };
+  }
+  const safe = coerceSafeUrl(rawValue);
+  if (!safe) {
+    return { kind: "rejected-unsafe-url", raw: rawValue };
+  }
+  return { kind: "url", value: safe };
 }
 
 /**
@@ -263,7 +263,7 @@ export function parseModeWrite(rawValue: unknown, allowedSentinels: readonly str
  * @param value Untrusted input.
  */
 export function coerceSafeUrl(value: unknown): string | null {
-    return coerceSafeUrlReason(value).safe;
+  return coerceSafeUrlReason(value).safe;
 }
 
 /**
@@ -275,28 +275,28 @@ export function coerceSafeUrl(value: unknown): string | null {
  * @param value Untrusted input.
  */
 export function coerceSafeUrlReason(value: unknown): { safe: string | null; reason: string | null } {
-    if (typeof value !== 'string') {
-        return { safe: null, reason: 'not-a-string' };
-    }
-    if (value.length === 0) {
-        return { safe: null, reason: 'empty' };
-    }
-    if (value.length > 2048) {
-        return { safe: null, reason: 'too-long' };
-    }
-    let url: URL;
-    try {
-        url = new URL(value);
-    } catch {
-        return { safe: null, reason: 'unparseable' };
-    }
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-        return { safe: null, reason: `bad-scheme:${url.protocol}` };
-    }
-    if (url.username.length > 0 || url.password.length > 0) {
-        return { safe: null, reason: 'credentials-in-url' };
-    }
-    return { safe: value, reason: null };
+  if (typeof value !== "string") {
+    return { safe: null, reason: "not-a-string" };
+  }
+  if (value.length === 0) {
+    return { safe: null, reason: "empty" };
+  }
+  if (value.length > 2048) {
+    return { safe: null, reason: "too-long" };
+  }
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return { safe: null, reason: "unparseable" };
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    return { safe: null, reason: `bad-scheme:${url.protocol}` };
+  }
+  if (url.username.length > 0 || url.password.length > 0) {
+    return { safe: null, reason: "credentials-in-url" };
+  }
+  return { safe: value, reason: null };
 }
 
 // ---------------------------------------------------------------------------
@@ -306,8 +306,8 @@ export function coerceSafeUrlReason(value: unknown): { safe: string | null; reas
 
 /** Minimal-Surface für `safeGetState` — Tests können das mocken. */
 export interface StateReader {
-    /** Returns the state for `id`, or `null|undefined` if it does not exist. */
-    getStateAsync: (id: string) => Promise<ioBroker.State | null | undefined>;
+  /** Returns the state for `id`, or `null|undefined` if it does not exist. */
+  getStateAsync: (id: string) => Promise<ioBroker.State | null | undefined>;
 }
 
 /**
@@ -320,11 +320,11 @@ export interface StateReader {
  *                Caller das schon bisher übergeben hat.
  */
 export async function safeGetState(adapter: StateReader, id: string): Promise<ioBroker.State | null> {
-    try {
-        return (await adapter.getStateAsync(id)) ?? null;
-    } catch {
-        return null;
-    }
+  try {
+    return (await adapter.getStateAsync(id)) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -342,21 +342,21 @@ export async function safeGetState(adapter: StateReader, id: string): Promise<io
  * @returns Tail-Segments als Tuple, oder `null` wenn Prefix/Anzahl nicht passt.
  */
 export function parseAdapterStateId(
-    fullId: string,
-    namespace: string,
-    prefix: string,
-    expectedParts: number,
+  fullId: string,
+  namespace: string,
+  prefix: string,
+  expectedParts: number,
 ): string[] | null {
-    const fullPrefix = `${namespace}.${prefix}`;
-    if (!fullId.startsWith(fullPrefix)) {
-        return null;
-    }
-    const tail = fullId.substring(fullPrefix.length);
-    const parts = tail.split('.');
-    if (parts.length !== expectedParts) {
-        return null;
-    }
-    return parts;
+  const fullPrefix = `${namespace}.${prefix}`;
+  if (!fullId.startsWith(fullPrefix)) {
+    return null;
+  }
+  const tail = fullId.substring(fullPrefix.length);
+  const parts = tail.split(".");
+  if (parts.length !== expectedParts) {
+    return null;
+  }
+  return parts;
 }
 
 /**
@@ -372,19 +372,19 @@ export function parseAdapterStateId(
  * @param now      Aktuelle Zeit in ms.
  * @param ttlMs    Stale-TTL in ms.
  */
-export function decideGcAction(lastSeen: unknown, now: number, ttlMs: number): 'seed' | 'stale' | 'keep' {
-    const ls = typeof lastSeen === 'number' && Number.isFinite(lastSeen) ? lastSeen : 0;
-    if (ls === 0) {
-        return 'seed';
-    }
-    if (now - ls > ttlMs) {
-        return 'stale';
-    }
-    return 'keep';
+export function decideGcAction(lastSeen: unknown, now: number, ttlMs: number): "seed" | "stale" | "keep" {
+  const ls = typeof lastSeen === "number" && Number.isFinite(lastSeen) ? lastSeen : 0;
+  if (ls === 0) {
+    return "seed";
+  }
+  if (now - ls > ttlMs) {
+    return "stale";
+  }
+  return "keep";
 }
 
 /** Result of {@link decideLegacyVisMigration}. */
-export type LegacyVisMigration = { kind: 'empty' } | { kind: 'safe-url'; safe: string } | { kind: 'unsafe-rejected' };
+export type LegacyVisMigration = { kind: "empty" } | { kind: "safe-url"; safe: string } | { kind: "unsafe-rejected" };
 
 /**
  * v1.25.0 (J2): pure decision-helper für die `migrateVisUrlToMode`-Logik
@@ -398,14 +398,14 @@ export type LegacyVisMigration = { kind: 'empty' } | { kind: 'safe-url'; safe: s
  * @param rawValue Untyped value (aus dem legacy `*.visUrl`-State).
  */
 export function decideLegacyVisMigration(rawValue: unknown): LegacyVisMigration {
-    if (rawValue === undefined || rawValue === null || rawValue === '') {
-        return { kind: 'empty' };
-    }
-    const safe = coerceSafeUrl(rawValue);
-    if (safe) {
-        return { kind: 'safe-url', safe };
-    }
-    return { kind: 'unsafe-rejected' };
+  if (rawValue === undefined || rawValue === null || rawValue === "") {
+    return { kind: "empty" };
+  }
+  const safe = coerceSafeUrl(rawValue);
+  if (safe) {
+    return { kind: "safe-url", safe };
+  }
+  return { kind: "unsafe-rejected" };
 }
 
 /**
@@ -417,10 +417,10 @@ export function decideLegacyVisMigration(rawValue: unknown): LegacyVisMigration 
  * @param urlStates Discovered URLs (`{ 'http://x/': 'X', ... }`).
  */
 export function buildDropdownStates(
-    sentinels: Record<string, string>,
-    urlStates: Record<string, string>,
+  sentinels: Record<string, string>,
+  urlStates: Record<string, string>,
 ): Record<string, string> {
-    return { 0: '---', ...sentinels, ...urlStates };
+  return { 0: "---", ...sentinels, ...urlStates };
 }
 
 /**
@@ -437,13 +437,13 @@ export function buildDropdownStates(
  * @param cap Hard cap — evicts while `map.size >= cap`.
  */
 export function evictOldest<V>(map: Map<string, V>, cap: number): void {
-    while (map.size >= cap) {
-        const oldest = map.keys().next().value;
-        if (oldest === undefined) {
-            return;
-        }
-        map.delete(oldest);
+  while (map.size >= cap) {
+    const oldest = map.keys().next().value;
+    if (oldest === undefined) {
+      return;
     }
+    map.delete(oldest);
+  }
 }
 
 /**
@@ -458,18 +458,18 @@ export function evictOldest<V>(map: Map<string, V>, cap: number): void {
  * @param s Untrusted string to interpolate into HTML.
  */
 export function escapeHtml(s: string): string {
-    return s.replace(/[<>&"']/g, c => {
-        switch (c) {
-            case '<':
-                return '&lt;';
-            case '>':
-                return '&gt;';
-            case '&':
-                return '&amp;';
-            case '"':
-                return '&quot;';
-            default:
-                return '&#39;';
-        }
-    });
+  return s.replace(/[<>&"']/g, c => {
+    switch (c) {
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case "&":
+        return "&amp;";
+      case '"':
+        return "&quot;";
+      default:
+        return "&#39;";
+    }
+  });
 }

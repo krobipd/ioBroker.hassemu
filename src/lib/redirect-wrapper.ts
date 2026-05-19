@@ -1,129 +1,129 @@
-import { escapeHtml } from './coerce';
-import { CONNECTION_STATUS_SCRIPT } from './external-bridge';
+import { escapeHtml } from "./coerce";
+import { CONNECTION_STATUS_SCRIPT } from "./external-bridge";
 
 /** Supported languages — matches the 11 io-package.json translations. */
-type DownLanguage = 'en' | 'de' | 'ru' | 'pt' | 'nl' | 'fr' | 'it' | 'es' | 'pl' | 'uk' | 'zh-cn';
+type DownLanguage = "en" | "de" | "ru" | "pt" | "nl" | "fr" | "it" | "es" | "pl" | "uk" | "zh-cn";
 
 interface DownStrings {
-    htmlLang: string;
-    pageTitle: string;
-    heading: string;
-    subhead: string;
-    deviceIdLabel: string;
-    ipLabel: string;
-    reloadButton: string;
+  htmlLang: string;
+  pageTitle: string;
+  heading: string;
+  subhead: string;
+  deviceIdLabel: string;
+  ipLabel: string;
+  reloadButton: string;
 }
 
 const DOWN_STRINGS: Record<DownLanguage, DownStrings> = {
-    en: {
-        htmlLang: 'en',
-        pageTitle: 'hassemu offline · ioBroker',
-        heading: 'hassemu offline',
-        subhead:
-            'The page above is the last view this display received. As soon as hassemu is reachable again, the display updates by itself.',
-        deviceIdLabel: 'Device ID',
-        ipLabel: 'IP address',
-        reloadButton: 'Reload now',
-    },
-    de: {
-        htmlLang: 'de',
-        pageTitle: 'hassemu offline · ioBroker',
-        heading: 'hassemu offline',
-        subhead:
-            'Die Seite oben ist die letzte Ansicht, die das Display erhalten hat. Sobald hassemu wieder erreichbar ist, aktualisiert sich die Anzeige automatisch.',
-        deviceIdLabel: 'Geräte-ID',
-        ipLabel: 'IP-Adresse',
-        reloadButton: 'Jetzt neu laden',
-    },
-    ru: {
-        htmlLang: 'ru',
-        pageTitle: 'hassemu недоступен · ioBroker',
-        heading: 'hassemu недоступен',
-        subhead:
-            'Страница выше — последний вид, который получил дисплей. Как только hassemu снова доступен, экран обновится автоматически.',
-        deviceIdLabel: 'ID устройства',
-        ipLabel: 'IP-адрес',
-        reloadButton: 'Перезагрузить',
-    },
-    pt: {
-        htmlLang: 'pt',
-        pageTitle: 'hassemu offline · ioBroker',
-        heading: 'hassemu offline',
-        subhead:
-            'A página acima é a última visualização que este ecrã recebeu. Assim que o hassemu voltar a estar disponível, o ecrã atualiza-se automaticamente.',
-        deviceIdLabel: 'ID do dispositivo',
-        ipLabel: 'Endereço IP',
-        reloadButton: 'Recarregar',
-    },
-    nl: {
-        htmlLang: 'nl',
-        pageTitle: 'hassemu offline · ioBroker',
-        heading: 'hassemu offline',
-        subhead:
-            'De pagina hierboven is de laatste weergave die dit display heeft ontvangen. Zodra hassemu weer bereikbaar is, wordt het scherm automatisch bijgewerkt.',
-        deviceIdLabel: 'Apparaat-ID',
-        ipLabel: 'IP-adres',
-        reloadButton: 'Opnieuw laden',
-    },
-    fr: {
-        htmlLang: 'fr',
-        pageTitle: 'hassemu hors ligne · ioBroker',
-        heading: 'hassemu hors ligne',
-        subhead:
-            "La page ci-dessus est la dernière vue reçue par cet écran. Dès que hassemu est de nouveau accessible, l'écran se met à jour automatiquement.",
-        deviceIdLabel: "Identifiant de l'appareil",
-        ipLabel: 'Adresse IP',
-        reloadButton: 'Recharger',
-    },
-    it: {
-        htmlLang: 'it',
-        pageTitle: 'hassemu offline · ioBroker',
-        heading: 'hassemu offline',
-        subhead:
-            'La pagina sopra è l’ultima vista ricevuta dal display. Appena hassemu sarà nuovamente raggiungibile, la schermata si aggiornerà automaticamente.',
-        deviceIdLabel: 'ID dispositivo',
-        ipLabel: 'Indirizzo IP',
-        reloadButton: 'Ricarica',
-    },
-    es: {
-        htmlLang: 'es',
-        pageTitle: 'hassemu sin conexión · ioBroker',
-        heading: 'hassemu sin conexión',
-        subhead:
-            'La página de arriba es la última vista que recibió esta pantalla. En cuanto hassemu vuelva a estar disponible, la pantalla se actualizará automáticamente.',
-        deviceIdLabel: 'ID del dispositivo',
-        ipLabel: 'Dirección IP',
-        reloadButton: 'Recargar',
-    },
-    pl: {
-        htmlLang: 'pl',
-        pageTitle: 'hassemu offline · ioBroker',
-        heading: 'hassemu offline',
-        subhead:
-            'Strona powyżej to ostatni widok otrzymany przez ten wyświetlacz. Gdy hassemu znów będzie dostępny, ekran odświeży się sam.',
-        deviceIdLabel: 'ID urządzenia',
-        ipLabel: 'Adres IP',
-        reloadButton: 'Załaduj ponownie',
-    },
-    uk: {
-        htmlLang: 'uk',
-        pageTitle: 'hassemu офлайн · ioBroker',
-        heading: 'hassemu офлайн',
-        subhead:
-            'Сторінка вище — останній вигляд, який отримав цей дисплей. Щойно hassemu знову буде доступним, екран оновиться автоматично.',
-        deviceIdLabel: 'ID пристрою',
-        ipLabel: 'IP-адреса',
-        reloadButton: 'Перезавантажити',
-    },
-    'zh-cn': {
-        htmlLang: 'zh-CN',
-        pageTitle: 'hassemu 离线 · ioBroker',
-        heading: 'hassemu 离线',
-        subhead: '上方页面是此显示器收到的最后一次视图。hassemu 重新可用后，屏幕会自动刷新。',
-        deviceIdLabel: '设备 ID',
-        ipLabel: 'IP 地址',
-        reloadButton: '立即重新加载',
-    },
+  en: {
+    htmlLang: "en",
+    pageTitle: "hassemu offline · ioBroker",
+    heading: "hassemu offline",
+    subhead:
+      "The page above is the last view this display received. As soon as hassemu is reachable again, the display updates by itself.",
+    deviceIdLabel: "Device ID",
+    ipLabel: "IP address",
+    reloadButton: "Reload now",
+  },
+  de: {
+    htmlLang: "de",
+    pageTitle: "hassemu offline · ioBroker",
+    heading: "hassemu offline",
+    subhead:
+      "Die Seite oben ist die letzte Ansicht, die das Display erhalten hat. Sobald hassemu wieder erreichbar ist, aktualisiert sich die Anzeige automatisch.",
+    deviceIdLabel: "Geräte-ID",
+    ipLabel: "IP-Adresse",
+    reloadButton: "Jetzt neu laden",
+  },
+  ru: {
+    htmlLang: "ru",
+    pageTitle: "hassemu недоступен · ioBroker",
+    heading: "hassemu недоступен",
+    subhead:
+      "Страница выше — последний вид, который получил дисплей. Как только hassemu снова доступен, экран обновится автоматически.",
+    deviceIdLabel: "ID устройства",
+    ipLabel: "IP-адрес",
+    reloadButton: "Перезагрузить",
+  },
+  pt: {
+    htmlLang: "pt",
+    pageTitle: "hassemu offline · ioBroker",
+    heading: "hassemu offline",
+    subhead:
+      "A página acima é a última visualização que este ecrã recebeu. Assim que o hassemu voltar a estar disponível, o ecrã atualiza-se automaticamente.",
+    deviceIdLabel: "ID do dispositivo",
+    ipLabel: "Endereço IP",
+    reloadButton: "Recarregar",
+  },
+  nl: {
+    htmlLang: "nl",
+    pageTitle: "hassemu offline · ioBroker",
+    heading: "hassemu offline",
+    subhead:
+      "De pagina hierboven is de laatste weergave die dit display heeft ontvangen. Zodra hassemu weer bereikbaar is, wordt het scherm automatisch bijgewerkt.",
+    deviceIdLabel: "Apparaat-ID",
+    ipLabel: "IP-adres",
+    reloadButton: "Opnieuw laden",
+  },
+  fr: {
+    htmlLang: "fr",
+    pageTitle: "hassemu hors ligne · ioBroker",
+    heading: "hassemu hors ligne",
+    subhead:
+      "La page ci-dessus est la dernière vue reçue par cet écran. Dès que hassemu est de nouveau accessible, l'écran se met à jour automatiquement.",
+    deviceIdLabel: "Identifiant de l'appareil",
+    ipLabel: "Adresse IP",
+    reloadButton: "Recharger",
+  },
+  it: {
+    htmlLang: "it",
+    pageTitle: "hassemu offline · ioBroker",
+    heading: "hassemu offline",
+    subhead:
+      "La pagina sopra è l’ultima vista ricevuta dal display. Appena hassemu sarà nuovamente raggiungibile, la schermata si aggiornerà automaticamente.",
+    deviceIdLabel: "ID dispositivo",
+    ipLabel: "Indirizzo IP",
+    reloadButton: "Ricarica",
+  },
+  es: {
+    htmlLang: "es",
+    pageTitle: "hassemu sin conexión · ioBroker",
+    heading: "hassemu sin conexión",
+    subhead:
+      "La página de arriba es la última vista que recibió esta pantalla. En cuanto hassemu vuelva a estar disponible, la pantalla se actualizará automáticamente.",
+    deviceIdLabel: "ID del dispositivo",
+    ipLabel: "Dirección IP",
+    reloadButton: "Recargar",
+  },
+  pl: {
+    htmlLang: "pl",
+    pageTitle: "hassemu offline · ioBroker",
+    heading: "hassemu offline",
+    subhead:
+      "Strona powyżej to ostatni widok otrzymany przez ten wyświetlacz. Gdy hassemu znów będzie dostępny, ekran odświeży się sam.",
+    deviceIdLabel: "ID urządzenia",
+    ipLabel: "Adres IP",
+    reloadButton: "Załaduj ponownie",
+  },
+  uk: {
+    htmlLang: "uk",
+    pageTitle: "hassemu офлайн · ioBroker",
+    heading: "hassemu офлайн",
+    subhead:
+      "Сторінка вище — останній вигляд, який отримав цей дисплей. Щойно hassemu знову буде доступним, екран оновиться автоматично.",
+    deviceIdLabel: "ID пристрою",
+    ipLabel: "IP-адреса",
+    reloadButton: "Перезавантажити",
+  },
+  "zh-cn": {
+    htmlLang: "zh-CN",
+    pageTitle: "hassemu 离线 · ioBroker",
+    heading: "hassemu 离线",
+    subhead: "上方页面是此显示器收到的最后一次视图。hassemu 重新可用后，屏幕会自动刷新。",
+    deviceIdLabel: "设备 ID",
+    ipLabel: "IP 地址",
+    reloadButton: "立即重新加载",
+  },
 };
 
 /**
@@ -160,33 +160,33 @@ const DOWN_THRESHOLD = 3;
  * @param ip        Optional IP-Adresse des Displays (für Anzeige auf der Down-Seite).
  */
 export function renderRedirectWrapper(
-    target: string,
-    clientId: string,
-    namespace: string,
-    language: string = 'en',
-    ip: string | null = null,
+  target: string,
+  clientId: string,
+  namespace: string,
+  language: string = "en",
+  ip: string | null = null,
 ): string {
-    const escAttr = escapeHtml(target);
-    const escJs = JSON.stringify(target);
+  const escAttr = escapeHtml(target);
+  const escJs = JSON.stringify(target);
 
-    const s = DOWN_STRINGS[language as DownLanguage] ?? DOWN_STRINGS.en;
-    const id = escapeHtml(clientId);
-    const ns = escapeHtml(namespace);
-    const trimmedIp = ip?.trim() ?? '';
-    const isLoopback =
-        trimmedIp === '' ||
-        trimmedIp === '127.0.0.1' ||
-        trimmedIp === '::1' ||
-        trimmedIp === '0.0.0.0' ||
-        trimmedIp.startsWith('127.');
-    const ipRow = isLoopback
-        ? ''
-        : `<tr><th scope="row">${escapeHtml(s.ipLabel)}</th><td>${escapeHtml(trimmedIp)}</td></tr>`;
-    // ns is intentionally available for future state-tree hints in the down page —
-    // for now the down page only shows the device id, IP, and the reload button.
-    void ns;
+  const s = DOWN_STRINGS[language as DownLanguage] ?? DOWN_STRINGS.en;
+  const id = escapeHtml(clientId);
+  const ns = escapeHtml(namespace);
+  const trimmedIp = ip?.trim() ?? "";
+  const isLoopback =
+    trimmedIp === "" ||
+    trimmedIp === "127.0.0.1" ||
+    trimmedIp === "::1" ||
+    trimmedIp === "0.0.0.0" ||
+    trimmedIp.startsWith("127.");
+  const ipRow = isLoopback
+    ? ""
+    : `<tr><th scope="row">${escapeHtml(s.ipLabel)}</th><td>${escapeHtml(trimmedIp)}</td></tr>`;
+  // ns is intentionally available for future state-tree hints in the down page —
+  // for now the down page only shows the device id, IP, and the reload button.
+  void ns;
 
-    return `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="${escapeHtml(s.htmlLang)}">
 <head>
 <meta charset="utf-8">
