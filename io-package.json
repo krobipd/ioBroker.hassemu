@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.32.3",
+    "version": "1.32.4",
     "news": {
-      "NEXT": {
+      "1.32.4": {
         "en": "Removed unnecessary web adapter dependency. Code quality enforced with standard formatting.",
         "de": "Unnötige Abhängigkeit vom Web-Adapter entfernt. Codequalität durch einheitliche Formatierung sichergestellt.",
         "ru": "Удалена ненужная зависимость от веб-адаптера. Качество кода обеспечено единым форматированием.",
@@ -121,8 +121,17 @@
       "uk": "Емулює мінімальний сервер Home Assistant, щоб пристрої, що очікують панель Home Assistant, могли відображати будь-яку користувацьку URL-адресу.",
       "zh-cn": "模拟一个最小的Home Assistant服务器，使期望Home Assistant仪表板的设备能够显示任何自定义网址。"
     },
-    "authors": ["krobi <krobi@power-dreams.com>"],
-    "keywords": ["homeassistant", "hass", "emulator", "dashboard", "redirect", "vis"],
+    "authors": [
+      "krobi <krobi@power-dreams.com>"
+    ],
+    "keywords": [
+      "homeassistant",
+      "hass",
+      "emulator",
+      "dashboard",
+      "redirect",
+      "vis"
+    ],
     "licenseInformation": {
       "license": "MIT",
       "type": "free"
@@ -156,8 +165,12 @@
       }
     ]
   },
-  "encryptedNative": ["password"],
-  "protectedNative": ["password"],
+  "encryptedNative": [
+    "password"
+  ],
+  "protectedNative": [
+    "password"
+  ],
   "native": {
     "port": 8123,
     "bindAddress": "0.0.0.0",
