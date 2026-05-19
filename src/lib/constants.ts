@@ -7,7 +7,7 @@
  * displays are tolerant about the value — bumping is mostly cosmetic and not
  * tied to specific monthly HA releases.
  */
-export const HA_VERSION = '2026.4.0';
+export const HA_VERSION = "2026.4.0";
 
 /** Session TTL: 10 minutes */
 export const SESSION_TTL_MS = 10 * 60 * 1000;
@@ -54,11 +54,11 @@ export const NEW_CLIENT_BURST_CAP = 200;
  * delegate an `global.mode`. `'manual'` heißt: nutze die zugehörige
  * `manualUrl`-State. Jeder andere String wird als URL interpretiert.
  */
-export const MODE_GLOBAL = 'global';
-export const MODE_MANUAL = 'manual';
+export const MODE_GLOBAL = "global";
+export const MODE_MANUAL = "manual";
 
 /** Login form schema for Home Assistant auth flow */
 export const LOGIN_SCHEMA = [
-    { name: 'username', required: true, type: 'string' },
-    { name: 'password', required: true, type: 'string' },
+  { name: "username", required: true, type: "string" },
+  { name: "password", required: true, type: "string" },
 ] as const;

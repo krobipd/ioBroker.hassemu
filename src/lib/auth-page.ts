@@ -22,7 +22,7 @@
 
 // v1.32.0: lokales `escAttr` (4 Char) ersetzt durch shared `escapeHtml` (5 Char)
 // aus `coerce.ts` — defense-in-depth, `'` zusätzlich gehärtet.
-import { escapeHtml as escAttr } from './coerce';
+import { escapeHtml as escAttr } from "./coerce";
 
 /**
  * Build the final redirect URL with the auth code appended.
@@ -32,19 +32,19 @@ import { escapeHtml as escAttr } from './coerce';
  * @param state       Optional `state` parameter — round-tripped verbatim per OAuth2 CSRF.
  */
 export function buildRedirectUrl(redirectUri: string, code: string, state: string | undefined): string {
-    // Source: home-assistant/frontend/src/data/auth.ts — OAuth 2: 3.1.2 we
-    // need to retain the existing query of a redirect URI.
-    let url = redirectUri;
-    if (!url.includes('?')) {
-        url += '?';
-    } else if (!url.endsWith('&') && !url.endsWith('?')) {
-        url += '&';
-    }
-    url += `code=${encodeURIComponent(code)}`;
-    if (state) {
-        url += `&state=${encodeURIComponent(state)}`;
-    }
-    return url;
+  // Source: home-assistant/frontend/src/data/auth.ts — OAuth 2: 3.1.2 we
+  // need to retain the existing query of a redirect URI.
+  let url = redirectUri;
+  if (!url.includes("?")) {
+    url += "?";
+  } else if (!url.endsWith("&") && !url.endsWith("?")) {
+    url += "&";
+  }
+  url += `code=${encodeURIComponent(code)}`;
+  if (state) {
+    url += `&state=${encodeURIComponent(state)}`;
+  }
+  return url;
 }
 
 const STYLE = `
@@ -71,9 +71,9 @@ button:hover{background:#039be5;}
  * @param target The fully-built `redirect_uri?code=…&state=…` URL.
  */
 export function renderAuthorizeRedirect(target: string): string {
-    const a = escAttr(target);
-    const j = JSON.stringify(target); // safe for inline JS string literal
-    return `<!DOCTYPE html>
+  const a = escAttr(target);
+  const j = JSON.stringify(target); // safe for inline JS string literal
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -105,14 +105,14 @@ export function renderAuthorizeRedirect(target: string): string {
  * @param errorMessage        Optional error banner text (i.e. "Invalid username or password.").
  */
 export function renderAuthorizeForm(
-    params: { clientId: string; redirectUri: string; state?: string },
-    errorMessage?: string,
+  params: { clientId: string; redirectUri: string; state?: string },
+  errorMessage?: string,
 ): string {
-    const cid = escAttr(params.clientId);
-    const ru = escAttr(params.redirectUri);
-    const st = params.state ? escAttr(params.state) : '';
-    const errBlock = errorMessage ? `<div class="err">${escAttr(errorMessage)}</div>` : '';
-    return `<!DOCTYPE html>
+  const cid = escAttr(params.clientId);
+  const ru = escAttr(params.redirectUri);
+  const st = params.state ? escAttr(params.state) : "";
+  const errBlock = errorMessage ? `<div class="err">${escAttr(errorMessage)}</div>` : "";
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -148,7 +148,7 @@ ${errBlock}
  * @param detail  Human-readable explanation.
  */
 export function renderAuthorizeError(reason: string, detail: string): string {
-    return `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">

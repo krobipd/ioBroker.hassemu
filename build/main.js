@@ -72,9 +72,7 @@ class HassEmu extends utils.Adapter {
     this.on("unload", this.onUnload.bind(this));
     if (!processHandlersInstalled) {
       installedUnhandledHandler = (reason) => {
-        console.error(
-          `[hassemu] Unhandled rejection: ${reason instanceof Error ? reason.message : String(reason)}`
-        );
+        console.error(`[hassemu] Unhandled rejection: ${reason instanceof Error ? reason.message : String(reason)}`);
       };
       installedUncaughtHandler = (err) => {
         console.error(`[hassemu] Uncaught exception: ${err.message}`);
@@ -251,9 +249,7 @@ class HassEmu extends utils.Adapter {
       try {
         if (this.globalConfig) {
           await this.globalConfig.migrationSet(import_constants.MODE_MANUAL, safe);
-          this.log.debug(
-            `Migration shortcut: global.visUrl-state missing \u2014 wrote directly to manualUrl=${safe}`
-          );
+          this.log.debug(`Migration shortcut: global.visUrl-state missing \u2014 wrote directly to manualUrl=${safe}`);
           stateWritten = true;
         }
       } catch (err) {
@@ -312,9 +308,7 @@ class HassEmu extends utils.Adapter {
           await this.setStateAsync(`clients.${record.id}.manualUrl`, { val: decision.safe, ack: true });
           this.log.info(`Migration: client ${record.id} URL "${decision.safe}" moved to manualUrl`);
         } else if (decision.kind === "unsafe-rejected") {
-          this.log.warn(
-            `Migration: client ${record.id} legacy URL rejected as unsafe \u2014 please set the URL manually`
-          );
+          this.log.warn(`Migration: client ${record.id} legacy URL rejected as unsafe \u2014 please set the URL manually`);
         }
       } catch {
       }

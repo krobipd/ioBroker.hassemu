@@ -1,772 +1,768 @@
-import { expect } from 'chai';
+import { expect } from "chai";
 import {
-    URL_SOURCE_PREFIXES,
-    UrlDiscovery,
-    buildCrossRefs,
-    collectFromInstance,
-    isUrlSourceAdapterEvent,
-    resolvePlaceholders,
-    type DiscoveryAdapter,
-} from './url-discovery';
+  URL_SOURCE_PREFIXES,
+  UrlDiscovery,
+  buildCrossRefs,
+  collectFromInstance,
+  isUrlSourceAdapterEvent,
+  resolvePlaceholders,
+  type DiscoveryAdapter,
+} from "./url-discovery";
 
 type TimerCallback = () => void;
 
 interface MockAdapter {
-    _timers: Map<number, { cb: TimerCallback; ms: number }>;
-    _instances: Record<string, unknown>;
-    _dirs: Record<string, unknown[] | Error>;
-    _files: Record<string, string | Buffer | Error>;
-    _logs: string[];
-    getForeignObjectsAsync: (pattern: string, type: 'instance') => Promise<Record<string, unknown>>;
-    readDirAsync: (adapterName: string, path: string) => Promise<unknown[]>;
-    readFileAsync: (
-        adapterName: string,
-        path: string,
-    ) => Promise<{ file: Buffer | string; mimeType?: string } | string | Buffer>;
+  _timers: Map<number, { cb: TimerCallback; ms: number }>;
+  _instances: Record<string, unknown>;
+  _dirs: Record<string, unknown[] | Error>;
+  _files: Record<string, string | Buffer | Error>;
+  _logs: string[];
+  getForeignObjectsAsync: (pattern: string, type: "instance") => Promise<Record<string, unknown>>;
+  readDirAsync: (adapterName: string, path: string) => Promise<unknown[]>;
+  readFileAsync: (
+    adapterName: string,
+    path: string,
+  ) => Promise<{ file: Buffer | string; mimeType?: string } | string | Buffer>;
 }
 
 function createMockAdapter(): MockAdapter & DiscoveryAdapter {
-    const timers = new Map<number, { cb: TimerCallback; ms: number }>();
-    let nextId = 1;
-    const logs: string[] = [];
-    const mock = {
-        _timers: timers,
-        _instances: {} as Record<string, unknown>,
-        _dirs: {} as Record<string, unknown[] | Error>,
-        _files: {} as Record<string, string | Buffer | Error>,
-        _logs: logs,
-        log: {
-            debug: (m: string): void => {
-                logs.push(`[debug] ${m}`);
-            },
-            info: (m: string): void => {
-                logs.push(`[info] ${m}`);
-            },
-            warn: (m: string): void => {
-                logs.push(`[warn] ${m}`);
-            },
-            error: (m: string): void => {
-                logs.push(`[error] ${m}`);
-            },
-        },
-        setInterval: () => undefined,
-        clearInterval: () => undefined,
-        setTimeout: (cb: TimerCallback, ms: number) => {
-            const id = nextId++;
-            timers.set(id, { cb, ms });
-            return id;
-        },
-        clearTimeout: (id: unknown) => {
-            timers.delete(id as number);
-        },
-        getForeignObjectsAsync: async (): Promise<Record<string, unknown>> => mock._instances,
-        readDirAsync: async (adapterName: string): Promise<unknown[]> => {
-            const d = mock._dirs[adapterName];
-            if (d instanceof Error) {
-                throw d;
-            }
-            return d ?? [];
-        },
-        readFileAsync: async (adapterName: string, path: string) => {
-            const key = `${adapterName}:${path}`;
-            const f = mock._files[key];
-            if (f instanceof Error) {
-                throw f;
-            }
-            if (f === undefined) {
-                throw new Error(`file not found: ${key}`);
-            }
-            return f;
-        },
-    };
-    return mock as never;
+  const timers = new Map<number, { cb: TimerCallback; ms: number }>();
+  let nextId = 1;
+  const logs: string[] = [];
+  const mock = {
+    _timers: timers,
+    _instances: {} as Record<string, unknown>,
+    _dirs: {} as Record<string, unknown[] | Error>,
+    _files: {} as Record<string, string | Buffer | Error>,
+    _logs: logs,
+    log: {
+      debug: (m: string): void => {
+        logs.push(`[debug] ${m}`);
+      },
+      info: (m: string): void => {
+        logs.push(`[info] ${m}`);
+      },
+      warn: (m: string): void => {
+        logs.push(`[warn] ${m}`);
+      },
+      error: (m: string): void => {
+        logs.push(`[error] ${m}`);
+      },
+    },
+    setInterval: () => undefined,
+    clearInterval: () => undefined,
+    setTimeout: (cb: TimerCallback, ms: number) => {
+      const id = nextId++;
+      timers.set(id, { cb, ms });
+      return id;
+    },
+    clearTimeout: (id: unknown) => {
+      timers.delete(id as number);
+    },
+    getForeignObjectsAsync: async (): Promise<Record<string, unknown>> => mock._instances,
+    readDirAsync: async (adapterName: string): Promise<unknown[]> => {
+      const d = mock._dirs[adapterName];
+      if (d instanceof Error) {
+        throw d;
+      }
+      return d ?? [];
+    },
+    readFileAsync: async (adapterName: string, path: string) => {
+      const key = `${adapterName}:${path}`;
+      const f = mock._files[key];
+      if (f instanceof Error) {
+        throw f;
+      }
+      if (f === undefined) {
+        throw new Error(`file not found: ${key}`);
+      }
+      return f;
+    },
+  };
+  return mock as never;
 }
 
 function enabledInstance(partial: Record<string, unknown>): Record<string, unknown> {
-    return {
-        common: { enabled: true, ...((partial.common as object) ?? {}) },
-        native: partial.native ?? {},
-    };
+  return {
+    common: { enabled: true, ...((partial.common as object) ?? {}) },
+    native: partial.native ?? {},
+  };
 }
 
-describe('url-discovery helpers', () => {
-    describe('isUrlSourceAdapterEvent (v1.30.0 R2)', () => {
-        // Single source of truth for the prefix list — main.ts's objectChange
-        // handler delegates here. If a new URL source adapter is supported,
-        // it MUST appear in this set; otherwise its add/remove/reconfigure
-        // events won't trigger url-discovery.scheduleRefresh and the user
-        // has to click info.refresh_urls manually (= v1.29.2 aura miss).
+describe("url-discovery helpers", () => {
+  describe("isUrlSourceAdapterEvent (v1.30.0 R2)", () => {
+    // Single source of truth for the prefix list — main.ts's objectChange
+    // handler delegates here. If a new URL source adapter is supported,
+    // it MUST appear in this set; otherwise its add/remove/reconfigure
+    // events won't trigger url-discovery.scheduleRefresh and the user
+    // has to click info.refresh_urls manually (= v1.29.2 aura miss).
 
-        it('accepts admin, web, vis, vis-2 instances', () => {
-            expect(isUrlSourceAdapterEvent('system.adapter.admin.0')).to.be.true;
-            expect(isUrlSourceAdapterEvent('system.adapter.web.0')).to.be.true;
-            expect(isUrlSourceAdapterEvent('system.adapter.web.1.foo')).to.be.true;
-            expect(isUrlSourceAdapterEvent('system.adapter.vis.0')).to.be.true;
-            expect(isUrlSourceAdapterEvent('system.adapter.vis-2.0')).to.be.true;
-        });
-
-        it('accepts aura.* — v1.30.0 R2 fix for the v1.29.2 aura-wiring miss', () => {
-            expect(isUrlSourceAdapterEvent('system.adapter.aura.0')).to.be.true;
-            expect(isUrlSourceAdapterEvent('system.adapter.aura.1')).to.be.true;
-        });
-
-        it('rejects unrelated adapter events', () => {
-            expect(isUrlSourceAdapterEvent('system.adapter.hassemu.0')).to.be.false;
-            expect(isUrlSourceAdapterEvent('system.adapter.iobroker-explorer.0')).to.be.false;
-            expect(isUrlSourceAdapterEvent('system.adapter.influxdb.0')).to.be.false;
-            expect(isUrlSourceAdapterEvent('system.host.foo')).to.be.false;
-            expect(isUrlSourceAdapterEvent('')).to.be.false;
-        });
-
-        it('rejects partial-prefix matches (no dot)', () => {
-            // `system.adapter.aurafake` must NOT match `system.adapter.aura.`
-            // because the prefix in URL_SOURCE_PREFIXES ends with a literal dot.
-            expect(isUrlSourceAdapterEvent('system.adapter.aurafake.0')).to.be.false;
-            expect(isUrlSourceAdapterEvent('system.adapter.webcam.0')).to.be.false;
-            expect(isUrlSourceAdapterEvent('system.adapter.visual.0')).to.be.false;
-        });
-
-        it('URL_SOURCE_PREFIXES is frozen and matches the documented list', () => {
-            // Defensive — Object.freeze should be honored by callers
-            expect(Object.isFrozen(URL_SOURCE_PREFIXES)).to.be.true;
-            expect(URL_SOURCE_PREFIXES).to.include('system.adapter.admin.');
-            expect(URL_SOURCE_PREFIXES).to.include('system.adapter.aura.');
-        });
+    it("accepts admin, web, vis, vis-2 instances", () => {
+      expect(isUrlSourceAdapterEvent("system.adapter.admin.0")).to.be.true;
+      expect(isUrlSourceAdapterEvent("system.adapter.web.0")).to.be.true;
+      expect(isUrlSourceAdapterEvent("system.adapter.web.1.foo")).to.be.true;
+      expect(isUrlSourceAdapterEvent("system.adapter.vis.0")).to.be.true;
+      expect(isUrlSourceAdapterEvent("system.adapter.vis-2.0")).to.be.true;
     });
 
-    describe('buildCrossRefs', () => {
-        it('extracts short keys from system.adapter.* IDs', () => {
-            const refs = buildCrossRefs({
-                'system.adapter.web.0': { native: { port: 8082 } },
-                'system.adapter.admin.0': { native: { port: 8081 } },
-            });
-            expect(refs.has('web.0')).to.be.true;
-            expect(refs.has('admin.0')).to.be.true;
-            expect(refs.size).to.equal(2);
-        });
-
-        it('skips non-object entries', () => {
-            const refs = buildCrossRefs({
-                'system.adapter.web.0': null,
-                'system.adapter.admin.0': 'bad',
-                'system.adapter.good.0': { native: {} },
-            });
-            expect(refs.size).to.equal(1);
-            expect(refs.has('good.0')).to.be.true;
-        });
+    it("accepts aura.* — v1.30.0 R2 fix for the v1.29.2 aura-wiring miss", () => {
+      expect(isUrlSourceAdapterEvent("system.adapter.aura.0")).to.be.true;
+      expect(isUrlSourceAdapterEvent("system.adapter.aura.1")).to.be.true;
     });
 
-    describe('resolvePlaceholders', () => {
-        const ctx = {
-            instanceId: 'web.0',
-            native: { bind: '192.168.1.10', port: 8082, secure: false },
-            crossRefs: new Map(),
-            hostIp: '192.168.1.99',
-        };
-
-        it('resolves %ip%', () => {
-            expect(resolvePlaceholders('http://%ip%/', ctx)).to.equal('http://192.168.1.99/');
-        });
-
-        it('resolves %bind% to instance native bind', () => {
-            expect(resolvePlaceholders('http://%bind%/', ctx)).to.equal('http://192.168.1.10/');
-        });
-
-        it('resolves %bind% to hostIp when bind is 0.0.0.0', () => {
-            const wild = { ...ctx, native: { ...ctx.native, bind: '0.0.0.0' } };
-            expect(resolvePlaceholders('http://%bind%/', wild)).to.equal('http://192.168.1.99/');
-        });
-
-        it('resolves %port%', () => {
-            expect(resolvePlaceholders(':%port%/', ctx)).to.equal(':8082/');
-        });
-
-        it('resolves %protocol% based on secure', () => {
-            expect(resolvePlaceholders('%protocol%', ctx)).to.equal('http');
-            const secure = { ...ctx, native: { ...ctx.native, secure: true } };
-            expect(resolvePlaceholders('%protocol%', secure)).to.equal('https');
-        });
-
-        it('resolves %secure% to "true" / "false"', () => {
-            expect(resolvePlaceholders('%secure%', ctx)).to.equal('false');
-            const secure = { ...ctx, native: { ...ctx.native, secure: true } };
-            expect(resolvePlaceholders('%secure%', secure)).to.equal('true');
-        });
-
-        it('resolves %instance% to instance number', () => {
-            expect(resolvePlaceholders('%instance%', ctx)).to.equal('0');
-        });
-
-        it('resolves %native_<field>%', () => {
-            const c = { ...ctx, native: { ...ctx.native, path: '/admin' } };
-            expect(resolvePlaceholders('%native_path%', c)).to.equal('/admin');
-        });
-
-        it('resolves cross-instance placeholder', () => {
-            const crossRefs = new Map<string, Record<string, unknown>>();
-            crossRefs.set('web.0', { native: { port: 8082, secure: true, bind: '192.168.1.10' } });
-            const c = { ...ctx, crossRefs };
-            expect(resolvePlaceholders('%web.0_port%', c)).to.equal('8082');
-            expect(resolvePlaceholders('%web.0_protocol%', c)).to.equal('https');
-            expect(resolvePlaceholders('%web.0_bind%', c)).to.equal('192.168.1.10');
-        });
-
-        it('returns null when cross-instance reference missing', () => {
-            expect(resolvePlaceholders('%web.0_port%', ctx)).to.be.null;
-        });
-
-        it('returns null on unknown token', () => {
-            expect(resolvePlaceholders('http://%unknown%/', ctx)).to.be.null;
-        });
-
-        it('returns template verbatim with no placeholders', () => {
-            expect(resolvePlaceholders('http://static/', ctx)).to.equal('http://static/');
-        });
-
-        it('resolves %port% to null when native.port is not numeric', () => {
-            const bad = { ...ctx, native: { ...ctx.native, port: 'abc' } };
-            expect(resolvePlaceholders('%port%', bad)).to.be.null;
-        });
+    it("rejects unrelated adapter events", () => {
+      expect(isUrlSourceAdapterEvent("system.adapter.hassemu.0")).to.be.false;
+      expect(isUrlSourceAdapterEvent("system.adapter.iobroker-explorer.0")).to.be.false;
+      expect(isUrlSourceAdapterEvent("system.adapter.influxdb.0")).to.be.false;
+      expect(isUrlSourceAdapterEvent("system.host.foo")).to.be.false;
+      expect(isUrlSourceAdapterEvent("")).to.be.false;
     });
 
-    describe('collectFromInstance', () => {
-        const hostIp = '192.168.1.99';
-        const crossRefs = new Map<string, Record<string, unknown>>();
-
-        it('skips non-object', () => {
-            const result: Record<string, string> = {};
-            collectFromInstance('system.adapter.bad.0', null, crossRefs, hostIp, result);
-            expect(Object.keys(result)).to.have.lengthOf(0);
-        });
-
-        it('skips disabled instances', () => {
-            const result: Record<string, string> = {};
-            collectFromInstance(
-                'system.adapter.admin.0',
-                {
-                    common: { enabled: false, localLink: 'http://%ip%:8081' },
-                    native: {},
-                },
-                crossRefs,
-                hostIp,
-                result,
-            );
-            expect(Object.keys(result)).to.have.lengthOf(0);
-        });
-
-        it('extracts legacy localLink', () => {
-            const result: Record<string, string> = {};
-            collectFromInstance(
-                'system.adapter.admin.0',
-                enabledInstance({ common: { localLink: 'http://%ip%:8081/' } }),
-                crossRefs,
-                hostIp,
-                result,
-            );
-            expect(result['http://192.168.1.99:8081/']).to.equal('admin.0');
-        });
-
-        it('prefers localLinks over legacy localLink when both present', () => {
-            const result: Record<string, string> = {};
-            collectFromInstance(
-                'system.adapter.admin.0',
-                enabledInstance({
-                    common: {
-                        localLink: 'http://%ip%:8081/',
-                        localLinks: {
-                            _default: { link: 'http://%ip%:8081/new/', name: 'Admin' },
-                        },
-                    },
-                }),
-                crossRefs,
-                hostIp,
-                result,
-            );
-            expect(result['http://192.168.1.99:8081/new/']).to.equal('admin.0: Admin');
-            expect(result['http://192.168.1.99:8081/']).to.be.undefined;
-        });
-
-        it('extracts welcomeScreen (single object)', () => {
-            const result: Record<string, string> = {};
-            collectFromInstance(
-                'system.adapter.vis.0',
-                enabledInstance({
-                    common: { welcomeScreen: { link: 'http://%ip%/vis/', name: 'VIS Main' } },
-                }),
-                crossRefs,
-                hostIp,
-                result,
-            );
-            expect(result['http://192.168.1.99/vis/']).to.equal('vis.0: VIS Main');
-        });
-
-        it('extracts welcomeScreen (array)', () => {
-            const result: Record<string, string> = {};
-            collectFromInstance(
-                'system.adapter.admin.0',
-                enabledInstance({
-                    common: {
-                        welcomeScreen: [
-                            { link: 'http://%ip%:8081/', name: 'Admin' },
-                            { link: 'http://%ip%:8081/log', name: 'Logs' },
-                        ],
-                    },
-                }),
-                crossRefs,
-                hostIp,
-                result,
-            );
-            expect(result['http://192.168.1.99:8081/']).to.equal('admin.0: Admin');
-            expect(result['http://192.168.1.99:8081/log']).to.equal('admin.0: Logs');
-        });
-
-        it('extracts welcomeScreenPro', () => {
-            const result: Record<string, string> = {};
-            collectFromInstance(
-                'system.adapter.admin.0',
-                enabledInstance({
-                    common: { welcomeScreenPro: { link: 'http://%ip%:8081/pro', name: 'Admin Pro' } },
-                }),
-                crossRefs,
-                hostIp,
-                result,
-            );
-            expect(result['http://192.168.1.99:8081/pro']).to.equal('admin.0: Admin Pro');
-        });
-
-        it('skips entries with non-http URLs', () => {
-            const result: Record<string, string> = {};
-            collectFromInstance(
-                'system.adapter.bad.0',
-                enabledInstance({ common: { localLink: 'javascript:alert(1)' } }),
-                crossRefs,
-                hostIp,
-                result,
-            );
-            expect(Object.keys(result)).to.have.lengthOf(0);
-        });
-
-        it('skips entries whose placeholders fail to resolve', () => {
-            const result: Record<string, string> = {};
-            collectFromInstance(
-                'system.adapter.bad.0',
-                enabledInstance({
-                    common: { localLink: 'http://%web.0_port%/' },
-                    native: {},
-                }),
-                crossRefs,
-                hostIp,
-                result,
-            );
-            expect(Object.keys(result)).to.have.lengthOf(0);
-        });
-
-        it('uses instanceId as label when entry has no name', () => {
-            const result: Record<string, string> = {};
-            collectFromInstance(
-                'system.adapter.x.0',
-                enabledInstance({
-                    common: { localLinks: { _default: { link: 'http://%ip%/' } } },
-                }),
-                crossRefs,
-                hostIp,
-                result,
-            );
-            expect(result['http://192.168.1.99/']).to.equal('x.0');
-        });
+    it("rejects partial-prefix matches (no dot)", () => {
+      // `system.adapter.aurafake` must NOT match `system.adapter.aura.`
+      // because the prefix in URL_SOURCE_PREFIXES ends with a literal dot.
+      expect(isUrlSourceAdapterEvent("system.adapter.aurafake.0")).to.be.false;
+      expect(isUrlSourceAdapterEvent("system.adapter.webcam.0")).to.be.false;
+      expect(isUrlSourceAdapterEvent("system.adapter.visual.0")).to.be.false;
     });
+
+    it("URL_SOURCE_PREFIXES is frozen and matches the documented list", () => {
+      // Defensive — Object.freeze should be honored by callers
+      expect(Object.isFrozen(URL_SOURCE_PREFIXES)).to.be.true;
+      expect(URL_SOURCE_PREFIXES).to.include("system.adapter.admin.");
+      expect(URL_SOURCE_PREFIXES).to.include("system.adapter.aura.");
+    });
+  });
+
+  describe("buildCrossRefs", () => {
+    it("extracts short keys from system.adapter.* IDs", () => {
+      const refs = buildCrossRefs({
+        "system.adapter.web.0": { native: { port: 8082 } },
+        "system.adapter.admin.0": { native: { port: 8081 } },
+      });
+      expect(refs.has("web.0")).to.be.true;
+      expect(refs.has("admin.0")).to.be.true;
+      expect(refs.size).to.equal(2);
+    });
+
+    it("skips non-object entries", () => {
+      const refs = buildCrossRefs({
+        "system.adapter.web.0": null,
+        "system.adapter.admin.0": "bad",
+        "system.adapter.good.0": { native: {} },
+      });
+      expect(refs.size).to.equal(1);
+      expect(refs.has("good.0")).to.be.true;
+    });
+  });
+
+  describe("resolvePlaceholders", () => {
+    const ctx = {
+      instanceId: "web.0",
+      native: { bind: "192.168.1.10", port: 8082, secure: false },
+      crossRefs: new Map(),
+      hostIp: "192.168.1.99",
+    };
+
+    it("resolves %ip%", () => {
+      expect(resolvePlaceholders("http://%ip%/", ctx)).to.equal("http://192.168.1.99/");
+    });
+
+    it("resolves %bind% to instance native bind", () => {
+      expect(resolvePlaceholders("http://%bind%/", ctx)).to.equal("http://192.168.1.10/");
+    });
+
+    it("resolves %bind% to hostIp when bind is 0.0.0.0", () => {
+      const wild = { ...ctx, native: { ...ctx.native, bind: "0.0.0.0" } };
+      expect(resolvePlaceholders("http://%bind%/", wild)).to.equal("http://192.168.1.99/");
+    });
+
+    it("resolves %port%", () => {
+      expect(resolvePlaceholders(":%port%/", ctx)).to.equal(":8082/");
+    });
+
+    it("resolves %protocol% based on secure", () => {
+      expect(resolvePlaceholders("%protocol%", ctx)).to.equal("http");
+      const secure = { ...ctx, native: { ...ctx.native, secure: true } };
+      expect(resolvePlaceholders("%protocol%", secure)).to.equal("https");
+    });
+
+    it('resolves %secure% to "true" / "false"', () => {
+      expect(resolvePlaceholders("%secure%", ctx)).to.equal("false");
+      const secure = { ...ctx, native: { ...ctx.native, secure: true } };
+      expect(resolvePlaceholders("%secure%", secure)).to.equal("true");
+    });
+
+    it("resolves %instance% to instance number", () => {
+      expect(resolvePlaceholders("%instance%", ctx)).to.equal("0");
+    });
+
+    it("resolves %native_<field>%", () => {
+      const c = { ...ctx, native: { ...ctx.native, path: "/admin" } };
+      expect(resolvePlaceholders("%native_path%", c)).to.equal("/admin");
+    });
+
+    it("resolves cross-instance placeholder", () => {
+      const crossRefs = new Map<string, Record<string, unknown>>();
+      crossRefs.set("web.0", { native: { port: 8082, secure: true, bind: "192.168.1.10" } });
+      const c = { ...ctx, crossRefs };
+      expect(resolvePlaceholders("%web.0_port%", c)).to.equal("8082");
+      expect(resolvePlaceholders("%web.0_protocol%", c)).to.equal("https");
+      expect(resolvePlaceholders("%web.0_bind%", c)).to.equal("192.168.1.10");
+    });
+
+    it("returns null when cross-instance reference missing", () => {
+      expect(resolvePlaceholders("%web.0_port%", ctx)).to.be.null;
+    });
+
+    it("returns null on unknown token", () => {
+      expect(resolvePlaceholders("http://%unknown%/", ctx)).to.be.null;
+    });
+
+    it("returns template verbatim with no placeholders", () => {
+      expect(resolvePlaceholders("http://static/", ctx)).to.equal("http://static/");
+    });
+
+    it("resolves %port% to null when native.port is not numeric", () => {
+      const bad = { ...ctx, native: { ...ctx.native, port: "abc" } };
+      expect(resolvePlaceholders("%port%", bad)).to.be.null;
+    });
+  });
+
+  describe("collectFromInstance", () => {
+    const hostIp = "192.168.1.99";
+    const crossRefs = new Map<string, Record<string, unknown>>();
+
+    it("skips non-object", () => {
+      const result: Record<string, string> = {};
+      collectFromInstance("system.adapter.bad.0", null, crossRefs, hostIp, result);
+      expect(Object.keys(result)).to.have.lengthOf(0);
+    });
+
+    it("skips disabled instances", () => {
+      const result: Record<string, string> = {};
+      collectFromInstance(
+        "system.adapter.admin.0",
+        {
+          common: { enabled: false, localLink: "http://%ip%:8081" },
+          native: {},
+        },
+        crossRefs,
+        hostIp,
+        result,
+      );
+      expect(Object.keys(result)).to.have.lengthOf(0);
+    });
+
+    it("extracts legacy localLink", () => {
+      const result: Record<string, string> = {};
+      collectFromInstance(
+        "system.adapter.admin.0",
+        enabledInstance({ common: { localLink: "http://%ip%:8081/" } }),
+        crossRefs,
+        hostIp,
+        result,
+      );
+      expect(result["http://192.168.1.99:8081/"]).to.equal("admin.0");
+    });
+
+    it("prefers localLinks over legacy localLink when both present", () => {
+      const result: Record<string, string> = {};
+      collectFromInstance(
+        "system.adapter.admin.0",
+        enabledInstance({
+          common: {
+            localLink: "http://%ip%:8081/",
+            localLinks: {
+              _default: { link: "http://%ip%:8081/new/", name: "Admin" },
+            },
+          },
+        }),
+        crossRefs,
+        hostIp,
+        result,
+      );
+      expect(result["http://192.168.1.99:8081/new/"]).to.equal("admin.0: Admin");
+      expect(result["http://192.168.1.99:8081/"]).to.be.undefined;
+    });
+
+    it("extracts welcomeScreen (single object)", () => {
+      const result: Record<string, string> = {};
+      collectFromInstance(
+        "system.adapter.vis.0",
+        enabledInstance({
+          common: { welcomeScreen: { link: "http://%ip%/vis/", name: "VIS Main" } },
+        }),
+        crossRefs,
+        hostIp,
+        result,
+      );
+      expect(result["http://192.168.1.99/vis/"]).to.equal("vis.0: VIS Main");
+    });
+
+    it("extracts welcomeScreen (array)", () => {
+      const result: Record<string, string> = {};
+      collectFromInstance(
+        "system.adapter.admin.0",
+        enabledInstance({
+          common: {
+            welcomeScreen: [
+              { link: "http://%ip%:8081/", name: "Admin" },
+              { link: "http://%ip%:8081/log", name: "Logs" },
+            ],
+          },
+        }),
+        crossRefs,
+        hostIp,
+        result,
+      );
+      expect(result["http://192.168.1.99:8081/"]).to.equal("admin.0: Admin");
+      expect(result["http://192.168.1.99:8081/log"]).to.equal("admin.0: Logs");
+    });
+
+    it("extracts welcomeScreenPro", () => {
+      const result: Record<string, string> = {};
+      collectFromInstance(
+        "system.adapter.admin.0",
+        enabledInstance({
+          common: { welcomeScreenPro: { link: "http://%ip%:8081/pro", name: "Admin Pro" } },
+        }),
+        crossRefs,
+        hostIp,
+        result,
+      );
+      expect(result["http://192.168.1.99:8081/pro"]).to.equal("admin.0: Admin Pro");
+    });
+
+    it("skips entries with non-http URLs", () => {
+      const result: Record<string, string> = {};
+      collectFromInstance(
+        "system.adapter.bad.0",
+        enabledInstance({ common: { localLink: "javascript:alert(1)" } }),
+        crossRefs,
+        hostIp,
+        result,
+      );
+      expect(Object.keys(result)).to.have.lengthOf(0);
+    });
+
+    it("skips entries whose placeholders fail to resolve", () => {
+      const result: Record<string, string> = {};
+      collectFromInstance(
+        "system.adapter.bad.0",
+        enabledInstance({
+          common: { localLink: "http://%web.0_port%/" },
+          native: {},
+        }),
+        crossRefs,
+        hostIp,
+        result,
+      );
+      expect(Object.keys(result)).to.have.lengthOf(0);
+    });
+
+    it("uses instanceId as label when entry has no name", () => {
+      const result: Record<string, string> = {};
+      collectFromInstance(
+        "system.adapter.x.0",
+        enabledInstance({
+          common: { localLinks: { _default: { link: "http://%ip%/" } } },
+        }),
+        crossRefs,
+        hostIp,
+        result,
+      );
+      expect(result["http://192.168.1.99/"]).to.equal("x.0");
+    });
+  });
 });
 
-describe('UrlDiscovery', () => {
-    let adapter: ReturnType<typeof createMockAdapter>;
-    let discovery: UrlDiscovery;
+describe("UrlDiscovery", () => {
+  let adapter: ReturnType<typeof createMockAdapter>;
+  let discovery: UrlDiscovery;
 
-    beforeEach(() => {
-        adapter = createMockAdapter();
-        discovery = new UrlDiscovery(adapter);
+  beforeEach(() => {
+    adapter = createMockAdapter();
+    discovery = new UrlDiscovery(adapter);
+  });
+
+  describe("collect()", () => {
+    it("returns empty when no instances exist", async () => {
+      const result = await discovery.collect();
+      expect(Object.keys(result)).to.have.lengthOf(0);
     });
 
-    describe('collect()', () => {
-        it('returns empty when no instances exist', async () => {
-            const result = await discovery.collect();
-            expect(Object.keys(result)).to.have.lengthOf(0);
-        });
-
-        it('gracefully handles getForeignObjectsAsync failure', async () => {
-            adapter.getForeignObjectsAsync = async () => {
-                throw new Error('boom');
-            };
-            const result = await discovery.collect();
-            expect(Object.keys(result)).to.have.lengthOf(0);
-            const debugs = adapter._logs.filter(l => l.startsWith('[debug]'));
-            expect(debugs.some(l => l.includes('getForeignObjectsAsync failed'))).to.be.true;
-        });
-
-        it('finds VIS-2 multi-project with ?<project> query (Runtime.tsx:920-923 parses window.location.search)', async () => {
-            adapter._instances = {
-                'system.adapter.web.0': enabledInstance({
-                    native: { bind: '192.168.1.10', port: 8082, secure: false },
-                }),
-            };
-            // Each project gets its own URL via ?<project> — VIS-2 reads it from
-            // window.location.search at startup. Without the query, the runtime
-            // falls back to localStorage/main, which is not navigable from the
-            // hassemu dropdown.
-            adapter._dirs['vis-2.0'] = [
-                { file: 'main', isDir: true },
-                { file: 'kitchen', isDir: true },
-                { file: '_globals', isDir: true },
-                { file: 'readme.txt', isDir: false },
-            ];
-            const result = await discovery.collect();
-            expect(result['http://192.168.1.10:8082/vis-2/index.html?main']).to.equal('VIS-2: main');
-            expect(result['http://192.168.1.10:8082/vis-2/index.html?kitchen']).to.equal('VIS-2: kitchen');
-            // _globals filtered (starts with '_')
-            expect(Object.keys(result).some(k => k.includes('_globals'))).to.be.false;
-        });
-
-        it('finds VIS-1 projects with ?<project> query (one URL per project)', async () => {
-            adapter._instances = {
-                'system.adapter.web.0': enabledInstance({ native: { bind: '192.168.1.10', port: 8082 } }),
-            };
-            adapter._dirs['vis.0'] = [
-                { file: 'main', isDir: true },
-                { file: 'legacy', isDir: true },
-                { file: '_globals', isDir: true },
-            ];
-            const result = await discovery.collect();
-            // Each project gets its own URL via ?<project> (visEdit.js:1539, 2225)
-            expect(result['http://192.168.1.10:8082/vis/index.html?main']).to.equal('VIS: main');
-            expect(result['http://192.168.1.10:8082/vis/index.html?legacy']).to.equal('VIS: legacy');
-            // _globals is filtered (starts with '_')
-            expect(Object.keys(result).some(k => k.includes('_globals'))).to.be.false;
-        });
-
-        it('adds VIS-1 sub-views from vis-views.json (?<project>#<view>)', async () => {
-            adapter._instances = {
-                'system.adapter.web.0': enabledInstance({ native: { bind: '192.168.1.10', port: 8082 } }),
-            };
-            adapter._dirs['vis.0'] = [{ file: 'main', isDir: true }];
-            adapter._files['vis.0:main/vis-views.json'] = JSON.stringify({
-                Wohnzimmer: { widgets: {} },
-                Garten: { widgets: {} },
-            });
-            const result = await discovery.collect();
-            expect(result['http://192.168.1.10:8082/vis/index.html?main']).to.equal('VIS: main');
-            expect(result['http://192.168.1.10:8082/vis/index.html?main#Wohnzimmer']).to.equal(
-                'VIS: main / Wohnzimmer',
-            );
-            expect(result['http://192.168.1.10:8082/vis/index.html?main#Garten']).to.equal('VIS: main / Garten');
-        });
-
-        it('builds VIS URLs with HTTPS when web.0 is secure', async () => {
-            adapter._instances = {
-                'system.adapter.web.0': enabledInstance({
-                    native: { bind: '192.168.1.10', port: 8082, secure: true },
-                }),
-            };
-            adapter._dirs['vis-2.0'] = [{ file: 'main', isDir: true }];
-            const result = await discovery.collect();
-            expect(result['https://192.168.1.10:8082/vis-2/index.html?main']).to.equal('VIS-2: main');
-        });
-
-        it('skips VIS discovery when web.0 is missing', async () => {
-            adapter._dirs['vis-2.0'] = [{ file: 'main', isDir: true }];
-            const result = await discovery.collect();
-            expect(Object.keys(result)).to.have.lengthOf(0);
-        });
-
-        it('skips VIS discovery when web.0 has no port', async () => {
-            adapter._instances = {
-                'system.adapter.web.0': enabledInstance({ native: { bind: '192.168.1.10' } }),
-            };
-            adapter._dirs['vis-2.0'] = [{ file: 'main', isDir: true }];
-            const result = await discovery.collect();
-            expect(Object.keys(result)).to.have.lengthOf(0);
-        });
-
-        it('adds VIS-2 sub-views from vis-views.json (v1.7.0 A2)', async () => {
-            adapter._instances = {
-                'system.adapter.web.0': enabledInstance({ native: { bind: '192.168.1.10', port: 8082 } }),
-            };
-            adapter._dirs['vis-2.0'] = [{ file: 'main', isDir: true }];
-            adapter._files['vis-2.0:main/vis-views.json'] = JSON.stringify({
-                views: {
-                    Lights: { widgets: {} },
-                    Kitchen: { widgets: {} },
-                },
-            });
-            const result = await discovery.collect();
-            // Top-level project still listed
-            expect(result['http://192.168.1.10:8082/vis-2/index.html?main']).to.equal('VIS-2: main');
-            // Plus per-view entries
-            expect(result['http://192.168.1.10:8082/vis-2/index.html?main#Lights']).to.equal('VIS-2: main / Lights');
-            expect(result['http://192.168.1.10:8082/vis-2/index.html?main#Kitchen']).to.equal('VIS-2: main / Kitchen');
-        });
-
-        it('handles vis-views.json without `views` wrapper (legacy VIS-2 layout)', async () => {
-            adapter._instances = {
-                'system.adapter.web.0': enabledInstance({ native: { bind: '192.168.1.10', port: 8082 } }),
-            };
-            adapter._dirs['vis-2.0'] = [{ file: 'home', isDir: true }];
-            // VIS-2 hat den `views`-Wrapper über die Versionen variiert — beide Layouts unterstützen
-            adapter._files['vis-2.0:home/vis-views.json'] = JSON.stringify({
-                MainView: { widgets: {} },
-                BedRoom: { widgets: {} },
-                __settings: { foo: 'bar' }, // Meta-Key, sollte gefiltert
-            });
-            const result = await discovery.collect();
-            expect(result['http://192.168.1.10:8082/vis-2/index.html?home#MainView']).to.equal(
-                'VIS-2: home / MainView',
-            );
-            expect(result['http://192.168.1.10:8082/vis-2/index.html?home#BedRoom']).to.equal('VIS-2: home / BedRoom');
-            // __settings should not become a view-URL
-            expect(Object.values(result).some(v => v.includes('__settings'))).to.be.false;
-        });
-
-        it('falls back to top-level project when vis-views.json is missing', async () => {
-            adapter._instances = {
-                'system.adapter.web.0': enabledInstance({ native: { bind: '192.168.1.10', port: 8082 } }),
-            };
-            adapter._dirs['vis-2.0'] = [{ file: 'minimal', isDir: true }];
-            // No file registered → readFileAsync throws → addVisViews skips silently
-            const result = await discovery.collect();
-            expect(result['http://192.168.1.10:8082/vis-2/index.html?minimal']).to.equal('VIS-2: minimal');
-            expect(Object.keys(result)).to.have.lengthOf(1); // only top-level
-        });
-
-        it('handles malformed vis-views.json gracefully', async () => {
-            adapter._instances = {
-                'system.adapter.web.0': enabledInstance({ native: { bind: '192.168.1.10', port: 8082 } }),
-            };
-            adapter._dirs['vis-2.0'] = [{ file: 'broken', isDir: true }];
-            adapter._files['vis-2.0:broken/vis-views.json'] = '{ this is not json';
-            const result = await discovery.collect();
-            // Top-level still works, but no view-entries because parse failed
-            expect(result['http://192.168.1.10:8082/vis-2/index.html?broken']).to.equal('VIS-2: broken');
-            expect(Object.keys(result)).to.have.lengthOf(1);
-        });
-
-        it('VIS-1 view-discovery is best-effort — missing vis-views.json keeps top-level URL working', async () => {
-            adapter._instances = {
-                'system.adapter.web.0': enabledInstance({ native: { bind: '192.168.1.10', port: 8082 } }),
-            };
-            adapter._dirs['vis.0'] = [{ file: 'legacy', isDir: true }];
-            // Simulate readFileAsync throwing (file missing — typical for a VIS-1
-            // setup that doesn't store views in this format). The top-level
-            // ?<project>-URL must still be discovered.
-            let readCalls = 0;
-            adapter.readFileAsync = async () => {
-                readCalls++;
-                throw new Error('file not found');
-            };
-            const result = await discovery.collect();
-            expect(result['http://192.168.1.10:8082/vis/index.html?legacy']).to.equal('VIS: legacy');
-            expect(readCalls).to.equal(1); // probed once, threw, addVisViews caught it silently
-        });
-
-        it('gracefully handles readDirAsync errors', async () => {
-            adapter._instances = {
-                'system.adapter.web.0': enabledInstance({ native: { bind: '192.168.1.10', port: 8082 } }),
-            };
-            adapter._dirs['vis-2.0'] = new Error('vis-2 not installed');
-            const result = await discovery.collect();
-            expect(Object.keys(result)).to.have.lengthOf(0);
-        });
-
-        it('skips non-array readDirAsync results', async () => {
-            adapter._instances = {
-                'system.adapter.web.0': enabledInstance({ native: { bind: '192.168.1.10', port: 8082 } }),
-            };
-            adapter.readDirAsync = async () => 'garbage' as unknown as unknown[];
-            const result = await discovery.collect();
-            expect(Object.keys(result)).to.have.lengthOf(0);
-        });
-
-        it('combines intro-tiles and VIS projects into a single result', async () => {
-            adapter._instances = {
-                'system.adapter.web.0': enabledInstance({ native: { bind: '192.168.1.10', port: 8082 } }),
-                'system.adapter.admin.0': enabledInstance({
-                    common: { localLinks: { _default: { link: 'http://%ip%:8081/', name: 'Admin' } } },
-                }),
-            };
-            adapter._dirs['vis-2.0'] = [{ file: 'main', isDir: true }];
-            const result = await discovery.collect();
-            expect(Object.keys(result).length).to.be.greaterThanOrEqual(2);
-        });
-
-        it('resolves %web.0_port% cross-instance', async () => {
-            adapter._instances = {
-                'system.adapter.web.0': enabledInstance({ native: { bind: '192.168.1.10', port: 8082 } }),
-                'system.adapter.jarvis.0': enabledInstance({
-                    common: {
-                        localLinks: {
-                            _default: { link: 'http://%ip%:%web.0_port%/jarvis/', name: 'Jarvis' },
-                        },
-                    },
-                }),
-            };
-            const result = await discovery.collect();
-            const anyUrl = Object.keys(result).find(u => u.includes('jarvis'));
-            expect(anyUrl).to.match(/^http:\/\/[\d.]+:8082\/jarvis\/$/);
-        });
-
-        describe('aura adapter (v1.29.2)', () => {
-            it('discovers a default aura instance at its own port (frontend only)', async () => {
-                adapter._instances = {
-                    'system.adapter.aura.0': enabledInstance({
-                        native: { port: 8095, socketPort: 8082, secure: false, customUrl: '' },
-                    }),
-                };
-                const result = await discovery.collect();
-                const auraEntry = Object.entries(result).find(([, label]) => label === 'Aura');
-                expect(auraEntry, 'aura.0 not in dropdown').to.exist;
-                expect(auraEntry![0]).to.match(/^http:\/\/[\d.]+:8095\/$/);
-                // No backend / #/admin URL leaks through
-                expect(Object.keys(result).some(u => u.includes('#/admin'))).to.be.false;
-            });
-
-            it('honors custom native.port (not the hardcoded 8095 in localLinks)', async () => {
-                adapter._instances = {
-                    'system.adapter.aura.0': enabledInstance({
-                        native: { port: 8083, secure: false, customUrl: '' },
-                    }),
-                };
-                const result = await discovery.collect();
-                const entry = Object.entries(result).find(([, label]) => label === 'Aura');
-                expect(entry![0]).to.match(/^http:\/\/[\d.]+:8083\/$/);
-            });
-
-            it('uses https when native.secure is true', async () => {
-                adapter._instances = {
-                    'system.adapter.aura.0': enabledInstance({
-                        native: { port: 8443, secure: true, customUrl: '' },
-                    }),
-                };
-                const result = await discovery.collect();
-                const entry = Object.entries(result).find(([, label]) => label === 'Aura');
-                expect(entry![0]).to.match(/^https:\/\/[\d.]+:8443\/$/);
-            });
-
-            it('honors native.customUrl override (reverse-proxy / external URL)', async () => {
-                adapter._instances = {
-                    'system.adapter.aura.0': enabledInstance({
-                        native: { port: 8095, secure: false, customUrl: 'https://aura.example.com/dash' },
-                    }),
-                };
-                const result = await discovery.collect();
-                const entry = Object.entries(result).find(([, label]) => label === 'Aura');
-                expect(entry![0]).to.equal('https://aura.example.com/dash/');
-            });
-
-            it('appends (aura.X) suffix when multiple instances exist', async () => {
-                adapter._instances = {
-                    'system.adapter.aura.0': enabledInstance({
-                        native: { port: 8095, secure: false, customUrl: '' },
-                    }),
-                    'system.adapter.aura.1': enabledInstance({
-                        native: { port: 8096, secure: false, customUrl: '' },
-                    }),
-                };
-                const result = await discovery.collect();
-                const labels = Object.values(result);
-                expect(labels).to.include('Aura (aura.0)');
-                expect(labels).to.include('Aura (aura.1)');
-            });
-
-            it('skips a disabled aura instance', async () => {
-                adapter._instances = {
-                    'system.adapter.aura.0': {
-                        common: { enabled: false },
-                        native: { port: 8095, secure: false },
-                    },
-                };
-                const result = await discovery.collect();
-                expect(Object.values(result)).to.not.include('Aura');
-            });
-
-            it('does not also emit the aura backend `#/admin` URL via the generic localLinks path', async () => {
-                // aura's io-package.json carries both a `frontend` and a `backend`
-                // localLink entry; the generic collectFromInstance would normally
-                // pick up both. We explicitly skip aura there so only the curated
-                // frontend URL ends up in the dropdown.
-                adapter._instances = {
-                    'system.adapter.aura.0': enabledInstance({
-                        common: {
-                            localLinks: {
-                                frontend: { link: 'http://%ip%:8095/', name: 'Aura Frontend' },
-                                backend: { link: 'http://%ip%:8095/#/admin', name: 'Aura Backend' },
-                            },
-                        },
-                        native: { port: 8095, secure: false, customUrl: '' },
-                    }),
-                };
-                const result = await discovery.collect();
-                expect(Object.values(result)).to.not.include('aura.0: Aura Backend');
-                expect(Object.values(result)).to.not.include('aura.0: Aura Frontend');
-                // Only the curated `Aura` entry from addAuraInstance
-                expect(Object.values(result)).to.include('Aura');
-            });
-        });
-
-        it('updates cache after collect()', async () => {
-            adapter._instances = {
-                'system.adapter.admin.0': enabledInstance({
-                    common: { localLinks: { _default: { link: 'http://%ip%:8081/', name: 'Admin' } } },
-                }),
-            };
-            expect(Object.keys(discovery.getCached())).to.have.lengthOf(0);
-            await discovery.collect();
-            expect(Object.keys(discovery.getCached()).length).to.be.greaterThan(0);
-        });
-
-        it('getCached returns a copy, not a reference', async () => {
-            await discovery.collect();
-            const c1 = discovery.getCached();
-            c1['http://evil.com/'] = 'hack';
-            expect(discovery.getCached()['http://evil.com/']).to.be.undefined;
-        });
+    it("gracefully handles getForeignObjectsAsync failure", async () => {
+      adapter.getForeignObjectsAsync = async () => {
+        throw new Error("boom");
+      };
+      const result = await discovery.collect();
+      expect(Object.keys(result)).to.have.lengthOf(0);
+      const debugs = adapter._logs.filter(l => l.startsWith("[debug]"));
+      expect(debugs.some(l => l.includes("getForeignObjectsAsync failed"))).to.be.true;
     });
 
-    describe('getFirstDiscoveredUrl', () => {
-        it('returns null when cache is empty', () => {
-            expect(discovery.getFirstDiscoveredUrl()).to.be.null;
-        });
-
-        it('returns the first inserted URL after collect()', async () => {
-            adapter._instances = {
-                'system.adapter.admin.0': enabledInstance({
-                    common: { localLinks: { _default: { link: 'http://%ip%:8081/', name: 'Admin' } } },
-                }),
-            };
-            await discovery.collect();
-            const first = discovery.getFirstDiscoveredUrl();
-            expect(first).to.be.a('string');
-            expect(first).to.match(/^https?:\/\//);
-        });
+    it("finds VIS-2 multi-project with ?<project> query (Runtime.tsx:920-923 parses window.location.search)", async () => {
+      adapter._instances = {
+        "system.adapter.web.0": enabledInstance({
+          native: { bind: "192.168.1.10", port: 8082, secure: false },
+        }),
+      };
+      // Each project gets its own URL via ?<project> — VIS-2 reads it from
+      // window.location.search at startup. Without the query, the runtime
+      // falls back to localStorage/main, which is not navigable from the
+      // hassemu dropdown.
+      adapter._dirs["vis-2.0"] = [
+        { file: "main", isDir: true },
+        { file: "kitchen", isDir: true },
+        { file: "_globals", isDir: true },
+        { file: "readme.txt", isDir: false },
+      ];
+      const result = await discovery.collect();
+      expect(result["http://192.168.1.10:8082/vis-2/index.html?main"]).to.equal("VIS-2: main");
+      expect(result["http://192.168.1.10:8082/vis-2/index.html?kitchen"]).to.equal("VIS-2: kitchen");
+      // _globals filtered (starts with '_')
+      expect(Object.keys(result).some(k => k.includes("_globals"))).to.be.false;
     });
 
-    describe('scheduleRefresh / cancelRefresh', () => {
-        it('schedules a timer', () => {
-            discovery.scheduleRefresh(1000);
-            expect(adapter._timers.size).to.equal(1);
-        });
-
-        it('coalesces multiple schedule calls', () => {
-            discovery.scheduleRefresh(1000);
-            discovery.scheduleRefresh(1000);
-            discovery.scheduleRefresh(1000);
-            expect(adapter._timers.size).to.equal(1);
-        });
-
-        it('cancelRefresh clears the pending timer', () => {
-            discovery.scheduleRefresh(1000);
-            discovery.cancelRefresh();
-            expect(adapter._timers.size).to.equal(0);
-        });
-
-        it('cancelRefresh is a no-op when no timer is pending', () => {
-            expect(() => discovery.cancelRefresh()).to.not.throw();
-        });
+    it("finds VIS-1 projects with ?<project> query (one URL per project)", async () => {
+      adapter._instances = {
+        "system.adapter.web.0": enabledInstance({ native: { bind: "192.168.1.10", port: 8082 } }),
+      };
+      adapter._dirs["vis.0"] = [
+        { file: "main", isDir: true },
+        { file: "legacy", isDir: true },
+        { file: "_globals", isDir: true },
+      ];
+      const result = await discovery.collect();
+      // Each project gets its own URL via ?<project> (visEdit.js:1539, 2225)
+      expect(result["http://192.168.1.10:8082/vis/index.html?main"]).to.equal("VIS: main");
+      expect(result["http://192.168.1.10:8082/vis/index.html?legacy"]).to.equal("VIS: legacy");
+      // _globals is filtered (starts with '_')
+      expect(Object.keys(result).some(k => k.includes("_globals"))).to.be.false;
     });
+
+    it("adds VIS-1 sub-views from vis-views.json (?<project>#<view>)", async () => {
+      adapter._instances = {
+        "system.adapter.web.0": enabledInstance({ native: { bind: "192.168.1.10", port: 8082 } }),
+      };
+      adapter._dirs["vis.0"] = [{ file: "main", isDir: true }];
+      adapter._files["vis.0:main/vis-views.json"] = JSON.stringify({
+        Wohnzimmer: { widgets: {} },
+        Garten: { widgets: {} },
+      });
+      const result = await discovery.collect();
+      expect(result["http://192.168.1.10:8082/vis/index.html?main"]).to.equal("VIS: main");
+      expect(result["http://192.168.1.10:8082/vis/index.html?main#Wohnzimmer"]).to.equal("VIS: main / Wohnzimmer");
+      expect(result["http://192.168.1.10:8082/vis/index.html?main#Garten"]).to.equal("VIS: main / Garten");
+    });
+
+    it("builds VIS URLs with HTTPS when web.0 is secure", async () => {
+      adapter._instances = {
+        "system.adapter.web.0": enabledInstance({
+          native: { bind: "192.168.1.10", port: 8082, secure: true },
+        }),
+      };
+      adapter._dirs["vis-2.0"] = [{ file: "main", isDir: true }];
+      const result = await discovery.collect();
+      expect(result["https://192.168.1.10:8082/vis-2/index.html?main"]).to.equal("VIS-2: main");
+    });
+
+    it("skips VIS discovery when web.0 is missing", async () => {
+      adapter._dirs["vis-2.0"] = [{ file: "main", isDir: true }];
+      const result = await discovery.collect();
+      expect(Object.keys(result)).to.have.lengthOf(0);
+    });
+
+    it("skips VIS discovery when web.0 has no port", async () => {
+      adapter._instances = {
+        "system.adapter.web.0": enabledInstance({ native: { bind: "192.168.1.10" } }),
+      };
+      adapter._dirs["vis-2.0"] = [{ file: "main", isDir: true }];
+      const result = await discovery.collect();
+      expect(Object.keys(result)).to.have.lengthOf(0);
+    });
+
+    it("adds VIS-2 sub-views from vis-views.json (v1.7.0 A2)", async () => {
+      adapter._instances = {
+        "system.adapter.web.0": enabledInstance({ native: { bind: "192.168.1.10", port: 8082 } }),
+      };
+      adapter._dirs["vis-2.0"] = [{ file: "main", isDir: true }];
+      adapter._files["vis-2.0:main/vis-views.json"] = JSON.stringify({
+        views: {
+          Lights: { widgets: {} },
+          Kitchen: { widgets: {} },
+        },
+      });
+      const result = await discovery.collect();
+      // Top-level project still listed
+      expect(result["http://192.168.1.10:8082/vis-2/index.html?main"]).to.equal("VIS-2: main");
+      // Plus per-view entries
+      expect(result["http://192.168.1.10:8082/vis-2/index.html?main#Lights"]).to.equal("VIS-2: main / Lights");
+      expect(result["http://192.168.1.10:8082/vis-2/index.html?main#Kitchen"]).to.equal("VIS-2: main / Kitchen");
+    });
+
+    it("handles vis-views.json without `views` wrapper (legacy VIS-2 layout)", async () => {
+      adapter._instances = {
+        "system.adapter.web.0": enabledInstance({ native: { bind: "192.168.1.10", port: 8082 } }),
+      };
+      adapter._dirs["vis-2.0"] = [{ file: "home", isDir: true }];
+      // VIS-2 hat den `views`-Wrapper über die Versionen variiert — beide Layouts unterstützen
+      adapter._files["vis-2.0:home/vis-views.json"] = JSON.stringify({
+        MainView: { widgets: {} },
+        BedRoom: { widgets: {} },
+        __settings: { foo: "bar" }, // Meta-Key, sollte gefiltert
+      });
+      const result = await discovery.collect();
+      expect(result["http://192.168.1.10:8082/vis-2/index.html?home#MainView"]).to.equal("VIS-2: home / MainView");
+      expect(result["http://192.168.1.10:8082/vis-2/index.html?home#BedRoom"]).to.equal("VIS-2: home / BedRoom");
+      // __settings should not become a view-URL
+      expect(Object.values(result).some(v => v.includes("__settings"))).to.be.false;
+    });
+
+    it("falls back to top-level project when vis-views.json is missing", async () => {
+      adapter._instances = {
+        "system.adapter.web.0": enabledInstance({ native: { bind: "192.168.1.10", port: 8082 } }),
+      };
+      adapter._dirs["vis-2.0"] = [{ file: "minimal", isDir: true }];
+      // No file registered → readFileAsync throws → addVisViews skips silently
+      const result = await discovery.collect();
+      expect(result["http://192.168.1.10:8082/vis-2/index.html?minimal"]).to.equal("VIS-2: minimal");
+      expect(Object.keys(result)).to.have.lengthOf(1); // only top-level
+    });
+
+    it("handles malformed vis-views.json gracefully", async () => {
+      adapter._instances = {
+        "system.adapter.web.0": enabledInstance({ native: { bind: "192.168.1.10", port: 8082 } }),
+      };
+      adapter._dirs["vis-2.0"] = [{ file: "broken", isDir: true }];
+      adapter._files["vis-2.0:broken/vis-views.json"] = "{ this is not json";
+      const result = await discovery.collect();
+      // Top-level still works, but no view-entries because parse failed
+      expect(result["http://192.168.1.10:8082/vis-2/index.html?broken"]).to.equal("VIS-2: broken");
+      expect(Object.keys(result)).to.have.lengthOf(1);
+    });
+
+    it("VIS-1 view-discovery is best-effort — missing vis-views.json keeps top-level URL working", async () => {
+      adapter._instances = {
+        "system.adapter.web.0": enabledInstance({ native: { bind: "192.168.1.10", port: 8082 } }),
+      };
+      adapter._dirs["vis.0"] = [{ file: "legacy", isDir: true }];
+      // Simulate readFileAsync throwing (file missing — typical for a VIS-1
+      // setup that doesn't store views in this format). The top-level
+      // ?<project>-URL must still be discovered.
+      let readCalls = 0;
+      adapter.readFileAsync = async () => {
+        readCalls++;
+        throw new Error("file not found");
+      };
+      const result = await discovery.collect();
+      expect(result["http://192.168.1.10:8082/vis/index.html?legacy"]).to.equal("VIS: legacy");
+      expect(readCalls).to.equal(1); // probed once, threw, addVisViews caught it silently
+    });
+
+    it("gracefully handles readDirAsync errors", async () => {
+      adapter._instances = {
+        "system.adapter.web.0": enabledInstance({ native: { bind: "192.168.1.10", port: 8082 } }),
+      };
+      adapter._dirs["vis-2.0"] = new Error("vis-2 not installed");
+      const result = await discovery.collect();
+      expect(Object.keys(result)).to.have.lengthOf(0);
+    });
+
+    it("skips non-array readDirAsync results", async () => {
+      adapter._instances = {
+        "system.adapter.web.0": enabledInstance({ native: { bind: "192.168.1.10", port: 8082 } }),
+      };
+      adapter.readDirAsync = async () => "garbage" as unknown as unknown[];
+      const result = await discovery.collect();
+      expect(Object.keys(result)).to.have.lengthOf(0);
+    });
+
+    it("combines intro-tiles and VIS projects into a single result", async () => {
+      adapter._instances = {
+        "system.adapter.web.0": enabledInstance({ native: { bind: "192.168.1.10", port: 8082 } }),
+        "system.adapter.admin.0": enabledInstance({
+          common: { localLinks: { _default: { link: "http://%ip%:8081/", name: "Admin" } } },
+        }),
+      };
+      adapter._dirs["vis-2.0"] = [{ file: "main", isDir: true }];
+      const result = await discovery.collect();
+      expect(Object.keys(result).length).to.be.greaterThanOrEqual(2);
+    });
+
+    it("resolves %web.0_port% cross-instance", async () => {
+      adapter._instances = {
+        "system.adapter.web.0": enabledInstance({ native: { bind: "192.168.1.10", port: 8082 } }),
+        "system.adapter.jarvis.0": enabledInstance({
+          common: {
+            localLinks: {
+              _default: { link: "http://%ip%:%web.0_port%/jarvis/", name: "Jarvis" },
+            },
+          },
+        }),
+      };
+      const result = await discovery.collect();
+      const anyUrl = Object.keys(result).find(u => u.includes("jarvis"));
+      expect(anyUrl).to.match(/^http:\/\/[\d.]+:8082\/jarvis\/$/);
+    });
+
+    describe("aura adapter (v1.29.2)", () => {
+      it("discovers a default aura instance at its own port (frontend only)", async () => {
+        adapter._instances = {
+          "system.adapter.aura.0": enabledInstance({
+            native: { port: 8095, socketPort: 8082, secure: false, customUrl: "" },
+          }),
+        };
+        const result = await discovery.collect();
+        const auraEntry = Object.entries(result).find(([, label]) => label === "Aura");
+        expect(auraEntry, "aura.0 not in dropdown").to.exist;
+        expect(auraEntry![0]).to.match(/^http:\/\/[\d.]+:8095\/$/);
+        // No backend / #/admin URL leaks through
+        expect(Object.keys(result).some(u => u.includes("#/admin"))).to.be.false;
+      });
+
+      it("honors custom native.port (not the hardcoded 8095 in localLinks)", async () => {
+        adapter._instances = {
+          "system.adapter.aura.0": enabledInstance({
+            native: { port: 8083, secure: false, customUrl: "" },
+          }),
+        };
+        const result = await discovery.collect();
+        const entry = Object.entries(result).find(([, label]) => label === "Aura");
+        expect(entry![0]).to.match(/^http:\/\/[\d.]+:8083\/$/);
+      });
+
+      it("uses https when native.secure is true", async () => {
+        adapter._instances = {
+          "system.adapter.aura.0": enabledInstance({
+            native: { port: 8443, secure: true, customUrl: "" },
+          }),
+        };
+        const result = await discovery.collect();
+        const entry = Object.entries(result).find(([, label]) => label === "Aura");
+        expect(entry![0]).to.match(/^https:\/\/[\d.]+:8443\/$/);
+      });
+
+      it("honors native.customUrl override (reverse-proxy / external URL)", async () => {
+        adapter._instances = {
+          "system.adapter.aura.0": enabledInstance({
+            native: { port: 8095, secure: false, customUrl: "https://aura.example.com/dash" },
+          }),
+        };
+        const result = await discovery.collect();
+        const entry = Object.entries(result).find(([, label]) => label === "Aura");
+        expect(entry![0]).to.equal("https://aura.example.com/dash/");
+      });
+
+      it("appends (aura.X) suffix when multiple instances exist", async () => {
+        adapter._instances = {
+          "system.adapter.aura.0": enabledInstance({
+            native: { port: 8095, secure: false, customUrl: "" },
+          }),
+          "system.adapter.aura.1": enabledInstance({
+            native: { port: 8096, secure: false, customUrl: "" },
+          }),
+        };
+        const result = await discovery.collect();
+        const labels = Object.values(result);
+        expect(labels).to.include("Aura (aura.0)");
+        expect(labels).to.include("Aura (aura.1)");
+      });
+
+      it("skips a disabled aura instance", async () => {
+        adapter._instances = {
+          "system.adapter.aura.0": {
+            common: { enabled: false },
+            native: { port: 8095, secure: false },
+          },
+        };
+        const result = await discovery.collect();
+        expect(Object.values(result)).to.not.include("Aura");
+      });
+
+      it("does not also emit the aura backend `#/admin` URL via the generic localLinks path", async () => {
+        // aura's io-package.json carries both a `frontend` and a `backend`
+        // localLink entry; the generic collectFromInstance would normally
+        // pick up both. We explicitly skip aura there so only the curated
+        // frontend URL ends up in the dropdown.
+        adapter._instances = {
+          "system.adapter.aura.0": enabledInstance({
+            common: {
+              localLinks: {
+                frontend: { link: "http://%ip%:8095/", name: "Aura Frontend" },
+                backend: { link: "http://%ip%:8095/#/admin", name: "Aura Backend" },
+              },
+            },
+            native: { port: 8095, secure: false, customUrl: "" },
+          }),
+        };
+        const result = await discovery.collect();
+        expect(Object.values(result)).to.not.include("aura.0: Aura Backend");
+        expect(Object.values(result)).to.not.include("aura.0: Aura Frontend");
+        // Only the curated `Aura` entry from addAuraInstance
+        expect(Object.values(result)).to.include("Aura");
+      });
+    });
+
+    it("updates cache after collect()", async () => {
+      adapter._instances = {
+        "system.adapter.admin.0": enabledInstance({
+          common: { localLinks: { _default: { link: "http://%ip%:8081/", name: "Admin" } } },
+        }),
+      };
+      expect(Object.keys(discovery.getCached())).to.have.lengthOf(0);
+      await discovery.collect();
+      expect(Object.keys(discovery.getCached()).length).to.be.greaterThan(0);
+    });
+
+    it("getCached returns a copy, not a reference", async () => {
+      await discovery.collect();
+      const c1 = discovery.getCached();
+      c1["http://evil.com/"] = "hack";
+      expect(discovery.getCached()["http://evil.com/"]).to.be.undefined;
+    });
+  });
+
+  describe("getFirstDiscoveredUrl", () => {
+    it("returns null when cache is empty", () => {
+      expect(discovery.getFirstDiscoveredUrl()).to.be.null;
+    });
+
+    it("returns the first inserted URL after collect()", async () => {
+      adapter._instances = {
+        "system.adapter.admin.0": enabledInstance({
+          common: { localLinks: { _default: { link: "http://%ip%:8081/", name: "Admin" } } },
+        }),
+      };
+      await discovery.collect();
+      const first = discovery.getFirstDiscoveredUrl();
+      expect(first).to.be.a("string");
+      expect(first).to.match(/^https?:\/\//);
+    });
+  });
+
+  describe("scheduleRefresh / cancelRefresh", () => {
+    it("schedules a timer", () => {
+      discovery.scheduleRefresh(1000);
+      expect(adapter._timers.size).to.equal(1);
+    });
+
+    it("coalesces multiple schedule calls", () => {
+      discovery.scheduleRefresh(1000);
+      discovery.scheduleRefresh(1000);
+      discovery.scheduleRefresh(1000);
+      expect(adapter._timers.size).to.equal(1);
+    });
+
+    it("cancelRefresh clears the pending timer", () => {
+      discovery.scheduleRefresh(1000);
+      discovery.cancelRefresh();
+      expect(adapter._timers.size).to.equal(0);
+    });
+
+    it("cancelRefresh is a no-op when no timer is pending", () => {
+      expect(() => discovery.cancelRefresh()).to.not.throw();
+    });
+  });
 });
