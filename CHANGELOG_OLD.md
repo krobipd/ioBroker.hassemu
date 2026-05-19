@@ -1,4 +1,7 @@
 # Older Changes
+## 1.31.1 (2026-05-13)
+
+- Debug log traces every previously-silent decision point: cookie identity, OAuth2 validation, URL discovery skips, resolver chain, mobile-app webhook flow. Default loglevel unchanged.
 
 ## 1.31.0 (2026-05-13)
 

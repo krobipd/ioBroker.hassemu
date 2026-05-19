@@ -157,8 +157,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
-
-### **WORK IN PROGRESS**
+### 1.32.4 (2026-05-19)
 
 - Removed unnecessary web adapter dependency. Code quality enforced with standard formatting.
 
@@ -177,10 +176,6 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 ### 1.32.0 (2026-05-16)
 
 - Two state descriptions in the object tree are now complete again. Internal cleanup, no further user-facing changes.
-
-### 1.31.1 (2026-05-13)
-
-- Debug log traces every previously-silent decision point: cookie identity, OAuth2 validation, URL discovery skips, resolver chain, mobile-app webhook flow. Default loglevel unchanged.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
