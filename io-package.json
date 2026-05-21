@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.32.4",
+    "version": "1.32.5",
     "news": {
-      "NEXT": {
+      "1.32.5": {
         "en": "Verified against Node.js 24. Internal cleanup for stricter ioBroker repochecker compliance.",
         "de": "Gegen Node.js 24 verifiziert. Interne Bereinigung für strengere ioBroker-Repochecker-Konformität.",
         "ru": "Проверено для Node.js 24. Внутренняя очистка для соответствия более строгим требованиям ioBroker repochecker.",
