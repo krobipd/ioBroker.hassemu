@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.32.5",
+    "version": "1.32.6",
     "news": {
-      "NEXT": {
+      "1.32.6": {
         "en": "Use community-standard event handler pattern (.bind + try/catch).",
         "de": "Community-Standard-Eventhandler-Pattern (.bind + try/catch) verwendet.",
         "ru": "Используется стандартный шаблон обработчиков событий (.bind + try/catch).",
