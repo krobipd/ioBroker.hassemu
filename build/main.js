@@ -52,23 +52,9 @@ class HassEmu extends utils.Adapter {
   urlDiscovery = null;
   constructor(options = {}) {
     super({ ...options, name: "hassemu" });
-    this.on("ready", () => {
-      this.onReady().catch((err) => this.log.error(`onReady unhandled: ${String(err)}`));
-    });
-    this.on("stateChange", (id, state) => {
-      this.onStateChange(id, state).catch((err) => this.log.error(`stateChange unhandled: ${String(err)}`));
-    });
-    this.on("objectChange", (id, obj) => {
-      var _a2, _b;
-      if (!(id == null ? void 0 : id.startsWith("system.adapter."))) {
-        return;
-      }
-      const isUrlSourceAdapter = (0, import_url_discovery.isUrlSourceAdapterEvent)(id);
-      const isAddOrRemove = !obj || obj.type === "instance" && !((_a2 = obj.common) == null ? void 0 : _a2.host);
-      if (isUrlSourceAdapter || isAddOrRemove) {
-        (_b = this.urlDiscovery) == null ? void 0 : _b.scheduleRefresh();
-      }
-    });
+    this.on("ready", this.onReady.bind(this));
+    this.on("stateChange", this.onStateChange.bind(this));
+    this.on("objectChange", this.onObjectChange.bind(this));
     this.on("unload", this.onUnload.bind(this));
     if (!processHandlersInstalled) {
       installedUnhandledHandler = (reason) => {
@@ -84,72 +70,76 @@ class HassEmu extends utils.Adapter {
   }
   async onReady() {
     var _a2;
-    if (this.webServer) {
-      await this.webServer.stop().catch(() => {
-      });
-      this.webServer = null;
-    }
-    if (this.mdnsService) {
-      this.mdnsService.stop();
-      this.mdnsService = null;
-    }
-    (_a2 = this.urlDiscovery) == null ? void 0 : _a2.cancelRefresh();
-    this.urlDiscovery = null;
-    await this.setState("info.connection", { val: false, ack: true });
-    this.systemLanguage = await this.readSystemLanguage();
-    this.globalConfig = new import_global_config.GlobalConfig(this);
-    await this.globalConfig.restore();
-    this.registry = new import_client_registry.ClientRegistry(this);
-    await this.registry.restore();
-    await this.migrateLegacyDefaultVisUrl();
-    await this.migrateVisUrlToMode();
-    await this.repairGlobalSchemas();
-    await this.gcStaleClients();
-    const instanceUuid = await this.getOrCreateServerUuid();
-    this.log.debug(
-      `Config: port=${this.config.port}, auth=${this.config.authRequired}, mdns=${this.config.mdnsEnabled}`
-    );
-    this.urlDiscovery = new import_url_discovery.UrlDiscovery(this, async (states) => {
-      var _a3, _b;
-      await ((_a3 = this.globalConfig) == null ? void 0 : _a3.syncUrlDropdown(states));
-      await ((_b = this.registry) == null ? void 0 : _b.syncUrlDropdown(states));
-    });
-    this.registry.setNewClientModeProvider(() => this.computeNewClientMode());
-    await this.urlDiscovery.collect();
     try {
-      this.webServer = new import_webserver.WebServer(
-        this,
-        this.config,
-        this.registry,
-        this.globalConfig,
-        instanceUuid,
-        this.systemLanguage
-      );
-      await this.webServer.start();
-    } catch (err) {
-      this.log.error(`Web server failed to start: ${String(err)}`);
-      this.terminate(11);
-      return;
-    }
-    await this.subscribeForeignObjectsAsync("system.adapter.*");
-    await this.subscribeStatesAsync("clients.*");
-    await this.subscribeStatesAsync("global.*");
-    await this.subscribeStatesAsync("info.refresh_urls");
-    let mdnsActive = false;
-    if (this.config.mdnsEnabled) {
-      this.mdnsService = new import_mdns.MDNSService(this, this.config, instanceUuid);
-      this.mdnsService.start();
-      mdnsActive = this.mdnsService.isActive();
-      if (!mdnsActive) {
-        this.log.warn(`mDNS failed to start: ${"see preceding mDNS warning"}`);
+      if (this.webServer) {
+        await this.webServer.stop().catch(() => {
+        });
+        this.webServer = null;
       }
-    } else {
-      this.log.debug("mDNS disabled \u2014 clients must enter the URL manually.");
+      if (this.mdnsService) {
+        this.mdnsService.stop();
+        this.mdnsService = null;
+      }
+      (_a2 = this.urlDiscovery) == null ? void 0 : _a2.cancelRefresh();
+      this.urlDiscovery = null;
+      await this.setState("info.connection", { val: false, ack: true });
+      this.systemLanguage = await this.readSystemLanguage();
+      this.globalConfig = new import_global_config.GlobalConfig(this);
+      await this.globalConfig.restore();
+      this.registry = new import_client_registry.ClientRegistry(this);
+      await this.registry.restore();
+      await this.migrateLegacyDefaultVisUrl();
+      await this.migrateVisUrlToMode();
+      await this.repairGlobalSchemas();
+      await this.gcStaleClients();
+      const instanceUuid = await this.getOrCreateServerUuid();
+      this.log.debug(
+        `Config: port=${this.config.port}, auth=${this.config.authRequired}, mdns=${this.config.mdnsEnabled}`
+      );
+      this.urlDiscovery = new import_url_discovery.UrlDiscovery(this, async (states) => {
+        var _a3, _b;
+        await ((_a3 = this.globalConfig) == null ? void 0 : _a3.syncUrlDropdown(states));
+        await ((_b = this.registry) == null ? void 0 : _b.syncUrlDropdown(states));
+      });
+      this.registry.setNewClientModeProvider(() => this.computeNewClientMode());
+      await this.urlDiscovery.collect();
+      try {
+        this.webServer = new import_webserver.WebServer(
+          this,
+          this.config,
+          this.registry,
+          this.globalConfig,
+          instanceUuid,
+          this.systemLanguage
+        );
+        await this.webServer.start();
+      } catch (err) {
+        this.log.error(`Web server failed to start: ${String(err)}`);
+        this.terminate(11);
+        return;
+      }
+      await this.subscribeForeignObjectsAsync("system.adapter.*");
+      await this.subscribeStatesAsync("clients.*");
+      await this.subscribeStatesAsync("global.*");
+      await this.subscribeStatesAsync("info.refresh_urls");
+      let mdnsActive = false;
+      if (this.config.mdnsEnabled) {
+        this.mdnsService = new import_mdns.MDNSService(this, this.config, instanceUuid);
+        this.mdnsService.start();
+        mdnsActive = this.mdnsService.isActive();
+        if (!mdnsActive) {
+          this.log.warn(`mDNS failed to start: ${"see preceding mDNS warning"}`);
+        }
+      } else {
+        this.log.debug("mDNS disabled \u2014 clients must enter the URL manually.");
+      }
+      await this.setState("info.connection", { val: true, ack: true });
+      const bindAddr = this.config.bindAddress || "0.0.0.0";
+      const mdnsSuffix = this.config.mdnsEnabled ? mdnsActive ? ", mDNS active" : ", mDNS FAILED" : "";
+      this.log.info(`HA emulation running on ${bindAddr}:${this.config.port}${mdnsSuffix}`);
+    } catch (err) {
+      this.log.error(`onReady failed: ${String(err)}`);
     }
-    await this.setState("info.connection", { val: true, ack: true });
-    const bindAddr = this.config.bindAddress || "0.0.0.0";
-    const mdnsSuffix = this.config.mdnsEnabled ? mdnsActive ? ", mDNS active" : ", mDNS FAILED" : "";
-    this.log.info(`HA emulation running on ${bindAddr}:${this.config.port}${mdnsSuffix}`);
   }
   /**
    * Liefert die persistente Server-UUID. Beim ersten Start wird sie generiert und in
@@ -428,38 +418,42 @@ class HassEmu extends utils.Adapter {
     await this.registry.bulkSetMode("0");
   }
   async onStateChange(id, state) {
-    if (!state || state.ack) {
-      return;
-    }
-    const clientParsed = this.registry ? (0, import_client_registry.parseClientStateId)(id, this.namespace) : null;
-    if (clientParsed) {
-      if (clientParsed.kind === "mode") {
-        await this.registry.handleModeWrite(clientParsed.id, state.val);
-        const record = this.registry.getById(clientParsed.id);
-        if ((record == null ? void 0 : record.mode) === import_constants.MODE_GLOBAL && this.globalConfig.resolveUrlFor(record) === null) {
-          this.log.warn(
-            `Client ${record.id}: mode is "global" but global has no resolvable URL \u2014 fill global.mode/manualUrl, or pick a different mode`
-          );
-        }
-      } else if (clientParsed.kind === "manualUrl") {
-        await this.registry.handleManualUrlWrite(clientParsed.id, state.val);
-      } else if (clientParsed.kind === "remove" && state.val === true) {
-        await this.registry.remove(clientParsed.id);
+    try {
+      if (!state || state.ack) {
+        return;
       }
-      return;
-    }
-    const globalParsed = this.globalConfig ? (0, import_global_config.parseGlobalStateId)(id, this.namespace) : null;
-    if (globalParsed === "mode") {
-      await this.globalConfig.handleModeWrite(state.val);
-    } else if (globalParsed === "manualUrl") {
-      await this.globalConfig.handleManualUrlWrite(state.val);
-    } else if (globalParsed === "enabled") {
-      await this.globalConfig.handleEnabledWrite(state.val);
-      await this.applyMasterSwitch(this.globalConfig.isEnabled());
-      return;
-    }
-    if (id === `${this.namespace}.info.refresh_urls` && state.val === true) {
-      await this.handleRefreshUrlsWrite();
+      const clientParsed = this.registry ? (0, import_client_registry.parseClientStateId)(id, this.namespace) : null;
+      if (clientParsed) {
+        if (clientParsed.kind === "mode") {
+          await this.registry.handleModeWrite(clientParsed.id, state.val);
+          const record = this.registry.getById(clientParsed.id);
+          if ((record == null ? void 0 : record.mode) === import_constants.MODE_GLOBAL && this.globalConfig.resolveUrlFor(record) === null) {
+            this.log.warn(
+              `Client ${record.id}: mode is "global" but global has no resolvable URL \u2014 fill global.mode/manualUrl, or pick a different mode`
+            );
+          }
+        } else if (clientParsed.kind === "manualUrl") {
+          await this.registry.handleManualUrlWrite(clientParsed.id, state.val);
+        } else if (clientParsed.kind === "remove" && state.val === true) {
+          await this.registry.remove(clientParsed.id);
+        }
+        return;
+      }
+      const globalParsed = this.globalConfig ? (0, import_global_config.parseGlobalStateId)(id, this.namespace) : null;
+      if (globalParsed === "mode") {
+        await this.globalConfig.handleModeWrite(state.val);
+      } else if (globalParsed === "manualUrl") {
+        await this.globalConfig.handleManualUrlWrite(state.val);
+      } else if (globalParsed === "enabled") {
+        await this.globalConfig.handleEnabledWrite(state.val);
+        await this.applyMasterSwitch(this.globalConfig.isEnabled());
+        return;
+      }
+      if (id === `${this.namespace}.info.refresh_urls` && state.val === true) {
+        await this.handleRefreshUrlsWrite();
+      }
+    } catch (err) {
+      this.log.error(`stateChange failed: ${String(err)}`);
     }
   }
   /**
@@ -480,6 +474,21 @@ class HassEmu extends utils.Adapter {
     } finally {
       await this.setStateAsync("info.refresh_urls", { val: false, ack: true }).catch(() => {
       });
+    }
+  }
+  onObjectChange(id, obj) {
+    var _a2, _b;
+    try {
+      if (!(id == null ? void 0 : id.startsWith("system.adapter."))) {
+        return;
+      }
+      const isUrlSourceAdapter = (0, import_url_discovery.isUrlSourceAdapterEvent)(id);
+      const isAddOrRemove = !obj || obj.type === "instance" && !((_a2 = obj.common) == null ? void 0 : _a2.host);
+      if (isUrlSourceAdapter || isAddOrRemove) {
+        (_b = this.urlDiscovery) == null ? void 0 : _b.scheduleRefresh();
+      }
+    } catch (err) {
+      this.log.error(`objectChange failed: ${String(err)}`);
     }
   }
   onUnload(callback) {

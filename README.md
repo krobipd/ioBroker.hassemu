@@ -157,7 +157,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
-### **WORK IN PROGRESS**
+### 1.32.6 (2026-05-21)
 - Use community-standard event handler pattern (.bind + try/catch).
 
 ### 1.32.5 (2026-05-21)
@@ -174,10 +174,6 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 ### 1.32.2 (2026-05-16)
 
 - Internal cleanup. No user-facing changes.
-
-### 1.32.1 (2026-05-16)
-
-- If the adapter goes offline while the display is running, the display now switches to a clear offline page with a reload button instead of just stopping to update.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
