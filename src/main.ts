@@ -171,7 +171,7 @@ class HassEmu extends utils.Adapter {
       // v1.13.0 (H6): subscriptions waren noch nicht angelegt (jetzt nach
       // diesem Block) — daher kein cleanup nötig. Falls ein Refactor
       // subscriptions VORZIEHT: hier explizit unsubscribe.
-      this.terminate?.(11) ?? process.exit(11);
+      this.terminate(11);
       return;
     }
 

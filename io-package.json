@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.32.4",
     "news": {
+      "NEXT": {
+        "en": "Verified against Node.js 24. Internal cleanup for stricter ioBroker repochecker compliance.",
+        "de": "Gegen Node.js 24 verifiziert. Interne Bereinigung für strengere ioBroker-Repochecker-Konformität.",
+        "ru": "Проверено для Node.js 24. Внутренняя очистка для соответствия более строгим требованиям ioBroker repochecker.",
+        "pt": "Verificado com Node.js 24. Limpeza interna para conformidade mais rigorosa com o repochecker do ioBroker.",
+        "nl": "Geverifieerd tegen Node.js 24. Interne opruiming voor strengere ioBroker-repochecker-conformiteit.",
+        "fr": "Vérifié avec Node.js 24. Nettoyage interne pour une conformité plus stricte au repochecker ioBroker.",
+        "it": "Verificato con Node.js 24. Pulizia interna per una conformità più rigorosa al repochecker di ioBroker.",
+        "es": "Verificado con Node.js 24. Limpieza interna para un cumplimiento más estricto del repochecker de ioBroker.",
+        "pl": "Zweryfikowano z Node.js 24. Wewnętrzne porządki dla ściślejszej zgodności z repochecker ioBroker.",
+        "uk": "Перевірено з Node.js 24. Внутрішнє прибирання для суворішої відповідності repochecker ioBroker.",
+        "zh-cn": "已针对 Node.js 24 进行验证。内部清理以符合更严格的 ioBroker repochecker 规范。"
+      },
       "1.32.4": {
         "en": "Removed unnecessary web adapter dependency. Code quality enforced with standard formatting.",
         "de": "Unnötige Abhängigkeit vom Web-Adapter entfernt. Codequalität durch einheitliche Formatierung sichergestellt.",
@@ -80,19 +93,6 @@
         "pl": "Log debug śledzi teraz każdy wcześniej cichy punkt decyzyjny: tożsamość cookie, walidacja OAuth2, URL discovery, łańcuch resolver, przepływ webhook mobile-app.",
         "uk": "Debug-лог тепер трасує кожне рішення, яке раніше було тихим: cookie-ідентичність, OAuth2-валідація, URL-discovery, resolver-ланцюг, mobile-app webhook-потік.",
         "zh-cn": "调试日志现在跟踪每个先前静默的决策点：cookie 身份、OAuth2 验证、URL 发现、解析器链、移动应用 webhook 流程。"
-      },
-      "1.31.0": {
-        "en": "Companion apps now stay signed in across adapter restarts. Existing apps will sign in once after the update. Internal brute-force-lockout removed.",
-        "de": "Companion-Apps bleiben jetzt über Adapter-Restarts hinweg angemeldet. Bestehende Apps melden sich nach dem Update einmal neu an. Interne Brute-Force-Sperre entfernt.",
-        "ru": "Companion-приложения теперь остаются авторизованными после перезапуска адаптера. После обновления существующие приложения входят один раз. Внутренняя блокировка brute-force удалена.",
-        "pt": "Apps Companion permanecem conectados após reinícios do adaptador. Apps existentes fazem login uma vez após a atualização. Bloqueio interno brute-force removido.",
-        "nl": "Companion-apps blijven nu ingelogd na adapter-herstarts. Bestaande apps melden zich na de update eenmaal opnieuw aan. Interne brute-force-vergrendeling verwijderd.",
-        "fr": "Les apps Companion restent connectées après redémarrage de l'adaptateur. Les apps existantes se reconnectent une fois après la mise à jour. Verrouillage brute-force interne supprimé.",
-        "it": "Le app Companion restano collegate dopo i riavvii dell'adattatore. Le app esistenti effettuano l'accesso una volta dopo l'aggiornamento. Blocco brute-force interno rimosso.",
-        "es": "Las apps Companion permanecen conectadas tras reinicios del adaptador. Las apps existentes inician sesión una vez tras la actualización. Bloqueo brute-force interno eliminado.",
-        "pl": "Aplikacje Companion pozostają zalogowane po restartach adaptera. Istniejące aplikacje logują się raz po aktualizacji. Wewnętrzna blokada brute-force usunięta.",
-        "uk": "Companion-додатки тепер залишаються авторизованими після перезапуску адаптера. Існуючі додатки входять один раз після оновлення. Внутрішнє блокування brute-force видалено.",
-        "zh-cn": "Companion 应用现在可以在适配器重启后保持登录状态。更新后现有应用会重新登录一次。内部 brute-force 锁定已移除。"
       }
     },
     "titleLang": {
