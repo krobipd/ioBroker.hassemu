@@ -83,7 +83,7 @@ class HassEmu extends utils.Adapter {
     }
   }
   async onReady() {
-    var _a2, _b, _c;
+    var _a2;
     if (this.webServer) {
       await this.webServer.stop().catch(() => {
       });
@@ -110,9 +110,9 @@ class HassEmu extends utils.Adapter {
       `Config: port=${this.config.port}, auth=${this.config.authRequired}, mdns=${this.config.mdnsEnabled}`
     );
     this.urlDiscovery = new import_url_discovery.UrlDiscovery(this, async (states) => {
-      var _a3, _b2;
+      var _a3, _b;
       await ((_a3 = this.globalConfig) == null ? void 0 : _a3.syncUrlDropdown(states));
-      await ((_b2 = this.registry) == null ? void 0 : _b2.syncUrlDropdown(states));
+      await ((_b = this.registry) == null ? void 0 : _b.syncUrlDropdown(states));
     });
     this.registry.setNewClientModeProvider(() => this.computeNewClientMode());
     await this.urlDiscovery.collect();
@@ -128,7 +128,7 @@ class HassEmu extends utils.Adapter {
       await this.webServer.start();
     } catch (err) {
       this.log.error(`Web server failed to start: ${String(err)}`);
-      (_c = (_b = this.terminate) == null ? void 0 : _b.call(this, 11)) != null ? _c : process.exit(11);
+      this.terminate(11);
       return;
     }
     await this.subscribeForeignObjectsAsync("system.adapter.*");
