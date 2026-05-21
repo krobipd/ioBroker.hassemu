@@ -1,4 +1,8 @@
 # Older Changes
+## 1.32.0 (2026-05-16)
+
+- Two state descriptions in the object tree are now complete again. Internal cleanup, no further user-facing changes.
+
 ## 1.31.1 (2026-05-13)
 
 - Debug log traces every previously-silent decision point: cookie identity, OAuth2 validation, URL discovery skips, resolver chain, mobile-app webhook flow. Default loglevel unchanged.

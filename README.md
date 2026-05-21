@@ -157,7 +157,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
-### **WORK IN PROGRESS**
+### 1.32.5 (2026-05-21)
 - Verified against Node.js 24. Internal cleanup for stricter ioBroker repochecker compliance.
 
 ### 1.32.4 (2026-05-19)
@@ -175,10 +175,6 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 ### 1.32.1 (2026-05-16)
 
 - If the adapter goes offline while the display is running, the display now switches to a clear offline page with a reload button instead of just stopping to update.
-
-### 1.32.0 (2026-05-16)
-
-- Two state descriptions in the object tree are now complete again. Internal cleanup, no further user-facing changes.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
