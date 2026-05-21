@@ -157,6 +157,9 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+### **WORK IN PROGRESS**
+- Use community-standard event handler pattern (.bind + try/catch).
+
 ### 1.32.5 (2026-05-21)
 - Verified against Node.js 24. Internal cleanup for stricter ioBroker repochecker compliance.
 
