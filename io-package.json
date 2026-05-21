@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.32.5",
     "news": {
+      "NEXT": {
+        "en": "Use community-standard event handler pattern (.bind + try/catch).",
+        "de": "Community-Standard-Eventhandler-Pattern (.bind + try/catch) verwendet.",
+        "ru": "Используется стандартный шаблон обработчиков событий (.bind + try/catch).",
+        "pt": "Utilizado o padrão comunitário de manipuladores de eventos (.bind + try/catch).",
+        "nl": "Community-standaard event handler patroon (.bind + try/catch) gebruikt.",
+        "fr": "Utilisation du modèle standard communautaire pour les gestionnaires d'événements (.bind + try/catch).",
+        "it": "Utilizzato il modello standard della community per i gestori di eventi (.bind + try/catch).",
+        "es": "Utilizado el patrón estándar de la comunidad para manejadores de eventos (.bind + try/catch).",
+        "pl": "Zastosowano standardowy wzorzec obsługi zdarzeń (.bind + try/catch).",
+        "uk": "Використано стандартний шаблон обробників подій (.bind + try/catch).",
+        "zh-cn": "使用社区标准事件处理程序模式（.bind + try/catch）。"
+      },
       "1.32.5": {
         "en": "Verified against Node.js 24. Internal cleanup for stricter ioBroker repochecker compliance.",
         "de": "Gegen Node.js 24 verifiziert. Interne Bereinigung für strengere ioBroker-Repochecker-Konformität.",
@@ -80,19 +93,6 @@
         "pl": "Dwa skrócone opisy stanów w drzewie obiektów są znów kompletne. Wewnętrzne porządki, bez innych widocznych zmian.",
         "uk": "Два обрізані описи станів у дереві об'єктів знову повні. Внутрішнє прибирання, без інших видимих змін.",
         "zh-cn": "对象树中两个被截断的状态描述现已完整。其余为内部清理，无用户可见更改。"
-      },
-      "1.31.1": {
-        "en": "Debug log traces every decision point that was previously silent: cookie identity, OAuth2 validation, URL discovery skips, resolver chain, mobile-app webhook flow.",
-        "de": "Debug-Log spurt jetzt jeden Entscheidungspunkt der vorher silent war: Cookie-Identität, OAuth2-Validation, URL-Discovery-Skips, Resolver-Kette, Mobile-App-Webhook-Ablauf.",
-        "ru": "Debug-лог теперь трассирует все ранее молчавшие решения: cookie-идентичность, OAuth2-валидация, URL-discovery-пропуски, цепочка resolver, mobile-app webhook-поток.",
-        "pt": "Log de debug agora rastreia cada ponto de decisão antes silencioso: identidade do cookie, validação OAuth2, discovery URL, cadeia do resolver, fluxo de webhook mobile-app.",
-        "nl": "Debug-log traceert nu elk eerder stil beslissingsmoment: cookie-identiteit, OAuth2-validatie, URL-discovery-skips, resolver-keten, mobile-app-webhook-flow.",
-        "fr": "Le log debug trace désormais chaque point de décision auparavant silencieux: identité cookie, validation OAuth2, URL discovery, chaîne resolver, flux webhook mobile-app.",
-        "it": "Il log di debug ora traccia ogni punto decisionale prima silenzioso: identità cookie, validazione OAuth2, URL discovery, catena resolver, flusso webhook mobile-app.",
-        "es": "El log de debug ahora traza cada punto de decisión antes silencioso: identidad cookie, validación OAuth2, URL discovery, cadena resolver, flujo webhook mobile-app.",
-        "pl": "Log debug śledzi teraz każdy wcześniej cichy punkt decyzyjny: tożsamość cookie, walidacja OAuth2, URL discovery, łańcuch resolver, przepływ webhook mobile-app.",
-        "uk": "Debug-лог тепер трасує кожне рішення, яке раніше було тихим: cookie-ідентичність, OAuth2-валідація, URL-discovery, resolver-ланцюг, mobile-app webhook-потік.",
-        "zh-cn": "调试日志现在跟踪每个先前静默的决策点：cookie 身份、OAuth2 验证、URL 发现、解析器链、移动应用 webhook 流程。"
       }
     },
     "titleLang": {

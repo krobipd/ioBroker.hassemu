@@ -45,34 +45,9 @@ class HassEmu extends utils.Adapter {
   public constructor(options: Partial<utils.AdapterOptions> = {}) {
     super({ ...options, name: "hassemu" });
 
-    this.on("ready", () => {
-      this.onReady().catch(err => this.log.error(`onReady unhandled: ${String(err)}`));
-    });
-    this.on("stateChange", (id, state) => {
-      this.onStateChange(id, state).catch(err => this.log.error(`stateChange unhandled: ${String(err)}`));
-    });
-    this.on("objectChange", (id, obj) => {
-      // v1.13.0 (H4): Narrow filter — vorher feuerte JEDER objectChange
-      // im `system.adapter.*`-Namespace ein scheduleRefresh, auch wenn
-      // ein anderer Adapter (mit Discovery-irrelevanten Properties) eine
-      // Konfiguration änderte. Jetzt nur Trigger bei:
-      //  - Instance-Add/-Remove (obj=null bei delete, oder fresh _id ohne obj)
-      //  - native.intro / native.welcomeScreen / native.welcomeScreenPro
-      //    (Quellen für discovered URLs)
-      //  - admin/web/vis/vis-2 generell (deren Available-Status entscheidet)
-      if (!id?.startsWith("system.adapter.")) {
-        return;
-      }
-      // v1.30.0 (R2): adapter prefix list lives in url-discovery.ts
-      // alongside the actual discovery logic. Single source of truth —
-      // adding a new URL-source adapter only requires updating the
-      // exported `URL_SOURCE_PREFIXES` (plus `collect()`).
-      const isUrlSourceAdapter = isUrlSourceAdapterEvent(id);
-      const isAddOrRemove = !obj || (obj.type === "instance" && !obj.common?.host);
-      if (isUrlSourceAdapter || isAddOrRemove) {
-        this.urlDiscovery?.scheduleRefresh();
-      }
-    });
+    this.on("ready", this.onReady.bind(this));
+    this.on("stateChange", this.onStateChange.bind(this));
+    this.on("objectChange", this.onObjectChange.bind(this));
     this.on("unload", this.onUnload.bind(this));
 
     // Last-line-of-defence against unhandled rejections / sync throws from
@@ -91,123 +66,127 @@ class HassEmu extends utils.Adapter {
   }
 
   private async onReady(): Promise<void> {
-    // v1.14.0 (H7): defensive bei onReady-Re-Run ohne unload (sollte nicht
-    // passieren, aber js-controller-Edge-Cases). Vorhandene Refs sauber
-    // entsorgen, sonst orphaned Server + Listeners.
-    if (this.webServer) {
-      await this.webServer.stop().catch(() => {});
-      this.webServer = null;
-    }
-    if (this.mdnsService) {
-      this.mdnsService.stop();
-      this.mdnsService = null;
-    }
-    this.urlDiscovery?.cancelRefresh();
-    this.urlDiscovery = null;
-
-    await this.setState("info.connection", { val: false, ack: true });
-
-    // System-Sprache lesen — wird an WebServer durchgereicht für die
-    // user-facing Landing-Seite (HTML). Adapter-Logs sind Englisch.
-    this.systemLanguage = await this.readSystemLanguage();
-
-    this.globalConfig = new GlobalConfig(this);
-    await this.globalConfig.restore();
-
-    this.registry = new ClientRegistry(this);
-    await this.registry.restore();
-
-    // Migrations run before subscriptions / webserver — first the legacy
-    // 1.0.x-style native config, then the visUrl → mode/manualUrl move,
-    // then a defensive schema repair for users upgrading from v1.2.0+
-    // (where the partial-formed mode-object from the v1.2.0 extend-bug
-    // persists since `legacy.visUrl` is already gone and migrate doesn't trigger).
-    await this.migrateLegacyDefaultVisUrl();
-    await this.migrateVisUrlToMode();
-    await this.repairGlobalSchemas();
-
-    // Garbage-collect stale clients (no token + lastSeen older than 30 days).
-    await this.gcStaleClients();
-
-    // HA-Server-UUID stabil über Restarts halten — sonst behandeln HA-Clients
-    // (Companion-App, Wall-Display, ...) jeden Adapter-Restart als „neuer Server"
-    // → Re-Onboarding, Token-Invalidation, History-Verlust. Persistierung in
-    // einem normalen State (NICHT via extendForeignObjectAsync auf
-    // system.adapter.X.native — das triggert Restart-Loops, govee-smart-Lesson
-    // v2.1.3, Memory `feedback_unhandled_rejection_crash_loop` / `reference_iobroker_partial_object_repair`).
-    const instanceUuid = await this.getOrCreateServerUuid();
-    this.log.debug(
-      `Config: port=${this.config.port}, auth=${this.config.authRequired}, mdns=${this.config.mdnsEnabled}`,
-    );
-
-    this.urlDiscovery = new UrlDiscovery(this, async states => {
-      await this.globalConfig?.syncUrlDropdown(states);
-      await this.registry?.syncUrlDropdown(states);
-    });
-    // v1.13.0 (H5): Provider VOR collect() setzen — sonst läuft das
-    // erste collect() mit dem Default-Provider (`() => MODE_GLOBAL`),
-    // der nicht den Resolver-Output für neue Clients widerspiegelt.
-    this.registry.setNewClientModeProvider(() => this.computeNewClientMode());
-    await this.urlDiscovery.collect();
-
     try {
-      this.webServer = new WebServer(
-        this,
-        this.config,
-        this.registry,
-        this.globalConfig,
-        instanceUuid,
-        this.systemLanguage,
-      );
-      await this.webServer.start();
-    } catch (err) {
-      this.log.error(`Web server failed to start: ${String(err)}`);
-      // v1.10.0 (B4): nicht stumm zurückkehren — der Adapter wäre sonst
-      // zombie (info.connection=false, kein Server, keine Subscriptions,
-      // kein Restart-Signal an js-controller). terminate() signalisiert
-      // explizit Failure mit code 11 → js-controller restartet nach
-      // Backoff. Bei EADDRINUSE (Port belegt) ist das die einzig sinnvolle
-      // Reaktion: warten + retry, statt unsichtbar idle zu sitzen.
-      // v1.13.0 (H6): subscriptions waren noch nicht angelegt (jetzt nach
-      // diesem Block) — daher kein cleanup nötig. Falls ein Refactor
-      // subscriptions VORZIEHT: hier explizit unsubscribe.
-      this.terminate(11);
-      return;
-    }
-
-    // v1.13.0 (D11+H6): Subscriptions NACH webServer.start() — vorher
-    // hätte ein State-Write zwischen subscribe und start einen Handler
-    // ausgelöst der auf einen noch-nicht-laufenden Server zugriff. Plus:
-    // wenn webServer.start() throwt, sind Subscriptions noch nicht angelegt
-    // (kein Cleanup-Pfad nötig im catch-Block oben).
-    await this.subscribeForeignObjectsAsync("system.adapter.*");
-    await this.subscribeStatesAsync("clients.*");
-    await this.subscribeStatesAsync("global.*");
-    await this.subscribeStatesAsync("info.refresh_urls");
-
-    let mdnsActive = false;
-    if (this.config.mdnsEnabled) {
-      this.mdnsService = new MDNSService(this, this.config, instanceUuid);
-      this.mdnsService.start();
-      // v1.10.0 (H1): mdns.start() catched intern und setzt active=false
-      // bei Fehler — vorher wurde info.connection=true unabhängig gesetzt
-      // und der User hatte den Eindruck Discovery funktioniert. Jetzt
-      // führen wir die Information sichtbar im Log + im Suffix der
-      // running-Meldung.
-      mdnsActive = this.mdnsService.isActive();
-      if (!mdnsActive) {
-        // Use mdnsStartFailed (User-Hint) — `error` slot uses generic phrase since
-        // the underlying cause was already warn'd by MDNSService itself.
-        this.log.warn(`mDNS failed to start: ${"see preceding mDNS warning"}`);
+      // v1.14.0 (H7): defensive bei onReady-Re-Run ohne unload (sollte nicht
+      // passieren, aber js-controller-Edge-Cases). Vorhandene Refs sauber
+      // entsorgen, sonst orphaned Server + Listeners.
+      if (this.webServer) {
+        await this.webServer.stop().catch(() => {});
+        this.webServer = null;
       }
-    } else {
-      this.log.debug("mDNS disabled — clients must enter the URL manually.");
-    }
+      if (this.mdnsService) {
+        this.mdnsService.stop();
+        this.mdnsService = null;
+      }
+      this.urlDiscovery?.cancelRefresh();
+      this.urlDiscovery = null;
 
-    await this.setState("info.connection", { val: true, ack: true });
-    const bindAddr = this.config.bindAddress || "0.0.0.0";
-    const mdnsSuffix = this.config.mdnsEnabled ? (mdnsActive ? ", mDNS active" : ", mDNS FAILED") : "";
-    this.log.info(`HA emulation running on ${bindAddr}:${this.config.port}${mdnsSuffix}`);
+      await this.setState("info.connection", { val: false, ack: true });
+
+      // System-Sprache lesen — wird an WebServer durchgereicht für die
+      // user-facing Landing-Seite (HTML). Adapter-Logs sind Englisch.
+      this.systemLanguage = await this.readSystemLanguage();
+
+      this.globalConfig = new GlobalConfig(this);
+      await this.globalConfig.restore();
+
+      this.registry = new ClientRegistry(this);
+      await this.registry.restore();
+
+      // Migrations run before subscriptions / webserver — first the legacy
+      // 1.0.x-style native config, then the visUrl → mode/manualUrl move,
+      // then a defensive schema repair for users upgrading from v1.2.0+
+      // (where the partial-formed mode-object from the v1.2.0 extend-bug
+      // persists since `legacy.visUrl` is already gone and migrate doesn't trigger).
+      await this.migrateLegacyDefaultVisUrl();
+      await this.migrateVisUrlToMode();
+      await this.repairGlobalSchemas();
+
+      // Garbage-collect stale clients (no token + lastSeen older than 30 days).
+      await this.gcStaleClients();
+
+      // HA-Server-UUID stabil über Restarts halten — sonst behandeln HA-Clients
+      // (Companion-App, Wall-Display, ...) jeden Adapter-Restart als „neuer Server"
+      // → Re-Onboarding, Token-Invalidation, History-Verlust. Persistierung in
+      // einem normalen State (NICHT via extendForeignObjectAsync auf
+      // system.adapter.X.native — das triggert Restart-Loops, govee-smart-Lesson
+      // v2.1.3, Memory `feedback_unhandled_rejection_crash_loop` / `reference_iobroker_partial_object_repair`).
+      const instanceUuid = await this.getOrCreateServerUuid();
+      this.log.debug(
+        `Config: port=${this.config.port}, auth=${this.config.authRequired}, mdns=${this.config.mdnsEnabled}`,
+      );
+
+      this.urlDiscovery = new UrlDiscovery(this, async states => {
+        await this.globalConfig?.syncUrlDropdown(states);
+        await this.registry?.syncUrlDropdown(states);
+      });
+      // v1.13.0 (H5): Provider VOR collect() setzen — sonst läuft das
+      // erste collect() mit dem Default-Provider (`() => MODE_GLOBAL`),
+      // der nicht den Resolver-Output für neue Clients widerspiegelt.
+      this.registry.setNewClientModeProvider(() => this.computeNewClientMode());
+      await this.urlDiscovery.collect();
+
+      try {
+        this.webServer = new WebServer(
+          this,
+          this.config,
+          this.registry,
+          this.globalConfig,
+          instanceUuid,
+          this.systemLanguage,
+        );
+        await this.webServer.start();
+      } catch (err) {
+        this.log.error(`Web server failed to start: ${String(err)}`);
+        // v1.10.0 (B4): nicht stumm zurückkehren — der Adapter wäre sonst
+        // zombie (info.connection=false, kein Server, keine Subscriptions,
+        // kein Restart-Signal an js-controller). terminate() signalisiert
+        // explizit Failure mit code 11 → js-controller restartet nach
+        // Backoff. Bei EADDRINUSE (Port belegt) ist das die einzig sinnvolle
+        // Reaktion: warten + retry, statt unsichtbar idle zu sitzen.
+        // v1.13.0 (H6): subscriptions waren noch nicht angelegt (jetzt nach
+        // diesem Block) — daher kein cleanup nötig. Falls ein Refactor
+        // subscriptions VORZIEHT: hier explizit unsubscribe.
+        this.terminate(11);
+        return;
+      }
+
+      // v1.13.0 (D11+H6): Subscriptions NACH webServer.start() — vorher
+      // hätte ein State-Write zwischen subscribe und start einen Handler
+      // ausgelöst der auf einen noch-nicht-laufenden Server zugriff. Plus:
+      // wenn webServer.start() throwt, sind Subscriptions noch nicht angelegt
+      // (kein Cleanup-Pfad nötig im catch-Block oben).
+      await this.subscribeForeignObjectsAsync("system.adapter.*");
+      await this.subscribeStatesAsync("clients.*");
+      await this.subscribeStatesAsync("global.*");
+      await this.subscribeStatesAsync("info.refresh_urls");
+
+      let mdnsActive = false;
+      if (this.config.mdnsEnabled) {
+        this.mdnsService = new MDNSService(this, this.config, instanceUuid);
+        this.mdnsService.start();
+        // v1.10.0 (H1): mdns.start() catched intern und setzt active=false
+        // bei Fehler — vorher wurde info.connection=true unabhängig gesetzt
+        // und der User hatte den Eindruck Discovery funktioniert. Jetzt
+        // führen wir die Information sichtbar im Log + im Suffix der
+        // running-Meldung.
+        mdnsActive = this.mdnsService.isActive();
+        if (!mdnsActive) {
+          // Use mdnsStartFailed (User-Hint) — `error` slot uses generic phrase since
+          // the underlying cause was already warn'd by MDNSService itself.
+          this.log.warn(`mDNS failed to start: ${"see preceding mDNS warning"}`);
+        }
+      } else {
+        this.log.debug("mDNS disabled — clients must enter the URL manually.");
+      }
+
+      await this.setState("info.connection", { val: true, ack: true });
+      const bindAddr = this.config.bindAddress || "0.0.0.0";
+      const mdnsSuffix = this.config.mdnsEnabled ? (mdnsActive ? ", mDNS active" : ", mDNS FAILED") : "";
+      this.log.info(`HA emulation running on ${bindAddr}:${this.config.port}${mdnsSuffix}`);
+    } catch (err: unknown) {
+      this.log.error(`onReady failed: ${String(err)}`);
+    }
   }
 
   /**
@@ -550,45 +529,49 @@ class HassEmu extends utils.Adapter {
   }
 
   private async onStateChange(id: string, state: ioBroker.State | null | undefined): Promise<void> {
-    if (!state || state.ack) {
-      return;
-    }
-    const clientParsed = this.registry ? parseClientStateId(id, this.namespace) : null;
-    if (clientParsed) {
-      if (clientParsed.kind === "mode") {
-        await this.registry!.handleModeWrite(clientParsed.id, state.val);
-        // B4: if the user picked 'global' but global resolves to nothing,
-        // give them a one-shot heads-up so the cause of the empty redirect
-        // is obvious without digging through the resolver code.
-        const record = this.registry!.getById(clientParsed.id);
-        if (record?.mode === MODE_GLOBAL && this.globalConfig!.resolveUrlFor(record) === null) {
-          this.log.warn(
-            `Client ${record.id}: mode is "global" but global has no resolvable URL — fill global.mode/manualUrl, or pick a different mode`,
-          );
-        }
-      } else if (clientParsed.kind === "manualUrl") {
-        await this.registry!.handleManualUrlWrite(clientParsed.id, state.val);
-      } else if (clientParsed.kind === "remove" && state.val === true) {
-        await this.registry!.remove(clientParsed.id);
+    try {
+      if (!state || state.ack) {
+        return;
       }
-      return;
-    }
-    const globalParsed = this.globalConfig ? parseGlobalStateId(id, this.namespace) : null;
-    if (globalParsed === "mode") {
-      await this.globalConfig!.handleModeWrite(state.val);
-    } else if (globalParsed === "manualUrl") {
-      await this.globalConfig!.handleManualUrlWrite(state.val);
-    } else if (globalParsed === "enabled") {
-      await this.globalConfig!.handleEnabledWrite(state.val);
-      await this.applyMasterSwitch(this.globalConfig!.isEnabled());
-      return;
-    }
+      const clientParsed = this.registry ? parseClientStateId(id, this.namespace) : null;
+      if (clientParsed) {
+        if (clientParsed.kind === "mode") {
+          await this.registry!.handleModeWrite(clientParsed.id, state.val);
+          // B4: if the user picked 'global' but global resolves to nothing,
+          // give them a one-shot heads-up so the cause of the empty redirect
+          // is obvious without digging through the resolver code.
+          const record = this.registry!.getById(clientParsed.id);
+          if (record?.mode === MODE_GLOBAL && this.globalConfig!.resolveUrlFor(record) === null) {
+            this.log.warn(
+              `Client ${record.id}: mode is "global" but global has no resolvable URL — fill global.mode/manualUrl, or pick a different mode`,
+            );
+          }
+        } else if (clientParsed.kind === "manualUrl") {
+          await this.registry!.handleManualUrlWrite(clientParsed.id, state.val);
+        } else if (clientParsed.kind === "remove" && state.val === true) {
+          await this.registry!.remove(clientParsed.id);
+        }
+        return;
+      }
+      const globalParsed = this.globalConfig ? parseGlobalStateId(id, this.namespace) : null;
+      if (globalParsed === "mode") {
+        await this.globalConfig!.handleModeWrite(state.val);
+      } else if (globalParsed === "manualUrl") {
+        await this.globalConfig!.handleManualUrlWrite(state.val);
+      } else if (globalParsed === "enabled") {
+        await this.globalConfig!.handleEnabledWrite(state.val);
+        await this.applyMasterSwitch(this.globalConfig!.isEnabled());
+        return;
+      }
 
-    // info.refresh_urls — User-Trigger für manuelles Dropdown-Refresh ohne
-    // Adapter-Neustart. Re-scan'd den Broker nach VIS/VIS-2-Projekten und
-    // Admin-Tiles, schreibt die neuen states-Maps in alle Mode-Dropdowns.
-    if (id === `${this.namespace}.info.refresh_urls` && state.val === true) {
-      await this.handleRefreshUrlsWrite();
+      // info.refresh_urls — User-Trigger für manuelles Dropdown-Refresh ohne
+      // Adapter-Neustart. Re-scan'd den Broker nach VIS/VIS-2-Projekten und
+      // Admin-Tiles, schreibt die neuen states-Maps in alle Mode-Dropdowns.
+      if (id === `${this.namespace}.info.refresh_urls` && state.val === true) {
+        await this.handleRefreshUrlsWrite();
+      }
+    } catch (err: unknown) {
+      this.log.error(`stateChange failed: ${String(err)}`);
     }
   }
 
@@ -609,6 +592,33 @@ class HassEmu extends utils.Adapter {
       this.log.warn(`URL refresh failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       await this.setStateAsync("info.refresh_urls", { val: false, ack: true }).catch(() => {});
+    }
+  }
+
+  private onObjectChange(id: string, obj: ioBroker.Object | null | undefined): void {
+    try {
+      // v1.13.0 (H4): Narrow filter — vorher feuerte JEDER objectChange
+      // im `system.adapter.*`-Namespace ein scheduleRefresh, auch wenn
+      // ein anderer Adapter (mit Discovery-irrelevanten Properties) eine
+      // Konfiguration änderte. Jetzt nur Trigger bei:
+      //  - Instance-Add/-Remove (obj=null bei delete, oder fresh _id ohne obj)
+      //  - native.intro / native.welcomeScreen / native.welcomeScreenPro
+      //    (Quellen für discovered URLs)
+      //  - admin/web/vis/vis-2 generell (deren Available-Status entscheidet)
+      if (!id?.startsWith("system.adapter.")) {
+        return;
+      }
+      // v1.30.0 (R2): adapter prefix list lives in url-discovery.ts
+      // alongside the actual discovery logic. Single source of truth —
+      // adding a new URL-source adapter only requires updating the
+      // exported `URL_SOURCE_PREFIXES` (plus `collect()`).
+      const isUrlSourceAdapter = isUrlSourceAdapterEvent(id);
+      const isAddOrRemove = !obj || (obj.type === "instance" && !obj.common?.host);
+      if (isUrlSourceAdapter || isAddOrRemove) {
+        this.urlDiscovery?.scheduleRefresh();
+      }
+    } catch (err: unknown) {
+      this.log.error(`objectChange failed: ${String(err)}`);
     }
   }
 
