@@ -157,6 +157,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+### **WORK IN PROGRESS**
 - Verified against Node.js 24. Internal cleanup for stricter ioBroker repochecker compliance.
 
 ### 1.32.4 (2026-05-19)
