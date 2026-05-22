@@ -157,7 +157,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
-### **WORK IN PROGRESS**
+### 1.33.0 (2026-05-22)
 
 - User-modified state names are no longer overwritten on adapter restart
 - State name translations migrated to standard ioBroker i18n framework
@@ -173,10 +173,6 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 - Removed unnecessary web adapter dependency. Code quality enforced with standard formatting.
 
 ### 1.32.3 (2026-05-17)
-
-- Internal cleanup. No user-facing changes.
-
-### 1.32.2 (2026-05-16)
 
 - Internal cleanup. No user-facing changes.
 
