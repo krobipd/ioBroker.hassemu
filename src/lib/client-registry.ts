@@ -23,7 +23,7 @@ import {
   safeGetState,
 } from "./coerce";
 import { MODE_GLOBAL, MODE_MANUAL, NEW_CLIENT_BURST_CAP } from "./constants";
-import { resolveLabel, tName } from "./i18n-states";
+import { resolveLabel, tName } from "./i18n";
 import { generateClientId } from "./network";
 import type { AdapterInterface, ClientRecord, UrlStates } from "./types";
 
@@ -632,11 +632,10 @@ export class ClientRegistry {
     // helper hier via `as unknown as string`-Cast eingeschleust, der den
     // Type-Check still ließ aber den Admin-Dropdown beim Öffnen zerlegt
     // hat. Memory `reference_common_states_plain_string_only`.
-    const lang = this.adapter.systemLanguage;
     return buildDropdownStates(
       {
-        [MODE_GLOBAL]: resolveLabel("globalUrl", lang),
-        [MODE_MANUAL]: resolveLabel("manualUrl", lang),
+        [MODE_GLOBAL]: resolveLabel("globalUrl"),
+        [MODE_MANUAL]: resolveLabel("manualUrl"),
       },
       this.currentUrlStates,
     );
@@ -688,7 +687,11 @@ export class ClientRegistry {
     const ensureModeObject = async (): Promise<void> => {
       const existing = await this.adapter.getObjectAsync(`clients.${id}.mode`);
       if (existing) {
+        const preservedName = existing.common?.name;
         existing.common = { ...existing.common, ...modeFullCommon };
+        if (preservedName !== undefined) {
+          existing.common.name = preservedName;
+        }
         existing.type = "state";
         await this.adapter.setObjectAsync(`clients.${id}.mode`, existing);
       } else {
@@ -701,18 +704,22 @@ export class ClientRegistry {
     };
     await Promise.all([
       ensureModeObject(),
-      this.adapter.extendObjectAsync(`clients.${id}.manualUrl`, {
-        type: "state",
-        common: {
-          name: tName("clientManualUrl") as unknown as string,
-          type: "string",
-          role: "url",
-          read: true,
-          write: true,
-          def: "",
+      this.adapter.extendObjectAsync(
+        `clients.${id}.manualUrl`,
+        {
+          type: "state",
+          common: {
+            name: tName("clientManualUrl") as unknown as string,
+            type: "string",
+            role: "url",
+            read: true,
+            write: true,
+            def: "",
+          },
+          native: {},
         },
-        native: {},
-      }),
+        { preserve: { common: ["name"] } },
+      ),
       this.adapter.setObjectNotExistsAsync(`clients.${id}.ip`, {
         type: "state",
         common: {

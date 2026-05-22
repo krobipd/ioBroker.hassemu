@@ -26,7 +26,7 @@ __export(global_config_exports, {
 module.exports = __toCommonJS(global_config_exports);
 var import_coerce = require("./coerce");
 var import_constants = require("./constants");
-var import_i18n_states = require("./i18n-states");
+var import_i18n = require("./i18n");
 var import_constants2 = require("./constants");
 class GlobalConfig {
   adapter;
@@ -217,10 +217,7 @@ class GlobalConfig {
    * @param states Discovered URL → label map.
    */
   async syncUrlDropdown(states) {
-    const merged = (0, import_coerce.buildDropdownStates)(
-      { [import_constants.MODE_MANUAL]: (0, import_i18n_states.resolveLabel)("manualUrl", this.adapter.systemLanguage) },
-      states
-    );
+    const merged = (0, import_coerce.buildDropdownStates)({ [import_constants.MODE_MANUAL]: (0, import_i18n.resolveLabel)("manualUrl") }, states);
     const existing = await this.adapter.getObjectAsync("global.mode");
     if (!existing) {
       return;

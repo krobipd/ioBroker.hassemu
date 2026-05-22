@@ -157,6 +157,11 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+### **WORK IN PROGRESS**
+
+- User-modified state names are no longer overwritten on adapter restart
+- State name translations migrated to standard ioBroker i18n framework
+
 ### 1.32.6 (2026-05-21)
 - Use community-standard event handler pattern (.bind + try/catch).
 

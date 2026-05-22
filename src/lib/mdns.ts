@@ -1,7 +1,9 @@
-import Bonjour, { type Service } from "bonjour-service";
+import Bonjour from "bonjour-service";
 import { HA_VERSION } from "./constants";
 import { getLocalIp } from "./network";
 import type { AdapterConfig, AdapterInterface } from "./types";
+
+type PublishedService = ReturnType<InstanceType<typeof Bonjour>["publish"]>;
 
 /** mDNS service for Home Assistant discovery via bonjour-service */
 export class MDNSService {
@@ -10,7 +12,7 @@ export class MDNSService {
   public readonly uuid: string;
   private active = false;
   private bonjour: Bonjour | null = null;
-  private published: Service | null = null;
+  private published: PublishedService | null = null;
 
   /** Read-only flag — true between successful `start()` and `stop()`. */
   public isActive(): boolean {

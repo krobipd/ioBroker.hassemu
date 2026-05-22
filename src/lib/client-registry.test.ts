@@ -1,5 +1,28 @@
 import { expect } from "chai";
 import crypto from "node:crypto";
+
+vi.mock("@iobroker/adapter-core", async () => {
+  const { readdirSync, readFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const i18nDir = join(__dirname, "../../admin/i18n");
+  const i18nData: Record<string, Record<string, string>> = {};
+  for (const f of readdirSync(i18nDir).filter(f => f.endsWith(".json"))) {
+    i18nData[f.replace(".json", "")] = JSON.parse(readFileSync(join(i18nDir, f), "utf8"));
+  }
+  return {
+    I18n: {
+      getTranslatedObject: vi.fn((key: string) => {
+        const result: Record<string, string> = {};
+        for (const [lang, data] of Object.entries(i18nData)) {
+          if (data[key]) result[lang] = data[key];
+        }
+        return Object.keys(result).length > 0 ? result : { en: key };
+      }),
+      translate: vi.fn((key: string) => i18nData.en?.[key] ?? key),
+    },
+  };
+});
+
 import { ClientRegistry, parseClientStateId } from "./client-registry";
 import { MODE_GLOBAL, MODE_MANUAL } from "./global-config";
 import type { ClientRecord } from "./types";
@@ -50,7 +73,7 @@ function createMockAdapter(namespace = "hassemu.0"): {
     getObjectAsync: (id: string) => Promise<ObjEntry | null>;
     setObjectAsync: (id: string, obj: ObjEntry) => Promise<void>;
     setObjectNotExistsAsync: (id: string, obj: ObjEntry) => Promise<void>;
-    extendObjectAsync: (id: string, obj: Partial<ObjEntry>) => Promise<void>;
+    extendObjectAsync: (id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>) => Promise<void>;
     setStateAsync: (id: string, value: { val: unknown; ack?: boolean }, _ack?: boolean) => Promise<void>;
     delObjectAsync: (id: string, options?: { recursive?: boolean }) => Promise<void>;
   } {
@@ -91,13 +114,20 @@ function createMockAdapter(namespace = "hassemu.0"): {
           store.objects.set(fullId, obj);
         }
       },
-      extendObjectAsync: async (id: string, obj: Partial<ObjEntry>) => {
+      extendObjectAsync: async (id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>) => {
         const fullId = `${namespace}.${id}`;
         const existing = store.objects.get(fullId) ?? { type: "state" };
+        const preserve = (options?.preserve as { common?: string[] })?.common ?? [];
+        const mergedCommon = { ...(existing.common ?? {}), ...(obj.common ?? {}) };
+        for (const field of preserve) {
+          if ((existing.common as Record<string, unknown>)?.[field] !== undefined) {
+            (mergedCommon as Record<string, unknown>)[field] = (existing.common as Record<string, unknown>)[field];
+          }
+        }
         store.objects.set(fullId, {
           ...existing,
           ...obj,
-          common: { ...(existing.common ?? {}), ...(obj.common ?? {}) },
+          common: mergedCommon,
           native: { ...(existing.native ?? {}), ...(obj.native ?? {}) },
         });
       },
