@@ -1,4 +1,8 @@
 # Older Changes
+## 1.32.2 (2026-05-16)
+
+- Internal cleanup. No user-facing changes.
+
 ## 1.32.1 (2026-05-16)
 
 - If the adapter goes offline while the display is running, the display now switches to a clear offline page with a reload button instead of just stopping to update.

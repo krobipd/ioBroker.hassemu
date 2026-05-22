@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.32.6",
+    "version": "1.33.0",
     "news": {
-      "NEXT": {
+      "1.33.0": {
         "en": "Preserve user-modified state names; state translations use standard ioBroker i18n",
         "de": "Vom Benutzer geänderte Datenpunktnamen bleiben erhalten; Übersetzungen nutzen Standard-ioBroker-i18n",
         "ru": "Сохранение пользовательских имён состояний; переводы через стандартный ioBroker i18n",
