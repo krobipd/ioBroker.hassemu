@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.32.6",
     "news": {
+      "NEXT": {
+        "en": "Preserve user-modified state names; state translations use standard ioBroker i18n",
+        "de": "Vom Benutzer geänderte Datenpunktnamen bleiben erhalten; Übersetzungen nutzen Standard-ioBroker-i18n",
+        "ru": "Сохранение пользовательских имён состояний; переводы через стандартный ioBroker i18n",
+        "pt": "Nomes de estados modificados pelo utilizador são preservados; traduções via i18n padrão do ioBroker",
+        "nl": "Door gebruiker gewijzigde statusnamen blijven behouden; vertalingen via standaard ioBroker i18n",
+        "fr": "Les noms d'états modifiés par l'utilisateur sont conservés; traductions via i18n standard ioBroker",
+        "it": "I nomi degli stati modificati dall'utente vengono preservati; traduzioni tramite i18n standard ioBroker",
+        "es": "Los nombres de estados modificados por el usuario se conservan; traducciones mediante i18n estándar de ioBroker",
+        "pl": "Nazwy stanów zmienione przez użytkownika są zachowywane; tłumaczenia przez standardowy ioBroker i18n",
+        "uk": "Збережено змінені користувачем назви станів; переклади через стандартний ioBroker i18n",
+        "zh-cn": "保留用户修改的状态名称；翻译使用标准 ioBroker i18n"
+      },
       "1.32.6": {
         "en": "Use community-standard event handler pattern (.bind + try/catch).",
         "de": "Community-Standard-Eventhandler-Pattern (.bind + try/catch) verwendet.",
@@ -80,19 +93,6 @@
         "pl": "Jeśli adapter przestanie być dostępny podczas pracy wyświetlacza, ekran przechodzi teraz na czytelną stronę offline z przyciskiem ponownego załadowania — zamiast po prostu przestać się aktualizować.",
         "uk": "Якщо адаптер стає недоступним поки дисплей працює, екран тепер переходить на чітку офлайн-сторінку з кнопкою перезавантаження, а не просто перестає оновлюватись.",
         "zh-cn": "如果在显示器运行时适配器变得不可用，显示器现在会切换到带有「重新加载」按钮的清晰离线页面，而不是只停止更新。"
-      },
-      "1.32.0": {
-        "en": "Two state descriptions in the object tree are now complete again. Internal cleanup, no further user-facing changes.",
-        "de": "Zwei abgeschnittene State-Beschreibungen im Objektbaum sind wieder vollständig. Interne Aufräumarbeiten, sonst keine sichtbaren Änderungen.",
-        "ru": "Две обрезанные подписи стейтов в дереве объектов снова полные. Внутренняя оптимизация, без других видимых изменений.",
-        "pt": "Duas descrições de estado truncadas na árvore de objetos voltam a estar completas. Limpeza interna, sem outras mudanças visíveis.",
-        "nl": "Twee afgekapte state-beschrijvingen in de objectboom zijn weer compleet. Interne opruiming, geen andere zichtbare wijzigingen.",
-        "fr": "Deux descriptions d'état tronquées dans l'arbre des objets sont à nouveau complètes. Nettoyage interne, pas d'autres changements visibles.",
-        "it": "Due descrizioni di stato troncate nell'albero degli oggetti sono di nuovo complete. Pulizia interna, nessun'altra modifica visibile.",
-        "es": "Dos descripciones de estado truncadas en el árbol de objetos vuelven a estar completas. Limpieza interna, sin otros cambios visibles.",
-        "pl": "Dwa skrócone opisy stanów w drzewie obiektów są znów kompletne. Wewnętrzne porządki, bez innych widocznych zmian.",
-        "uk": "Два обрізані описи станів у дереві об'єктів знову повні. Внутрішнє прибирання, без інших видимих змін.",
-        "zh-cn": "对象树中两个被截断的状态描述现已完整。其余为内部清理，无用户可见更改。"
       }
     },
     "titleLang": {

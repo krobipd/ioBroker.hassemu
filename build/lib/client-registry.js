@@ -35,7 +35,7 @@ module.exports = __toCommonJS(client_registry_exports);
 var import_node_crypto = __toESM(require("node:crypto"));
 var import_coerce = require("./coerce");
 var import_constants = require("./constants");
-var import_i18n_states = require("./i18n-states");
+var import_i18n = require("./i18n");
 var import_network = require("./network");
 const CLIENTS_PREFIX = "clients.";
 class ClientRegistry {
@@ -523,11 +523,10 @@ class ClientRegistry {
    * `'global'` + `'manual'` sentinels, and all currently discovered URLs.
    */
   buildModeStates() {
-    const lang = this.adapter.systemLanguage;
     return (0, import_coerce.buildDropdownStates)(
       {
-        [import_constants.MODE_GLOBAL]: (0, import_i18n_states.resolveLabel)("globalUrl", lang),
-        [import_constants.MODE_MANUAL]: (0, import_i18n_states.resolveLabel)("manualUrl", lang)
+        [import_constants.MODE_GLOBAL]: (0, import_i18n.resolveLabel)("globalUrl"),
+        [import_constants.MODE_MANUAL]: (0, import_i18n.resolveLabel)("manualUrl")
       },
       this.currentUrlStates
     );
@@ -550,7 +549,7 @@ class ClientRegistry {
       native: { cookie, token: null }
     });
     const modeFullCommon = {
-      name: (0, import_i18n_states.tName)("clientMode"),
+      name: (0, import_i18n.tName)("clientMode"),
       // 'mixed' future-proofs against the upcoming js-controller
       // strict-type cast (see govee-smart v1.11.0 pattern).
       type: "mixed",
@@ -561,9 +560,14 @@ class ClientRegistry {
       states: mergedStates
     };
     const ensureModeObject = async () => {
+      var _a2;
       const existing = await this.adapter.getObjectAsync(`clients.${id}.mode`);
       if (existing) {
+        const preservedName = (_a2 = existing.common) == null ? void 0 : _a2.name;
         existing.common = { ...existing.common, ...modeFullCommon };
+        if (preservedName !== void 0) {
+          existing.common.name = preservedName;
+        }
         existing.type = "state";
         await this.adapter.setObjectAsync(`clients.${id}.mode`, existing);
       } else {
@@ -576,22 +580,26 @@ class ClientRegistry {
     };
     await Promise.all([
       ensureModeObject(),
-      this.adapter.extendObjectAsync(`clients.${id}.manualUrl`, {
-        type: "state",
-        common: {
-          name: (0, import_i18n_states.tName)("clientManualUrl"),
-          type: "string",
-          role: "url",
-          read: true,
-          write: true,
-          def: ""
+      this.adapter.extendObjectAsync(
+        `clients.${id}.manualUrl`,
+        {
+          type: "state",
+          common: {
+            name: (0, import_i18n.tName)("clientManualUrl"),
+            type: "string",
+            role: "url",
+            read: true,
+            write: true,
+            def: ""
+          },
+          native: {}
         },
-        native: {}
-      }),
+        { preserve: { common: ["name"] } }
+      ),
       this.adapter.setObjectNotExistsAsync(`clients.${id}.ip`, {
         type: "state",
         common: {
-          name: (0, import_i18n_states.tName)("clientIp"),
+          name: (0, import_i18n.tName)("clientIp"),
           type: "string",
           role: "info.ip",
           read: true,
@@ -603,7 +611,7 @@ class ClientRegistry {
       this.adapter.setObjectNotExistsAsync(`clients.${id}.remove`, {
         type: "state",
         common: {
-          name: (0, import_i18n_states.tName)("clientRemove"),
+          name: (0, import_i18n.tName)("clientRemove"),
           type: "boolean",
           role: "button",
           read: false,

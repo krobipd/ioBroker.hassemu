@@ -22,6 +22,8 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 var import_node_crypto = __toESM(require("node:crypto"));
+var import_node_path = require("node:path");
+var import_adapter_core = require("@iobroker/adapter-core");
 var utils = __toESM(require("@iobroker/adapter-core"));
 var import_client_registry = require("./lib/client-registry");
 var import_coerce = require("./lib/coerce");
@@ -82,6 +84,7 @@ class HassEmu extends utils.Adapter {
       }
       (_a2 = this.urlDiscovery) == null ? void 0 : _a2.cancelRefresh();
       this.urlDiscovery = null;
+      await import_adapter_core.I18n.init((0, import_node_path.join)(this.adapterDir, "admin"), this);
       await this.setState("info.connection", { val: false, ack: true });
       this.systemLanguage = await this.readSystemLanguage();
       this.globalConfig = new import_global_config.GlobalConfig(this);
@@ -335,11 +338,15 @@ class HassEmu extends utils.Adapter {
         return;
       }
       try {
-        await this.extendObjectAsync(id, {
-          type: schema.type,
-          common: schema.common,
-          native: (_b = schema.native) != null ? _b : {}
-        });
+        await this.extendObjectAsync(
+          id,
+          {
+            type: schema.type,
+            common: schema.common,
+            native: (_b = schema.native) != null ? _b : {}
+          },
+          { preserve: { common: ["name"] } }
+        );
         this.log.debug(`Schema repair applied: ${id} (common.type was missing, restored from instanceObjects)`);
       } catch (err) {
         this.log.debug(`repair ${id} failed: ${String(err)}`);

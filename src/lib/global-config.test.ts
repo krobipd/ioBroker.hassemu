@@ -1,4 +1,27 @@
 import { expect } from "chai";
+
+vi.mock("@iobroker/adapter-core", async () => {
+  const { readdirSync, readFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const i18nDir = join(__dirname, "../../admin/i18n");
+  const i18nData: Record<string, Record<string, string>> = {};
+  for (const f of readdirSync(i18nDir).filter(f => f.endsWith(".json"))) {
+    i18nData[f.replace(".json", "")] = JSON.parse(readFileSync(join(i18nDir, f), "utf8"));
+  }
+  return {
+    I18n: {
+      getTranslatedObject: vi.fn((key: string) => {
+        const result: Record<string, string> = {};
+        for (const [lang, data] of Object.entries(i18nData)) {
+          if (data[key]) result[lang] = data[key];
+        }
+        return Object.keys(result).length > 0 ? result : { en: key };
+      }),
+      translate: vi.fn((key: string) => i18nData.en?.[key] ?? key),
+    },
+  };
+});
+
 import { GlobalConfig, MODE_GLOBAL, MODE_MANUAL, parseGlobalStateId } from "./global-config";
 import type { ClientRecord } from "./types";
 
@@ -41,7 +64,7 @@ function createMockAdapter(namespace = "hassemu.0"): {
     setStateAsync: (id: string, value: { val: unknown; ack?: boolean }) => Promise<void>;
     getObjectAsync: (id: string) => Promise<ObjEntry | null>;
     setObjectAsync: (id: string, obj: ObjEntry) => Promise<void>;
-    extendObjectAsync: (id: string, obj: Partial<ObjEntry>) => Promise<void>;
+    extendObjectAsync: (id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>) => Promise<void>;
   } {
     return {
       namespace,
@@ -59,13 +82,20 @@ function createMockAdapter(namespace = "hassemu.0"): {
       setStateAsync: async (id: string, value: { val: unknown; ack?: boolean }) => {
         store.states.set(`${namespace}.${id}`, { val: value.val, ack: value.ack ?? false });
       },
-      extendObjectAsync: async (id: string, obj: Partial<ObjEntry>) => {
+      extendObjectAsync: async (id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>) => {
         const fullId = `${namespace}.${id}`;
         const existing = store.objects.get(fullId) ?? { type: "state" };
+        const preserve = (options?.preserve as { common?: string[] })?.common ?? [];
+        const mergedCommon = { ...(existing.common ?? {}), ...(obj.common ?? {}) };
+        for (const field of preserve) {
+          if ((existing.common as Record<string, unknown>)?.[field] !== undefined) {
+            (mergedCommon as Record<string, unknown>)[field] = (existing.common as Record<string, unknown>)[field];
+          }
+        }
         store.objects.set(fullId, {
           ...existing,
           ...obj,
-          common: { ...(existing.common ?? {}), ...(obj.common ?? {}) },
+          common: mergedCommon,
           native: { ...(existing.native ?? {}), ...(obj.native ?? {}) },
         });
       },

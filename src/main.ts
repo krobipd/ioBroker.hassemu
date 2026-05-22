@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import { join } from "node:path";
+import { I18n } from "@iobroker/adapter-core";
 import * as utils from "@iobroker/adapter-core";
 import { ClientRegistry, parseClientStateId } from "./lib/client-registry";
 import { coerceSafeUrl, decideGcAction, decideLegacyVisMigration } from "./lib/coerce";
@@ -80,6 +82,8 @@ class HassEmu extends utils.Adapter {
       }
       this.urlDiscovery?.cancelRefresh();
       this.urlDiscovery = null;
+
+      await I18n.init(join(this.adapterDir, "admin"), this);
 
       await this.setState("info.connection", { val: false, ack: true });
 
@@ -434,11 +438,15 @@ class HassEmu extends utils.Adapter {
         // ein `as never` erlaubt der TS-Type-Narrowing den Aufruf ohne
         // dass wir die genaue State-Common-Shape statisch beweisen müssen.
         // Die Schema-Quelle (io-package.json) ist build-time-validiert.
-        await this.extendObjectAsync(id, {
-          type: schema.type,
-          common: schema.common,
-          native: schema.native ?? {},
-        } as never);
+        await this.extendObjectAsync(
+          id,
+          {
+            type: schema.type,
+            common: schema.common,
+            native: schema.native ?? {},
+          } as never,
+          { preserve: { common: ["name"] } },
+        );
         this.log.debug(`Schema repair applied: ${id} (common.type was missing, restored from instanceObjects)`);
       } catch (err) {
         this.log.debug(`repair ${id} failed: ${String(err)}`);
