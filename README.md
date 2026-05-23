@@ -157,7 +157,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
-### **WORK IN PROGRESS**
+### 1.33.2 (2026-05-23)
 
 - Changelog rewritten in user-centric style across all versions.
 
@@ -176,10 +176,6 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 ### 1.32.5 (2026-05-21)
 
 - Verified against Node.js 24. Internal cleanup.
-
-### 1.32.4 (2026-05-19)
-
-- Removed unnecessary web adapter dependency.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
