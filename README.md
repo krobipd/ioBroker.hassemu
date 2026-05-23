@@ -157,24 +157,29 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+### **WORK IN PROGRESS**
+
+- Changelog rewritten in user-centric style across all versions.
+
 ### 1.33.1 (2026-05-23)
 
-- Fixed incorrect role on global mode selector for stricter repochecker compliance
+- Fixed incorrect role assignment on global mode selector.
 
 ### 1.33.0 (2026-05-22)
 
 - User-modified state names are no longer overwritten on adapter restart
-- State name translations migrated to standard ioBroker i18n framework
 
 ### 1.32.6 (2026-05-21)
-- Use community-standard event handler pattern (.bind + try/catch).
+
+- Improved error handling and stability.
 
 ### 1.32.5 (2026-05-21)
-- Verified against Node.js 24. Internal cleanup for stricter ioBroker repochecker compliance.
+
+- Verified against Node.js 24. Internal cleanup.
 
 ### 1.32.4 (2026-05-19)
 
-- Removed unnecessary web adapter dependency. Code quality enforced with standard formatting.
+- Removed unnecessary web adapter dependency.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
