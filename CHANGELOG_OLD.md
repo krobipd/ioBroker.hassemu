@@ -1,4 +1,8 @@
 # Older Changes
+## 1.32.3 (2026-05-17)
+
+- Internal cleanup. No user-facing changes.
+
 ## 1.32.2 (2026-05-16)
 
 - Internal cleanup. No user-facing changes.

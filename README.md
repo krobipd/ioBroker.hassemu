@@ -157,7 +157,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
-### **WORK IN PROGRESS**
+### 1.33.1 (2026-05-23)
 
 - Fixed incorrect role on global mode selector for stricter repochecker compliance
 
@@ -175,10 +175,6 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 ### 1.32.4 (2026-05-19)
 
 - Removed unnecessary web adapter dependency. Code quality enforced with standard formatting.
-
-### 1.32.3 (2026-05-17)
-
-- Internal cleanup. No user-facing changes.
 
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 

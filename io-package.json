@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.33.0",
+    "version": "1.33.1",
     "news": {
-      "NEXT": {
+      "1.33.1": {
         "en": "Fixed incorrect role on global mode selector for stricter repochecker compliance",
         "de": "Falsche Rolle am globalen Modus-Selektor korrigiert für strengere Repochecker-Konformität",
         "ru": "Исправлена неверная роль глобального селектора режима для строгого соответствия repochecker",
