@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.33.0",
     "news": {
+      "NEXT": {
+        "en": "Fixed incorrect role on global mode selector (repochecker W1133/W1135)",
+        "de": "Falsche Rolle am globalen Modus-Selektor korrigiert (Repochecker W1133/W1135)",
+        "ru": "Исправлена неверная роль глобального селектора режима (repochecker W1133/W1135)",
+        "pt": "Corrigida a função incorreta no seletor de modo global (repochecker W1133/W1135)",
+        "nl": "Onjuiste rol op de globale modusselector gecorrigeerd (repochecker W1133/W1135)",
+        "fr": "Rôle incorrect corrigé sur le sélecteur de mode global (repochecker W1133/W1135)",
+        "it": "Corretto il ruolo errato sul selettore di modalità globale (repochecker W1133/W1135)",
+        "es": "Corregido el rol incorrecto en el selector de modo global (repochecker W1133/W1135)",
+        "pl": "Poprawiono nieprawidłową rolę selektora trybu globalnego (repochecker W1133/W1135)",
+        "uk": "Виправлено неправильну роль глобального селектора режиму (repochecker W1133/W1135)",
+        "zh-cn": "修复全局模式选择器上不正确的角色 (repochecker W1133/W1135)"
+      },
       "1.33.0": {
         "en": "Preserve user-modified state names; state translations use standard ioBroker i18n",
         "de": "Vom Benutzer geänderte Datenpunktnamen bleiben erhalten; Übersetzungen nutzen Standard-ioBroker-i18n",
@@ -80,19 +93,6 @@
         "pl": "Wewnętrzne porządki. Brak widocznych zmian.",
         "uk": "Внутрішнє прибирання. Без видимих змін.",
         "zh-cn": "内部清理。无用户可见更改。"
-      },
-      "1.32.1": {
-        "en": "If the adapter goes offline while the display is running, the display now switches to a clear offline page with a reload button instead of just stopping to update.",
-        "de": "Wenn der Adapter offline geht während das Display läuft, wechselt das Display jetzt auf eine klare Offline-Seite mit Neu-Laden-Button — statt einfach nicht mehr zu aktualisieren.",
-        "ru": "Если адаптер уходит в офлайн во время работы дисплея, дисплей теперь переключается на понятную офлайн-страницу с кнопкой обновления, а не просто перестаёт обновляться.",
-        "pt": "Se o adaptador ficar offline enquanto o ecrã está em uso, o ecrã muda agora para uma página offline clara com botão de recarregar — em vez de simplesmente parar de atualizar.",
-        "nl": "Als de adapter offline gaat terwijl het display in gebruik is, schakelt het display nu over op een duidelijke offline-pagina met een herlaad-knop in plaats van simpelweg niet meer bij te werken.",
-        "fr": "Si l'adaptateur passe hors ligne pendant l'utilisation, l'écran bascule désormais sur une page hors ligne explicite avec bouton de rechargement, au lieu de simplement cesser de se mettre à jour.",
-        "it": "Se l'adattatore va offline mentre il display è in uso, il display passa ora a una pagina offline chiara con pulsante di ricarica, invece di smettere semplicemente di aggiornarsi.",
-        "es": "Si el adaptador queda sin conexión mientras la pantalla está en uso, ahora la pantalla cambia a una página offline clara con botón de recarga, en lugar de dejar simplemente de actualizarse.",
-        "pl": "Jeśli adapter przestanie być dostępny podczas pracy wyświetlacza, ekran przechodzi teraz na czytelną stronę offline z przyciskiem ponownego załadowania — zamiast po prostu przestać się aktualizować.",
-        "uk": "Якщо адаптер стає недоступним поки дисплей працює, екран тепер переходить на чітку офлайн-сторінку з кнопкою перезавантаження, а не просто перестає оновлюватись.",
-        "zh-cn": "如果在显示器运行时适配器变得不可用，显示器现在会切换到带有「重新加载」按钮的清晰离线页面，而不是只停止更新。"
       }
     },
     "titleLang": {
@@ -386,7 +386,7 @@
           "zh-cn": "全局重定向模式"
         },
         "type": "mixed",
-        "role": "value",
+        "role": "state",
         "read": true,
         "write": true,
         "def": 0
