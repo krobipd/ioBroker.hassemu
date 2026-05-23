@@ -4,17 +4,17 @@
     "version": "1.33.0",
     "news": {
       "NEXT": {
-        "en": "Fixed incorrect role on global mode selector (repochecker W1133/W1135)",
-        "de": "Falsche Rolle am globalen Modus-Selektor korrigiert (Repochecker W1133/W1135)",
-        "ru": "Исправлена неверная роль глобального селектора режима (repochecker W1133/W1135)",
-        "pt": "Corrigida a função incorreta no seletor de modo global (repochecker W1133/W1135)",
-        "nl": "Onjuiste rol op de globale modusselector gecorrigeerd (repochecker W1133/W1135)",
-        "fr": "Rôle incorrect corrigé sur le sélecteur de mode global (repochecker W1133/W1135)",
-        "it": "Corretto il ruolo errato sul selettore di modalità globale (repochecker W1133/W1135)",
-        "es": "Corregido el rol incorrecto en el selector de modo global (repochecker W1133/W1135)",
-        "pl": "Poprawiono nieprawidłową rolę selektora trybu globalnego (repochecker W1133/W1135)",
-        "uk": "Виправлено неправильну роль глобального селектора режиму (repochecker W1133/W1135)",
-        "zh-cn": "修复全局模式选择器上不正确的角色 (repochecker W1133/W1135)"
+        "en": "Fixed incorrect role on global mode selector for stricter repochecker compliance",
+        "de": "Falsche Rolle am globalen Modus-Selektor korrigiert für strengere Repochecker-Konformität",
+        "ru": "Исправлена неверная роль глобального селектора режима для строгого соответствия repochecker",
+        "pt": "Corrigida a função incorreta no seletor de modo global para conformidade mais rigorosa com o repochecker",
+        "nl": "Onjuiste rol op de globale modusselector gecorrigeerd voor strengere repochecker-conformiteit",
+        "fr": "Rôle incorrect corrigé sur le sélecteur de mode global pour une conformité repochecker plus stricte",
+        "it": "Corretto il ruolo errato sul selettore di modalità globale per una conformità repochecker più rigorosa",
+        "es": "Corregido el rol incorrecto en el selector de modo global para cumplimiento más estricto del repochecker",
+        "pl": "Poprawiono nieprawidłową rolę selektora trybu globalnego dla ściślejszej zgodności z repochecker",
+        "uk": "Виправлено неправильну роль глобального селектора режиму для суворішої відповідності repochecker",
+        "zh-cn": "修复全局模式选择器上不正确的角色以符合更严格的 repochecker 规范"
       },
       "1.33.0": {
         "en": "Preserve user-modified state names; state translations use standard ioBroker i18n",
