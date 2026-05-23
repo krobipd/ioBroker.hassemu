@@ -1,4 +1,8 @@
 # Older Changes
+## 1.32.4 (2026-05-19)
+
+- Removed unnecessary web adapter dependency.
+
 ## 1.32.3 (2026-05-17)
 
 - Internal cleanup. No user-facing changes.

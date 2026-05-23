@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.33.1",
+    "version": "1.33.2",
     "news": {
-      "NEXT": {
+      "1.33.2": {
         "en": "Changelog rewritten in user-centric style across all versions.",
         "de": "Changelog in benutzerfreundlichem Stil über alle Versionen umgeschrieben.",
         "ru": "Журнал изменений переписан в пользовательском стиле для всех версий.",
