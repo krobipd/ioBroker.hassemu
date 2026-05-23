@@ -17,7 +17,7 @@
 
 ## 1.31.1 (2026-05-13)
 
-- Debug log traces every previously-silent decision point: cookie identity, OAuth2 validation, URL discovery skips, resolver chain, mobile-app webhook flow. Default loglevel unchanged.
+- Improved debug logging for easier issue analysis.
 
 ## 1.31.0 (2026-05-13)
 
@@ -26,7 +26,7 @@
 
 ## 1.30.0 (2026-05-12)
 
-- Internal cleanup based on a source audit. No user-facing changes — except that adding or reconfiguring an Aura adapter now refreshes the URL dropdown automatically instead of requiring a manual refresh.
+- Adding or reconfiguring an Aura adapter now refreshes the URL dropdown automatically. Internal cleanup.
 
 ## 1.29.3 (2026-05-12)
 
@@ -81,160 +81,151 @@
 
 ## 1.27.0 (2026-05-06)
 
-- Bugfix: VIS-2 URLs in the mode dropdown are now correct (`vis-2/index.html#<view>`, no `.0` suffix, no project path segment). Source is the VIS-2 adapter's `io-package.json` (`localLinks.Runtime.link`).
-- VIS-1 (classic) fully supported: one `?<project>` entry per project in the dropdown plus sub-views as `?<project>#<view>`. Source is `visEdit.js:2225`.
-- Logs in system language: `info`/`warn`/`error` are now localized via `system.config.language` (11 languages), `debug` stays English. Tech internals like `mode='X'` and module prefixes were dropped.
+- VIS-2 URLs in the mode dropdown now work correctly — deep links reach the right page.
+- VIS-1 (classic) fully supported: each project and its views appear as separate entries in the dropdown.
+- Log messages now use the system language (11 languages) for info, warning and error levels.
 
 ## 1.26.0 (2026-05-06)
 
-- **VIS-2-URLs im Mode-Dropdown nach echtem VIS-2-Routing**: Projekt als Pfad-Segment, View als Hash-Fragment (`#<view>`). Vorher `?<projekt>` als Query — Deep-Links liefen ins Leere.
-- **Default-Mode für neue Clients = no-choice-Eintrag** → Landing-Page bis der User im Dropdown eine URL wählt. Vorher fiel der Default auf die erste discovered URL, Landing war praktisch nie sichtbar.
-- **iframe-Wrapper ohne sichtbaren Rahmen**: `display:block` + `position:fixed` + `100vw/100vh` — kein schwarzer Streifen mehr unten/rechts auf WebView-Displays.
+- VIS-2 deep links in the mode dropdown now work correctly. Previously, project views could not be reached via the dropdown.
+- New clients now start with a landing page until you select a URL in the dropdown. Previously, the first discovered URL was selected automatically.
+- Displays no longer show a thin black border around the page content.
 
 ## 1.25.0 (2026-05-06)
 
-- **Reverse-Proxy-Support** (optional, Default aus): neuer Config-Toggle „Trust Reverse Proxy Headers". `req.ip`/`req.protocol` aus `X-Forwarded-*`, Cookies `Secure` bei `X-Forwarded-Proto=https`.
-- **Schema-Repair via instanceObjects**: `repairGlobalSchemas` liest jetzt aus `io-package.json:instanceObjects` statt zu duplizieren — kein stille Drift mehr.
-- **Test-Coverage** (+11 Tests): `decideGcAction` (Stale-GC), `decideLegacyVisMigration` (Legacy-URL-Migration), mDNS async-publish-error.
+- Added optional reverse proxy support — new config toggle to trust forwarded headers. Useful when running behind nginx or Traefik.
+- Internal cleanup. No further user-facing changes.
 
 ## 1.24.0 (2026-05-05)
 
-- **Test-Coverage**: 2 neue Unit-Tests für den v1.17.0 NAT-Cookie-Schutz — unterschiedliche User-Agents auf derselben IP bekommen distinct Clients, gleiche UA collapsed parallele Bursts.
+- Internal cleanup. No user-facing changes.
 
 ## 1.23.0 (2026-05-05)
 
-- **Interne Aufräumung**: `parseModeWrite`-Helper in `coerce.ts` — beide `handleModeWrite`-Handler (`client-registry` + `global-config`) delegieren jetzt an einen Validator statt ~80% der Logik zu duplizieren.
+- Internal cleanup. No user-facing changes.
 
 ## 1.22.0 (2026-05-05)
 
-- **Interne Aufräumung**: `safeStringEqual` (timing-safe Credentials-Vergleich) ist von `webserver.ts` nach `coerce.ts` umgezogen — generischer Crypto-Helper. Plus 5 neue Unit-Tests.
+- Internal cleanup. No user-facing changes.
 
 ## 1.21.0 (2026-05-05)
 
-- **Pending-Create-Errors diagnostizierbar**: schlägt das parallele Erst-Anlegen eines Clients fehl, kommt der Fehler jetzt einmalig im Log statt als unhandled rejection.
-- **Docker-Bridge-IPs nicht mehr ins mDNS**: `getLocalIp` deprioritisiert `172.17.x.x`/`172.18.x.x` gegenüber LAN-IPs — kein unreachable Container-Advertise mehr.
+- Client creation errors now appear in the log instead of crashing silently.
+- Docker users: the adapter no longer advertises unreachable container IPs via mDNS — LAN IPs are now preferred.
 
 ## 1.20.0 (2026-05-05)
 
-- **Interne Aufräumung**: drei Helpers nach `coerce.ts` extrahiert — `buildDropdownStates`, `parseAdapterStateId`, `safeGetState`. `client-registry` und `global-config` teilen sie statt zu duplizieren.
+- Internal cleanup. No user-facing changes.
 
 ## 1.19.1 (2026-05-05)
 
-- **Test-Coverage**: 7 neue Unit-Tests für v1.19.0-Features — `seedLastSeen`-Pfad und Per-IP-Burst-Erkennung (Schwelle, Cooldown, per-IP-unabhängig, FIFO-Cap).
+- Internal cleanup. No user-facing changes.
 
 ## 1.19.0 (2026-05-05)
 
-- **Burst-Erkennung für broken Cookies**: erzeugt ein Display mehr als 3 neue Clients innerhalb einer Stunde (= der Cookie wird nicht persistiert), kommt einmaliger `warn`-Hinweis mit Diagnose-Pfad.
-- **README**: Hinweis dass nur eine hassemu-Instance pro Host laufen kann (Port 8123 fix).
-- **`lastSeen`-Update-Pfad konsolidiert**: GC und Throttle nutzen jetzt denselben `registry.seedLastSeen()`-Helper.
+- The adapter now warns if a display creates too many new clients in a short time, which usually means its cookie storage is broken.
+- Only one hassemu instance per host — documented in README.
 
 ## 1.18.0 (2026-05-05)
 
-- **Logging-Hygiene Login-Floods**: `Invalid credentials` kommt pro IP nur bis zur Lockout-Schwelle als `warn` ins Log, danach auf `debug`. Brute-Force füllt das Log nicht mehr.
-- **Stop-Error nicht mehr doppelt**: bei intended shutdown loggt `webServer.stop()` selbst auf `debug`, der Caller in `onUnload` cleant silent. Vorher zwei Einträge im Log.
-- **`non-string mode`-Rejection auf `debug`**: das ist UI-Echo (Dropdown-Klicks o.ä.) und kein Server-Concern — vorher fälschlich als `warn`.
+- Repeated failed login attempts no longer flood the log — the warning appears once per IP, then drops to debug level.
+- Cleaner shutdown log — no more duplicate entries when the adapter stops.
+- UI-triggered mode echoes no longer produce unnecessary warnings in the log.
 
 ## 1.17.0 (2026-05-05)
 
-- **NAT-Cookie-Schutz**: zwei Displays hinter derselben NAT-IP teilten sich beim parallelen Erst-Connect Cookie + Token + Mode. Jetzt: Bucket-Key kombiniert IP + User-Agent-Hash.
-- **`/api/discovery_info` nutzt bind-Address**, nicht den `Host`-Header. Vorher konnte ein Angreifer mit `Host: attacker.lan` andere HA-Clients zur falschen URL umleiten.
-- **VIS-Discovery iteriert alle `web.*`-Instances**: User mit `web.1` (zweite Web-Instance) hatten vorher keine VIS-Projekte im Mode-Dropdown.
+- Two displays behind the same router (NAT) no longer share the same session — each display now gets its own cookie and mode.
+- Security: the discovery endpoint no longer trusts the browser-supplied host header, preventing potential redirect attacks.
+- VIS projects from all web adapter instances now appear in the mode dropdown (previously only the first instance was scanned).
 
 ## 1.16.0 (2026-05-05)
 
-- **Sicherheit Credentials-Vergleich**: `safeStringEqual` hashed beide Seiten via SHA-256 vor dem timing-safe Vergleich — vorher waren Username-/Password-Längen über Response-Timing leakbar.
-- **Landing-Page versteckt Loopback-IPs**: `127.0.0.1` / `::1` / `0.0.0.0` werden nicht mehr als Display-IP angezeigt — verwirrte User bei Reverse-Proxy-Setups.
-- **`coerceSafeUrlReason`-Helper**: rejected URLs liefern jetzt den Grund (`bad-scheme:javascript:`, `credentials-in-url`, `unparseable`, `too-long`, …) für gezielte Log-Nachvollziehbarkeit.
-- **README-Upgrading aktualisiert**: Eintrag „1.2.0 → 1.15.x" hinzugefügt, plus Hinweis auf den v1.3.2-Schema-Repair bei leerem Mode-Dropdown nach Upgrade.
-- **Config-Hinweis bei mDNS=off**: die Configuration-Tabelle erklärt jetzt explizit dass Displays manuell konfiguriert werden müssen wenn mDNS deaktiviert ist.
+- Security: credential comparison hardened against timing attacks.
+- The landing page no longer shows loopback addresses as display IPs — less confusion for reverse proxy setups.
+- Rejected URLs now include a clear reason in the log.
+- README updated with upgrade notes and mDNS-off configuration hint.
 
 ## 1.15.0 (2026-05-05)
 
-- **IPv6-LAN-Fallback**: `getLocalIp` nimmt jetzt die erste non-internal IPv6-Adresse statt `127.0.0.1` wenn keine IPv4 verfügbar ist. mDNS broadcastet damit eine reachable Adresse statt Loopback.
-- **mDNS async-Bind-Fehler gefangen**: bonjour wirft Port-5353-belegt-Fehler asynchron in dgram-Sockets. Ein `error`-Listener setzt jetzt `active=false` + warnt im Log.
+- IPv6-only networks: displays can now discover the adapter via mDNS even without an IPv4 address.
+- mDNS port conflicts now produce a clear warning instead of failing silently.
 
 ## 1.14.0 (2026-05-05)
 
-- **Schema-Repair überspringt Check** wenn `global.mode`/`global.manualUrl` schon korrekt sind — spart 2 Broker-Round-Trips pro Start. Repair-Pfad bleibt für pre-v1.3.2-Bug.
-- **Defensives Cleanup bei `onReady`-Re-Run**: webServer/mDNS/urlDiscovery werden vorher sauber gestoppt falls js-controller `onReady` ohne `unload` zweimal triggert.
-- **Test-Injects schneller**: `inject` einmalig im Constructor gebunden statt pro Property-Access — weniger GC-Druck in Test-Loops.
-- **Cleanup-Timer defensive**: bei doppeltem `start()` (Refactor-Edge) wird der vorherige Timer gecleared statt zu leaken.
+- Faster adapter startup — unnecessary checks skipped when datapoints are already correct.
+- Improved stability when js-controller triggers a restart without clean shutdown.
 
 ## 1.13.0 (2026-05-05)
 
-- **URL-Dropdown-Refresh schmaler**: feuert nur noch bei Adapter-Add/Remove oder Änderungen an `admin`/`web`/`vis`/`vis-2` — vorher bei jedem `system.adapter.*`-Object-Change im ganzen Host.
-- **Subscriptions nach Server-Start**: vermeidet Race-Window in dem ein State-Write zwischen Subscribe und Server-Listen einen Handler auf nicht-laufenden Server feuert.
-- **Lifecycle-Härtung**: `info.connection=false` in `onUnload` zuerst (nicht nach Refs-Null), `setNewClientModeProvider` vor `collect()` (statt danach), klarer Code-Pfad bei WebServer-Start-Fail.
+- The URL dropdown now only refreshes when relevant adapters change, not on every system event — less CPU usage on busy hosts.
+- Improved stability during adapter startup and shutdown.
 
 ## 1.12.0 (2026-05-05)
 
-- **Brute-Force-Lockout-Härtung**: IPv6-mapped IPv4 (`::ffff:1.2.3.4`) und `null`-IP teilen jetzt einen Bucket mit raw IPv4 — vorher konnten Angreifer durch Adress-Form-Wechsel den Counter umgehen.
-- **Legacy-URL-Migration validiert** via `coerceSafeUrl`: alte `javascript:`/`data:`-URLs aus v1.0.x-Config fallen auf Manual-Mode statt unsafe geschrieben zu werden.
+- Security: brute-force lockout now also covers IPv6-mapped IPv4 addresses — address form switching can no longer bypass the counter.
+- Unsafe legacy URLs from v1.0.x configurations are now rejected during migration instead of being kept.
 
 ## 1.11.0 (2026-05-05)
 
-- **Sicherheit Refresh-Token-Brute-Force**: `/auth/token` mit `grant_type=refresh_token` hat jetzt denselben Brute-Force-Lockout wie `/auth/login_flow` — 5 ungültige Grants pro IP → 15min HTTP 429.
-- **Stale-Client-GC erfasst auch Token-Clients**: Clients mit `lastSeen > 30 Tage` werden jetzt entfernt, auch wenn sie einen Token haben (vorher übersprungen).
+- Security: token refresh is now also protected by brute-force lockout (5 invalid attempts → 15 min block).
+- Clients idle for more than 30 days are now cleaned up even if they still hold a token.
 
 ## 1.10.0 (2026-05-05)
 
-- **Adapter beendet sich bei Server-Start-Fehler** (Port belegt etc.) jetzt mit Exit-Code 11 — js-controller startet ihn nach Backoff neu, statt zombie idle zu sitzen.
-- **mDNS-Broadcast-Fehler ist jetzt sichtbar**: `warn`-Meldung im Log + `mDNS FAILED` im running-Status (vorher still).
-- **Compact-Mode**: `unhandledRejection`/`uncaughtException`-Handler nur einmal pro Node-Prozess (Module-Level-Flag), nicht pro Instance.
-- **onUnload löst Subscriptions explizit auf** vor dem Null-Set — verhindert Residual-Calls auf genullte Instance bei hot-remove.
+- The adapter now restarts automatically when the server port is already in use, instead of sitting idle.
+- mDNS failures are now visible in the log and the running status.
+- Improved stability in compact mode and during adapter removal.
 
 ## 1.9.1 (2026-05-05)
 
-- **Interne Aufräumung**: 5xx-Error-Cooldown-Map (eingeführt in v1.9.0) nutzt jetzt denselben FIFO-Eviction-Helper wie alle anderen gedeckelten Maps im Server — vorher inline-inkonsistent.
-- **Test-Coverage**: 5 neue Unit-Tests für die Cooldown-Logik (erste Beobachtung, Window-Wiederholung, Window-Ablauf, unabhängige Keys, FIFO-Cap).
+- Internal cleanup. No user-facing changes.
 
 ## 1.9.0 (2026-05-05)
 
-- **Weniger Log-Spam unter Attacke**: 5xx-Fehler werden pro Message nur beim ersten Auftritt als `warn` geloggt (60s-Cooldown), Wiederholungen fallen auf `debug`.
-- **Adapter-Start ~4× schneller bei vielen Displays**: `restore()` liest die vier Datenpunkte pro Client parallel statt sequenziell.
-- **Kleinere Härtung**: Landing-Page-Übersetzungen `as const satisfies` (immutable), Port-Felder lehnen Hex/Exponential ab, `MDNSService.active` extern read-only.
+- Server errors no longer flood the log — each unique error is warned once per minute, repeats drop to debug.
+- Faster adapter startup on installations with many displays.
+- Internal hardening.
 
 ## 1.8.1 (2026-05-05)
 
-- **Master-Switch schneller**: `global.enabled`-Toggle schreibt das `mode` aller Clients jetzt parallel statt sequenziell (vorher N Broker-Round-Trips). Spürbar auf Instanzen mit vielen Displays.
-- **Mode-Dropdown bleibt gefüllt** wenn der Broker beim Lesen der `vis-2.0`/`web.0`-Objekte kurz nicht antwortet — der zuletzt funktionierende Stand wird gehalten statt mit `{}` überschrieben.
-- **Reverse-DNS-Lookup hat 5s-Timeout**: ein langsamer/blockierter LAN-Nameserver hängt den HA-Auth-Flow nicht mehr.
+- The global on/off switch now applies to all displays much faster.
+- The mode dropdown no longer goes empty if the broker is briefly unreachable.
+- A slow DNS server on your LAN no longer blocks the login flow (5 s timeout added).
 
 ## 1.8.0 (2026-05-05)
 
-- **Code-Aufräumen**: Konstanten (Cookie-TTL, Map-Caps, Mode-Sentinels, Stale-TTL) liegen jetzt zentral in `lib/constants.ts`. Verhalten unverändert.
-- **Logging weniger laut**: Token-Endpunkt-Fehler (unbekannter `flow_id`, ungültiger Refresh-Token, falscher `grant_type`) jetzt `debug` statt `warn`.
+- Internal cleanup. Token-related errors no longer produce unnecessary warnings in the log.
 
 ## 1.7.1 (2026-05-05)
 
-- Hotfix: drei Prettier-Format-Fehler aus v1.7.0 behoben (CI-Lint-Gate war rot, deploy hat v1.7.0 nicht auf npm gebracht). v1.7.0-Änderungen erreichen npm jetzt mit dieser Version.
+- Hotfix: v1.7.0 did not reach npm due to a build issue — this version includes all v1.7.0 changes.
 
 ## 1.7.0 (2026-05-05)
 
-- **VIS-2-Views** stehen jetzt als eigene Einträge im Mode-Dropdown — nicht nur das Top-Level-Projekt. Pro Projekt-Folder liest der Adapter `vis-views.json` und legt für jede View eine URL `?<projekt>/<view>` an. Bei fehlender oder kaputter Datei bleibt der Top-Level-Eintrag funktional.
-- **Display-Reload bei Redirect-Edit**: das Adapter-Root liefert kein 302 mehr, sondern eine kleine HTML-Seite mit `<iframe>` zum Ziel + 30-Sekunden-Polling auf den neuen Endpunkt `/api/redirect_check`. Wenn du die Mode-/manualUrl-Konfiguration änderst, lädt das Display von selbst neu — kein Soft-Reboot mehr nötig.
+- Individual VIS-2 views now appear as separate entries in the mode dropdown — not just the top-level project.
+- Displays now reload automatically when you change the URL in the mode dropdown — no more soft-reboot needed.
 
 ## 1.6.0 (2026-05-05)
 
-- **Sicherheit**: HA-API-Endpunkte (`/api/states`, `/api/services`, `/api/events`, `/api/error_log`, `/api/config`) sind jetzt token-geschützt wenn `Auth Required` aktiv ist — vorher waren sie ohne jeden Auth-Check abrufbar (Information-Disclosure). `/api/discovery_info`, `/api/`-Heartbeat, `/health`, `/manifest.json` und der Auth-Flow bleiben offen, weil HA-Clients sie vor dem Login abfragen müssen.
-- **Stabile Server-UUID**: `info.serverUuid` Datenpunkt — die UUID, die per mDNS und in `/api/discovery_info` gemeldet wird, bleibt jetzt über Adapter-Restarts gleich. HA-Clients (Companion-App, Wall-Display) cachen die Server-Identität — vorher behandelten sie jeden Restart als „neuen Server" und erzwangen erneutes Pairing inklusive Token-Verlust.
+- Security: API endpoints are now token-protected when authentication is enabled — previously accessible without any check.
+- Stable server identity: the server UUID now persists across restarts. Companion apps and wall displays no longer require re-pairing after an adapter restart.
 
 ## 1.5.0 (2026-05-05)
 
-- **Sicherheit**: `/health` liefert keine Konfigurations-Flags mehr (`mdns`/`auth` waren ohne Auth einsehbar — Reconnaissance-Risiko für netzexponierte Instanzen).
-- **Sicherheit**: `requires_api_password` in `/api/discovery_info` und im mDNS-TXT spiegelt jetzt die tatsächliche `authRequired`-Konfiguration (vorher hartkodiert auf `true` — strikte HA-Clients haben den Auth-Flow auch bei deaktivierter Auth ausgelöst).
-- **Speicher**: Brute-Force-Lockout-Map ist jetzt FIFO-gedeckelt (1000 IPs) und prunt veraltete Fail-Counts (älter als das Lockout-Fenster) — bisher wuchs die Map auf netzexponierten Instanzen langsam unbegrenzt.
+- Security: the health endpoint no longer exposes configuration details to unauthenticated users.
+- The auth-required flag now reflects the actual configuration — companion apps no longer force a login when auth is disabled.
+- Memory: the brute-force lockout table is now capped and auto-cleaned, preventing slow memory growth on internet-exposed instances.
 
 ## 1.4.1 (2026-05-05)
 
-- CI: Deploy-Schritt nutzt jetzt Node 24 (Node 22 + `npm@latest` hatte einen `MODULE_NOT_FOUND`-Bug für `promise-retry`, dadurch kam v1.4.0 nicht auf npm).
+- Hotfix: v1.4.0 did not reach npm due to a build infrastructure issue — this version includes all v1.4.0 changes.
 
 ## 1.4.0 (2026-05-05)
 
-- Neuer Datenpunkt `info.refresh_urls` (Button) — auf `true` setzen lädt VIS/VIS-2-Projekte und Admin-Tile-URLs neu, ohne den Adapter neu zu starten. Praktisch nach einer neuen VIS-Seite, die im Mode-Dropdown erscheinen soll.
-- `/auth/token` akzeptiert jetzt auch `application/x-www-form-urlencoded` Bodies (OAuth2-Spec) — manche HA-Clients senden den Token-Request urlencoded statt JSON, das Login lief sonst ins Leere.
-- mDNS: Bei einem Bonjour-Startfehler wird die Service-Instanz jetzt sauber freigegeben (vorher leakte der UDP-Socket über die Adapter-Lifetime).
-- Legacy-Migration (1.0.x/1.1.0 → 1.1.1) härter: ungültige Legacy-URLs werden nicht mehr durchgereicht, und Native-Cleanup passiert nur nach erfolgreichem State-Write — verhindert silent URL-Verlust auf Edge-Cases.
+- New datapoint: set "Refresh URL discovery" to true to reload VIS/VIS-2 projects without restarting the adapter — useful after creating a new VIS page.
+- Some companion apps that send login data in a different format now work correctly.
+- mDNS startup errors no longer leak resources.
+- Legacy migration from v1.0.x/v1.1.0 hardened — invalid URLs are no longer carried over silently.
 
 ## 1.3.3 (2026-05-01)
 
@@ -256,11 +247,10 @@
 
 ## 1.2.0 (2026-04-29)
 
-- **Breaking:** Redirect target now configured via `mode` (dropdown) + `manualUrl` (free text) instead of the old `visUrl`. Existing setups auto-migrated.
-- Master switch `global.enabled` syncs every display (on → all follow global URL, off → each display picks up its own).
+- **Breaking:** Redirect target now configured via mode dropdown + manual URL instead of the old single URL field. Existing setups auto-migrated.
+- Master switch syncs every display (on → all follow global URL, off → each display picks up its own).
 - Idle displays without auth token are auto-removed after 30 days.
 - Security hardening of the auth flow.
-- `web` adapter declared as dependency.
 
 ## 1.1.6 (2026-04-28)
 
@@ -287,16 +277,15 @@
 
 ## 1.1.1 (2026-04-18)
 
-- Redirect URL moved from Admin config to datapoints (`global.visUrl` + `global.enabled`).
+- Redirect URL moved from Admin config to datapoints for easier scripting.
 - Setup page served when no URL is configured.
-- `web` adapter declared as dependency.
 
 ## 1.1.0 (2026-04-18)
 
-- **Multi-client support** — each display gets its own channel under `clients.*` with individual `visUrl`, IP, and remove button.
+- **Multi-client support** — each display gets its own channel with individual URL, IP, and remove button.
 - URL dropdown populated from all known ioBroker URLs (VIS-2, VIS, Admin intro tiles).
-- Cookie-based identification: displays are recognised across restarts and IP changes.
-- Switched to Fastify, hardened all external URL inputs.
+- Displays are recognised across restarts and IP changes.
+- Hardened all external URL inputs.
 
 ## 1.0.4 (2026-04-12)
 
@@ -326,27 +315,27 @@
 
 ## 0.8.9 (2026-03-28)
 
-- Adapter-managed timers; Windows + macOS in CI.
+- Internal cleanup. No user-facing changes.
 
 ## 0.8.8 (2026-03-25)
 
-- Admin UI simplified to single page. Fix: synchronous `onUnload` (prevents SIGKILL on shutdown).
+- Admin UI simplified to single page. Fixed adapter shutdown behavior.
 
 ## 0.6.2 (2026-03-15)
 
-- Internal: JSDoc complete, ESLint clean.
+- Internal cleanup. No user-facing changes.
 
 ## 0.6.1 (2026-03-15)
 
-- Internal: GitHub Actions CI + automatic release on tag push.
+- Internal cleanup. No user-facing changes.
 
 ## 0.6.0 (2026-03-15)
 
-- Internal: full TypeScript migration with strict mode.
+- Internal cleanup. No user-facing changes.
 
 ## 0.5.2 (2026-03-14)
 
-- Internal: migrated to @iobroker/eslint-config + Prettier.
+- Internal cleanup. No user-facing changes.
 
 ## 0.5.1 (2026-03-14)
 
@@ -354,7 +343,7 @@
 
 ## 0.5.0 (2026-03-14)
 
-- Internal: Express 5, ESLint 10, all dependencies updated.
+- Internal cleanup. All dependencies updated.
 
 ## 0.4.0 (2026-03-14)
 
