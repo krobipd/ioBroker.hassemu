@@ -159,7 +159,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 -->
 ### **WORK IN PROGRESS**
 
-- Fixed incorrect role on global mode selector (repochecker W1133/W1135)
+- Fixed incorrect role on global mode selector for stricter repochecker compliance
 
 ### 1.33.0 (2026-05-22)
 
