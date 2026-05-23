@@ -553,7 +553,7 @@ class ClientRegistry {
       // 'mixed' future-proofs against the upcoming js-controller
       // strict-type cast (see govee-smart v1.11.0 pattern).
       type: "mixed",
-      role: "value",
+      role: "state",
       read: true,
       write: true,
       def: 0,
