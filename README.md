@@ -157,6 +157,10 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+### **WORK IN PROGRESS**
+
+- Fixed incorrect role on global mode selector (repochecker W1133/W1135)
+
 ### 1.33.0 (2026-05-22)
 
 - User-modified state names are no longer overwritten on adapter restart
