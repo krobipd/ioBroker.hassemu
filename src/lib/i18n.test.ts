@@ -9,19 +9,12 @@ vi.mock("@iobroker/adapter-core", () => ({
   },
 }));
 
-import { resolveLabel, tDesc, tName } from "./i18n";
+import { resolveLabel, tName } from "./i18n";
 
 describe("tName", () => {
   it("delegates to I18n.getTranslatedObject", () => {
     const result = tName("connection");
     expect(result).toEqual({ en: "connection", de: "connection_de" });
-  });
-});
-
-describe("tDesc", () => {
-  it("delegates to I18n.getTranslatedObject", () => {
-    const result = tDesc("serverUuidDesc");
-    expect(result).toEqual({ en: "serverUuidDesc", de: "serverUuidDesc_de" });
   });
 });
 

@@ -1,4 +1,8 @@
 # Older Changes
+## 1.32.5 (2026-05-21)
+
+- Verified against Node.js 24. Internal cleanup.
+
 ## 1.32.4 (2026-05-19)
 
 - Removed unnecessary web adapter dependency.

@@ -61,6 +61,35 @@ button:hover{background:#039be5;}
 `.trim();
 
 /**
+ * Shared page frame for the 3 auth pages — identical DOCTYPE / `<head>` / style /
+ * `.card` wrapper. Each page supplies its own `<title>`, an extra `<head>` line
+ * (viewport or the redirect `meta refresh`), the card body, and optional trailing
+ * body markup (the redirect `<script>`).
+ *
+ * @param opts            Page parts to assemble into the shared shell.
+ * @param opts.title     `<title>` text (already escaped by the caller if dynamic).
+ * @param opts.headExtra One extra `<head>` line (viewport meta / refresh meta).
+ * @param opts.cardInner Inner HTML of the `.card` container.
+ * @param opts.bodyExtra Optional markup appended after the card (e.g. the redirect script).
+ */
+function htmlShell(opts: { title: string; headExtra: string; cardInner: string; bodyExtra?: string }): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+${opts.headExtra}
+<title>${opts.title}</title>
+<style>${STYLE}</style>
+</head>
+<body>
+<div class="card">
+${opts.cardInner}
+</div>${opts.bodyExtra ? `\n${opts.bodyExtra}` : ""}
+</body>
+</html>`;
+}
+
+/**
  * Render the auto-submit redirect page. Used when `authRequired=false` (after
  * generating an auth_code) OR after a successful POST login.
  *
@@ -73,22 +102,13 @@ button:hover{background:#039be5;}
 export function renderAuthorizeRedirect(target: string): string {
   const a = escAttr(target);
   const j = JSON.stringify(target); // safe for inline JS string literal
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta http-equiv="refresh" content="0; URL=${a}">
-<title>Home Assistant</title>
-<style>${STYLE}</style>
-</head>
-<body>
-<div class="card">
-<h1>Home Assistant</h1>
-<p class="loading">Signing in…</p>
-</div>
-<script>(function(){document.location.assign(${j});})();</script>
-</body>
-</html>`;
+  return htmlShell({
+    title: "Home Assistant",
+    headExtra: `<meta http-equiv="refresh" content="0; URL=${a}">`,
+    cardInner: `<h1>Home Assistant</h1>
+<p class="loading">Signing in…</p>`,
+    bodyExtra: `<script>(function(){document.location.assign(${j});})();</script>`,
+  });
 }
 
 /**
@@ -112,17 +132,10 @@ export function renderAuthorizeForm(
   const ru = escAttr(params.redirectUri);
   const st = params.state ? escAttr(params.state) : "";
   const errBlock = errorMessage ? `<div class="err">${escAttr(errorMessage)}</div>` : "";
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Home Assistant — Sign In</title>
-<style>${STYLE}</style>
-</head>
-<body>
-<div class="card">
-<h1>Home Assistant</h1>
+  return htmlShell({
+    title: "Home Assistant — Sign In",
+    headExtra: `<meta name="viewport" content="width=device-width, initial-scale=1">`,
+    cardInner: `<h1>Home Assistant</h1>
 <p class="subtitle">Sign in to authorize this device.</p>
 ${errBlock}
 <form method="POST" action="/auth/authorize" autocomplete="off">
@@ -133,10 +146,8 @@ ${errBlock}
 <input type="text" name="username" placeholder="Username" autofocus required>
 <input type="password" name="password" placeholder="Password" required>
 <button type="submit">Sign in</button>
-</form>
-</div>
-</body>
-</html>`;
+</form>`,
+  });
 }
 
 /**
@@ -148,20 +159,11 @@ ${errBlock}
  * @param detail  Human-readable explanation.
  */
 export function renderAuthorizeError(reason: string, detail: string): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Home Assistant — ${escAttr(reason)}</title>
-<style>${STYLE}</style>
-</head>
-<body>
-<div class="card">
-<h1>Authorization failed</h1>
+  return htmlShell({
+    title: `Home Assistant — ${escAttr(reason)}`,
+    headExtra: `<meta name="viewport" content="width=device-width, initial-scale=1">`,
+    cardInner: `<h1>Authorization failed</h1>
 <div class="err">${escAttr(detail)}</div>
-<p class="subtitle">${escAttr(reason)}</p>
-</div>
-</body>
-</html>`;
+<p class="subtitle">${escAttr(reason)}</p>`,
+  });
 }

@@ -1,5 +1,9 @@
 import { expect } from "chai";
 import crypto from "node:crypto";
+import { once } from "node:events";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import WebSocket from "ws";
 
 vi.mock("@iobroker/adapter-core", async () => {
   const { readdirSync, readFileSync } = await import("node:fs");
@@ -928,6 +932,108 @@ describe("WebServer", () => {
     });
   });
 
+  describe("logout / revoke + shared get_config + no-WS fallback (v1.34.0)", () => {
+    // Run the no-auth login flow and return the issued tokens + cookie.
+    async function loginAndGetTokens(): Promise<{ cookie: string; access_token: string; refresh_token: string }> {
+      const r1 = await server.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
+      const cookie = extractCookie(r1.headers["set-cookie"])!;
+      const flowId = (r1.json() as { flow_id: string }).flow_id;
+      const r2 = await server.inject({
+        method: "POST",
+        url: `/auth/login_flow/${flowId}`,
+        headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
+        payload: { username: "admin", password: "secret" },
+      });
+      const code = (r2.json() as { result: string }).result;
+      const r3 = await server.inject({
+        method: "POST",
+        url: "/auth/token",
+        headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
+        payload: { grant_type: "authorization_code", code },
+      });
+      const tokens = r3.json() as { access_token: string; refresh_token: string };
+      return { cookie, ...tokens };
+    }
+
+    it("POST /auth/revoke invalidates the refresh + access token and returns 200", async () => {
+      const { cookie, access_token, refresh_token } = await loginAndGetTokens();
+      expect(registry.getByRefreshToken(refresh_token)).to.not.be.null;
+
+      const rev = await server.inject({
+        method: "POST",
+        url: "/auth/revoke",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        payload: `token=${refresh_token}`,
+      });
+      expect(rev.statusCode).to.equal(200);
+      expect(registry.getByRefreshToken(refresh_token)).to.be.null;
+      expect(registry.getByToken(access_token)).to.be.null;
+      const after = registry.getByCookie(cookie)!;
+      expect(after.token).to.be.null;
+      expect(after.refreshToken).to.be.null;
+    });
+
+    it("POST /auth/revoke with an unknown token still returns 200 (no existence leak)", async () => {
+      const rev = await server.inject({
+        method: "POST",
+        url: "/auth/revoke",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        payload: "token=does-not-exist",
+      });
+      expect(rev.statusCode).to.equal(200);
+    });
+
+    it("POST /auth/token with action=revoke invalidates the token and returns 200 (legacy logout)", async () => {
+      const { refresh_token } = await loginAndGetTokens();
+      const res = await server.inject({
+        method: "POST",
+        url: "/auth/token",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        payload: `action=revoke&token=${refresh_token}`,
+      });
+      expect(res.statusCode).to.equal(200);
+      expect(registry.getByRefreshToken(refresh_token)).to.be.null;
+    });
+
+    it("webhook get_config returns the same object as /api/config (shared buildHaConfig)", async () => {
+      const reg1 = await server.inject({ method: "POST", url: "/api/mobile_app/registrations", payload: {} });
+      const webhookId = (reg1.json() as { webhook_id: string }).webhook_id;
+      const apiConfig = (await server.inject({ method: "GET", url: "/api/config" })).json();
+      const whConfig = (
+        await server.inject({ method: "POST", url: `/api/webhook/${webhookId}`, payload: { type: "get_config" } })
+      ).json();
+      expect(whConfig).to.deep.equal(apiConfig);
+    });
+
+    it("io-package info.refresh_urls is a button with read:false (W1134)", () => {
+      const iopkg = JSON.parse(readFileSync(join(__dirname, "../../io-package.json"), "utf8")) as {
+        instanceObjects: Array<{ _id: string; common: { role?: string; read?: boolean; write?: boolean } }>;
+      };
+      const obj = iopkg.instanceObjects.find(o => o._id === "info.refresh_urls");
+      expect(obj, "info.refresh_urls present").to.not.be.undefined;
+      expect(obj!.common.role).to.equal("button");
+      expect(obj!.common.read).to.equal(false);
+      expect(obj!.common.write).to.equal(true);
+    });
+
+    it("Companion registration completes and the display loads without any WebSocket (no-WS fallback)", async () => {
+      // registerDevice persists the registration via REST BEFORE the best-effort
+      // WS auth/current_user call (home-assistant/android @2026.4.4 line 142 vs 154).
+      // The WS is never opened in this inject-based path — registration must still succeed.
+      const reg1 = await server.inject({
+        method: "POST",
+        url: "/api/mobile_app/registrations",
+        payload: { device_name: "Shelly Wall Display", app_id: "io.homeassistant.companion.android" },
+      });
+      expect(reg1.statusCode).to.equal(201);
+      expect((reg1.json() as { webhook_id: string }).webhook_id).to.match(/^[0-9a-f]{32}$/);
+      // The display page (iframe wrapper, since global.mode is a direct URL) is served 200.
+      const display = await server.inject({ method: "GET", url: "/" });
+      expect(display.statusCode).to.equal(200);
+      expect(display.body).to.include('<iframe id="hassemu-iframe"');
+    });
+  });
+
   describe("misc endpoints", () => {
     it("GET /health returns liveness without any config leak (security fix v1.5.0)", async () => {
       const res = await server.inject({ method: "GET", url: "/health" });
@@ -1638,5 +1744,205 @@ describe("WebServer bindAddress / start-stop", () => {
       expect(cooldown.has("err-50")).to.be.true;
       expect(cooldown.has("err-249")).to.be.true;
     });
+  });
+});
+
+describe("WebServer /api/websocket (v1.34.0)", () => {
+  const TOKEN = "ws-valid-access-token";
+  let s: WebServer;
+  let reg: ClientRegistry;
+  let wsUrl: string;
+
+  /** Buffer all incoming JSON frames; `next()` resolves the oldest unread frame. */
+  function wsCollector(ws: WebSocket): { next: () => Promise<Record<string, unknown>> } {
+    const queue: Record<string, unknown>[] = [];
+    const waiters: ((m: Record<string, unknown>) => void)[] = [];
+    ws.on("message", data => {
+      const msg = JSON.parse(data.toString()) as Record<string, unknown>;
+      const w = waiters.shift();
+      if (w) {
+        w(msg);
+      } else {
+        queue.push(msg);
+      }
+    });
+    return {
+      next: () =>
+        queue.length
+          ? Promise.resolve(queue.shift()!)
+          : new Promise<Record<string, unknown>>(resolve => waiters.push(resolve)),
+    };
+  }
+
+  beforeEach(async () => {
+    const built = createMockAdapter();
+    reg = new ClientRegistry(built.adapter as never);
+    const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
+    s = new WebServer(
+      built.adapter as never,
+      { ...baseConfig, port: 0, bindAddress: "127.0.0.1", username: "admin", serviceName: "TestServer" },
+      reg,
+      g,
+      "ws-test-uuid-0001",
+    );
+    await s.start();
+    const client = await reg.identifyOrCreate(null, "127.0.0.1", null);
+    await reg.setToken(client.id, TOKEN);
+    wsUrl = `ws://127.0.0.1:${s.boundAddress!.port}/api/websocket`;
+  });
+
+  afterEach(async () => {
+    await s.stop();
+  });
+
+  it("sends auth_required, then auth_ok for a valid access token", async () => {
+    const ws = new WebSocket(wsUrl);
+    const col = wsCollector(ws);
+    expect(await col.next()).to.deep.equal({ type: "auth_required", ha_version: HA_VERSION });
+    ws.send(JSON.stringify({ type: "auth", access_token: TOKEN }));
+    expect(await col.next()).to.deep.equal({ type: "auth_ok", ha_version: HA_VERSION });
+    ws.close();
+  });
+
+  it("rejects an unknown token with auth_invalid and closes the socket", async () => {
+    const ws = new WebSocket(wsUrl);
+    const col = wsCollector(ws);
+    await col.next(); // auth_required
+    ws.send(JSON.stringify({ type: "auth", access_token: "bogus-token" }));
+    expect((await col.next()).type).to.equal("auth_invalid");
+    await once(ws, "close");
+  });
+
+  it("answers read-only commands after auth (current_user snake_case, get_config==REST, states/services/ping)", async () => {
+    const ws = new WebSocket(wsUrl);
+    const col = wsCollector(ws);
+    await col.next(); // auth_required
+    ws.send(JSON.stringify({ type: "auth", access_token: TOKEN }));
+    await col.next(); // auth_ok
+
+    ws.send(JSON.stringify({ id: 1, type: "ping" }));
+    expect(await col.next()).to.deep.equal({ id: 1, type: "pong" });
+
+    ws.send(JSON.stringify({ id: 2, type: "auth/current_user" }));
+    const cu = await col.next();
+    expect(cu).to.deep.include({ id: 2, type: "result", success: true });
+    expect(cu.result).to.deep.equal({ id: "ws-test-uuid-0001", name: "admin", is_owner: true, is_admin: true });
+
+    ws.send(JSON.stringify({ id: 3, type: "get_config" }));
+    const apiCfg = (await s.inject({ method: "GET", url: "/api/config" })).json();
+    expect((await col.next()).result).to.deep.equal(apiCfg);
+
+    ws.send(JSON.stringify({ id: 4, type: "get_states" }));
+    expect((await col.next()).result).to.deep.equal([]);
+
+    ws.send(JSON.stringify({ id: 5, type: "get_services" }));
+    expect((await col.next()).result).to.deep.equal({});
+
+    ws.send(JSON.stringify({ id: 6, type: "subscribe_events", event_type: "state_changed" }));
+    expect(await col.next()).to.deep.include({ id: 6, type: "result", success: true });
+
+    ws.close();
+  });
+
+  it("answers the Companion command set @2026.4.4 with grounded empty-HA responses", async () => {
+    const ws = new WebSocket(wsUrl);
+    const col = wsCollector(ws);
+    await col.next(); // auth_required
+    ws.send(JSON.stringify({ type: "auth", access_token: TOKEN }));
+    await col.next(); // auth_ok
+
+    // Registries on an entity-less emulated server → empty lists.
+    for (const [n, cmd] of [
+      [10, "config/area_registry/list"],
+      [11, "config/device_registry/list"],
+      [12, "config/entity_registry/list"],
+    ] as const) {
+      ws.send(JSON.stringify({ id: n, type: cmd }));
+      expect((await col.next()).result, cmd).to.deep.equal([]);
+    }
+
+    // Valid subscriptions on an empty server ack (result null) but never emit.
+    // Both mobile_app/* commands ack (mobile_app is an advertised component).
+    for (const [n, cmd] of [
+      [13, "subscribe_events"],
+      [14, "subscribe_entities"],
+      [15, "supported_features"],
+      [16, "mobile_app/push_notification_confirm"],
+      [17, "mobile_app/push_notification_channel"],
+    ] as const) {
+      ws.send(JSON.stringify({ id: n, type: cmd }));
+      const r = await col.next();
+      expect(r, cmd).to.deep.include({ id: n, type: "result", success: true });
+      expect(r.result, cmd).to.equal(null);
+    }
+
+    // Commands hassemu does not implement (no services / unadvertised integrations)
+    // → ERR_UNKNOWN_COMMAND (verified against HA core websocket_api/const.py), not a
+    // fake success or a guessed response shape.
+    for (const [n, cmd] of [
+      [20, "call_service"],
+      [21, "assist_pipeline/pipeline/list"],
+      [22, "thread/list_datasets"],
+      [23, "matter/commission"],
+      [24, "conversation/process"],
+      [25, "render_template"],
+    ] as const) {
+      ws.send(JSON.stringify({ id: n, type: cmd }));
+      const r = await col.next();
+      expect(r, cmd).to.deep.include({ id: n, type: "result", success: false });
+      expect((r.error as { code?: string }).code, cmd).to.equal("unknown_command");
+    }
+
+    ws.close();
+  });
+
+  it("fails fast: closes the socket if no auth frame arrives within the timeout", async () => {
+    // The default mock adapter setTimeout is a no-op; give it a real (clamped)
+    // timer so the auth-timeout actually fires quickly in the test.
+    const built = createMockAdapter();
+    built.adapter.setTimeout = ((cb: () => void, ms: number) => globalThis.setTimeout(cb, Math.min(ms, 40))) as never;
+    built.adapter.clearTimeout = ((h: NodeJS.Timeout) => globalThis.clearTimeout(h)) as never;
+    const reg2 = new ClientRegistry(built.adapter as never);
+    const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
+    const s2 = new WebServer(
+      built.adapter as never,
+      { ...baseConfig, port: 0, bindAddress: "127.0.0.1" },
+      reg2,
+      g,
+      "ws-timeout-uuid",
+    );
+    await s2.start();
+    const ws = new WebSocket(`ws://127.0.0.1:${s2.boundAddress!.port}/api/websocket`);
+    const col = wsCollector(ws);
+    expect((await col.next()).type).to.equal("auth_required");
+    // Send nothing — the auth timeout must fire, push auth_invalid and close.
+    expect((await col.next()).type).to.equal("auth_invalid");
+    await once(ws, "close");
+    await s2.stop();
+  });
+
+  it("with authRequired=true the WS upgrade passes the auth guard (whitelisted) and auths in-band", async () => {
+    // Proves the `/api/websocket` whitelist entry: the HTTP upgrade is NOT 401'd
+    // by the preHandler when authRequired=true; auth happens in the handshake.
+    const built = createMockAdapter();
+    const reg2 = new ClientRegistry(built.adapter as never);
+    const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
+    const s2 = new WebServer(
+      built.adapter as never,
+      { ...baseConfig, port: 0, bindAddress: "127.0.0.1", authRequired: true, username: "admin", password: "secret" },
+      reg2,
+      g,
+      "ws-authreq-uuid",
+    );
+    await s2.start();
+    const client = await reg2.identifyOrCreate(null, "127.0.0.1", null);
+    await reg2.setToken(client.id, "authreq-token");
+    const ws = new WebSocket(`ws://127.0.0.1:${s2.boundAddress!.port}/api/websocket`);
+    const col = wsCollector(ws);
+    expect((await col.next()).type).to.equal("auth_required"); // upgrade was not blocked by the guard
+    ws.send(JSON.stringify({ type: "auth", access_token: "authreq-token" }));
+    expect((await col.next()).type).to.equal("auth_ok");
+    ws.close();
+    await s2.stop();
   });
 });

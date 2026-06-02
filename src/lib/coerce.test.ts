@@ -5,7 +5,6 @@ import {
   coerceBoolean,
   coerceUuid,
   coerceSafeUrl,
-  coerceSafeUrlReason,
   decideGcAction,
   decideLegacyVisMigration,
   escapeHtml,
@@ -174,53 +173,39 @@ describe("coerce", () => {
     });
   });
 
-  describe("coerceSafeUrlReason (E4 v1.16.0)", () => {
-    it("returns safe + null reason for OK URLs", () => {
-      const r = coerceSafeUrlReason("http://example.com/");
-      expect(r.safe).to.equal("http://example.com/");
-      expect(r.reason).to.be.null;
+  describe("coerceSafeUrl (rejection branches, formerly coerceSafeUrlReason E4 v1.16.0)", () => {
+    // coerceSafeUrlReason is module-private now (the reason has no production
+    // consumer); every rejection branch is exercised through coerceSafeUrl.
+    it("returns the URL for OK URLs", () => {
+      expect(coerceSafeUrl("http://example.com/")).to.equal("http://example.com/");
     });
 
-    it("reports bad-scheme for javascript:", () => {
-      const r = coerceSafeUrlReason("javascript:alert(1)");
-      expect(r.safe).to.be.null;
-      expect(r.reason).to.equal("bad-scheme:javascript:");
+    it("rejects javascript: scheme", () => {
+      expect(coerceSafeUrl("javascript:alert(1)")).to.be.null;
     });
 
-    it("reports bad-scheme for data:", () => {
-      const r = coerceSafeUrlReason("data:text/html,<script>x</script>");
-      expect(r.safe).to.be.null;
-      expect(r.reason).to.equal("bad-scheme:data:");
+    it("rejects data: scheme", () => {
+      expect(coerceSafeUrl("data:text/html,<script>x</script>")).to.be.null;
     });
 
-    it("reports credentials-in-url for user:pass URLs", () => {
-      const r = coerceSafeUrlReason("https://user:pass@example.com/");
-      expect(r.safe).to.be.null;
-      expect(r.reason).to.equal("credentials-in-url");
+    it("rejects credentials-in-url (user:pass)", () => {
+      expect(coerceSafeUrl("https://user:pass@example.com/")).to.be.null;
     });
 
-    it("reports unparseable for malformed strings", () => {
-      const r = coerceSafeUrlReason("not a url");
-      expect(r.safe).to.be.null;
-      expect(r.reason).to.equal("unparseable");
+    it("rejects unparseable strings", () => {
+      expect(coerceSafeUrl("not a url")).to.be.null;
     });
 
-    it("reports empty for empty string", () => {
-      const r = coerceSafeUrlReason("");
-      expect(r.safe).to.be.null;
-      expect(r.reason).to.equal("empty");
+    it("rejects empty string", () => {
+      expect(coerceSafeUrl("")).to.be.null;
     });
 
-    it("reports too-long for >2048 chars", () => {
-      const r = coerceSafeUrlReason("http://x.com/" + "a".repeat(2050));
-      expect(r.safe).to.be.null;
-      expect(r.reason).to.equal("too-long");
+    it("rejects >2048 chars", () => {
+      expect(coerceSafeUrl("http://x.com/" + "a".repeat(2050))).to.be.null;
     });
 
-    it("reports not-a-string for non-strings", () => {
-      const r = coerceSafeUrlReason(42);
-      expect(r.safe).to.be.null;
-      expect(r.reason).to.equal("not-a-string");
+    it("rejects non-strings", () => {
+      expect(coerceSafeUrl(42)).to.be.null;
     });
   });
 

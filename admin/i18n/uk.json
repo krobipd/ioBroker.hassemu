@@ -40,5 +40,20 @@
     "refreshUrlsDesc": "Запишіть true, щоб повторно сканувати брокер на проекти VIS/VIS-2, admin-плитки та інші URL. Корисно після створення нової VIS-view без перезапуску адаптера.",
     "noChoice": "---",
     "globalUrl": "Глобальний URL",
-    "manualUrl": "Ручний URL"
+    "manualUrl": "Ручний URL",
+    "pageConnectedTitle": "З'єднано · ioBroker",
+    "pageConnectedHeading": "Дисплей під'єднано",
+    "pageConnectedSubhead": "Цей дисплей з'єднано з ioBroker. Оберіть URL для перенаправлення.",
+    "pageSetupTitle": "Завершити налаштування",
+    "pageSetupIntro": "Вкажіть URL, який дисплей відкриє при наступному оновленні:",
+    "pageStep1": "Відкрийте адмін ioBroker і перейдіть до перегляду «Об'єкти».",
+    "pageStep2": "Перейдіть до цього датапоінта:",
+    "pageStep3": "Введіть потрібний URL (проєкт VIS, Grafana, дашборд, …).",
+    "pageAutoRefresh": "Ця сторінка автоматично оновлюється кожні 15 секунд.",
+    "pageOfflineTitle": "hassemu офлайн · ioBroker",
+    "pageOfflineHeading": "hassemu офлайн",
+    "pageOfflineSubhead": "Сторінка вище — останній вигляд, який отримав цей дисплей. Щойно hassemu знову буде доступним, екран оновиться автоматично.",
+    "pageReload": "Перезавантажити",
+    "pageDeviceId": "ID пристрою",
+    "pageIpAddress": "IP-адреса"
 }

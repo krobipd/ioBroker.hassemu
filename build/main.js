@@ -30,14 +30,12 @@ var import_coerce = require("./lib/coerce");
 var import_constants = require("./lib/constants");
 var import_global_config = require("./lib/global-config");
 var import_mdns = require("./lib/mdns");
+var import_schema_repair = require("./lib/schema-repair");
 var import_url_discovery = require("./lib/url-discovery");
 var import_webserver = require("./lib/webserver");
 var import_io_package = __toESM(require("../io-package.json"));
 var _a;
 const instanceObjectsList = (_a = import_io_package.default.instanceObjects) != null ? _a : [];
-let processHandlersInstalled = false;
-let installedUnhandledHandler = null;
-let installedUncaughtHandler = null;
 class HassEmu extends utils.Adapter {
   /**
    * ioBroker system language used to render the user-facing landing page
@@ -58,17 +56,6 @@ class HassEmu extends utils.Adapter {
     this.on("stateChange", this.onStateChange.bind(this));
     this.on("objectChange", this.onObjectChange.bind(this));
     this.on("unload", this.onUnload.bind(this));
-    if (!processHandlersInstalled) {
-      installedUnhandledHandler = (reason) => {
-        console.error(`[hassemu] Unhandled rejection: ${reason instanceof Error ? reason.message : String(reason)}`);
-      };
-      installedUncaughtHandler = (err) => {
-        console.error(`[hassemu] Uncaught exception: ${err.message}`);
-      };
-      process.on("unhandledRejection", installedUnhandledHandler);
-      process.on("uncaughtException", installedUncaughtHandler);
-      processHandlersInstalled = true;
-    }
   }
   async onReady() {
     var _a2;
@@ -93,7 +80,7 @@ class HassEmu extends utils.Adapter {
       await this.registry.restore();
       await this.migrateLegacyDefaultVisUrl();
       await this.migrateVisUrlToMode();
-      await this.repairGlobalSchemas();
+      await (0, import_schema_repair.repairGlobalSchemas)(this, instanceObjectsList);
       await this.gcStaleClients();
       const instanceUuid = await this.getOrCreateServerUuid();
       this.log.debug(
@@ -131,7 +118,7 @@ class HassEmu extends utils.Adapter {
         this.mdnsService.start();
         mdnsActive = this.mdnsService.isActive();
         if (!mdnsActive) {
-          this.log.warn(`mDNS failed to start: ${"see preceding mDNS warning"}`);
+          this.log.warn("mDNS failed to start \u2014 see preceding mDNS warning");
         }
       } else {
         this.log.debug("mDNS disabled \u2014 clients must enter the URL manually.");
@@ -310,50 +297,6 @@ class HassEmu extends utils.Adapter {
       } catch {
       }
     }
-  }
-  /**
-   * Repairs partial-formed `global.mode` / `global.manualUrl` objects from
-   * the v1.2.0 migration bug (extendObjectAsync was called with only
-   * `common.type:'mixed'` — leaving the object without top-level `type`,
-   * name, role, read, write, def). `extendObjectAsync` here merges the full
-   * instanceObjects schema onto the existing partial object so js-controller
-   * stops warning "obj.type has to exist" and the dropdown renders correctly.
-   *
-   * Idempotent — extending an already-complete object is a no-op write.
-   */
-  async repairGlobalSchemas() {
-    const repair = async (id, expectedCommonType) => {
-      var _a2, _b;
-      try {
-        const obj = await this.getObjectAsync(id);
-        if (obj && obj.type === "state" && ((_a2 = obj.common) == null ? void 0 : _a2.type) === expectedCommonType) {
-          return;
-        }
-      } catch {
-      }
-      const fullId = `${this.namespace}.${id}`;
-      const schema = instanceObjectsList.find((o) => o._id === id || o._id === fullId);
-      if (!schema) {
-        this.log.debug(`repair ${id}: no instanceObjects-schema found, skipping`);
-        return;
-      }
-      try {
-        await this.extendObjectAsync(
-          id,
-          {
-            type: schema.type,
-            common: schema.common,
-            native: (_b = schema.native) != null ? _b : {}
-          },
-          { preserve: { common: ["name"] } }
-        );
-        this.log.debug(`Schema repair applied: ${id} (common.type was missing, restored from instanceObjects)`);
-      } catch (err) {
-        this.log.debug(`repair ${id} failed: ${String(err)}`);
-      }
-    };
-    await repair("global.mode", "mixed");
-    await repair("global.manualUrl", "string");
   }
   /**
    * Removes clients that are clearly stale: `native.lastSeen` older than

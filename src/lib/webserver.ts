@@ -2,7 +2,9 @@ import crypto from "node:crypto";
 import dns from "node:dns/promises";
 import fastifyCookie from "@fastify/cookie";
 import fastifyFormbody from "@fastify/formbody";
+import fastifyWebsocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
+import type { WebSocket } from "ws";
 import {
   HA_VERSION,
   SESSION_TTL_MS,
@@ -14,6 +16,7 @@ import {
   REQUEST_ERROR_COOLDOWN_MS,
   REQUEST_ERROR_COOLDOWN_CAP,
   COOKIE_MAX_AGE_S,
+  WS_AUTH_TIMEOUT_MS,
 } from "./constants";
 import { coerceString, coerceUuid, evictOldest, isValidRedirectUri, safeStringEqual } from "./coerce";
 import { buildRedirectUrl, renderAuthorizeError, renderAuthorizeForm, renderAuthorizeRedirect } from "./auth-page";
@@ -34,8 +37,31 @@ import type { AdapterConfig, AdapterInterface, ClientRecord, SessionData } from 
 /** Adapter surface the WebServer depends on — adds `namespace` for the setup page. */
 export type WebServerAdapter = AdapterInterface & Pick<ioBroker.Adapter, "namespace">;
 
+/**
+ * Light-my-request injection surface — exposed read-only as a TEST-ONLY seam so
+ * unit tests can drive routes without opening a real socket. Not used in production.
+ */
+export type WebserverInject = FastifyInstance["inject"];
+
 /** Browser cookie name. Client identity lives here — auto-sent on every page navigation. */
 export const CLIENT_COOKIE = "hassemu_client";
+
+/**
+ * HA mobile_app registration response shape (home-assistant/android
+ * RegisterDeviceResponse.kt): `webhookId` required, the cloud/remote/secret
+ * fields null (no Nabu Casa cloud, the webhookId itself is the secret). Used
+ * by the registration POST, the PUT update and the webhook `update_registration`.
+ *
+ * @param webhookId The issued webhook id (URL secret) to echo back to the App.
+ */
+function mobileRegResponse(webhookId: string): {
+  webhook_id: string;
+  cloudhook_url: null;
+  remote_ui_url: null;
+  secret: null;
+} {
+  return { webhook_id: webhookId, cloudhook_url: null, remote_ui_url: null, secret: null };
+}
 
 /**
  * Fastify web server emulating the HA REST API.
@@ -85,11 +111,11 @@ export class WebServer {
   private readonly lastRedirectTargetByClient: Map<string, string | null> = new Map();
   private cleanupTimer: ioBroker.Interval | null = null;
   /**
-   * v1.14.0 (H8): bind once im Constructor statt bei jedem Property-Access
-   * via getter — vorher allokierte jeder `s.inject({...})`-Call eine neue
-   * gebundene Funktion. Tests rufen das in Loops auf — unnötiger GC-Druck.
+   * Test-only injection surface ({@link WebserverInject}). v1.14.0 (H8): bound
+   * once in the constructor instead of via a getter — a getter allocated a new
+   * bound function on every `s.inject({...})` call, and tests call it in loops.
    */
-  public readonly inject!: FastifyInstance["inject"];
+  public readonly inject!: WebserverInject;
   public readonly instanceUuid: string;
   /** ioBroker system language for the setup page — resolved on startup. */
   public readonly systemLanguage: string;
@@ -129,10 +155,11 @@ export class WebServer {
     // Termination läuft. Mit trustProxy=true holt Fastify `req.ip` aus
     // `X-Forwarded-For` (statt aus dem Socket), `req.protocol` aus
     // `X-Forwarded-Proto` etc. — Voraussetzung: der Proxy bereinigt diese
-    // Header (sonst kann jeder Client den Lockout umgehen).
+    // Header (sonst kann jeder Client seine sichtbare IP fälschen → verfälscht
+    // Logs + die per-IP-Burst-Erkennung defekter Cookies).
     this.app = Fastify({ logger: false, trustProxy: this.config.trustProxy === true });
     // v1.14.0 (H8): inject einmal binden, nicht pro Getter-Access.
-    (this as { inject: FastifyInstance["inject"] }).inject = this.app.inject.bind(this.app);
+    (this as { inject: WebserverInject }).inject = this.app.inject.bind(this.app);
   }
 
   /** Human-readable service name advertised in responses and mDNS. */
@@ -168,6 +195,11 @@ export class WebServer {
     // hängen. Tests via `app.inject({payload:{...}})` serialisieren zu JSON
     // und maskieren das.
     await this.app.register(fastifyFormbody);
+    // v1.34.0: minimal read-only WebSocket for the HA Companion App. Its
+    // `registerDevice` makes a best-effort `auth/current_user` WS call after the
+    // REST registration; without a WS endpoint that fails (and the username is
+    // not stored). Registered before the routes so `{ websocket: true }` works.
+    await this.app.register(fastifyWebsocket);
     this.setupAuthGuard();
     this.setupErrorHandler();
     this.setupRoutes();
@@ -216,7 +248,7 @@ export class WebServer {
   // im Constructor einmalig gebunden). Der frühere Getter allokierte bei
   // jedem Access eine neue Funktion.
 
-  /** Periodic cleanup of expired in-flight auth sessions and stale lockouts. */
+  /** Periodic cleanup of expired in-flight auth sessions and stale redirect-target entries. */
   public cleanupSessions(): void {
     const now = Date.now();
     let cleanedSessions = 0;
@@ -246,13 +278,6 @@ export class WebServer {
     }
   }
 
-  /**
-   * Drops the oldest entry of a Map if it would exceed `cap` after the next insert.
-   * Map iteration order in JS is insertion order, so `keys().next()` is the oldest.
-   *
-   * @param map Map to evict from.
-   * @param cap Hard cap; when `map.size >= cap`, the oldest entry is removed.
-   */
   /**
    * Cooldown-Decision für 5xx-Error-Logging. Liefert `true` für die erste
    * Beobachtung pro `key` innerhalb {@link REQUEST_ERROR_COOLDOWN_MS} und
@@ -346,9 +371,13 @@ export class WebServer {
     // KEIN Timeout — bei broken Resolver (Captive-Portal, Misconfig) blieb
     // der Promise unendlich pending → IP für Adapter-Lifetime in dnsInFlight
     // blockiert, hostname auf record.ip gefroren.
-    const timeout = new Promise<string[]>((_, reject) =>
-      setTimeout(() => reject(new Error("dns reverse-lookup timeout")), 5_000),
-    );
+    // v1.34.0: adapter-managed Timer (cancelt automatisch bei onUnload) + clear
+    // sobald `dns.reverse` das Race gewinnt — sonst dangelt der Timer bis 5s
+    // über einen Restart hinaus (W5005).
+    let timeoutHandle: ioBroker.Timeout | undefined;
+    const timeout = new Promise<string[]>((_, reject) => {
+      timeoutHandle = this.adapter.setTimeout(() => reject(new Error("dns reverse-lookup timeout")), 5_000);
+    });
     Promise.race([dns.reverse(ip), timeout])
       .then(names => {
         const name = names[0];
@@ -370,6 +399,9 @@ export class WebServer {
         );
       })
       .finally(() => {
+        if (timeoutHandle) {
+          this.adapter.clearTimeout(timeoutHandle);
+        }
         this.dnsInFlight.delete(ip);
       });
   }
@@ -406,6 +438,10 @@ export class WebServer {
         path === "/manifest.json" ||
         path === "/health" ||
         path.startsWith("/auth/") ||
+        // v1.34.0: the WebSocket does its own auth in the handshake
+        // (`auth_required` → `auth` frame), not via a Bearer header — so the
+        // HTTP upgrade itself must pass the guard.
+        path === "/api/websocket" ||
         // v1.29.1: Mobile-App webhooks carry the secret in the URL
         // (`webhookId`) — HA core also serves these unauthenticated.
         // Source: home-assistant/core/.../mobile_app/webhook.py.
@@ -467,17 +503,19 @@ export class WebServer {
   private setupRoutes(): void {
     this.setupApiRoutes();
     this.setupAuthRoutes();
+    this.setupWebSocket();
     this.setupMiscRoutes();
     this.setupNotFound();
   }
 
-  private setupApiRoutes(): void {
-    // CRITICAL: trailing slash — HA clients check this endpoint for discovery
-    this.app.get("/api/", () => ({ message: "API running." }));
-
-    this.app.get("/api/config", () => ({
-      // `mobile_app` advertises the integration the HA Companion App
-      // probes for during onboarding (v1.29.1, Shelly FW 2.6.0+).
+  /**
+   * HA `/api/config`-shaped object. Single source for REST `/api/config`, the
+   * Companion webhook `get_config` and the WebSocket `get_config` command.
+   * `mobile_app` in `components` advertises the integration the HA Companion App
+   * probes during onboarding (v1.29.1, Shelly FW 2.6.0+).
+   */
+  private buildHaConfig(): Record<string, unknown> {
+    return {
       components: ["http", "api", "frontend", "homeassistant", "mobile_app"],
       config_dir: "/config",
       elevation: 0,
@@ -488,7 +526,14 @@ export class WebServer {
       unit_system: { length: "km", mass: "g", temperature: "°C", volume: "L" },
       version: HA_VERSION,
       whitelist_external_dirs: [],
-    }));
+    };
+  }
+
+  private setupApiRoutes(): void {
+    // CRITICAL: trailing slash — HA clients check this endpoint for discovery
+    this.app.get("/api/", () => ({ message: "API running." }));
+
+    this.app.get("/api/config", () => this.buildHaConfig());
 
     this.app.get("/api/discovery_info", () => {
       // v1.17.0 (E11): NICHT mehr `req.hostname` — der Host-Header ist
@@ -556,24 +601,15 @@ export class WebServer {
         `Mobile-App registration — client=${ownerId} app_id=${body.app_id ?? "?"} device_name=${body.device_name ?? "?"} → webhook=${webhookId}`,
       );
 
-      // Response shape: home-assistant/android RegisterDeviceResponse.kt
-      //   cloudhookUrl: String? (null — no Nabu Casa cloud)
-      //   remoteUiUrl:  String? (null — no remote-UI)
-      //   secret:       String? (null — webhookId itself is the secret)
-      //   webhookId:    String  (required, non-null)
       reply.status(201);
-      return {
-        webhook_id: webhookId,
-        cloudhook_url: null,
-        remote_ui_url: null,
-        secret: null,
-      };
+      return mobileRegResponse(webhookId);
     });
 
     // PUT and DELETE on /api/mobile_app/registrations/:webhookId — the App
     // calls PUT to update its registration on token refresh or sensor
-    // re-register. We treat both as no-ops that return success so the
-    // Companion App doesn't show registration-failure banners.
+    // re-register. PUT echoes the registration for a KNOWN webhookId (200), but
+    // returns 404 for an unknown one so a stale Pre-Restart token re-registers;
+    // DELETE drops the registration and returns 204.
     this.app.put<{ Params: { webhookId: string } }>("/api/mobile_app/registrations/:webhookId", async (req, reply) => {
       const id = req.params.webhookId;
       if (!this.webhookRegistrations.has(id)) {
@@ -584,7 +620,7 @@ export class WebServer {
         reply.status(404);
         return { error: "unknown_registration" };
       }
-      return { webhook_id: id, cloudhook_url: null, remote_ui_url: null, secret: null };
+      return mobileRegResponse(id);
     });
 
     this.app.delete<{ Params: { webhookId: string } }>(
@@ -635,22 +671,13 @@ export class WebServer {
 
       switch (type) {
         case "get_config":
-          return {
-            components: ["http", "api", "frontend", "homeassistant", "mobile_app"],
-            latitude: 0,
-            longitude: 0,
-            elevation: 0,
-            unit_system: { length: "km", mass: "g", temperature: "°C", volume: "L" },
-            location_name: this.serviceName,
-            time_zone: "UTC",
-            version: HA_VERSION,
-          };
+          return this.buildHaConfig();
         case "get_zones":
           return [];
         case "render_template":
           return {};
         case "update_registration":
-          return { webhook_id: id, cloudhook_url: null, remote_ui_url: null, secret: null };
+          return mobileRegResponse(id);
         case "register_sensor":
           return { success: true };
         case "update_sensor_states":
@@ -682,6 +709,104 @@ export class WebServer {
     return code;
   }
 
+  /**
+   * Shared validation for GET and POST `/auth/authorize`. On failure it sets the
+   * `400 text/html` reply and returns the rendered error page; on success it
+   * returns the validated (string-typed) `client_id` / `redirect_uri`. Never
+   * redirects on failure — the endpoint must not become an open redirector.
+   *
+   * @param reply        Fastify reply (status + content-type set on failure).
+   * @param method       `"GET"` or `"POST"` — only used to label the debug log.
+   * @param responseType The OAuth2 `response_type` (must be `"code"`).
+   * @param clientId     The OAuth2 `client_id` (must be a string).
+   * @param redirectUri  The OAuth2 `redirect_uri` (must be a string + allowlisted).
+   */
+  private validateAuthorizeRequest(
+    reply: FastifyReply,
+    method: "GET" | "POST",
+    responseType: unknown,
+    clientId: unknown,
+    redirectUri: unknown,
+  ): { ok: true; clientId: string; redirectUri: string } | { ok: false; html: string } {
+    if (responseType !== "code") {
+      this.adapter.log.debug(`Authorize ${method} rejected: response_type=${String(responseType)} (expected 'code')`);
+      reply.status(400).type("text/html");
+      return {
+        ok: false,
+        html: renderAuthorizeError(
+          "unsupported_response_type",
+          "This authorization server supports `response_type=code` only.",
+        ),
+      };
+    }
+    if (typeof clientId !== "string" || typeof redirectUri !== "string") {
+      this.adapter.log.debug(
+        `Authorize ${method} rejected: missing client_id or redirect_uri (cid=${typeof clientId}, ru=${typeof redirectUri})`,
+      );
+      reply.status(400).type("text/html");
+      return {
+        ok: false,
+        html: renderAuthorizeError("invalid_request", "Missing or invalid `client_id` or `redirect_uri` parameter."),
+      };
+    }
+    if (!isValidRedirectUri(clientId, redirectUri)) {
+      this.adapter.log.debug(
+        `Authorize ${method} rejected: redirect_uri "${redirectUri}" not allowed for client_id "${clientId}"`,
+      );
+      reply.status(400).type("text/html");
+      return {
+        ok: false,
+        html: renderAuthorizeError(
+          "invalid_redirect_uri",
+          "The `redirect_uri` parameter is not on the allowlist for this client.",
+        ),
+      };
+    }
+    return { ok: true, clientId, redirectUri };
+  }
+
+  /**
+   * Issue an auth code, build the redirect target and render the auto-submit redirect page.
+   *
+   * @param reply       Fastify reply (content-type set to text/html).
+   * @param clientId    Identity of the requesting display, or null for headless flows.
+   * @param redirectUri Already-validated `redirect_uri` to append the code to.
+   * @param state       Optional OAuth2 `state` round-tripped verbatim.
+   */
+  private issueAuthorizeRedirect(
+    reply: FastifyReply,
+    clientId: string | null,
+    redirectUri: string,
+    state: string | undefined,
+  ): string {
+    const code = this.issueAuthorizationCode(clientId);
+    const target = buildRedirectUrl(redirectUri, code, state);
+    reply.type("text/html");
+    return renderAuthorizeRedirect(target);
+  }
+
+  /**
+   * Best-effort token revocation, shared by `POST /auth/revoke` (HA ≥2022.9)
+   * and the legacy `POST /auth/token` with `action=revoke`. The HA Companion
+   * sends the refresh token; we look it up and clear both the refresh and the
+   * access token of the owning client. Always succeeds from the caller's view —
+   * an unknown/missing token still yields 200 (matches HA, which never leaks
+   * whether a token existed). Source: AuthenticationRepositoryImpl.revokeSession.
+   *
+   * @param token Refresh token to revoke (from the `token` form field).
+   */
+  private async revokeToken(token: string | undefined): Promise<void> {
+    const refresh = typeof token === "string" ? token : "";
+    const owner = refresh ? this.registry.getByRefreshToken(refresh) : null;
+    if (owner) {
+      await this.registry.setRefreshToken(owner.id, null);
+      await this.registry.setToken(owner.id, null);
+      this.adapter.log.debug(`Token revoked — client ${owner.id}`);
+    } else {
+      this.adapter.log.debug("Revoke: unknown/missing token — returning 200 (HA behavior)");
+    }
+  }
+
   private setupAuthRoutes(): void {
     this.app.get("/auth/providers", () => [{ name: "Home Assistant Local", type: "homeassistant", id: null }]);
 
@@ -697,55 +822,31 @@ export class WebServer {
     }>("/auth/authorize", async (req, reply) => {
       const { response_type, client_id, redirect_uri, state } = req.query ?? {};
 
-      if (response_type !== "code") {
-        // v1.32.0 D2: rejection-Pfade traced — Triage „warum bricht OAuth ab"
-        this.adapter.log.debug(`Authorize GET rejected: response_type=${String(response_type)} (expected 'code')`);
-        reply.status(400).type("text/html");
-        return renderAuthorizeError(
-          "unsupported_response_type",
-          "This authorization server supports `response_type=code` only.",
-        );
-      }
-      if (typeof client_id !== "string" || typeof redirect_uri !== "string") {
-        this.adapter.log.debug(
-          `Authorize GET rejected: missing client_id or redirect_uri (cid=${typeof client_id}, ru=${typeof redirect_uri})`,
-        );
-        reply.status(400).type("text/html");
-        return renderAuthorizeError("invalid_request", "Missing or invalid `client_id` or `redirect_uri` parameter.");
-      }
-      if (!isValidRedirectUri(client_id, redirect_uri)) {
-        this.adapter.log.debug(
-          `Authorize rejected: redirect_uri "${redirect_uri}" not allowed for client_id "${client_id}"`,
-        );
-        reply.status(400).type("text/html");
-        return renderAuthorizeError(
-          "invalid_redirect_uri",
-          "The `redirect_uri` parameter is not on the allowlist for this client.",
-        );
+      // v1.32.0 D2: rejection-Pfade traced — Triage „warum bricht OAuth ab"
+      const v = this.validateAuthorizeRequest(reply, "GET", response_type, client_id, redirect_uri);
+      if (!v.ok) {
+        return v.html;
       }
 
       const client = await this.identify(req, reply);
 
       // No auth required → issue the code right away and redirect.
       if (!this.config.authRequired) {
-        const code = this.issueAuthorizationCode(client.id);
-        const target = buildRedirectUrl(redirect_uri, code, state);
         this.adapter.log.debug(`Authorize auto-grant — client ${client.id}`);
-        reply.type("text/html");
-        return renderAuthorizeRedirect(target);
+        return this.issueAuthorizeRedirect(reply, client.id, v.redirectUri, state);
       }
 
       // v1.32.0 D1: Form-render Trace — wenn Companion die Form nie absendet,
       // sieht User hier dass sie überhaupt gerendert wurde.
       let redirectHost = "?";
       try {
-        redirectHost = new URL(redirect_uri).host || redirect_uri;
+        redirectHost = new URL(v.redirectUri).host || v.redirectUri;
       } catch {
-        redirectHost = redirect_uri;
+        redirectHost = v.redirectUri;
       }
-      this.adapter.log.debug(`Authorize form rendered — client_id=${client_id} redirect_uri-host=${redirectHost}`);
+      this.adapter.log.debug(`Authorize form rendered — client_id=${v.clientId} redirect_uri-host=${redirectHost}`);
       reply.type("text/html");
-      return renderAuthorizeForm({ clientId: client_id, redirectUri: redirect_uri, state });
+      return renderAuthorizeForm({ clientId: v.clientId, redirectUri: v.redirectUri, state });
     });
 
     this.app.post<{
@@ -760,37 +861,16 @@ export class WebServer {
     }>("/auth/authorize", async (req, reply) => {
       const { response_type, client_id, redirect_uri, state, username, password } = req.body ?? {};
 
-      if (response_type !== "code") {
-        this.adapter.log.debug(`Authorize POST rejected: response_type=${String(response_type)} (expected 'code')`);
-        reply.status(400).type("text/html");
-        return renderAuthorizeError("unsupported_response_type", "Only `response_type=code` is supported.");
-      }
-      if (typeof client_id !== "string" || typeof redirect_uri !== "string") {
-        this.adapter.log.debug(
-          `Authorize POST rejected: missing client_id or redirect_uri (cid=${typeof client_id}, ru=${typeof redirect_uri})`,
-        );
-        reply.status(400).type("text/html");
-        return renderAuthorizeError("invalid_request", "Missing or invalid `client_id` or `redirect_uri` parameter.");
-      }
-      if (!isValidRedirectUri(client_id, redirect_uri)) {
-        this.adapter.log.debug(
-          `Authorize POST rejected: redirect_uri "${redirect_uri}" not allowed for client_id "${client_id}"`,
-        );
-        reply.status(400).type("text/html");
-        return renderAuthorizeError(
-          "invalid_redirect_uri",
-          "The `redirect_uri` parameter is not on the allowlist for this client.",
-        );
+      const v = this.validateAuthorizeRequest(reply, "POST", response_type, client_id, redirect_uri);
+      if (!v.ok) {
+        return v.html;
       }
 
       const client = await this.identify(req, reply);
 
       // No auth required → straight to redirect even on POST.
       if (!this.config.authRequired) {
-        const code = this.issueAuthorizationCode(client.id);
-        const target = buildRedirectUrl(redirect_uri, code, state);
-        reply.type("text/html");
-        return renderAuthorizeRedirect(target);
+        return this.issueAuthorizeRedirect(reply, client.id, v.redirectUri, state);
       }
 
       const ip = WebServer.getClientIp(req);
@@ -801,16 +881,13 @@ export class WebServer {
         this.adapter.log.warn(`Invalid credentials${ipSuffix}`);
         reply.status(401).type("text/html");
         return renderAuthorizeForm(
-          { clientId: client_id, redirectUri: redirect_uri, state },
+          { clientId: v.clientId, redirectUri: v.redirectUri, state },
           "Invalid username or password.",
         );
       }
 
-      const code = this.issueAuthorizationCode(client.id);
-      const target = buildRedirectUrl(redirect_uri, code, state);
       this.adapter.log.debug(`Authorize grant — client ${client.id}`);
-      reply.type("text/html");
-      return renderAuthorizeRedirect(target);
+      return this.issueAuthorizeRedirect(reply, client.id, v.redirectUri, state);
     });
 
     this.app.post("/auth/login_flow", async (req, reply) => {
@@ -893,71 +970,251 @@ export class WebServer {
       },
     );
 
-    this.app.post<{ Body: { code?: string; grant_type?: string; refresh_token?: string } }>(
-      "/auth/token",
-      async (req, reply) => {
-        const { code, grant_type, refresh_token } = req.body ?? {};
+    // HA ≥2022.9 logout: POST /auth/revoke with form field `token` (the refresh
+    // token). Always 200 with empty body. Whitelisted by the `/auth/` prefix in
+    // the auth guard. Source: AuthenticationRepositoryImpl.revokeSession.
+    this.app.post<{ Body: { token?: string } }>("/auth/revoke", async req => {
+      await this.revokeToken(req.body?.token);
+      return {};
+    });
 
-        if (grant_type === "authorization_code" && code && this.sessions.has(code)) {
-          const session = this.sessions.get(code)!;
-          this.sessions.delete(code);
-          const token = crypto.randomUUID();
-          const refreshToken = crypto.randomUUID();
-          if (session.clientId) {
-            // Persist VOR Response-Build: ein Crash zwischen Issue + Persist
-            // würde sonst dem Client einen Token in der Hand lassen, den der
-            // Server nicht kennt — beim ersten Refresh dann invalid_grant.
-            await this.registry.setToken(session.clientId, token);
-            await this.registry.setRefreshToken(session.clientId, refreshToken);
-            this.adapter.log.debug(`Display authenticated — client ${session.clientId}`);
-          }
-          return {
-            access_token: token,
-            token_type: "Bearer",
-            refresh_token: refreshToken,
-            expires_in: OAUTH_ACCESS_TOKEN_TTL_S,
-          };
+    this.app.post<{
+      Body: { code?: string; grant_type?: string; refresh_token?: string; action?: string; token?: string };
+    }>("/auth/token", async (req, reply) => {
+      const { code, grant_type, refresh_token, action } = req.body ?? {};
+
+      // Legacy logout (HA <2022.9): POST /auth/token with action=revoke + token.
+      // Newer apps use /auth/revoke; we accept both so a 400 never surfaces.
+      if (action === "revoke") {
+        await this.revokeToken(req.body?.token ?? refresh_token);
+        return {};
+      }
+
+      if (grant_type === "authorization_code" && code && this.sessions.has(code)) {
+        const session = this.sessions.get(code)!;
+        this.sessions.delete(code);
+        const token = crypto.randomUUID();
+        const refreshToken = crypto.randomUUID();
+        if (session.clientId) {
+          // Persist VOR Response-Build: ein Crash zwischen Issue + Persist
+          // würde sonst dem Client einen Token in der Hand lassen, den der
+          // Server nicht kennt — beim ersten Refresh dann invalid_grant.
+          await this.registry.setToken(session.clientId, token);
+          await this.registry.setRefreshToken(session.clientId, refreshToken);
+          this.adapter.log.debug(`Display authenticated — client ${session.clientId}`);
         }
+        return {
+          access_token: token,
+          token_type: "Bearer",
+          refresh_token: refreshToken,
+          expires_in: OAUTH_ACCESS_TOKEN_TTL_S,
+        };
+      }
 
-        if (grant_type === "refresh_token") {
-          // Validate the refresh token against issued ones — was previously
-          // accepting any string and minting a new access_token (security fix v1.2.0).
-          const incoming = typeof refresh_token === "string" ? refresh_token : "";
-          const ownerRecord = incoming ? this.registry.getByRefreshToken(incoming) : null;
-          if (!ownerRecord) {
-            this.adapter.log.debug("Refresh token rejected — unknown or missing");
-            reply.status(400);
-            return { error: "invalid_grant", error_description: "Invalid refresh token" };
-          }
-          // v1.31.0: refresh_token bleibt valid (NICHT mehr rotated). HA Core
-          // selbst (homeassistant/components/auth/__init__.py:334-348) liefert
-          // beim refresh-grant nie einen neuen refresh_token, nur access_token
-          // + token_type + expires_in. HA Android Companion
-          // (AuthenticationRepositoryImpl.kt:147) speichert beim Refresh den
-          // GESENDETEN refresh_token (Function-Parameter), ignoriert den in der
-          // Response zurückgegebenen — Companion behält daher immer ihren
-          // initialen refresh_token. v1.28.3 (HW5) Rotation war RFC 6819
-          // §5.2.2.3-konform aber inkompatibel mit dem Companion-Datenmodell:
-          // Server-Rotation killte den Companion-Token beim ersten Refresh.
-          const newAccess = crypto.randomUUID();
-          await this.registry.setToken(ownerRecord.id, newAccess);
-          this.adapter.log.debug(`Refresh-token-grant — client=${ownerRecord.id} new access_token issued`);
-          return {
-            access_token: newAccess,
-            token_type: "Bearer",
-            refresh_token: incoming,
-            expires_in: OAUTH_ACCESS_TOKEN_TTL_S,
-          };
+      if (grant_type === "refresh_token") {
+        // Validate the refresh token against issued ones — was previously
+        // accepting any string and minting a new access_token (security fix v1.2.0).
+        const incoming = typeof refresh_token === "string" ? refresh_token : "";
+        const ownerRecord = incoming ? this.registry.getByRefreshToken(incoming) : null;
+        if (!ownerRecord) {
+          this.adapter.log.debug("Refresh token rejected — unknown or missing");
+          reply.status(400);
+          return { error: "invalid_grant", error_description: "Invalid refresh token" };
         }
+        // v1.31.0: refresh_token bleibt valid (NICHT mehr rotated). HA Core
+        // selbst (homeassistant/components/auth/__init__.py:334-348) liefert
+        // beim refresh-grant nie einen neuen refresh_token, nur access_token
+        // + token_type + expires_in. HA Android Companion
+        // (AuthenticationRepositoryImpl.kt:147) speichert beim Refresh den
+        // GESENDETEN refresh_token (Function-Parameter), ignoriert den in der
+        // Response zurückgegebenen — Companion behält daher immer ihren
+        // initialen refresh_token. v1.28.3 (HW5) Rotation war RFC 6819
+        // §5.2.2.3-konform aber inkompatibel mit dem Companion-Datenmodell:
+        // Server-Rotation killte den Companion-Token beim ersten Refresh.
+        const newAccess = crypto.randomUUID();
+        await this.registry.setToken(ownerRecord.id, newAccess);
+        this.adapter.log.debug(`Refresh-token-grant — client=${ownerRecord.id} new access_token issued`);
+        return {
+          access_token: newAccess,
+          token_type: "Bearer",
+          refresh_token: incoming,
+          expires_in: OAUTH_ACCESS_TOKEN_TTL_S,
+        };
+      }
 
-        // v1.8.0: „wrong grant_type" ist ein Client-Format-Fehler,
-        // nicht ein Server-Concern — debug. KEIN Lockout-Counter
-        // (legitimer Client-Bug soll nicht zu IP-Sperre führen).
-        this.adapter.log.debug(`Token exchange failed: grant_type=${String(grant_type)}`);
-        reply.status(400);
-        return { error: "invalid_request", error_description: "Invalid or expired code" };
-      },
-    );
+      // „wrong grant_type" ist ein Client-Format-Fehler, kein Server-Concern
+      // — daher nur debug (legitime Client-Bugs sollen das Log nicht fluten).
+      this.adapter.log.debug(`Token exchange failed: grant_type=${String(grant_type)}`);
+      reply.status(400);
+      return { error: "invalid_request", error_description: "Invalid or expired code" };
+    });
+  }
+
+  /**
+   * Minimal read-only HA WebSocket at `/api/websocket`. The HA Companion App's
+   * `registerDevice` makes a best-effort `auth/current_user` WS call after the
+   * REST registration to store the username (home-assistant/android
+   * IntegrationRepositoryImpl.kt at tag 2026.4.4, line 154). Without a WS
+   * endpoint that throws and the registration logs "Unable to save device registration".
+   *
+   * Auth happens in-band: server sends `auth_required`, client replies with an
+   * `auth` frame, we validate the access token against the registry. FAIL-FAST:
+   * a missing/invalid token or a missing `auth` frame within
+   * {@link WS_AUTH_TIMEOUT_MS} closes the socket — so the WS never hangs the
+   * App's call (which previously failed fast against a clean 404).
+   */
+  private setupWebSocket(): void {
+    this.app.get("/api/websocket", { websocket: true }, (socket: WebSocket) => {
+      let authed = false;
+      let authTimer: ioBroker.Timeout | undefined = this.adapter.setTimeout(() => {
+        if (!authed) {
+          this.adapter.log.debug("WS: no auth frame within timeout — closing");
+          this.wsSend(socket, { type: "auth_invalid", message: "Authentication timed out" });
+          socket.close();
+        }
+      }, WS_AUTH_TIMEOUT_MS);
+
+      this.wsSend(socket, { type: "auth_required", ha_version: HA_VERSION });
+
+      socket.on("message", raw => {
+        // ws delivers text frames as Buffer by default; normalize every RawData
+        // variant to a UTF-8 string (avoids Object's default stringification).
+        const text = Buffer.isBuffer(raw)
+          ? raw.toString("utf8")
+          : Array.isArray(raw)
+            ? Buffer.concat(raw).toString("utf8")
+            : Buffer.from(raw).toString("utf8");
+        let msg: Record<string, unknown>;
+        try {
+          msg = JSON.parse(text) as Record<string, unknown>;
+        } catch {
+          return; // ignore non-JSON frames
+        }
+        if (!authed) {
+          const token = typeof msg.access_token === "string" ? msg.access_token : "";
+          if (msg.type === "auth" && token && this.registry.getByToken(token)) {
+            authed = true;
+            if (authTimer) {
+              this.adapter.clearTimeout(authTimer);
+              authTimer = undefined;
+            }
+            this.wsSend(socket, { type: "auth_ok", ha_version: HA_VERSION });
+          } else {
+            this.adapter.log.debug("WS: auth_invalid — unknown or missing access token");
+            this.wsSend(socket, { type: "auth_invalid", message: "Invalid access token" });
+            socket.close();
+          }
+          return;
+        }
+        this.handleWsCommand(socket, msg);
+      });
+
+      socket.on("error", () => {
+        // Client vanished mid-stream — the socket is gone; the auth timer is
+        // cleared by the close handler below.
+      });
+
+      socket.on("close", () => {
+        // Clear the auth timer if the client disconnects before authenticating,
+        // so it never fires against an already-closed socket.
+        if (authTimer) {
+          this.adapter.clearTimeout(authTimer);
+          authTimer = undefined;
+        }
+      });
+    });
+  }
+
+  /**
+   * Safely serialize + send a WS frame; swallows errors from an already-closed socket.
+   *
+   * @param socket  The client WebSocket to write to.
+   * @param payload Plain object serialized to a JSON text frame.
+   */
+  private wsSend(socket: WebSocket, payload: Record<string, unknown>): void {
+    try {
+      socket.send(JSON.stringify(payload));
+    } catch {
+      /* socket closing/closed — drop the frame */
+    }
+  }
+
+  /**
+   * Handle one authenticated WS command. hassemu emulates an empty-but-valid HA
+   * server with only the components it advertises (http/api/frontend/
+   * homeassistant/mobile_app). Responses use only shapes that are either
+   * source-verified or trivially correct for an empty server:
+   * - data queries → correct empty shape ([] / {}),
+   * - subscriptions → ack that never emits (no entities/events on a shim),
+   * - everything hassemu does NOT implement (call_service on a service-less
+   *   server, conversation, Matter/Thread, assist_pipeline, …) → `unknown_command`,
+   *   which is exactly what real HA returns for an unregistered command type.
+   *
+   * The command SET is verified against home-assistant/android
+   * WebSocketRepositoryImpl at tag 2026.4.4; the error code against
+   * home-assistant/core websocket_api/const.py at tag 2026.4.0 (ERR_UNKNOWN_COMMAND).
+   * No speculative response shapes are emitted.
+   *
+   * @param socket The authenticated client WebSocket.
+   * @param msg    The parsed incoming command frame (`{ id, type, ... }`).
+   */
+  private handleWsCommand(socket: WebSocket, msg: Record<string, unknown>): void {
+    const id = msg.id;
+    const type = typeof msg.type === "string" ? msg.type : "";
+    const result = (r: unknown): void => this.wsSend(socket, { id, type: "result", success: true, result: r });
+    switch (type) {
+      case "ping":
+        this.wsSend(socket, { id, type: "pong" });
+        return;
+      case "auth/current_user":
+        // CurrentUserResponse.kt @2026.4.4: { id, name, isOwner, isAdmin } —
+        // the HA wire format is snake_case (is_owner / is_admin).
+        result({
+          id: this.instanceUuid,
+          name: this.config.username || this.serviceName,
+          is_owner: true,
+          is_admin: true,
+        });
+        return;
+      case "get_config":
+        result(this.buildHaConfig());
+        return;
+      case "get_states":
+        result([]);
+        return;
+      case "get_services":
+        result({});
+        return;
+      // Registries on an entity-less emulated server → empty lists.
+      case "config/area_registry/list":
+      case "config/device_registry/list":
+      case "config/entity_registry/list":
+        result([]);
+        return;
+      // Valid subscriptions on an empty server — they ack but never emit.
+      // mobile_app/* is an advertised component, so both its WS commands ack
+      // consistently (the channel subscribe + the confirm).
+      case "subscribe_events":
+      case "subscribe_entities":
+      case "supported_features":
+      case "mobile_app/push_notification_channel":
+      case "mobile_app/push_notification_confirm":
+        result(null);
+        return;
+      default:
+        // hassemu doesn't implement this command (call_service has no services;
+        // conversation / matter / thread / assist_pipeline are integrations it
+        // doesn't advertise). Real HA returns ERR_UNKNOWN_COMMAND for an
+        // unregistered command type — a reply (no hang), honest (no fake success),
+        // and grounded (no guessed response shape).
+        this.wsSend(socket, {
+          id,
+          type: "result",
+          success: false,
+          error: { code: "unknown_command", message: `Command "${type}" is not supported by this server` },
+        });
+        return;
+    }
   }
 
   private setupMiscRoutes(): void {
@@ -1016,7 +1273,7 @@ export class WebServer {
       return reply
         .status(200)
         .type("text/html; charset=utf-8")
-        .send(renderRedirectWrapper(url, client.id, this.adapter.namespace, this.systemLanguage, client.ip));
+        .send(renderRedirectWrapper(url, client.id, this.systemLanguage, client.ip));
     });
 
     // /api/redirect_check — Display polled das alle 30s; wenn der target

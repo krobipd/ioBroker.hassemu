@@ -644,6 +644,19 @@ describe("UrlDiscovery", () => {
         expect(entry![0]).to.match(/^https:\/\/[\d.]+:8443\/$/);
       });
 
+      it("falls back to default 8095 for a non-decimal port (coerceFiniteNumber rejects exp/hex)", async () => {
+        // v1.34.0: Number("1e3")===1000 would have built :1000; coerceFiniteNumber
+        // rejects exponential/hex strings → null → default 8095 (HEX/exp guard).
+        adapter._instances = {
+          "system.adapter.aura.0": enabledInstance({
+            native: { port: "1e3", secure: false, customUrl: "" },
+          }),
+        };
+        const result = await discovery.collect();
+        const entry = Object.entries(result).find(([, label]) => label === "Aura");
+        expect(entry![0], "must not be :1000").to.match(/^http:\/\/[\d.]+:8095\/$/);
+      });
+
       it("honors native.customUrl override (reverse-proxy / external URL)", async () => {
         adapter._instances = {
           "system.adapter.aura.0": enabledInstance({

@@ -7,6 +7,7 @@ import { coerceSafeUrl, decideGcAction, decideLegacyVisMigration } from "./lib/c
 import { MODE_GLOBAL, MODE_MANUAL, STALE_CLIENT_TTL_MS } from "./lib/constants";
 import { GlobalConfig, parseGlobalStateId } from "./lib/global-config";
 import { MDNSService } from "./lib/mdns";
+import { type InstanceObjectSchema, repairGlobalSchemas } from "./lib/schema-repair";
 import { isUrlSourceAdapterEvent, UrlDiscovery } from "./lib/url-discovery";
 import { WebServer } from "./lib/webserver";
 import type { AdapterConfig } from "./lib/types";
@@ -15,16 +16,6 @@ import type { AdapterConfig } from "./lib/types";
 // resolveJsonModule ist im tsconfig aktiv.
 import iobrokerPackage from "../io-package.json";
 const instanceObjectsList = (iobrokerPackage as { instanceObjects: unknown[] }).instanceObjects ?? [];
-
-// v1.10.0 (B3): in compact-mode teilen alle hassemu-Instances einen Node-Prozess.
-// Würde jeder Konstruktor `process.on('unhandledRejection'/'uncaughtException')`
-// adden, wäre jeder Error N× im Log und die Listener stacken bei host-restarts.
-// Module-Level-Flag → es wird genau ein Paar Listeners installiert, egal wieviele
-// Instances. Logging via console.error weil zum Zeitpunkt eines Last-Defence-
-// Errors keine spezifische Adapter-Instance „die richtige" ist.
-let processHandlersInstalled = false;
-let installedUnhandledHandler: ((reason: unknown) => void) | null = null;
-let installedUncaughtHandler: ((err: Error) => void) | null = null;
 
 class HassEmu extends utils.Adapter {
   /**
@@ -51,20 +42,6 @@ class HassEmu extends utils.Adapter {
     this.on("stateChange", this.onStateChange.bind(this));
     this.on("objectChange", this.onObjectChange.bind(this));
     this.on("unload", this.onUnload.bind(this));
-
-    // Last-line-of-defence against unhandled rejections / sync throws from
-    // fire-and-forget paths. Module-Level-Flag — siehe Kommentar oben.
-    if (!processHandlersInstalled) {
-      installedUnhandledHandler = (reason: unknown): void => {
-        console.error(`[hassemu] Unhandled rejection: ${reason instanceof Error ? reason.message : String(reason)}`);
-      };
-      installedUncaughtHandler = (err: Error): void => {
-        console.error(`[hassemu] Uncaught exception: ${err.message}`);
-      };
-      process.on("unhandledRejection", installedUnhandledHandler);
-      process.on("uncaughtException", installedUncaughtHandler);
-      processHandlersInstalled = true;
-    }
   }
 
   private async onReady(): Promise<void> {
@@ -102,9 +79,13 @@ class HassEmu extends utils.Adapter {
       // then a defensive schema repair for users upgrading from v1.2.0+
       // (where the partial-formed mode-object from the v1.2.0 extend-bug
       // persists since `legacy.visUrl` is already gone and migrate doesn't trigger).
+      // These three target pre-1.2.0 → v1.2.0 upgrades; they run once and are
+      // idempotent (cheap no-op on already-migrated installs). Removable in a
+      // future major once pre-1.2.0 upgrades are no longer plausible — until then
+      // dropping them would silently break those upgrade paths.
       await this.migrateLegacyDefaultVisUrl();
       await this.migrateVisUrlToMode();
-      await this.repairGlobalSchemas();
+      await repairGlobalSchemas(this, instanceObjectsList as InstanceObjectSchema[]);
 
       // Garbage-collect stale clients (no token + lastSeen older than 30 days).
       await this.gcStaleClients();
@@ -178,7 +159,7 @@ class HassEmu extends utils.Adapter {
         if (!mdnsActive) {
           // Use mdnsStartFailed (User-Hint) — `error` slot uses generic phrase since
           // the underlying cause was already warn'd by MDNSService itself.
-          this.log.warn(`mDNS failed to start: ${"see preceding mDNS warning"}`);
+          this.log.warn("mDNS failed to start — see preceding mDNS warning");
         }
       } else {
         this.log.debug("mDNS disabled — clients must enter the URL manually.");
@@ -396,65 +377,6 @@ class HassEmu extends utils.Adapter {
     // (called separately in onReady so it ALSO runs for users upgrading from
     // v1.2.0/v1.3.0/v1.3.1 where the legacy visUrl is already gone but the
     // partial-formed mode-object from the v1.2.0 extendObject-bug persists).
-  }
-
-  /**
-   * Repairs partial-formed `global.mode` / `global.manualUrl` objects from
-   * the v1.2.0 migration bug (extendObjectAsync was called with only
-   * `common.type:'mixed'` — leaving the object without top-level `type`,
-   * name, role, read, write, def). `extendObjectAsync` here merges the full
-   * instanceObjects schema onto the existing partial object so js-controller
-   * stops warning "obj.type has to exist" and the dropdown renders correctly.
-   *
-   * Idempotent — extending an already-complete object is a no-op write.
-   */
-  private async repairGlobalSchemas(): Promise<void> {
-    // v1.14.0 (H3): needs-repair-Check vor unconditional extendObjectAsync
-    // — spart 2 Round-Trips bei jedem Start für ~99% der Installationen.
-    // v1.25.0 (F3): schemas kommen jetzt aus io-package.json:instanceObjects
-    // statt hardgecoded — vorher waren die schemas in zwei Plätzen (hier
-    // und in der instanceObjects-Section), Drift möglich. Jetzt: single
-    // source of truth.
-    const repair = async (id: string, expectedCommonType: string): Promise<void> => {
-      try {
-        const obj = await this.getObjectAsync(id);
-        if (obj && obj.type === "state" && obj.common?.type === expectedCommonType) {
-          return; // bereits korrekt
-        }
-      } catch {
-        /* fall through to repair */
-      }
-      const fullId = `${this.namespace}.${id}`;
-      const schema = (
-        instanceObjectsList as Array<{ _id: string; type: string; common?: unknown; native?: unknown }>
-      ).find(o => o._id === id || o._id === fullId);
-      if (!schema) {
-        this.log.debug(`repair ${id}: no instanceObjects-schema found, skipping`);
-        return;
-      }
-      try {
-        // extendObjectAsync hat overloads je nach `type`. Wir sind hier
-        // ausschließlich bei `type:'state'`-Items aus instanceObjects —
-        // ein `as never` erlaubt der TS-Type-Narrowing den Aufruf ohne
-        // dass wir die genaue State-Common-Shape statisch beweisen müssen.
-        // Die Schema-Quelle (io-package.json) ist build-time-validiert.
-        await this.extendObjectAsync(
-          id,
-          {
-            type: schema.type,
-            common: schema.common,
-            native: schema.native ?? {},
-          } as never,
-          { preserve: { common: ["name"] } },
-        );
-        this.log.debug(`Schema repair applied: ${id} (common.type was missing, restored from instanceObjects)`);
-      } catch (err) {
-        this.log.debug(`repair ${id} failed: ${String(err)}`);
-      }
-    };
-
-    await repair("global.mode", "mixed");
-    await repair("global.manualUrl", "string");
   }
 
   /**
