@@ -40,5 +40,20 @@
     "refreshUrlsDesc": "Auf true setzen, um den Broker nach VIS/VIS-2-Projekten, Admin-Kacheln und weiteren URLs neu zu durchsuchen. Sinnvoll nach Anlegen einer neuen VIS-View ohne Adapter-Neustart.",
     "noChoice": "---",
     "globalUrl": "Globale URL",
-    "manualUrl": "Manuelle URL"
+    "manualUrl": "Manuelle URL",
+    "pageConnectedTitle": "Verbunden · ioBroker",
+    "pageConnectedHeading": "Display verbunden",
+    "pageConnectedSubhead": "Dieses Display ist mit ioBroker verbunden. Wähle noch eine Weiterleitungs-URL aus.",
+    "pageSetupTitle": "Einrichtung abschließen",
+    "pageSetupIntro": "Lege fest, welche URL das Display beim nächsten Refresh öffnen soll:",
+    "pageStep1": "Öffne im ioBroker-Admin die Ansicht „Objekte\".",
+    "pageStep2": "Navigiere zu diesem Datenpunkt:",
+    "pageStep3": "Trage hier die gewünschte URL ein (VIS-Projekt, Grafana, Dashboard, …).",
+    "pageAutoRefresh": "Diese Seite aktualisiert sich automatisch alle 15 Sekunden.",
+    "pageOfflineTitle": "hassemu offline · ioBroker",
+    "pageOfflineHeading": "hassemu offline",
+    "pageOfflineSubhead": "Die Seite oben ist die letzte Ansicht, die das Display erhalten hat. Sobald hassemu wieder erreichbar ist, aktualisiert sich die Anzeige automatisch.",
+    "pageReload": "Jetzt neu laden",
+    "pageDeviceId": "Geräte-ID",
+    "pageIpAddress": "IP-Adresse"
 }

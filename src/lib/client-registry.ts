@@ -673,11 +673,12 @@ export class ClientRegistry {
     //     werden von der full schema common komplett überschrieben.
     //   - `clients.<id>.manualUrl` bleibt extendObjectAsync — kein states-Feld,
     //     daher kein i18n-Object-Risiko.
-    const modeFullCommon = {
-      name: tName("clientMode") as unknown as string,
+    const modeFullCommon: ioBroker.StateCommon = {
+      // tName returns StringOrTranslated, which common.name accepts directly.
+      name: tName("clientMode"),
       // 'mixed' future-proofs against the upcoming js-controller
       // strict-type cast (see govee-smart v1.11.0 pattern).
-      type: "mixed" as const,
+      type: "mixed",
       role: "state",
       read: true,
       write: true,
@@ -699,7 +700,7 @@ export class ClientRegistry {
           type: "state",
           common: modeFullCommon,
           native: {},
-        } as never);
+        });
       }
     };
     await Promise.all([
@@ -709,7 +710,7 @@ export class ClientRegistry {
         {
           type: "state",
           common: {
-            name: tName("clientManualUrl") as unknown as string,
+            name: tName("clientManualUrl"),
             type: "string",
             role: "url",
             read: true,

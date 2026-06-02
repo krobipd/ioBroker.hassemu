@@ -40,5 +40,20 @@
     "refreshUrlsDesc": "写入 true 以重新扫描 broker 上的 VIS/VIS-2 项目、Admin 瓷贴和其他 URL。在不重启适配器的情况下创建新 VIS 视图后很有用。",
     "noChoice": "---",
     "globalUrl": "全局 URL",
-    "manualUrl": "手动 URL"
+    "manualUrl": "手动 URL",
+    "pageConnectedTitle": "已连接 · ioBroker",
+    "pageConnectedHeading": "显示器已连接",
+    "pageConnectedSubhead": "此显示器已连接到 ioBroker。请选择跳转 URL 以完成设置。",
+    "pageSetupTitle": "完成设置",
+    "pageSetupIntro": "设置此显示器下次刷新时要打开的 URL：",
+    "pageStep1": "打开 ioBroker 管理界面并切换到「对象」视图。",
+    "pageStep2": "导航到此数据点：",
+    "pageStep3": "在此处输入所需的 URL（VIS 项目、Grafana、仪表板等）。",
+    "pageAutoRefresh": "此页面每 15 秒自动刷新一次。",
+    "pageOfflineTitle": "hassemu 离线 · ioBroker",
+    "pageOfflineHeading": "hassemu 离线",
+    "pageOfflineSubhead": "上方页面是此显示器收到的最后一次视图。hassemu 重新可用后，屏幕会自动刷新。",
+    "pageReload": "立即重新加载",
+    "pageDeviceId": "设备 ID",
+    "pageIpAddress": "IP 地址"
 }

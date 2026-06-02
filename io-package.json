@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.33.2",
+    "version": "1.34.0",
     "news": {
+      "1.34.0": {
+        "en": "Home Assistant Companion App and Shelly Wall Display (firmware 2.6.0+): sign-out and device registration now complete reliably.",
+        "de": "Home Assistant Companion App und Shelly Wall Display (Firmware 2.6.0+): Abmeldung und Geräteregistrierung laufen jetzt zuverlässig durch.",
+        "ru": "Приложение Home Assistant Companion и Shelly Wall Display (прошивка 2.6.0+): выход и регистрация устройства теперь выполняются надёжно.",
+        "pt": "Aplicação Home Assistant Companion e Shelly Wall Display (firmware 2.6.0+): o fim de sessão e o registo do dispositivo agora concluem de forma fiável.",
+        "nl": "Home Assistant Companion-app en Shelly Wall Display (firmware 2.6.0+): afmelden en apparaatregistratie verlopen nu betrouwbaar.",
+        "fr": "Application Home Assistant Companion et Shelly Wall Display (firmware 2.6.0+) : la déconnexion et l'enregistrement de l'appareil aboutissent désormais de façon fiable.",
+        "it": "App Home Assistant Companion e Shelly Wall Display (firmware 2.6.0+): disconnessione e registrazione del dispositivo ora si completano in modo affidabile.",
+        "es": "Aplicación Home Assistant Companion y Shelly Wall Display (firmware 2.6.0+): el cierre de sesión y el registro del dispositivo ahora se completan de forma fiable.",
+        "pl": "Aplikacja Home Assistant Companion i Shelly Wall Display (firmware 2.6.0+): wylogowanie i rejestracja urządzenia działają teraz niezawodnie.",
+        "uk": "Застосунок Home Assistant Companion і Shelly Wall Display (прошивка 2.6.0+): вихід і реєстрація пристрою тепер завершуються надійно.",
+        "zh-cn": "Home Assistant Companion 应用和 Shelly Wall Display（固件 2.6.0+）：退出登录和设备注册现在能可靠完成。"
+      },
       "1.33.2": {
         "en": "Changelog rewritten in user-centric style across all versions.",
         "de": "Changelog in benutzerfreundlichem Stil über alle Versionen umgeschrieben.",
@@ -80,19 +93,6 @@
         "pl": "Usunięto zbędną zależność od adaptera web.",
         "uk": "Видалено непотрібну залежність від веб-адаптера.",
         "zh-cn": "移除了不必要的 Web 适配器依赖。"
-      },
-      "1.32.3": {
-        "en": "Internal cleanup. No user-facing changes.",
-        "de": "Interne Bereinigung. Keine sichtbaren Änderungen.",
-        "ru": "Внутренняя очистка. Нет видимых изменений для пользователей.",
-        "pt": "Limpeza interna. Sem alterações visíveis para o utilizador.",
-        "nl": "Interne opruiming. Geen zichtbare wijzigingen voor gebruikers.",
-        "fr": "Nettoyage interne. Aucun changement visible pour l'utilisateur.",
-        "it": "Pulizia interna. Nessuna modifica visibile per l'utente.",
-        "es": "Limpieza interna. Sin cambios visibles para el usuario.",
-        "pl": "Wewnętrzne porządki. Brak widocznych zmian dla użytkownika.",
-        "uk": "Внутрішнє прибирання. Без видимих змін для користувача.",
-        "zh-cn": "内部清理。无用户可见的更改。"
       }
     },
     "titleLang": {
@@ -362,7 +362,7 @@
         },
         "type": "boolean",
         "role": "button",
-        "read": true,
+        "read": false,
         "write": true,
         "def": false
       },

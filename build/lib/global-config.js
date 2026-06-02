@@ -62,7 +62,7 @@ class GlobalConfig {
    * @param record Client to resolve for.
    */
   resolveUrlFor(record) {
-    return this.resolveClientMode(record);
+    return this.resolveUrlForWithChain(record).url;
   }
   /**
    * v1.32.0 B1: Resolves the redirect URL AND returns the resolution chain
@@ -92,29 +92,6 @@ class GlobalConfig {
     }
     const safe = (0, import_coerce.coerceSafeUrl)(m);
     return { url: safe, chain: safe ? `direct\u2192${safe}` : "landing" };
-  }
-  resolveClientMode(record) {
-    var _a;
-    const m = record.mode;
-    if ((0, import_coerce.isNoChoice)(m)) {
-      return null;
-    }
-    if (m === import_constants.MODE_GLOBAL) {
-      return this.resolveGlobalMode();
-    }
-    if (m === import_constants.MODE_MANUAL) {
-      return (_a = record.manualUrl) != null ? _a : null;
-    }
-    return (0, import_coerce.coerceSafeUrl)(m);
-  }
-  resolveGlobalMode() {
-    if ((0, import_coerce.isNoChoice)(this.mode)) {
-      return null;
-    }
-    if (this.mode === import_constants.MODE_MANUAL) {
-      return this.manualUrl;
-    }
-    return (0, import_coerce.coerceSafeUrl)(this.mode);
   }
   resolveGlobalModeWithChain() {
     if ((0, import_coerce.isNoChoice)(this.mode)) {

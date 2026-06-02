@@ -50,42 +50,43 @@ button{display:block;width:100%;padding:14px;background:#03a9f4;color:#fff;borde
 button:hover{background:#039be5;}
 .loading{text-align:center;color:#888;padding:16px;}
 `.trim();
-function renderAuthorizeRedirect(target) {
-  const a = (0, import_coerce.escapeHtml)(target);
-  const j = JSON.stringify(target);
+function htmlShell(opts) {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="refresh" content="0; URL=${a}">
-<title>Home Assistant</title>
+${opts.headExtra}
+<title>${opts.title}</title>
 <style>${STYLE}</style>
 </head>
 <body>
 <div class="card">
-<h1>Home Assistant</h1>
-<p class="loading">Signing in\u2026</p>
-</div>
-<script>(function(){document.location.assign(${j});})();</script>
+${opts.cardInner}
+</div>${opts.bodyExtra ? `
+${opts.bodyExtra}` : ""}
 </body>
 </html>`;
+}
+function renderAuthorizeRedirect(target) {
+  const a = (0, import_coerce.escapeHtml)(target);
+  const j = JSON.stringify(target);
+  return htmlShell({
+    title: "Home Assistant",
+    headExtra: `<meta http-equiv="refresh" content="0; URL=${a}">`,
+    cardInner: `<h1>Home Assistant</h1>
+<p class="loading">Signing in\u2026</p>`,
+    bodyExtra: `<script>(function(){document.location.assign(${j});})();</script>`
+  });
 }
 function renderAuthorizeForm(params, errorMessage) {
   const cid = (0, import_coerce.escapeHtml)(params.clientId);
   const ru = (0, import_coerce.escapeHtml)(params.redirectUri);
   const st = params.state ? (0, import_coerce.escapeHtml)(params.state) : "";
   const errBlock = errorMessage ? `<div class="err">${(0, import_coerce.escapeHtml)(errorMessage)}</div>` : "";
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Home Assistant \u2014 Sign In</title>
-<style>${STYLE}</style>
-</head>
-<body>
-<div class="card">
-<h1>Home Assistant</h1>
+  return htmlShell({
+    title: "Home Assistant \u2014 Sign In",
+    headExtra: `<meta name="viewport" content="width=device-width, initial-scale=1">`,
+    cardInner: `<h1>Home Assistant</h1>
 <p class="subtitle">Sign in to authorize this device.</p>
 ${errBlock}
 <form method="POST" action="/auth/authorize" autocomplete="off">
@@ -96,28 +97,17 @@ ${errBlock}
 <input type="text" name="username" placeholder="Username" autofocus required>
 <input type="password" name="password" placeholder="Password" required>
 <button type="submit">Sign in</button>
-</form>
-</div>
-</body>
-</html>`;
+</form>`
+  });
 }
 function renderAuthorizeError(reason, detail) {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Home Assistant \u2014 ${(0, import_coerce.escapeHtml)(reason)}</title>
-<style>${STYLE}</style>
-</head>
-<body>
-<div class="card">
-<h1>Authorization failed</h1>
+  return htmlShell({
+    title: `Home Assistant \u2014 ${(0, import_coerce.escapeHtml)(reason)}`,
+    headExtra: `<meta name="viewport" content="width=device-width, initial-scale=1">`,
+    cardInner: `<h1>Authorization failed</h1>
 <div class="err">${(0, import_coerce.escapeHtml)(detail)}</div>
-<p class="subtitle">${(0, import_coerce.escapeHtml)(reason)}</p>
-</div>
-</body>
-</html>`;
+<p class="subtitle">${(0, import_coerce.escapeHtml)(reason)}</p>`
+  });
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {

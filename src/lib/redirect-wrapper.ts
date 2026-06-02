@@ -1,130 +1,7 @@
 import { escapeHtml } from "./coerce";
 import { CONNECTION_STATUS_SCRIPT } from "./external-bridge";
-
-/** Supported languages — matches the 11 io-package.json translations. */
-type DownLanguage = "en" | "de" | "ru" | "pt" | "nl" | "fr" | "it" | "es" | "pl" | "uk" | "zh-cn";
-
-interface DownStrings {
-  htmlLang: string;
-  pageTitle: string;
-  heading: string;
-  subhead: string;
-  deviceIdLabel: string;
-  ipLabel: string;
-  reloadButton: string;
-}
-
-const DOWN_STRINGS: Record<DownLanguage, DownStrings> = {
-  en: {
-    htmlLang: "en",
-    pageTitle: "hassemu offline · ioBroker",
-    heading: "hassemu offline",
-    subhead:
-      "The page above is the last view this display received. As soon as hassemu is reachable again, the display updates by itself.",
-    deviceIdLabel: "Device ID",
-    ipLabel: "IP address",
-    reloadButton: "Reload now",
-  },
-  de: {
-    htmlLang: "de",
-    pageTitle: "hassemu offline · ioBroker",
-    heading: "hassemu offline",
-    subhead:
-      "Die Seite oben ist die letzte Ansicht, die das Display erhalten hat. Sobald hassemu wieder erreichbar ist, aktualisiert sich die Anzeige automatisch.",
-    deviceIdLabel: "Geräte-ID",
-    ipLabel: "IP-Adresse",
-    reloadButton: "Jetzt neu laden",
-  },
-  ru: {
-    htmlLang: "ru",
-    pageTitle: "hassemu недоступен · ioBroker",
-    heading: "hassemu недоступен",
-    subhead:
-      "Страница выше — последний вид, который получил дисплей. Как только hassemu снова доступен, экран обновится автоматически.",
-    deviceIdLabel: "ID устройства",
-    ipLabel: "IP-адрес",
-    reloadButton: "Перезагрузить",
-  },
-  pt: {
-    htmlLang: "pt",
-    pageTitle: "hassemu offline · ioBroker",
-    heading: "hassemu offline",
-    subhead:
-      "A página acima é a última visualização que este ecrã recebeu. Assim que o hassemu voltar a estar disponível, o ecrã atualiza-se automaticamente.",
-    deviceIdLabel: "ID do dispositivo",
-    ipLabel: "Endereço IP",
-    reloadButton: "Recarregar",
-  },
-  nl: {
-    htmlLang: "nl",
-    pageTitle: "hassemu offline · ioBroker",
-    heading: "hassemu offline",
-    subhead:
-      "De pagina hierboven is de laatste weergave die dit display heeft ontvangen. Zodra hassemu weer bereikbaar is, wordt het scherm automatisch bijgewerkt.",
-    deviceIdLabel: "Apparaat-ID",
-    ipLabel: "IP-adres",
-    reloadButton: "Opnieuw laden",
-  },
-  fr: {
-    htmlLang: "fr",
-    pageTitle: "hassemu hors ligne · ioBroker",
-    heading: "hassemu hors ligne",
-    subhead:
-      "La page ci-dessus est la dernière vue reçue par cet écran. Dès que hassemu est de nouveau accessible, l'écran se met à jour automatiquement.",
-    deviceIdLabel: "Identifiant de l'appareil",
-    ipLabel: "Adresse IP",
-    reloadButton: "Recharger",
-  },
-  it: {
-    htmlLang: "it",
-    pageTitle: "hassemu offline · ioBroker",
-    heading: "hassemu offline",
-    subhead:
-      "La pagina sopra è l’ultima vista ricevuta dal display. Appena hassemu sarà nuovamente raggiungibile, la schermata si aggiornerà automaticamente.",
-    deviceIdLabel: "ID dispositivo",
-    ipLabel: "Indirizzo IP",
-    reloadButton: "Ricarica",
-  },
-  es: {
-    htmlLang: "es",
-    pageTitle: "hassemu sin conexión · ioBroker",
-    heading: "hassemu sin conexión",
-    subhead:
-      "La página de arriba es la última vista que recibió esta pantalla. En cuanto hassemu vuelva a estar disponible, la pantalla se actualizará automáticamente.",
-    deviceIdLabel: "ID del dispositivo",
-    ipLabel: "Dirección IP",
-    reloadButton: "Recargar",
-  },
-  pl: {
-    htmlLang: "pl",
-    pageTitle: "hassemu offline · ioBroker",
-    heading: "hassemu offline",
-    subhead:
-      "Strona powyżej to ostatni widok otrzymany przez ten wyświetlacz. Gdy hassemu znów będzie dostępny, ekran odświeży się sam.",
-    deviceIdLabel: "ID urządzenia",
-    ipLabel: "Adres IP",
-    reloadButton: "Załaduj ponownie",
-  },
-  uk: {
-    htmlLang: "uk",
-    pageTitle: "hassemu офлайн · ioBroker",
-    heading: "hassemu офлайн",
-    subhead:
-      "Сторінка вище — останній вигляд, який отримав цей дисплей. Щойно hassemu знову буде доступним, екран оновиться автоматично.",
-    deviceIdLabel: "ID пристрою",
-    ipLabel: "IP-адреса",
-    reloadButton: "Перезавантажити",
-  },
-  "zh-cn": {
-    htmlLang: "zh-CN",
-    pageTitle: "hassemu 离线 · ioBroker",
-    heading: "hassemu 离线",
-    subhead: "上方页面是此显示器收到的最后一次视图。hassemu 重新可用后，屏幕会自动刷新。",
-    deviceIdLabel: "设备 ID",
-    ipLabel: "IP 地址",
-    reloadButton: "立即重新加载",
-  },
-};
+import { htmlLangFor, renderIpRow } from "./html-shared";
+import { makePageTranslator } from "./i18n";
 
 /**
  * v1.32.1: Threshold der konsekutiven Poll-Fails ab dem die Down-Seite eingeblendet wird.
@@ -155,44 +32,31 @@ const DOWN_THRESHOLD = 3;
  *
  * @param target    Vom Resolver gelieferte Ziel-URL.
  * @param clientId  Short id of this display (für Anzeige auf der Down-Seite).
- * @param namespace Adapter-Namespace, z.B. `hassemu.0`.
  * @param language  ioBroker-Systemsprache für die Down-Seite (EN-Fallback).
  * @param ip        Optional IP-Adresse des Displays (für Anzeige auf der Down-Seite).
  */
 export function renderRedirectWrapper(
   target: string,
   clientId: string,
-  namespace: string,
   language: string = "en",
   ip: string | null = null,
 ): string {
-  const escAttr = escapeHtml(target);
+  const escTarget = escapeHtml(target);
   const escJs = JSON.stringify(target);
 
-  const s = DOWN_STRINGS[language as DownLanguage] ?? DOWN_STRINGS.en;
+  // Page copy from admin/i18n via adapter-core I18n, resolved for the passed
+  // `language` (English fallback) — single i18n source, no private table here.
+  const t = makePageTranslator(language);
   const id = escapeHtml(clientId);
-  const ns = escapeHtml(namespace);
-  const trimmedIp = ip?.trim() ?? "";
-  const isLoopback =
-    trimmedIp === "" ||
-    trimmedIp === "127.0.0.1" ||
-    trimmedIp === "::1" ||
-    trimmedIp === "0.0.0.0" ||
-    trimmedIp.startsWith("127.");
-  const ipRow = isLoopback
-    ? ""
-    : `<tr><th scope="row">${escapeHtml(s.ipLabel)}</th><td>${escapeHtml(trimmedIp)}</td></tr>`;
-  // ns is intentionally available for future state-tree hints in the down page —
-  // for now the down page only shows the device id, IP, and the reload button.
-  void ns;
+  const ipRow = renderIpRow(t("pageIpAddress"), ip);
 
   return `<!DOCTYPE html>
-<html lang="${escapeHtml(s.htmlLang)}">
+<html lang="${escapeHtml(htmlLangFor(language))}">
 <head>
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<title>${escapeHtml(s.pageTitle)}</title>
+<title>${escapeHtml(t("pageOfflineTitle"))}</title>
 <style>
 html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden;}
 iframe{display:block;border:0;margin:0;padding:0;position:fixed;top:0;left:0;width:100vw;height:100vh;background:#000;z-index:1;}
@@ -215,21 +79,21 @@ iframe{display:block;border:0;margin:0;padding:0;position:fixed;top:0;left:0;wid
 </style>
 </head>
 <body>
-<iframe id="hassemu-iframe" src="${escAttr}" allow="autoplay; fullscreen; geolocation; microphone; camera"></iframe>
+<iframe id="hassemu-iframe" src="${escTarget}" allow="autoplay; fullscreen; geolocation; microphone; camera"></iframe>
 <div id="hassemu-down" role="status" aria-live="polite">
   <div class="card">
     <div class="banner">
-      <h1>${escapeHtml(s.heading)}</h1>
-      <p>${escapeHtml(s.subhead)}</p>
+      <h1>${escapeHtml(t("pageOfflineHeading"))}</h1>
+      <p>${escapeHtml(t("pageOfflineSubhead"))}</p>
     </div>
     <div class="content">
       <table>
         <tbody>
-          <tr><th scope="row">${escapeHtml(s.deviceIdLabel)}</th><td><code>${id}</code></td></tr>
+          <tr><th scope="row">${escapeHtml(t("pageDeviceId"))}</th><td><code>${id}</code></td></tr>
           ${ipRow}
         </tbody>
       </table>
-      <button type="button" onclick="location.reload()">${escapeHtml(s.reloadButton)}</button>
+      <button type="button" onclick="location.reload()">${escapeHtml(t("pageReload"))}</button>
     </div>
   </div>
 </div>
@@ -253,7 +117,7 @@ ${CONNECTION_STATUS_SCRIPT}
       if(iframeEl){iframeEl.style.display='block';}
     }
   }
-  setInterval(function(){
+  window.setInterval(function(){
     fetch('/api/redirect_check',{cache:'no-store',credentials:'same-origin'})
       .then(function(r){return r.json();})
       .then(function(j){

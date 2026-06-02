@@ -157,6 +157,10 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+### 1.34.0 (2026-06-02)
+
+- Home Assistant Companion App and Shelly Wall Display (firmware 2.6.0+): sign-out and device registration now complete reliably.
+
 ### 1.33.2 (2026-05-23)
 
 - Changelog rewritten in user-centric style across all versions.
@@ -173,13 +177,9 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 
 - Improved error handling and stability.
 
-### 1.32.5 (2026-05-21)
-
-- Verified against Node.js 24. Internal cleanup.
-
 Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
 
-### Support Development
+## Support Development
 
 This adapter is free and open source. If you find it useful, consider buying me a coffee:
 

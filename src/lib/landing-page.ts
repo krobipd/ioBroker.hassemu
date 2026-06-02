@@ -9,6 +9,8 @@
 
 import { escapeHtml } from "./coerce";
 import { CONNECTION_STATUS_SCRIPT } from "./external-bridge";
+import { htmlLangFor, renderIpRow } from "./html-shared";
+import { makePageTranslator } from "./i18n";
 
 /**
  * Inline ioBroker brand logo — the power-button "i" inside a ring.
@@ -26,184 +28,6 @@ const LOGO_SVG =
   '<rect x="44" y="26" width="12" height="6" fill="#ffffff"/>' +
   "</svg>";
 
-/** Supported languages — matches the 11 io-package.json translations. */
-export type LandingLanguage = "en" | "de" | "ru" | "pt" | "nl" | "fr" | "it" | "es" | "pl" | "uk" | "zh-cn";
-
-/** One translation bundle for the landing page. */
-interface LandingStrings {
-  htmlLang: string;
-  pageTitle: string;
-  heading: string;
-  subhead: string;
-  deviceIdLabel: string;
-  ipLabel: string;
-  setupTitle: string;
-  setupIntro: string;
-  step1: string;
-  step2: string;
-  step3: string;
-  autoRefresh: string;
-}
-
-/** Translation table — EN is the fallback for any missing language. */
-const STRINGS = {
-  en: {
-    htmlLang: "en",
-    pageTitle: "Connected · ioBroker",
-    heading: "Display connected",
-    subhead: "This display is linked to ioBroker. Choose a redirect URL to finish setup.",
-    deviceIdLabel: "Device ID",
-    ipLabel: "IP address",
-    setupTitle: "Finish setup",
-    setupIntro: "Set the URL that this display should open on next refresh:",
-    step1: "Open the ioBroker admin and switch to the Objects view.",
-    step2: "Go to this datapoint:",
-    step3: "Enter the URL you want to show here (VIS project, Grafana, dashboard, …).",
-    autoRefresh: "This page refreshes automatically every 15 seconds.",
-  },
-  de: {
-    htmlLang: "de",
-    pageTitle: "Verbunden · ioBroker",
-    heading: "Display verbunden",
-    subhead: "Dieses Display ist mit ioBroker verbunden. Wähle noch eine Weiterleitungs-URL aus.",
-    deviceIdLabel: "Geräte-ID",
-    ipLabel: "IP-Adresse",
-    setupTitle: "Einrichtung abschließen",
-    setupIntro: "Lege fest, welche URL das Display beim nächsten Refresh öffnen soll:",
-    step1: 'Öffne im ioBroker-Admin die Ansicht „Objekte".',
-    step2: "Navigiere zu diesem Datenpunkt:",
-    step3: "Trage hier die gewünschte URL ein (VIS-Projekt, Grafana, Dashboard, …).",
-    autoRefresh: "Diese Seite aktualisiert sich automatisch alle 15 Sekunden.",
-  },
-  ru: {
-    htmlLang: "ru",
-    pageTitle: "Подключено · ioBroker",
-    heading: "Дисплей подключён",
-    subhead: "Этот дисплей подключён к ioBroker. Выберите URL для перенаправления.",
-    deviceIdLabel: "ID устройства",
-    ipLabel: "IP-адрес",
-    setupTitle: "Завершение настройки",
-    setupIntro: "Укажите URL, который дисплей откроет при следующем обновлении:",
-    step1: "Откройте админку ioBroker и перейдите в раздел «Объекты».",
-    step2: "Перейдите к этому датапункту:",
-    step3: "Введите нужный URL (проект VIS, Grafana, дашборд и т. д.).",
-    autoRefresh: "Страница автоматически обновляется каждые 15 секунд.",
-  },
-  pt: {
-    htmlLang: "pt",
-    pageTitle: "Conectado · ioBroker",
-    heading: "Display conectado",
-    subhead: "Este display está conectado ao ioBroker. Escolha um URL de redirecionamento.",
-    deviceIdLabel: "ID do dispositivo",
-    ipLabel: "Endereço IP",
-    setupTitle: "Concluir configuração",
-    setupIntro: "Defina o URL que este display deve abrir na próxima atualização:",
-    step1: "Abra o admin do ioBroker e mude para a visão de Objetos.",
-    step2: "Navegue até este datapoint:",
-    step3: "Insira o URL desejado (projeto VIS, Grafana, dashboard, …).",
-    autoRefresh: "Esta página atualiza automaticamente a cada 15 segundos.",
-  },
-  nl: {
-    htmlLang: "nl",
-    pageTitle: "Verbonden · ioBroker",
-    heading: "Display verbonden",
-    subhead: "Dit display is met ioBroker verbonden. Kies een redirect-URL om de setup af te ronden.",
-    deviceIdLabel: "Apparaat-ID",
-    ipLabel: "IP-adres",
-    setupTitle: "Setup afronden",
-    setupIntro: "Stel de URL in die dit display bij de volgende refresh moet openen:",
-    step1: "Open de ioBroker-admin en ga naar de Objects-weergave.",
-    step2: "Navigeer naar dit datapoint:",
-    step3: "Voer hier de gewenste URL in (VIS-project, Grafana, dashboard, …).",
-    autoRefresh: "Deze pagina vernieuwt zich automatisch elke 15 seconden.",
-  },
-  fr: {
-    htmlLang: "fr",
-    pageTitle: "Connecté · ioBroker",
-    heading: "Écran connecté",
-    subhead: "Cet écran est relié à ioBroker. Choisissez l'URL de redirection pour terminer la configuration.",
-    deviceIdLabel: "Identifiant de l'appareil",
-    ipLabel: "Adresse IP",
-    setupTitle: "Finaliser la configuration",
-    setupIntro: "Indiquez l'URL que cet écran doit ouvrir à la prochaine actualisation :",
-    step1: "Ouvrez l'admin ioBroker et passez à la vue Objets.",
-    step2: "Allez sur ce datapoint :",
-    step3: "Saisissez ici l'URL souhaitée (projet VIS, Grafana, tableau de bord, …).",
-    autoRefresh: "Cette page se rafraîchit automatiquement toutes les 15 secondes.",
-  },
-  it: {
-    htmlLang: "it",
-    pageTitle: "Connesso · ioBroker",
-    heading: "Display connesso",
-    subhead:
-      "Questo display è collegato a ioBroker. Scegli un URL di reindirizzamento per completare la configurazione.",
-    deviceIdLabel: "ID dispositivo",
-    ipLabel: "Indirizzo IP",
-    setupTitle: "Completa la configurazione",
-    setupIntro: "Imposta l'URL che il display deve aprire al prossimo aggiornamento:",
-    step1: "Apri l'admin di ioBroker e passa alla vista Oggetti.",
-    step2: "Vai a questo datapoint:",
-    step3: "Inserisci qui l'URL desiderato (progetto VIS, Grafana, dashboard, …).",
-    autoRefresh: "Questa pagina si aggiorna automaticamente ogni 15 secondi.",
-  },
-  es: {
-    htmlLang: "es",
-    pageTitle: "Conectado · ioBroker",
-    heading: "Pantalla conectada",
-    subhead: "Esta pantalla está vinculada a ioBroker. Elige una URL de redirección para terminar la configuración.",
-    deviceIdLabel: "ID del dispositivo",
-    ipLabel: "Dirección IP",
-    setupTitle: "Completar configuración",
-    setupIntro: "Indica la URL que esta pantalla abrirá en la próxima actualización:",
-    step1: "Abre el admin de ioBroker y cambia a la vista Objetos.",
-    step2: "Navega hasta este datapoint:",
-    step3: "Introduce aquí la URL deseada (proyecto VIS, Grafana, panel, …).",
-    autoRefresh: "Esta página se actualiza automáticamente cada 15 segundos.",
-  },
-  pl: {
-    htmlLang: "pl",
-    pageTitle: "Połączono · ioBroker",
-    heading: "Wyświetlacz połączony",
-    subhead: "Ten wyświetlacz jest połączony z ioBrokerem. Wybierz adres URL przekierowania.",
-    deviceIdLabel: "ID urządzenia",
-    ipLabel: "Adres IP",
-    setupTitle: "Zakończ konfigurację",
-    setupIntro: "Ustaw URL, który ma otwierać ten wyświetlacz przy następnym odświeżeniu:",
-    step1: "Otwórz panel ioBroker i przejdź do widoku Obiektów.",
-    step2: "Przejdź do tego datapointu:",
-    step3: "Wpisz tutaj żądany URL (projekt VIS, Grafana, dashboard, …).",
-    autoRefresh: "Ta strona odświeża się automatycznie co 15 sekund.",
-  },
-  uk: {
-    htmlLang: "uk",
-    pageTitle: "З'єднано · ioBroker",
-    heading: "Дисплей під'єднано",
-    subhead: "Цей дисплей з'єднано з ioBroker. Оберіть URL для перенаправлення.",
-    deviceIdLabel: "ID пристрою",
-    ipLabel: "IP-адреса",
-    setupTitle: "Завершити налаштування",
-    setupIntro: "Вкажіть URL, який дисплей відкриє при наступному оновленні:",
-    step1: "Відкрийте адмін ioBroker і перейдіть до перегляду «Об'єкти».",
-    step2: "Перейдіть до цього датапоінта:",
-    step3: "Введіть потрібний URL (проєкт VIS, Grafana, дашборд, …).",
-    autoRefresh: "Ця сторінка автоматично оновлюється кожні 15 секунд.",
-  },
-  "zh-cn": {
-    htmlLang: "zh-CN",
-    pageTitle: "已连接 · ioBroker",
-    heading: "显示器已连接",
-    subhead: "此显示器已连接到 ioBroker。请选择跳转 URL 以完成设置。",
-    deviceIdLabel: "设备 ID",
-    ipLabel: "IP 地址",
-    setupTitle: "完成设置",
-    setupIntro: "设置此显示器下次刷新时要打开的 URL：",
-    step1: "打开 ioBroker 管理界面并切换到「对象」视图。",
-    step2: "导航到此数据点：",
-    step3: "在此处输入所需的 URL（VIS 项目、Grafana、仪表板等）。",
-    autoRefresh: "此页面每 15 秒自动刷新一次。",
-  },
-} as const satisfies Record<LandingLanguage, LandingStrings>;
-
 /**
  * Render the landing page.
  *
@@ -218,32 +42,27 @@ export function renderLandingPage(
   language: string = "en",
   ip: string | null = null,
 ): string {
-  const s = STRINGS[language as LandingLanguage] ?? STRINGS.en;
+  // All page copy comes from admin/i18n via adapter-core I18n, resolved for the
+  // passed `language` (English fallback) — single i18n source, shared with the
+  // admin UI + state names. No private translation table here anymore.
+  const t = makePageTranslator(language);
   const id = escapeHtml(clientId);
-  const ns = escapeHtml(namespace);
-  const datapoint = `${ns}.clients.${id}.mode`;
+  // Build the datapoint path from the RAW values and escape exactly once below —
+  // building it from the already-escaped id/ns would double-escape any special char.
+  const datapoint = `${namespace}.clients.${clientId}.mode`;
   // v1.16.0 (E3): Loopback-IPs nicht anzeigen — der End-User sieht sonst
   // „localhost" / „127.0.0.1" / „::1" als sein Display-IP, was bei Proxy-
   // Setups verwirrt (Display sitzt am Reverse-Proxy, nicht am Adapter).
   // Ohne IP-Zeile fällt die Tabellen-Zeile einfach weg, alles andere bleibt.
-  const trimmedIp = ip?.trim() ?? "";
-  const isLoopback =
-    trimmedIp === "" ||
-    trimmedIp === "127.0.0.1" ||
-    trimmedIp === "::1" ||
-    trimmedIp === "0.0.0.0" ||
-    trimmedIp.startsWith("127.");
-  const ipLine = isLoopback
-    ? ""
-    : `<tr><th scope="row">${escapeHtml(s.ipLabel)}</th><td>${escapeHtml(trimmedIp)}</td></tr>`;
+  const ipLine = renderIpRow(t("pageIpAddress"), ip);
 
   return `<!DOCTYPE html>
-<html lang="${escapeHtml(s.htmlLang)}">
+<html lang="${escapeHtml(htmlLangFor(language))}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="refresh" content="15">
-<title>${escapeHtml(s.pageTitle)}</title>
+<title>${escapeHtml(t("pageConnectedTitle"))}</title>
 <style>
 :root {
     --bg: #f5f7fa;
@@ -423,32 +242,32 @@ footer .brand svg { width: 0.95rem; height: 0.95rem; display: block; }
         <div class="logo" aria-hidden="true">${LOGO_SVG}</div>
         <div class="check" aria-hidden="true">✓</div>
         <div>
-            <h1>${escapeHtml(s.heading)}</h1>
-            <p>${escapeHtml(s.subhead)}</p>
+            <h1>${escapeHtml(t("pageConnectedHeading"))}</h1>
+            <p>${escapeHtml(t("pageConnectedSubhead"))}</p>
         </div>
     </div>
     <div class="content">
         <table class="info">
             <tbody>
                 <tr>
-                    <th scope="row">${escapeHtml(s.deviceIdLabel)}</th>
+                    <th scope="row">${escapeHtml(t("pageDeviceId"))}</th>
                     <td><code>${id}</code></td>
                 </tr>
                 ${ipLine}
             </tbody>
         </table>
         <section class="setup">
-            <h2>${escapeHtml(s.setupTitle)}</h2>
-            <p>${escapeHtml(s.setupIntro)}</p>
+            <h2>${escapeHtml(t("pageSetupTitle"))}</h2>
+            <p>${escapeHtml(t("pageSetupIntro"))}</p>
             <ol class="steps">
-                <li>${escapeHtml(s.step1)}</li>
-                <li>${escapeHtml(s.step2)} <code>${escapeHtml(datapoint)}</code></li>
-                <li>${escapeHtml(s.step3)}</li>
+                <li>${escapeHtml(t("pageStep1"))}</li>
+                <li>${escapeHtml(t("pageStep2"))} <code>${escapeHtml(datapoint)}</code></li>
+                <li>${escapeHtml(t("pageStep3"))}</li>
             </ol>
         </section>
     </div>
     <footer>
-        ${escapeHtml(s.autoRefresh)}
+        ${escapeHtml(t("pageAutoRefresh"))}
         <span class="brand" aria-hidden="true">${LOGO_SVG} ioBroker</span>
     </footer>
 </main>

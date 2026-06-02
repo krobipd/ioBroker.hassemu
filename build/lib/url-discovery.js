@@ -173,8 +173,8 @@ class UrlDiscovery {
     if (customUrl) {
       url = customUrl.endsWith("/") ? customUrl : `${customUrl}/`;
     } else {
-      const port = Number(native.port);
-      const finalPort = Number.isFinite(port) && port > 0 ? port : 8095;
+      const port = (0, import_coerce.coerceFiniteNumber)(native.port);
+      const finalPort = port !== null && port > 0 ? port : 8095;
       const protocol = native.secure === true ? "https" : "http";
       url = `${protocol}://${hostIp}:${finalPort}/`;
     }

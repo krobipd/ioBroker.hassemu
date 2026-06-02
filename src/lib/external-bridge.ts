@@ -6,8 +6,11 @@
  * The HA Companion App's runtime WebView (FrontendViewModel) starts a 10 s
  * timer when a page begins loading and shows the "Verbindung zu Home
  * Assistant nicht möglich" popup if it doesn't see this message. Real HA's
- * frontend fires the message after the WebSocket opens — hassemu doesn't
- * implement WebSocket, so we send the message directly from the loaded HTML.
+ * frontend fires the message after the WebSocket opens — but the display
+ * loads hassemu's iframe wrapper (not the HA frontend SPA), so no HA-frontend
+ * WebSocket runs here; we send the message directly from the loaded HTML.
+ * (hassemu's own minimal `/api/websocket` only serves the Companion App's
+ * registration probe, not this runtime WebView.)
  *
  * Three call sites at 0 / 500 / 2000 ms cover slow bridge attach in some
  * Companion App builds. After the first successful V1 invocation we early-
@@ -45,7 +48,7 @@ export const CONNECTION_STATUS_SCRIPT = `<script>
     } catch (e) { /* silent — bridge not present, this is a regular browser */ }
   }
   notifyConnected();
-  setTimeout(notifyConnected, 500);
-  setTimeout(notifyConnected, 2000);
+  window.setTimeout(notifyConnected, 500);
+  window.setTimeout(notifyConnected, 2000);
 })();
 </script>`;

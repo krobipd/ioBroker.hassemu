@@ -549,6 +549,7 @@ class ClientRegistry {
       native: { cookie, token: null }
     });
     const modeFullCommon = {
+      // tName returns StringOrTranslated, which common.name accepts directly.
       name: (0, import_i18n.tName)("clientMode"),
       // 'mixed' future-proofs against the upcoming js-controller
       // strict-type cast (see govee-smart v1.11.0 pattern).

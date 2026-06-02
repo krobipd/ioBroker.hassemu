@@ -36,6 +36,7 @@ var import_node_crypto = __toESM(require("node:crypto"));
 var import_promises = __toESM(require("node:dns/promises"));
 var import_cookie = __toESM(require("@fastify/cookie"));
 var import_formbody = __toESM(require("@fastify/formbody"));
+var import_websocket = __toESM(require("@fastify/websocket"));
 var import_fastify = __toESM(require("fastify"));
 var import_constants = require("./constants");
 var import_coerce = require("./coerce");
@@ -44,6 +45,9 @@ var import_landing_page = require("./landing-page");
 var import_network = require("./network");
 var import_redirect_wrapper = require("./redirect-wrapper");
 const CLIENT_COOKIE = "hassemu_client";
+function mobileRegResponse(webhookId) {
+  return { webhook_id: webhookId, cloudhook_url: null, remote_ui_url: null, secret: null };
+}
 class WebServer {
   adapter;
   config;
@@ -85,9 +89,9 @@ class WebServer {
   lastRedirectTargetByClient = /* @__PURE__ */ new Map();
   cleanupTimer = null;
   /**
-   * v1.14.0 (H8): bind once im Constructor statt bei jedem Property-Access
-   * via getter — vorher allokierte jeder `s.inject({...})`-Call eine neue
-   * gebundene Funktion. Tests rufen das in Loops auf — unnötiger GC-Druck.
+   * Test-only injection surface ({@link WebserverInject}). v1.14.0 (H8): bound
+   * once in the constructor instead of via a getter — a getter allocated a new
+   * bound function on every `s.inject({...})` call, and tests call it in loops.
    */
   inject;
   instanceUuid;
@@ -141,6 +145,7 @@ class WebServer {
     }
     await this.app.register(import_cookie.default);
     await this.app.register(import_formbody.default);
+    await this.app.register(import_websocket.default);
     this.setupAuthGuard();
     this.setupErrorHandler();
     this.setupRoutes();
@@ -173,7 +178,7 @@ class WebServer {
   // v1.14.0 (H8): `inject` ist jetzt ein readonly Field (oben deklariert,
   // im Constructor einmalig gebunden). Der frühere Getter allokierte bei
   // jedem Access eine neue Funktion.
-  /** Periodic cleanup of expired in-flight auth sessions and stale lockouts. */
+  /** Periodic cleanup of expired in-flight auth sessions and stale redirect-target entries. */
   cleanupSessions() {
     const now = Date.now();
     let cleanedSessions = 0;
@@ -198,13 +203,6 @@ class WebServer {
       this.adapter.log.debug(`Cleanup: pruned ${prunedTargets} stale redirect-target entries`);
     }
   }
-  /**
-   * Drops the oldest entry of a Map if it would exceed `cap` after the next insert.
-   * Map iteration order in JS is insertion order, so `keys().next()` is the oldest.
-   *
-   * @param map Map to evict from.
-   * @param cap Hard cap; when `map.size >= cap`, the oldest entry is removed.
-   */
   /**
    * Cooldown-Decision für 5xx-Error-Logging. Liefert `true` für die erste
    * Beobachtung pro `key` innerhalb {@link REQUEST_ERROR_COOLDOWN_MS} und
@@ -279,9 +277,10 @@ class WebServer {
       return;
     }
     this.dnsInFlight.add(ip);
-    const timeout = new Promise(
-      (_, reject) => setTimeout(() => reject(new Error("dns reverse-lookup timeout")), 5e3)
-    );
+    let timeoutHandle;
+    const timeout = new Promise((_, reject) => {
+      timeoutHandle = this.adapter.setTimeout(() => reject(new Error("dns reverse-lookup timeout")), 5e3);
+    });
     Promise.race([import_promises.default.reverse(ip), timeout]).then((names) => {
       const name = names[0];
       if (name) {
@@ -294,6 +293,9 @@ class WebServer {
         `resolveHostname: ip=${ip} failed \u2014 ${err instanceof Error ? err.message : String(err)}`
       );
     }).finally(() => {
+      if (timeoutHandle) {
+        this.adapter.clearTimeout(timeoutHandle);
+      }
       this.dnsInFlight.delete(ip);
     });
   }
@@ -321,7 +323,10 @@ class WebServer {
         return;
       }
       const path = ((_a = req.url) != null ? _a : "/").split("?")[0];
-      if (path === "/" || path === "/api/" || path === "/api/discovery_info" || path === "/manifest.json" || path === "/health" || path.startsWith("/auth/") || // v1.29.1: Mobile-App webhooks carry the secret in the URL
+      if (path === "/" || path === "/api/" || path === "/api/discovery_info" || path === "/manifest.json" || path === "/health" || path.startsWith("/auth/") || // v1.34.0: the WebSocket does its own auth in the handshake
+      // (`auth_required` → `auth` frame), not via a Bearer header — so the
+      // HTTP upgrade itself must pass the guard.
+      path === "/api/websocket" || // v1.29.1: Mobile-App webhooks carry the secret in the URL
       // (`webhookId`) — HA core also serves these unauthenticated.
       // Source: home-assistant/core/.../mobile_app/webhook.py.
       path.startsWith("/api/webhook/")) {
@@ -370,14 +375,18 @@ class WebServer {
   setupRoutes() {
     this.setupApiRoutes();
     this.setupAuthRoutes();
+    this.setupWebSocket();
     this.setupMiscRoutes();
     this.setupNotFound();
   }
-  setupApiRoutes() {
-    this.app.get("/api/", () => ({ message: "API running." }));
-    this.app.get("/api/config", () => ({
-      // `mobile_app` advertises the integration the HA Companion App
-      // probes for during onboarding (v1.29.1, Shelly FW 2.6.0+).
+  /**
+   * HA `/api/config`-shaped object. Single source for REST `/api/config`, the
+   * Companion webhook `get_config` and the WebSocket `get_config` command.
+   * `mobile_app` in `components` advertises the integration the HA Companion App
+   * probes during onboarding (v1.29.1, Shelly FW 2.6.0+).
+   */
+  buildHaConfig() {
+    return {
       components: ["http", "api", "frontend", "homeassistant", "mobile_app"],
       config_dir: "/config",
       elevation: 0,
@@ -388,7 +397,11 @@ class WebServer {
       unit_system: { length: "km", mass: "g", temperature: "\xB0C", volume: "L" },
       version: import_constants.HA_VERSION,
       whitelist_external_dirs: []
-    }));
+    };
+  }
+  setupApiRoutes() {
+    this.app.get("/api/", () => ({ message: "API running." }));
+    this.app.get("/api/config", () => this.buildHaConfig());
     this.app.get("/api/discovery_info", () => {
       const isWildcard = !this.config.bindAddress || (0, import_network.isWildcardBind)(this.config.bindAddress);
       const host = isWildcard ? (0, import_network.getLocalIp)() : this.config.bindAddress;
@@ -423,12 +436,7 @@ class WebServer {
         `Mobile-App registration \u2014 client=${ownerId} app_id=${(_d = body.app_id) != null ? _d : "?"} device_name=${(_e = body.device_name) != null ? _e : "?"} \u2192 webhook=${webhookId}`
       );
       reply.status(201);
-      return {
-        webhook_id: webhookId,
-        cloudhook_url: null,
-        remote_ui_url: null,
-        secret: null
-      };
+      return mobileRegResponse(webhookId);
     });
     this.app.put("/api/mobile_app/registrations/:webhookId", async (req, reply) => {
       const id = req.params.webhookId;
@@ -437,7 +445,7 @@ class WebServer {
         reply.status(404);
         return { error: "unknown_registration" };
       }
-      return { webhook_id: id, cloudhook_url: null, remote_ui_url: null, secret: null };
+      return mobileRegResponse(id);
     });
     this.app.delete(
       "/api/mobile_app/registrations/:webhookId",
@@ -467,22 +475,13 @@ class WebServer {
       this.adapter.log.debug(`Webhook ${id.substring(0, 8)}\u2026 type=${type || "(no type)"}`);
       switch (type) {
         case "get_config":
-          return {
-            components: ["http", "api", "frontend", "homeassistant", "mobile_app"],
-            latitude: 0,
-            longitude: 0,
-            elevation: 0,
-            unit_system: { length: "km", mass: "g", temperature: "\xB0C", volume: "L" },
-            location_name: this.serviceName,
-            time_zone: "UTC",
-            version: import_constants.HA_VERSION
-          };
+          return this.buildHaConfig();
         case "get_zones":
           return [];
         case "render_template":
           return {};
         case "update_registration":
-          return { webhook_id: id, cloudhook_url: null, remote_ui_url: null, secret: null };
+          return mobileRegResponse(id);
         case "register_sensor":
           return { success: true };
         case "update_sensor_states":
@@ -508,85 +507,124 @@ class WebServer {
     this.storeSession(code, { created: Date.now(), clientId });
     return code;
   }
+  /**
+   * Shared validation for GET and POST `/auth/authorize`. On failure it sets the
+   * `400 text/html` reply and returns the rendered error page; on success it
+   * returns the validated (string-typed) `client_id` / `redirect_uri`. Never
+   * redirects on failure — the endpoint must not become an open redirector.
+   *
+   * @param reply        Fastify reply (status + content-type set on failure).
+   * @param method       `"GET"` or `"POST"` — only used to label the debug log.
+   * @param responseType The OAuth2 `response_type` (must be `"code"`).
+   * @param clientId     The OAuth2 `client_id` (must be a string).
+   * @param redirectUri  The OAuth2 `redirect_uri` (must be a string + allowlisted).
+   */
+  validateAuthorizeRequest(reply, method, responseType, clientId, redirectUri) {
+    if (responseType !== "code") {
+      this.adapter.log.debug(`Authorize ${method} rejected: response_type=${String(responseType)} (expected 'code')`);
+      reply.status(400).type("text/html");
+      return {
+        ok: false,
+        html: (0, import_auth_page.renderAuthorizeError)(
+          "unsupported_response_type",
+          "This authorization server supports `response_type=code` only."
+        )
+      };
+    }
+    if (typeof clientId !== "string" || typeof redirectUri !== "string") {
+      this.adapter.log.debug(
+        `Authorize ${method} rejected: missing client_id or redirect_uri (cid=${typeof clientId}, ru=${typeof redirectUri})`
+      );
+      reply.status(400).type("text/html");
+      return {
+        ok: false,
+        html: (0, import_auth_page.renderAuthorizeError)("invalid_request", "Missing or invalid `client_id` or `redirect_uri` parameter.")
+      };
+    }
+    if (!(0, import_coerce.isValidRedirectUri)(clientId, redirectUri)) {
+      this.adapter.log.debug(
+        `Authorize ${method} rejected: redirect_uri "${redirectUri}" not allowed for client_id "${clientId}"`
+      );
+      reply.status(400).type("text/html");
+      return {
+        ok: false,
+        html: (0, import_auth_page.renderAuthorizeError)(
+          "invalid_redirect_uri",
+          "The `redirect_uri` parameter is not on the allowlist for this client."
+        )
+      };
+    }
+    return { ok: true, clientId, redirectUri };
+  }
+  /**
+   * Issue an auth code, build the redirect target and render the auto-submit redirect page.
+   *
+   * @param reply       Fastify reply (content-type set to text/html).
+   * @param clientId    Identity of the requesting display, or null for headless flows.
+   * @param redirectUri Already-validated `redirect_uri` to append the code to.
+   * @param state       Optional OAuth2 `state` round-tripped verbatim.
+   */
+  issueAuthorizeRedirect(reply, clientId, redirectUri, state) {
+    const code = this.issueAuthorizationCode(clientId);
+    const target = (0, import_auth_page.buildRedirectUrl)(redirectUri, code, state);
+    reply.type("text/html");
+    return (0, import_auth_page.renderAuthorizeRedirect)(target);
+  }
+  /**
+   * Best-effort token revocation, shared by `POST /auth/revoke` (HA ≥2022.9)
+   * and the legacy `POST /auth/token` with `action=revoke`. The HA Companion
+   * sends the refresh token; we look it up and clear both the refresh and the
+   * access token of the owning client. Always succeeds from the caller's view —
+   * an unknown/missing token still yields 200 (matches HA, which never leaks
+   * whether a token existed). Source: AuthenticationRepositoryImpl.revokeSession.
+   *
+   * @param token Refresh token to revoke (from the `token` form field).
+   */
+  async revokeToken(token) {
+    const refresh = typeof token === "string" ? token : "";
+    const owner = refresh ? this.registry.getByRefreshToken(refresh) : null;
+    if (owner) {
+      await this.registry.setRefreshToken(owner.id, null);
+      await this.registry.setToken(owner.id, null);
+      this.adapter.log.debug(`Token revoked \u2014 client ${owner.id}`);
+    } else {
+      this.adapter.log.debug("Revoke: unknown/missing token \u2014 returning 200 (HA behavior)");
+    }
+  }
   setupAuthRoutes() {
     this.app.get("/auth/providers", () => [{ name: "Home Assistant Local", type: "homeassistant", id: null }]);
     this.app.get("/auth/authorize", async (req, reply) => {
       var _a;
       const { response_type, client_id, redirect_uri, state } = (_a = req.query) != null ? _a : {};
-      if (response_type !== "code") {
-        this.adapter.log.debug(`Authorize GET rejected: response_type=${String(response_type)} (expected 'code')`);
-        reply.status(400).type("text/html");
-        return (0, import_auth_page.renderAuthorizeError)(
-          "unsupported_response_type",
-          "This authorization server supports `response_type=code` only."
-        );
-      }
-      if (typeof client_id !== "string" || typeof redirect_uri !== "string") {
-        this.adapter.log.debug(
-          `Authorize GET rejected: missing client_id or redirect_uri (cid=${typeof client_id}, ru=${typeof redirect_uri})`
-        );
-        reply.status(400).type("text/html");
-        return (0, import_auth_page.renderAuthorizeError)("invalid_request", "Missing or invalid `client_id` or `redirect_uri` parameter.");
-      }
-      if (!(0, import_coerce.isValidRedirectUri)(client_id, redirect_uri)) {
-        this.adapter.log.debug(
-          `Authorize rejected: redirect_uri "${redirect_uri}" not allowed for client_id "${client_id}"`
-        );
-        reply.status(400).type("text/html");
-        return (0, import_auth_page.renderAuthorizeError)(
-          "invalid_redirect_uri",
-          "The `redirect_uri` parameter is not on the allowlist for this client."
-        );
+      const v = this.validateAuthorizeRequest(reply, "GET", response_type, client_id, redirect_uri);
+      if (!v.ok) {
+        return v.html;
       }
       const client = await this.identify(req, reply);
       if (!this.config.authRequired) {
-        const code = this.issueAuthorizationCode(client.id);
-        const target = (0, import_auth_page.buildRedirectUrl)(redirect_uri, code, state);
         this.adapter.log.debug(`Authorize auto-grant \u2014 client ${client.id}`);
-        reply.type("text/html");
-        return (0, import_auth_page.renderAuthorizeRedirect)(target);
+        return this.issueAuthorizeRedirect(reply, client.id, v.redirectUri, state);
       }
       let redirectHost = "?";
       try {
-        redirectHost = new URL(redirect_uri).host || redirect_uri;
+        redirectHost = new URL(v.redirectUri).host || v.redirectUri;
       } catch {
-        redirectHost = redirect_uri;
+        redirectHost = v.redirectUri;
       }
-      this.adapter.log.debug(`Authorize form rendered \u2014 client_id=${client_id} redirect_uri-host=${redirectHost}`);
+      this.adapter.log.debug(`Authorize form rendered \u2014 client_id=${v.clientId} redirect_uri-host=${redirectHost}`);
       reply.type("text/html");
-      return (0, import_auth_page.renderAuthorizeForm)({ clientId: client_id, redirectUri: redirect_uri, state });
+      return (0, import_auth_page.renderAuthorizeForm)({ clientId: v.clientId, redirectUri: v.redirectUri, state });
     });
     this.app.post("/auth/authorize", async (req, reply) => {
       var _a;
       const { response_type, client_id, redirect_uri, state, username, password } = (_a = req.body) != null ? _a : {};
-      if (response_type !== "code") {
-        this.adapter.log.debug(`Authorize POST rejected: response_type=${String(response_type)} (expected 'code')`);
-        reply.status(400).type("text/html");
-        return (0, import_auth_page.renderAuthorizeError)("unsupported_response_type", "Only `response_type=code` is supported.");
-      }
-      if (typeof client_id !== "string" || typeof redirect_uri !== "string") {
-        this.adapter.log.debug(
-          `Authorize POST rejected: missing client_id or redirect_uri (cid=${typeof client_id}, ru=${typeof redirect_uri})`
-        );
-        reply.status(400).type("text/html");
-        return (0, import_auth_page.renderAuthorizeError)("invalid_request", "Missing or invalid `client_id` or `redirect_uri` parameter.");
-      }
-      if (!(0, import_coerce.isValidRedirectUri)(client_id, redirect_uri)) {
-        this.adapter.log.debug(
-          `Authorize POST rejected: redirect_uri "${redirect_uri}" not allowed for client_id "${client_id}"`
-        );
-        reply.status(400).type("text/html");
-        return (0, import_auth_page.renderAuthorizeError)(
-          "invalid_redirect_uri",
-          "The `redirect_uri` parameter is not on the allowlist for this client."
-        );
+      const v = this.validateAuthorizeRequest(reply, "POST", response_type, client_id, redirect_uri);
+      if (!v.ok) {
+        return v.html;
       }
       const client = await this.identify(req, reply);
       if (!this.config.authRequired) {
-        const code2 = this.issueAuthorizationCode(client.id);
-        const target2 = (0, import_auth_page.buildRedirectUrl)(redirect_uri, code2, state);
-        reply.type("text/html");
-        return (0, import_auth_page.renderAuthorizeRedirect)(target2);
+        return this.issueAuthorizeRedirect(reply, client.id, v.redirectUri, state);
       }
       const ip = WebServer.getClientIp(req);
       const userOk = typeof username === "string" && (0, import_coerce.safeStringEqual)(username, this.config.username);
@@ -596,15 +634,12 @@ class WebServer {
         this.adapter.log.warn(`Invalid credentials${ipSuffix}`);
         reply.status(401).type("text/html");
         return (0, import_auth_page.renderAuthorizeForm)(
-          { clientId: client_id, redirectUri: redirect_uri, state },
+          { clientId: v.clientId, redirectUri: v.redirectUri, state },
           "Invalid username or password."
         );
       }
-      const code = this.issueAuthorizationCode(client.id);
-      const target = (0, import_auth_page.buildRedirectUrl)(redirect_uri, code, state);
       this.adapter.log.debug(`Authorize grant \u2014 client ${client.id}`);
-      reply.type("text/html");
-      return (0, import_auth_page.renderAuthorizeRedirect)(target);
+      return this.issueAuthorizeRedirect(reply, client.id, v.redirectUri, state);
     });
     this.app.post("/auth/login_flow", async (req, reply) => {
       const client = await this.identify(req, reply);
@@ -676,51 +711,199 @@ class WebServer {
         };
       }
     );
-    this.app.post(
-      "/auth/token",
-      async (req, reply) => {
-        var _a;
-        const { code, grant_type, refresh_token } = (_a = req.body) != null ? _a : {};
-        if (grant_type === "authorization_code" && code && this.sessions.has(code)) {
-          const session = this.sessions.get(code);
-          this.sessions.delete(code);
-          const token = import_node_crypto.default.randomUUID();
-          const refreshToken = import_node_crypto.default.randomUUID();
-          if (session.clientId) {
-            await this.registry.setToken(session.clientId, token);
-            await this.registry.setRefreshToken(session.clientId, refreshToken);
-            this.adapter.log.debug(`Display authenticated \u2014 client ${session.clientId}`);
-          }
-          return {
-            access_token: token,
-            token_type: "Bearer",
-            refresh_token: refreshToken,
-            expires_in: import_constants.OAUTH_ACCESS_TOKEN_TTL_S
-          };
-        }
-        if (grant_type === "refresh_token") {
-          const incoming = typeof refresh_token === "string" ? refresh_token : "";
-          const ownerRecord = incoming ? this.registry.getByRefreshToken(incoming) : null;
-          if (!ownerRecord) {
-            this.adapter.log.debug("Refresh token rejected \u2014 unknown or missing");
-            reply.status(400);
-            return { error: "invalid_grant", error_description: "Invalid refresh token" };
-          }
-          const newAccess = import_node_crypto.default.randomUUID();
-          await this.registry.setToken(ownerRecord.id, newAccess);
-          this.adapter.log.debug(`Refresh-token-grant \u2014 client=${ownerRecord.id} new access_token issued`);
-          return {
-            access_token: newAccess,
-            token_type: "Bearer",
-            refresh_token: incoming,
-            expires_in: import_constants.OAUTH_ACCESS_TOKEN_TTL_S
-          };
-        }
-        this.adapter.log.debug(`Token exchange failed: grant_type=${String(grant_type)}`);
-        reply.status(400);
-        return { error: "invalid_request", error_description: "Invalid or expired code" };
+    this.app.post("/auth/revoke", async (req) => {
+      var _a;
+      await this.revokeToken((_a = req.body) == null ? void 0 : _a.token);
+      return {};
+    });
+    this.app.post("/auth/token", async (req, reply) => {
+      var _a, _b, _c;
+      const { code, grant_type, refresh_token, action } = (_a = req.body) != null ? _a : {};
+      if (action === "revoke") {
+        await this.revokeToken((_c = (_b = req.body) == null ? void 0 : _b.token) != null ? _c : refresh_token);
+        return {};
       }
-    );
+      if (grant_type === "authorization_code" && code && this.sessions.has(code)) {
+        const session = this.sessions.get(code);
+        this.sessions.delete(code);
+        const token = import_node_crypto.default.randomUUID();
+        const refreshToken = import_node_crypto.default.randomUUID();
+        if (session.clientId) {
+          await this.registry.setToken(session.clientId, token);
+          await this.registry.setRefreshToken(session.clientId, refreshToken);
+          this.adapter.log.debug(`Display authenticated \u2014 client ${session.clientId}`);
+        }
+        return {
+          access_token: token,
+          token_type: "Bearer",
+          refresh_token: refreshToken,
+          expires_in: import_constants.OAUTH_ACCESS_TOKEN_TTL_S
+        };
+      }
+      if (grant_type === "refresh_token") {
+        const incoming = typeof refresh_token === "string" ? refresh_token : "";
+        const ownerRecord = incoming ? this.registry.getByRefreshToken(incoming) : null;
+        if (!ownerRecord) {
+          this.adapter.log.debug("Refresh token rejected \u2014 unknown or missing");
+          reply.status(400);
+          return { error: "invalid_grant", error_description: "Invalid refresh token" };
+        }
+        const newAccess = import_node_crypto.default.randomUUID();
+        await this.registry.setToken(ownerRecord.id, newAccess);
+        this.adapter.log.debug(`Refresh-token-grant \u2014 client=${ownerRecord.id} new access_token issued`);
+        return {
+          access_token: newAccess,
+          token_type: "Bearer",
+          refresh_token: incoming,
+          expires_in: import_constants.OAUTH_ACCESS_TOKEN_TTL_S
+        };
+      }
+      this.adapter.log.debug(`Token exchange failed: grant_type=${String(grant_type)}`);
+      reply.status(400);
+      return { error: "invalid_request", error_description: "Invalid or expired code" };
+    });
+  }
+  /**
+   * Minimal read-only HA WebSocket at `/api/websocket`. The HA Companion App's
+   * `registerDevice` makes a best-effort `auth/current_user` WS call after the
+   * REST registration to store the username (home-assistant/android
+   * IntegrationRepositoryImpl.kt at tag 2026.4.4, line 154). Without a WS
+   * endpoint that throws and the registration logs "Unable to save device registration".
+   *
+   * Auth happens in-band: server sends `auth_required`, client replies with an
+   * `auth` frame, we validate the access token against the registry. FAIL-FAST:
+   * a missing/invalid token or a missing `auth` frame within
+   * {@link WS_AUTH_TIMEOUT_MS} closes the socket — so the WS never hangs the
+   * App's call (which previously failed fast against a clean 404).
+   */
+  setupWebSocket() {
+    this.app.get("/api/websocket", { websocket: true }, (socket) => {
+      let authed = false;
+      let authTimer = this.adapter.setTimeout(() => {
+        if (!authed) {
+          this.adapter.log.debug("WS: no auth frame within timeout \u2014 closing");
+          this.wsSend(socket, { type: "auth_invalid", message: "Authentication timed out" });
+          socket.close();
+        }
+      }, import_constants.WS_AUTH_TIMEOUT_MS);
+      this.wsSend(socket, { type: "auth_required", ha_version: import_constants.HA_VERSION });
+      socket.on("message", (raw) => {
+        const text = Buffer.isBuffer(raw) ? raw.toString("utf8") : Array.isArray(raw) ? Buffer.concat(raw).toString("utf8") : Buffer.from(raw).toString("utf8");
+        let msg;
+        try {
+          msg = JSON.parse(text);
+        } catch {
+          return;
+        }
+        if (!authed) {
+          const token = typeof msg.access_token === "string" ? msg.access_token : "";
+          if (msg.type === "auth" && token && this.registry.getByToken(token)) {
+            authed = true;
+            if (authTimer) {
+              this.adapter.clearTimeout(authTimer);
+              authTimer = void 0;
+            }
+            this.wsSend(socket, { type: "auth_ok", ha_version: import_constants.HA_VERSION });
+          } else {
+            this.adapter.log.debug("WS: auth_invalid \u2014 unknown or missing access token");
+            this.wsSend(socket, { type: "auth_invalid", message: "Invalid access token" });
+            socket.close();
+          }
+          return;
+        }
+        this.handleWsCommand(socket, msg);
+      });
+      socket.on("error", () => {
+      });
+      socket.on("close", () => {
+        if (authTimer) {
+          this.adapter.clearTimeout(authTimer);
+          authTimer = void 0;
+        }
+      });
+    });
+  }
+  /**
+   * Safely serialize + send a WS frame; swallows errors from an already-closed socket.
+   *
+   * @param socket  The client WebSocket to write to.
+   * @param payload Plain object serialized to a JSON text frame.
+   */
+  wsSend(socket, payload) {
+    try {
+      socket.send(JSON.stringify(payload));
+    } catch {
+    }
+  }
+  /**
+   * Handle one authenticated WS command. hassemu emulates an empty-but-valid HA
+   * server with only the components it advertises (http/api/frontend/
+   * homeassistant/mobile_app). Responses use only shapes that are either
+   * source-verified or trivially correct for an empty server:
+   * - data queries → correct empty shape ([] / {}),
+   * - subscriptions → ack that never emits (no entities/events on a shim),
+   * - everything hassemu does NOT implement (call_service on a service-less
+   *   server, conversation, Matter/Thread, assist_pipeline, …) → `unknown_command`,
+   *   which is exactly what real HA returns for an unregistered command type.
+   *
+   * The command SET is verified against home-assistant/android
+   * WebSocketRepositoryImpl at tag 2026.4.4; the error code against
+   * home-assistant/core websocket_api/const.py at tag 2026.4.0 (ERR_UNKNOWN_COMMAND).
+   * No speculative response shapes are emitted.
+   *
+   * @param socket The authenticated client WebSocket.
+   * @param msg    The parsed incoming command frame (`{ id, type, ... }`).
+   */
+  handleWsCommand(socket, msg) {
+    const id = msg.id;
+    const type = typeof msg.type === "string" ? msg.type : "";
+    const result = (r) => this.wsSend(socket, { id, type: "result", success: true, result: r });
+    switch (type) {
+      case "ping":
+        this.wsSend(socket, { id, type: "pong" });
+        return;
+      case "auth/current_user":
+        result({
+          id: this.instanceUuid,
+          name: this.config.username || this.serviceName,
+          is_owner: true,
+          is_admin: true
+        });
+        return;
+      case "get_config":
+        result(this.buildHaConfig());
+        return;
+      case "get_states":
+        result([]);
+        return;
+      case "get_services":
+        result({});
+        return;
+      // Registries on an entity-less emulated server → empty lists.
+      case "config/area_registry/list":
+      case "config/device_registry/list":
+      case "config/entity_registry/list":
+        result([]);
+        return;
+      // Valid subscriptions on an empty server — they ack but never emit.
+      // mobile_app/* is an advertised component, so both its WS commands ack
+      // consistently (the channel subscribe + the confirm).
+      case "subscribe_events":
+      case "subscribe_entities":
+      case "supported_features":
+      case "mobile_app/push_notification_channel":
+      case "mobile_app/push_notification_confirm":
+        result(null);
+        return;
+      default:
+        this.wsSend(socket, {
+          id,
+          type: "result",
+          success: false,
+          error: { code: "unknown_command", message: `Command "${type}" is not supported by this server` }
+        });
+        return;
+    }
   }
   setupMiscRoutes() {
     this.app.get("/health", () => ({
@@ -750,7 +933,7 @@ class WebServer {
         return reply.status(200).type("text/html; charset=utf-8").send((0, import_landing_page.renderLandingPage)(client.id, this.adapter.namespace, this.systemLanguage, client.ip));
       }
       this.adapter.log.debug(`GET / client=${client.id} \u2192 URL (chain=${chain})`);
-      return reply.status(200).type("text/html; charset=utf-8").send((0, import_redirect_wrapper.renderRedirectWrapper)(url, client.id, this.adapter.namespace, this.systemLanguage, client.ip));
+      return reply.status(200).type("text/html; charset=utf-8").send((0, import_redirect_wrapper.renderRedirectWrapper)(url, client.id, this.systemLanguage, client.ip));
     });
     this.app.get("/api/redirect_check", async (req, reply) => {
       const client = await this.identify(req, reply);

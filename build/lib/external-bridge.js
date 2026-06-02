@@ -39,8 +39,8 @@ const CONNECTION_STATUS_SCRIPT = `<script>
     } catch (e) { /* silent \u2014 bridge not present, this is a regular browser */ }
   }
   notifyConnected();
-  setTimeout(notifyConnected, 500);
-  setTimeout(notifyConnected, 2000);
+  window.setTimeout(notifyConnected, 500);
+  window.setTimeout(notifyConnected, 2000);
 })();
 </script>`;
 // Annotate the CommonJS export names for ESM import in node:

@@ -1,4 +1,31 @@
 import { expect } from "chai";
+
+// The page now pulls its copy from admin/i18n via adapter-core I18n — mock it to
+// serve the real translations from the JSON files (same pattern as webserver.test).
+vi.mock("@iobroker/adapter-core", async () => {
+  const { readdirSync, readFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const i18nDir = join(__dirname, "../../admin/i18n");
+  const i18nData: Record<string, Record<string, string>> = {};
+  for (const f of readdirSync(i18nDir).filter(f => f.endsWith(".json"))) {
+    i18nData[f.replace(".json", "")] = JSON.parse(readFileSync(join(i18nDir, f), "utf8"));
+  }
+  return {
+    I18n: {
+      getTranslatedObject: vi.fn((key: string) => {
+        const result: Record<string, string> = {};
+        for (const [lang, data] of Object.entries(i18nData)) {
+          if (data[key]) {
+            result[lang] = data[key];
+          }
+        }
+        return Object.keys(result).length > 0 ? result : { en: key };
+      }),
+      translate: vi.fn((key: string) => i18nData.en?.[key] ?? key),
+    },
+  };
+});
+
 import { renderLandingPage } from "./landing-page";
 
 describe("landing-page", () => {
@@ -118,6 +145,15 @@ describe("landing-page", () => {
         // should produce &amp;amp; (treat input as raw text).
         const html = renderLandingPage("a&amp;b", "hassemu.0");
         expect(html).to.include("a&amp;amp;b");
+      });
+
+      it("escapes the datapoint path exactly once (v1.34.0 double-escape fix)", () => {
+        // Regression: the datapoint used to be built from the ALREADY-escaped
+        // id/ns and then escaped a second time → `a&amp;amp;b`. It must now be
+        // built from the raw values and escaped exactly once.
+        const html = renderLandingPage("a&b", "hassemu.0");
+        expect(html).to.include("hassemu.0.clients.a&amp;b.mode");
+        expect(html).to.not.include("a&amp;amp;b.mode");
       });
     });
 

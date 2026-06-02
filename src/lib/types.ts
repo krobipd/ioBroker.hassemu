@@ -25,7 +25,8 @@ export interface AdapterConfig {
    * - Cookie `secure: true` wenn der Proxy `X-Forwarded-Proto: https` setzt
    *
    * Achtung: bei `trustProxy: true` ohne echten Reverse-Proxy kann jeder
-   * Client per `X-Forwarded-For` den Brute-Force-Lockout umgehen. Default
+   * Client per `X-Forwarded-For` seine sichtbare IP fälschen (verfälscht die
+   * IP in den Logs und die per-IP-Burst-Erkennung defekter Cookies). Default
    * ist `false`. Optional in jsonConfig.
    */
   trustProxy?: boolean;

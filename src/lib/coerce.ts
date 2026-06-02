@@ -267,14 +267,14 @@ export function coerceSafeUrl(value: unknown): string | null {
 }
 
 /**
- * v1.16.0 (E4): wie {@link coerceSafeUrl}, aber liefert zusätzlich einen
- * Grund warum eine URL abgelehnt wurde — für gezielte log/debug-Ausgaben
- * an Boundaries (z.B. „mode-write rejected: credentials-in-URL"). Bei
- * `safe: string` ist `reason: null`, bei `safe: null` ein kurzer Grund.
+ * Internal worker behind {@link coerceSafeUrl}: returns the safe URL plus a
+ * short machine-readable reason on rejection. The reason has no production
+ * consumer (callers only need the safe URL / null via `coerceSafeUrl`), so this
+ * stays module-private; the branches are exercised through `coerceSafeUrl`.
  *
  * @param value Untrusted input.
  */
-export function coerceSafeUrlReason(value: unknown): { safe: string | null; reason: string | null } {
+function coerceSafeUrlReason(value: unknown): { safe: string | null; reason: string | null } {
   if (typeof value !== "string") {
     return { safe: null, reason: "not-a-string" };
   }

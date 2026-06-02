@@ -78,7 +78,10 @@ export class GlobalConfig {
    * @param record Client to resolve for.
    */
   resolveUrlFor(record: ClientRecord): string | null {
-    return this.resolveClientMode(record);
+    // Single resolution path: WithChain holds the logic; the plain caller just
+    // drops the (cheap) chain string. Avoids the prior duplicate impl that could
+    // drift from the chain version.
+    return this.resolveUrlForWithChain(record).url;
   }
 
   /**
@@ -108,30 +111,6 @@ export class GlobalConfig {
     }
     const safe = coerceSafeUrl(m);
     return { url: safe, chain: safe ? `direct→${safe}` : "landing" };
-  }
-
-  private resolveClientMode(record: ClientRecord): string | null {
-    const m: unknown = record.mode;
-    if (isNoChoice(m)) {
-      return null;
-    }
-    if (m === MODE_GLOBAL) {
-      return this.resolveGlobalMode();
-    }
-    if (m === MODE_MANUAL) {
-      return record.manualUrl ?? null;
-    }
-    return coerceSafeUrl(m);
-  }
-
-  private resolveGlobalMode(): string | null {
-    if (isNoChoice(this.mode)) {
-      return null;
-    }
-    if (this.mode === MODE_MANUAL) {
-      return this.manualUrl;
-    }
-    return coerceSafeUrl(this.mode);
   }
 
   private resolveGlobalModeWithChain(): { url: string | null; chain: string } {

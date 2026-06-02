@@ -18,6 +18,14 @@ export const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 /** OAuth2 access-token TTL — 30 min, matches Home Assistant default. */
 export const OAUTH_ACCESS_TOKEN_TTL_S = 30 * 60;
 
+/**
+ * Fail-fast window for the `/api/websocket` handshake: if no valid `auth` frame
+ * arrives within this time, the socket is closed. Keeps the WS from hanging the
+ * HA Companion App's best-effort `getCurrentUser()` call (which a clean 404
+ * previously failed fast on). 5 s is generous for a LAN round-trip.
+ */
+export const WS_AUTH_TIMEOUT_MS = 5 * 1000;
+
 /** Stale-Client-GC threshold: clients without token + lastSeen older are auto-removed. */
 export const STALE_CLIENT_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
