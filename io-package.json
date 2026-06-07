@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.34.0",
+    "version": "1.35.0",
     "news": {
+      "1.35.0": {
+        "en": "Added optional Sentry error reporting: crashes are sent to the developer so issues get fixed faster. Active only with ioBroker diagnostics enabled; anonymous.",
+        "de": "Optionale Fehlermeldung über Sentry hinzugefügt: Abstürze werden an den Entwickler gesendet, damit Probleme schneller behoben werden. Nur aktiv bei eingeschalteter ioBroker-Diagnose; anonym.",
+        "ru": "Добавлена необязательная отправка ошибок через Sentry: сбои отправляются разработчику, чтобы быстрее их устранять. Работает только при включённой диагностике ioBroker; анонимно.",
+        "pt": "Adicionado relatório de erros opcional via Sentry: as falhas são enviadas ao programador para corrigir problemas mais rápido. Ativo apenas com o diagnóstico do ioBroker ligado; anónimo.",
+        "nl": "Optionele foutrapportage via Sentry toegevoegd: crashes worden naar de ontwikkelaar gestuurd om problemen sneller op te lossen. Alleen actief met ioBroker-diagnostiek ingeschakeld; anoniem.",
+        "fr": "Rapport d'erreurs optionnel via Sentry ajouté : les plantages sont envoyés au développeur pour corriger plus vite. Actif seulement si le diagnostic ioBroker est activé ; anonyme.",
+        "it": "Aggiunta segnalazione errori opzionale via Sentry: gli arresti vengono inviati allo sviluppatore per risolvere prima i problemi. Attivo solo con la diagnostica ioBroker attiva; anonimo.",
+        "es": "Añadido informe de errores opcional mediante Sentry: los fallos se envían al desarrollador para solucionar problemas más rápido. Activo solo con el diagnóstico de ioBroker activado; anónimo.",
+        "pl": "Dodano opcjonalne raportowanie błędów przez Sentry: awarie są wysyłane do dewelopera, aby szybciej rozwiązywać problemy. Aktywne tylko przy włączonej diagnostyce ioBroker; anonimowo.",
+        "uk": "Додано необов'язкову відправку помилок через Sentry: збої надсилаються розробнику, щоб швидше їх виправляти. Працює лише з увімкненою діагностикою ioBroker; анонімно.",
+        "zh-cn": "新增可选的 Sentry 错误上报：崩溃信息会发送给开发者以更快修复问题。仅在启用 ioBroker 诊断时生效；匿名。"
+      },
       "1.34.0": {
         "en": "Home Assistant Companion App and Shelly Wall Display (firmware 2.6.0+): sign-out and device registration now complete reliably.",
         "de": "Home Assistant Companion App und Shelly Wall Display (Firmware 2.6.0+): Abmeldung und Geräteregistrierung laufen jetzt zuverlässig durch.",
@@ -80,19 +93,11 @@
         "pl": "Zweryfikowano z Node.js 24. Wewnętrzne porządki.",
         "uk": "Перевірено з Node.js 24. Внутрішнє прибирання.",
         "zh-cn": "已针对 Node.js 24 进行验证。内部清理。"
-      },
-      "1.32.4": {
-        "en": "Removed unnecessary web adapter dependency.",
-        "de": "Unnötige Abhängigkeit vom Web-Adapter entfernt.",
-        "ru": "Удалена ненужная зависимость от веб-адаптера.",
-        "pt": "Removida dependência desnecessária do adaptador web.",
-        "nl": "Onnodige afhankelijkheid van webadapter verwijderd.",
-        "fr": "Suppression de la dépendance superflue à l adaptateur web.",
-        "it": "Rimossa la dipendenza non necessaria dall adattatore web.",
-        "es": "Eliminada la dependencia innecesaria del adaptador web.",
-        "pl": "Usunięto zbędną zależność od adaptera web.",
-        "uk": "Видалено непотрібну залежність від веб-адаптера.",
-        "zh-cn": "移除了不必要的 Web 适配器依赖。"
+      }
+    },
+    "plugins": {
+      "sentry": {
+        "dsn": "https://66f27ceff38c1ce1e6cdcc3095ba06d3@o4511524771266560.ingest.de.sentry.io/4511524773560400"
       }
     },
     "titleLang": {

@@ -2,7 +2,7 @@
 
 **Release:** [![npm version](https://img.shields.io/npm/v/iobroker.hassemu)](https://www.npmjs.com/package/iobroker.hassemu) ![stable](https://iobroker.live/badges/hassemu-stable.svg) ![Installations](https://iobroker.live/badges/hassemu-installed.svg) [![npm downloads](https://img.shields.io/npm/dt/iobroker.hassemu)](https://www.npmjs.com/package/iobroker.hassemu)
 
-**Build:** [![Test and Release](https://github.com/krobipd/ioBroker.hassemu/actions/workflows/test-and-release.yml/badge.svg)](https://github.com/krobipd/ioBroker.hassemu/actions/workflows/test-and-release.yml) ![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue) [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+**Build:** [![Test and Release](https://github.com/krobipd/ioBroker.hassemu/actions/workflows/test-and-release.yml/badge.svg)](https://github.com/krobipd/ioBroker.hassemu/actions/workflows/test-and-release.yml) ![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue) [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE) [![Sentry](https://img.shields.io/badge/error%20reporting-Sentry-362d59?logo=sentry&logoColor=white)](https://github.com/ioBroker/plugin-sentry#plugin-sentry)
 
 **Support:** [![Ko-fi](https://img.shields.io/badge/Ko--fi-Support-ff5e5b?logo=ko-fi)](https://ko-fi.com/krobipd) [![PayPal](https://img.shields.io/badge/Donate-PayPal-blue.svg)](https://paypal.me/krobipd)
 
@@ -146,12 +146,22 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 
 ---
 
+## Sentry / Error reporting
+
+This adapter uses [Sentry](https://sentry.io) to automatically report exceptions and errors to the developer, so problems can be found and fixed quickly. Reporting only happens if you have enabled error reporting in the ioBroker diagnostics (**System settings → Diagnostics and error reporting**). Only an anonymous installation ID is transmitted — no name, e-mail address or IP address.
+
+For details and how to disable it, see the [Sentry plugin documentation](https://github.com/ioBroker/plugin-sentry#plugin-sentry). Error reporting requires js-controller 3.0 or newer.
+
 ## Changelog
 
 <!--
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+### 1.35.0 (2026-06-07)
+
+- Added optional Sentry error reporting: crashes are sent to the developer so issues get fixed faster. Active only with ioBroker diagnostics enabled; anonymous.
+
 ### 1.34.0 (2026-06-02)
 
 - Home Assistant Companion App and Shelly Wall Display (firmware 2.6.0+): sign-out and device registration now complete reliably.
@@ -167,10 +177,6 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 ### 1.33.0 (2026-05-22)
 
 - User-modified state names are no longer overwritten on adapter restart
-
-### 1.32.6 (2026-05-21)
-
-- Improved error handling and stability.
 
 [Older changelogs can be found there](CHANGELOG_OLD.md)
 
