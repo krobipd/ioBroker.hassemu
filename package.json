@@ -31,8 +31,7 @@
     "url": "https://github.com/krobipd/ioBroker.hassemu/issues"
   },
   "engines": {
-    "node": ">=22",
-    "npm": ">=10"
+    "node": ">=22"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
