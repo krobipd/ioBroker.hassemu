@@ -177,7 +177,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 
 - Improved error handling and stability.
 
-Older entries are in [CHANGELOG_OLD.md](CHANGELOG_OLD.md).
+[Older changelogs can be found there](CHANGELOG_OLD.md)
 
 ## Support Development
 
