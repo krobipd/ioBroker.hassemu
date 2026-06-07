@@ -1,4 +1,8 @@
 # Older Changes
+## 1.32.6 (2026-05-21)
+
+- Improved error handling and stability.
+
 ## 1.32.5 (2026-05-21)
 
 - Verified against Node.js 24. Internal cleanup.
