@@ -28,6 +28,14 @@ Typical clients: Shelly Wall Display family (built-in HA page; on-device HA app 
 
 ---
 
+## Sentry / Error reporting
+
+**This adapter uses Sentry libraries to automatically report exceptions and code errors to the developers.** Reporting only happens if you have enabled error reporting in the ioBroker diagnostics (**System settings → Diagnostics and error reporting**). Only an anonymous installation ID is transmitted — no name, e-mail address or IP address.
+
+For details and how to disable it, see the [Sentry plugin documentation](https://github.com/ioBroker/plugin-sentry#plugin-sentry). Error reporting requires js-controller 3.0 or newer.
+
+---
+
 ## Supported dashboards
 
 The mode dropdown auto-discovers what's installed on your ioBroker host. You always have the option to paste any other HTTP URL as `manual`.
@@ -47,7 +55,7 @@ Want to add a URL the adapter doesn't auto-detect? Set `manual` and paste it.
 ## Requirements
 
 - Node.js ≥ 22
-- ioBroker js-controller ≥ 7.0.7
+- ioBroker js-controller ≥ 7.1.2
 - ioBroker Admin ≥ 7.8.23
 
 ---
@@ -146,18 +154,13 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 
 ---
 
-## Sentry / Error reporting
-
-This adapter uses [Sentry](https://sentry.io) to automatically report exceptions and errors to the developer, so problems can be found and fixed quickly. Reporting only happens if you have enabled error reporting in the ioBroker diagnostics (**System settings → Diagnostics and error reporting**). Only an anonymous installation ID is transmitted — no name, e-mail address or IP address.
-
-For details and how to disable it, see the [Sentry plugin documentation](https://github.com/ioBroker/plugin-sentry#plugin-sentry). Error reporting requires js-controller 3.0 or newer.
-
 ## Changelog
 
 <!--
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+
 ### 1.35.0 (2026-06-07)
 
 - Added optional Sentry error reporting: crashes are sent to the developer so issues get fixed faster. Active only with ioBroker diagnostics enabled; anonymous.
