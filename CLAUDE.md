@@ -45,10 +45,10 @@ src/lib/network.ts           → getLocalIp, generateClientId (crypto.randomByte
 src/lib/mdns.ts              → mDNS Broadcasting via bonjour-service
 src/lib/client-registry.ts   → Multi-Client-Store (Cookie → Record), bulkSetMode, NewClientModeProvider, lastSeen-Tracking
 src/lib/global-config.ts     → global.mode + global.manualUrl + global.enabled, MODE_GLOBAL/MODE_MANUAL Sentinels, Resolver-Delegate
-src/lib/url-discovery.ts     → Sammelt VIS/VIS-2/Admin-URLs, getFirstDiscoveredUrl
+src/lib/url-discovery.ts     → Sammelt VIS/VIS-2/Aura/Admin-URLs (collect → mode-Dropdown)
 src/lib/landing-page.ts      → Minimales HTML für Displays ohne konfigurierte URL (keine Anleitung — siehe README)
 src/lib/webserver.ts         → Fastify HTTP Server + HA API Emulation + Cookie-Handling + Sessions/RefreshToken-Caps + timing-safe Credentials
-src/lib/i18n.ts              → tName, tDesc, resolveLabel: type-safe I18n wrapper (keys from admin/i18n/en.json)
+src/lib/i18n.ts              → tName, resolveLabel, tPage, makePageTranslator: type-safe I18n wrapper (keys from admin/i18n/en.json)
 ../scripts/sync-iopackage-from-i18n.py → hält io-package.json:instanceObjects synchron mit admin/i18n (zentral)
 ```
 
@@ -83,20 +83,20 @@ src/lib/i18n.ts              → tName, tDesc, resolveLabel: type-safe I18n wrap
    3. `clients.<id>.mode = <URL>` → diese URL
    4. sonst → 200 HTML mit der Landing-Seite
 
-## Tests (428 unit + 57 package + 1 integration = 486)
+## Tests (455 unit + 57 package + 1 integration = 513)
 
 Tests leben seit v1.1.6 neben dem Source als `src/lib/*.test.ts` und laufen direkt via **vitest** (seit v1.32.0; vorher mocha+ts-node, vitest löst den ESM-Loader-Bug strukturell und ist ~10× schneller).
 
 ```
-src/lib/i18n.test.ts             → tName/tDesc/resolveLabel delegation + i18n completeness (42 keys × 11 langs)
-src/lib/constants.test.ts        → Shared Konstanten + neue Token-TTL/Lockout-Werte
+src/lib/i18n.test.ts             → tName/resolveLabel/tPage delegation + i18n completeness (42 keys × 11 langs)
+src/lib/constants.test.ts        → Shared Konstanten (Session-TTL/Cleanup/Token-TTL Invarianten)
 src/lib/coerce.test.ts           → Boundary-Validator + parseManualUrlWrite
 src/lib/mdns.test.ts             → mDNS Lifecycle
-src/lib/url-discovery.test.ts    → URL Discovery (Intro-Tiles + VIS-Projekte)
+src/lib/url-discovery.test.ts    → URL Discovery (Intro-Tiles + VIS/VIS-2/Aura)
 src/lib/client-registry.test.ts  → Multi-Client Registry
 src/lib/global-config.test.ts    → global.mode + global.manualUrl + global.enabled Handler
 src/lib/landing-page.test.ts     → Landing-Page Rendering + XSS-Escaping (seit v1.3.0)
-src/lib/webserver.test.ts        → HTTP-Endpoints, Cookie-Flow, Auth-Härtung, Brute-Force-Lockout
+src/lib/webserver.test.ts        → HTTP-Endpoints, Cookie-Flow, Auth-Härtung, OAuth2-Flow, WebSocket, mobile_app-Webhooks
 test/package.js                  → @iobroker/testing Package-Tests
 test/integration.js              → @iobroker/testing Integration-Tests
 ```
