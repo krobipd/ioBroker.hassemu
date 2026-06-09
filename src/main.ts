@@ -586,11 +586,6 @@ class HassEmu extends utils.Adapter {
 
       this.registry = null;
       this.globalConfig = null;
-
-      // Process-level last-line-of-defence handlers werden NICHT detached:
-      // im compact-mode können andere hassemu-Instances noch laufen und
-      // brauchen die Handler weiterhin. Wenn der Prozess am Ende ist, räumt
-      // Node die Listeners eh auf. (B3 v1.10.0)
     } catch (error) {
       const err = error as Error;
       this.log.error(`Shutdown error: ${err.message}`);

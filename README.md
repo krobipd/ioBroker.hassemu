@@ -160,6 +160,9 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+### 1.35.1 (2026-06-09)
+
+- Internal cleanup. No user-facing changes.
 
 ### 1.35.0 (2026-06-07)
 
@@ -176,10 +179,6 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 ### 1.33.1 (2026-05-23)
 
 - Fixed incorrect role assignment on global mode selector.
-
-### 1.33.0 (2026-05-22)
-
-- User-modified state names are no longer overwritten on adapter restart
 
 [Older changelogs can be found there](CHANGELOG_OLD.md)
 

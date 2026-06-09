@@ -173,9 +173,9 @@ describe("coerce", () => {
     });
   });
 
-  describe("coerceSafeUrl (rejection branches, formerly coerceSafeUrlReason E4 v1.16.0)", () => {
-    // coerceSafeUrlReason is module-private now (the reason has no production
-    // consumer); every rejection branch is exercised through coerceSafeUrl.
+  describe("coerceSafeUrl (rejection branches)", () => {
+    // Every rejection branch (bad scheme, credentials, unparseable, length)
+    // is exercised through the public coerceSafeUrl boundary validator.
     it("returns the URL for OK URLs", () => {
       expect(coerceSafeUrl("http://example.com/")).to.equal("http://example.com/");
     });

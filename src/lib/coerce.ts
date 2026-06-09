@@ -263,40 +263,22 @@ export function parseModeWrite(rawValue: unknown, allowedSentinels: readonly str
  * @param value Untrusted input.
  */
 export function coerceSafeUrl(value: unknown): string | null {
-  return coerceSafeUrlReason(value).safe;
-}
-
-/**
- * Internal worker behind {@link coerceSafeUrl}: returns the safe URL plus a
- * short machine-readable reason on rejection. The reason has no production
- * consumer (callers only need the safe URL / null via `coerceSafeUrl`), so this
- * stays module-private; the branches are exercised through `coerceSafeUrl`.
- *
- * @param value Untrusted input.
- */
-function coerceSafeUrlReason(value: unknown): { safe: string | null; reason: string | null } {
-  if (typeof value !== "string") {
-    return { safe: null, reason: "not-a-string" };
-  }
-  if (value.length === 0) {
-    return { safe: null, reason: "empty" };
-  }
-  if (value.length > 2048) {
-    return { safe: null, reason: "too-long" };
+  if (typeof value !== "string" || value.length === 0 || value.length > 2048) {
+    return null;
   }
   let url: URL;
   try {
     url = new URL(value);
   } catch {
-    return { safe: null, reason: "unparseable" };
+    return null;
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    return { safe: null, reason: `bad-scheme:${url.protocol}` };
+    return null;
   }
   if (url.username.length > 0 || url.password.length > 0) {
-    return { safe: null, reason: "credentials-in-url" };
+    return null;
   }
-  return { safe: value, reason: null };
+  return value;
 }
 
 // ---------------------------------------------------------------------------

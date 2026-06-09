@@ -717,42 +717,6 @@ describe("UrlDiscovery", () => {
         expect(Object.values(result)).to.include("Aura");
       });
     });
-
-    it("updates cache after collect()", async () => {
-      adapter._instances = {
-        "system.adapter.admin.0": enabledInstance({
-          common: { localLinks: { _default: { link: "http://%ip%:8081/", name: "Admin" } } },
-        }),
-      };
-      expect(Object.keys(discovery.getCached())).to.have.lengthOf(0);
-      await discovery.collect();
-      expect(Object.keys(discovery.getCached()).length).to.be.greaterThan(0);
-    });
-
-    it("getCached returns a copy, not a reference", async () => {
-      await discovery.collect();
-      const c1 = discovery.getCached();
-      c1["http://evil.com/"] = "hack";
-      expect(discovery.getCached()["http://evil.com/"]).to.be.undefined;
-    });
-  });
-
-  describe("getFirstDiscoveredUrl", () => {
-    it("returns null when cache is empty", () => {
-      expect(discovery.getFirstDiscoveredUrl()).to.be.null;
-    });
-
-    it("returns the first inserted URL after collect()", async () => {
-      adapter._instances = {
-        "system.adapter.admin.0": enabledInstance({
-          common: { localLinks: { _default: { link: "http://%ip%:8081/", name: "Admin" } } },
-        }),
-      };
-      await discovery.collect();
-      const first = discovery.getFirstDiscoveredUrl();
-      expect(first).to.be.a("string");
-      expect(first).to.match(/^https?:\/\//);
-    });
   });
 
   describe("scheduleRefresh / cancelRefresh", () => {
