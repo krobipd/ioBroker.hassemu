@@ -820,21 +820,57 @@ describe("WebServer", () => {
       expect(r3.json()).to.deep.equal({});
     });
 
-    it("PUT /api/mobile_app/registrations/<id>: returns 200 for known, 404 for unknown", async () => {
-      server.webhookRegistrations.set("test-webhook-put", "test-client");
-      // Known
-      const r1 = await server.inject({
+    it("PUT /api/mobile_app/registrations/<id>: 200 for known, 404 for unknown (valid token)", async () => {
+      const built = createMockAdapter();
+      const reg = new ClientRegistry(built.adapter as never);
+      const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
+      const s = new WebServer(built.adapter as never, baseConfig, reg, g, crypto.randomUUID());
+      await s["app"].register((await import("@fastify/cookie")).default);
+      await s["app"].register((await import("@fastify/formbody")).default);
+      s["setupErrorHandler"]();
+      s["setupRoutes"]();
+      await s["app"].ready();
+
+      // OAuth2 → access_token to satisfy the pre-handler
+      const r1 = await s.inject({ method: "GET", url: "/auth/authorize?" + SHELLY_QUERY });
+      const codeMatch = r1.body.match(/code=([a-f0-9-]+)/);
+      const r2 = await s.inject({
+        method: "POST",
+        url: "/auth/token",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        payload: `grant_type=authorization_code&code=${codeMatch![1]}`,
+      });
+      const tok = (r2.json() as { access_token: string }).access_token;
+
+      // Register → known webhook_id
+      const r3 = await s.inject({
+        method: "POST",
+        url: "/api/mobile_app/registrations",
+        headers: { "content-type": "application/json", authorization: `Bearer ${tok}` },
+        payload: { app_id: "x", device_id: "y" },
+      });
+      const id = (r3.json() as { webhook_id: string }).webhook_id;
+
+      // Known id → 200, echoes the registration
+      const rKnown = await s.inject({
         method: "PUT",
-        url: "/api/mobile_app/registrations/test-webhook-put",
-        headers: { authorization: "Bearer dummy" },
+        url: `/api/mobile_app/registrations/${id}`,
+        headers: { authorization: `Bearer ${tok}` },
         payload: {},
       });
-      // Bearer is invalid so it returns 401 — but pre-handler runs first.
-      // To exercise the route handler we need a valid token; the public
-      // assertion here is just that the route exists (no longer 404).
-      expect([200, 401]).to.include(r1.statusCode);
-      // Unknown id → needs a valid token to even reach the handler;
-      // outer-flow already verified via the registration test above.
+      expect(rKnown.statusCode).to.equal(200);
+      expect((rKnown.json() as { webhook_id: string }).webhook_id).to.equal(id);
+
+      // Unknown id → 404 so a stale pre-restart token re-registers
+      const rUnknown = await s.inject({
+        method: "PUT",
+        url: "/api/mobile_app/registrations/does-not-exist",
+        headers: { authorization: `Bearer ${tok}` },
+        payload: {},
+      });
+      expect(rUnknown.statusCode).to.equal(404);
+      expect((rUnknown.json() as { error: string }).error).to.equal("unknown_registration");
+      await s["app"].close();
     });
 
     it("DELETE /api/mobile_app/registrations/<id>: removes from map", async () => {

@@ -153,31 +153,22 @@ function parseModeWrite(rawValue, allowedSentinels) {
   return { kind: "url", value: safe };
 }
 function coerceSafeUrl(value) {
-  return coerceSafeUrlReason(value).safe;
-}
-function coerceSafeUrlReason(value) {
-  if (typeof value !== "string") {
-    return { safe: null, reason: "not-a-string" };
-  }
-  if (value.length === 0) {
-    return { safe: null, reason: "empty" };
-  }
-  if (value.length > 2048) {
-    return { safe: null, reason: "too-long" };
+  if (typeof value !== "string" || value.length === 0 || value.length > 2048) {
+    return null;
   }
   let url;
   try {
     url = new URL(value);
   } catch {
-    return { safe: null, reason: "unparseable" };
+    return null;
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    return { safe: null, reason: `bad-scheme:${url.protocol}` };
+    return null;
   }
   if (url.username.length > 0 || url.password.length > 0) {
-    return { safe: null, reason: "credentials-in-url" };
+    return null;
   }
-  return { safe: value, reason: null };
+  return value;
 }
 async function safeGetState(adapter, id) {
   var _a;

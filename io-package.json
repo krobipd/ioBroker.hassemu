@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.35.0",
+    "version": "1.35.1",
     "news": {
+      "1.35.1": {
+        "en": "Internal cleanup. No user-facing changes.",
+        "de": "Interne Bereinigung. Keine für Nutzer sichtbaren Änderungen.",
+        "ru": "Внутренняя очистка. Никаких изменений для пользователей.",
+        "pt": "Limpeza interna. Sem alterações visíveis para o utilizador.",
+        "nl": "Interne opruiming. Geen zichtbare wijzigingen voor gebruikers.",
+        "fr": "Nettoyage interne. Aucun changement visible pour l'utilisateur.",
+        "it": "Pulizia interna. Nessuna modifica visibile per l'utente.",
+        "es": "Limpieza interna. Sin cambios visibles para el usuario.",
+        "pl": "Wewnętrzne porządki. Brak zmian widocznych dla użytkownika.",
+        "uk": "Внутрішнє прибирання. Жодних змін для користувачів.",
+        "zh-cn": "内部清理。对用户无可见变化。"
+      },
       "1.35.0": {
         "en": "Added optional Sentry error reporting: crashes are sent to the developer so issues get fixed faster. Active only with ioBroker diagnostics enabled; anonymous.",
         "de": "Optionale Fehlermeldung über Sentry hinzugefügt: Abstürze werden an den Entwickler gesendet, damit Probleme schneller behoben werden. Nur aktiv bei eingeschalteter ioBroker-Diagnose; anonym.",
@@ -80,19 +93,6 @@
         "pl": "Poprawiona obsługa błędów i stabilność.",
         "uk": "Покращено обробку помилок та стабільність.",
         "zh-cn": "改进了错误处理和稳定性。"
-      },
-      "1.32.5": {
-        "en": "Verified against Node.js 24. Internal cleanup.",
-        "de": "Gegen Node.js 24 verifiziert. Interne Bereinigung.",
-        "ru": "Проверено для Node.js 24. Внутренняя очистка.",
-        "pt": "Verificado com Node.js 24. Limpeza interna.",
-        "nl": "Geverifieerd tegen Node.js 24. Interne opruiming.",
-        "fr": "Vérifié avec Node.js 24. Nettoyage interne.",
-        "it": "Verificato con Node.js 24. Pulizia interna.",
-        "es": "Verificado con Node.js 24. Limpieza interna.",
-        "pl": "Zweryfikowano z Node.js 24. Wewnętrzne porządki.",
-        "uk": "Перевірено з Node.js 24. Внутрішнє прибирання.",
-        "zh-cn": "已针对 Node.js 24 进行验证。内部清理。"
       }
     },
     "plugins": {

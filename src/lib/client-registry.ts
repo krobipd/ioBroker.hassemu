@@ -414,7 +414,7 @@ export class ClientRegistry {
   /**
    * Set every client's `mode` to the same value. Used by the master switch
    * (`global.enabled`) to bulk-sync all displays — `'global'` when on,
-   * the first discovered URL when off.
+   * `'0'` (no-choice → landing page) when off.
    *
    * Skips clients whose mode already matches (no spurious state writes).
    *
