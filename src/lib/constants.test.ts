@@ -1,4 +1,3 @@
-import { expect } from "chai";
 import { HA_VERSION, SESSION_TTL_MS, CLEANUP_INTERVAL_MS, LOGIN_SCHEMA, OAUTH_ACCESS_TOKEN_TTL_S } from "./constants";
 
 describe("constants", () => {

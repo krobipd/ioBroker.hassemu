@@ -1,4 +1,3 @@
-import { expect } from "chai";
 import {
   URL_SOURCE_PREFIXES,
   UrlDiscovery,

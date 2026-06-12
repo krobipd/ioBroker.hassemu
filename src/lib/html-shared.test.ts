@@ -1,4 +1,3 @@
-import { expect } from "chai";
 import { htmlLangFor, isLoopbackIp, renderIpRow, SUPPORTED_LANGS } from "./html-shared";
 
 describe("html-shared", () => {

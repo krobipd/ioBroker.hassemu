@@ -160,6 +160,11 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+### **WORK IN PROGRESS**
+
+- Displays whose registration became stale after an adapter restart now re-register automatically — the server previously answered in a way the companion app did not recognize as "please register again"
+- Removing a display now also clears its leftover app registration, so a re-added display starts with a fresh one
+
 ### 1.35.1 (2026-06-09)
 
 - Internal cleanup. No user-facing changes.

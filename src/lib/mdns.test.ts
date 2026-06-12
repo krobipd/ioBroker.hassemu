@@ -1,4 +1,3 @@
-import { expect } from "chai";
 import crypto from "node:crypto";
 import { MDNSService } from "./mdns";
 import type { AdapterConfig } from "./types";

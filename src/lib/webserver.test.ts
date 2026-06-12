@@ -1,4 +1,3 @@
-import { expect } from "chai";
 import crypto from "node:crypto";
 import { once } from "node:events";
 import { readFileSync } from "node:fs";
@@ -160,6 +159,60 @@ function extractCookie(setCookieHeader: string | string[] | undefined): string |
   return match ? match[1] : null;
 }
 
+interface ServerOpts {
+  /** Overrides merged onto {@link baseConfig}. */
+  config?: Partial<AdapterConfig>;
+  /** `global.mode` seed (sentinel or URL); `null` leaves global unconfigured. Default: direct URL. */
+  globalMode?: string | null;
+  /** `global.enabled` master switch. Default: true (matches the historical beforeEach). */
+  globalEnabled?: boolean;
+  /** Install the Bearer pre-handler (prod `start()` always does; tests opt in). */
+  authGuard?: boolean;
+  /** ioBroker system language passed to the WebServer (landing-page rendering). */
+  systemLanguage?: string;
+}
+
+/**
+ * Builds a fully-wired WebServer on a fresh mock adapter: cookie + formbody
+ * plugins registered, error handler + routes installed, app ready. This block
+ * was hand-rolled 17x across this file before v1.35.2 - every inject-based
+ * test now goes through this single helper. Tests that exercise the real
+ * listener (`start()`/`stop()`, WebSocket, restart-simulation) stay manual
+ * because `start()` registers the plugins itself.
+ */
+async function buildServer(opts: ServerOpts = {}): Promise<{
+  s: WebServer;
+  reg: ClientRegistry;
+  g: GlobalConfig;
+  store: MockStore;
+}> {
+  const built = createMockAdapter();
+  const reg = new ClientRegistry(built.adapter as never);
+  const g = await buildGlobalConfig(
+    built.adapter,
+    opts.globalMode === undefined ? "http://example.com/vis" : opts.globalMode,
+    null,
+    opts.globalEnabled ?? true,
+  );
+  const s = new WebServer(
+    built.adapter as never,
+    { ...baseConfig, ...(opts.config ?? {}) },
+    reg,
+    g,
+    crypto.randomUUID(),
+    opts.systemLanguage ?? "en",
+  );
+  await s["app"].register((await import("@fastify/cookie")).default);
+  await s["app"].register((await import("@fastify/formbody")).default);
+  if (opts.authGuard) {
+    s["setupAuthGuard"]();
+  }
+  s["setupErrorHandler"]();
+  s["setupRoutes"]();
+  await s["app"].ready();
+  return { s, reg, g, store: built.store };
+}
+
 describe("WebServer", () => {
   let server: WebServer;
   let registry: ClientRegistry;
@@ -167,17 +220,8 @@ describe("WebServer", () => {
   let store: MockStore;
 
   beforeEach(async () => {
-    const built = createMockAdapter();
-    store = built.store;
-    registry = new ClientRegistry(built.adapter as never);
     // global.mode = direct URL; new client default mode='global' delegates here
-    globalConfig = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
-    server = new WebServer(built.adapter as never, baseConfig, registry, globalConfig, crypto.randomUUID());
-    await server["app"].register((await import("@fastify/cookie")).default);
-    await server["app"].register((await import("@fastify/formbody")).default);
-    server["setupErrorHandler"]();
-    server["setupRoutes"]();
-    await server["app"].ready();
+    ({ s: server, reg: registry, g: globalConfig, store } = await buildServer());
   });
 
   afterEach(async () => {
@@ -194,10 +238,7 @@ describe("WebServer", () => {
     });
 
     it("falls back to ioBroker when service name is empty", async () => {
-      const built = createMockAdapter();
-      const reg = new ClientRegistry(built.adapter as never);
-      const g = await buildGlobalConfig(built.adapter);
-      const s = new WebServer(built.adapter as never, { ...baseConfig, serviceName: "" }, reg, g, crypto.randomUUID());
+      const { s } = await buildServer({ config: { serviceName: "" }, globalMode: null, globalEnabled: false });
       expect(s.serviceName).to.equal("ioBroker");
     });
   });
@@ -424,21 +465,7 @@ describe("WebServer", () => {
     });
 
     it("rejects invalid credentials when authRequired is true", async () => {
-      const built = createMockAdapter();
-      const reg = new ClientRegistry(built.adapter as never);
-      const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
-      const s = new WebServer(
-        built.adapter as never,
-        { ...baseConfig, authRequired: true },
-        reg,
-        g,
-        crypto.randomUUID(),
-      );
-      await s["app"].register((await import("@fastify/cookie")).default);
-      await s["app"].register((await import("@fastify/formbody")).default);
-      s["setupErrorHandler"]();
-      s["setupRoutes"]();
-      await s["app"].ready();
+      const { s } = await buildServer({ config: { authRequired: true } });
 
       const r1 = await s.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
       const flowId = (r1.json() as { flow_id: string }).flow_id;
@@ -454,21 +481,7 @@ describe("WebServer", () => {
     });
 
     it("accepts correct credentials via timing-safe compare (security fix v1.2.0)", async () => {
-      const built = createMockAdapter();
-      const reg = new ClientRegistry(built.adapter as never);
-      const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
-      const s = new WebServer(
-        built.adapter as never,
-        { ...baseConfig, authRequired: true },
-        reg,
-        g,
-        crypto.randomUUID(),
-      );
-      await s["app"].register((await import("@fastify/cookie")).default);
-      await s["app"].register((await import("@fastify/formbody")).default);
-      s["setupErrorHandler"]();
-      s["setupRoutes"]();
-      await s["app"].ready();
+      const { s } = await buildServer({ config: { authRequired: true } });
 
       const r1 = await s.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
       const flowId = (r1.json() as { flow_id: string }).flow_id;
@@ -482,21 +495,7 @@ describe("WebServer", () => {
     });
 
     it("rejects username with mismatched length (timing-safe handles both branches)", async () => {
-      const built = createMockAdapter();
-      const reg = new ClientRegistry(built.adapter as never);
-      const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
-      const s = new WebServer(
-        built.adapter as never,
-        { ...baseConfig, authRequired: true },
-        reg,
-        g,
-        crypto.randomUUID(),
-      );
-      await s["app"].register((await import("@fastify/cookie")).default);
-      await s["app"].register((await import("@fastify/formbody")).default);
-      s["setupErrorHandler"]();
-      s["setupRoutes"]();
-      await s["app"].ready();
+      const { s } = await buildServer({ config: { authRequired: true } });
 
       const r1 = await s.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
       const flowId = (r1.json() as { flow_id: string }).flow_id;
@@ -586,21 +585,7 @@ describe("WebServer", () => {
     });
 
     it("GET /auth/authorize (authRequired=true): renders login form with hidden OAuth2 params", async () => {
-      const built = createMockAdapter();
-      const reg = new ClientRegistry(built.adapter as never);
-      const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
-      const s = new WebServer(
-        built.adapter as never,
-        { ...baseConfig, authRequired: true },
-        reg,
-        g,
-        crypto.randomUUID(),
-      );
-      await s["app"].register((await import("@fastify/cookie")).default);
-      await s["app"].register((await import("@fastify/formbody")).default);
-      s["setupErrorHandler"]();
-      s["setupRoutes"]();
-      await s["app"].ready();
+      const { s } = await buildServer({ config: { authRequired: true } });
       const res = await s.inject({ method: "GET", url: "/auth/authorize?" + SHELLY_QUERY });
       expect(res.statusCode).to.equal(200);
       expect(res.headers["content-type"]).to.include("text/html");
@@ -615,21 +600,7 @@ describe("WebServer", () => {
     });
 
     it("POST /auth/authorize: valid creds → auto-redirect HTML with code + state", async () => {
-      const built = createMockAdapter();
-      const reg = new ClientRegistry(built.adapter as never);
-      const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
-      const s = new WebServer(
-        built.adapter as never,
-        { ...baseConfig, authRequired: true },
-        reg,
-        g,
-        crypto.randomUUID(),
-      );
-      await s["app"].register((await import("@fastify/cookie")).default);
-      await s["app"].register((await import("@fastify/formbody")).default);
-      s["setupErrorHandler"]();
-      s["setupRoutes"]();
-      await s["app"].ready();
+      const { s } = await buildServer({ config: { authRequired: true } });
       const res = await s.inject({
         method: "POST",
         url: "/auth/authorize",
@@ -651,21 +622,7 @@ describe("WebServer", () => {
     });
 
     it("POST /auth/authorize: invalid creds → form re-rendered with error banner, 401", async () => {
-      const built = createMockAdapter();
-      const reg = new ClientRegistry(built.adapter as never);
-      const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
-      const s = new WebServer(
-        built.adapter as never,
-        { ...baseConfig, authRequired: true },
-        reg,
-        g,
-        crypto.randomUUID(),
-      );
-      await s["app"].register((await import("@fastify/cookie")).default);
-      await s["app"].register((await import("@fastify/formbody")).default);
-      s["setupErrorHandler"]();
-      s["setupRoutes"]();
-      await s["app"].ready();
+      const { s } = await buildServer({ config: { authRequired: true } });
       const res = await s.inject({
         method: "POST",
         url: "/auth/authorize",
@@ -759,22 +716,7 @@ describe("WebServer", () => {
       // zero-config default). Switch to authRequired=true to verify it
       // protects the new mobile_app route too. start()-flow installs the
       // guard in front of the routes in prod.
-      const built = createMockAdapter();
-      const reg = new ClientRegistry(built.adapter as never);
-      const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
-      const s = new WebServer(
-        built.adapter as never,
-        { ...baseConfig, authRequired: true },
-        reg,
-        g,
-        crypto.randomUUID(),
-      );
-      await s["app"].register((await import("@fastify/cookie")).default);
-      await s["app"].register((await import("@fastify/formbody")).default);
-      s["setupAuthGuard"]();
-      s["setupErrorHandler"]();
-      s["setupRoutes"]();
-      await s["app"].ready();
+      const { s } = await buildServer({ config: { authRequired: true }, authGuard: true });
       const res = await s.inject({
         method: "POST",
         url: "/api/mobile_app/registrations",
@@ -821,15 +763,7 @@ describe("WebServer", () => {
     });
 
     it("PUT /api/mobile_app/registrations/<id>: 200 for known, 404 for unknown (valid token)", async () => {
-      const built = createMockAdapter();
-      const reg = new ClientRegistry(built.adapter as never);
-      const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
-      const s = new WebServer(built.adapter as never, baseConfig, reg, g, crypto.randomUUID());
-      await s["app"].register((await import("@fastify/cookie")).default);
-      await s["app"].register((await import("@fastify/formbody")).default);
-      s["setupErrorHandler"]();
-      s["setupRoutes"]();
-      await s["app"].ready();
+      const { s } = await buildServer();
 
       // OAuth2 → access_token to satisfy the pre-handler
       const r1 = await s.inject({ method: "GET", url: "/auth/authorize?" + SHELLY_QUERY });
@@ -874,15 +808,7 @@ describe("WebServer", () => {
     });
 
     it("DELETE /api/mobile_app/registrations/<id>: removes from map", async () => {
-      const built = createMockAdapter();
-      const reg = new ClientRegistry(built.adapter as never);
-      const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
-      const s = new WebServer(built.adapter as never, baseConfig, reg, g, crypto.randomUUID());
-      await s["app"].register((await import("@fastify/cookie")).default);
-      await s["app"].register((await import("@fastify/formbody")).default);
-      s["setupErrorHandler"]();
-      s["setupRoutes"]();
-      await s["app"].ready();
+      const { s } = await buildServer();
 
       // OAuth2 → access_token to satisfy pre-handler
       const r1 = await s.inject({ method: "GET", url: "/auth/authorize?" + SHELLY_QUERY });
@@ -916,15 +842,7 @@ describe("WebServer", () => {
     });
 
     it("GET /api/config advertises `mobile_app` component (HA Companion onboarding probe, v1.29.1)", async () => {
-      const built = createMockAdapter();
-      const reg = new ClientRegistry(built.adapter as never);
-      const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
-      const s = new WebServer(built.adapter as never, baseConfig, reg, g, crypto.randomUUID());
-      await s["app"].register((await import("@fastify/cookie")).default);
-      await s["app"].register((await import("@fastify/formbody")).default);
-      s["setupErrorHandler"]();
-      s["setupRoutes"]();
-      await s["app"].ready();
+      const { s } = await buildServer();
 
       // Auth flow to get a bearer
       const r1 = await s.inject({ method: "GET", url: "/auth/authorize?" + SHELLY_QUERY });
@@ -1194,16 +1112,8 @@ describe("WebServer", () => {
     });
 
     it("GET / serves the landing page when nothing is configured", async () => {
-      const built = createMockAdapter();
-      const reg = new ClientRegistry(built.adapter as never);
       // global empty + no client mode set after creation
-      const g = await buildGlobalConfig(built.adapter);
-      const s = new WebServer(built.adapter as never, baseConfig, reg, g, crypto.randomUUID());
-      await s["app"].register((await import("@fastify/cookie")).default);
-      await s["app"].register((await import("@fastify/formbody")).default);
-      s["setupErrorHandler"]();
-      s["setupRoutes"]();
-      await s["app"].ready();
+      const { s, reg } = await buildServer({ globalMode: null, globalEnabled: false });
 
       // First clear the default 'global' mode so the resolver returns null
       const r0 = await s.inject({ method: "GET", url: "/" });
@@ -1225,15 +1135,7 @@ describe("WebServer", () => {
     });
 
     it("GET / landing page honours the ioBroker system language (de)", async () => {
-      const built = createMockAdapter();
-      const reg = new ClientRegistry(built.adapter as never);
-      const g = await buildGlobalConfig(built.adapter);
-      const s = new WebServer(built.adapter as never, baseConfig, reg, g, crypto.randomUUID(), "de");
-      await s["app"].register((await import("@fastify/cookie")).default);
-      await s["app"].register((await import("@fastify/formbody")).default);
-      s["setupErrorHandler"]();
-      s["setupRoutes"]();
-      await s["app"].ready();
+      const { s, reg } = await buildServer({ globalMode: null, globalEnabled: false, systemLanguage: "de" });
 
       // Force an empty-mode client so the landing page is served
       const r0 = await s.inject({ method: "GET", url: "/" });
@@ -1250,15 +1152,7 @@ describe("WebServer", () => {
     });
 
     it("GET / landing page falls back to English for unknown language", async () => {
-      const built = createMockAdapter();
-      const reg = new ClientRegistry(built.adapter as never);
-      const g = await buildGlobalConfig(built.adapter);
-      const s = new WebServer(built.adapter as never, baseConfig, reg, g, crypto.randomUUID(), "eo");
-      await s["app"].register((await import("@fastify/cookie")).default);
-      await s["app"].register((await import("@fastify/formbody")).default);
-      s["setupErrorHandler"]();
-      s["setupRoutes"]();
-      await s["app"].ready();
+      const { s, reg } = await buildServer({ globalMode: null, globalEnabled: false, systemLanguage: "eo" });
 
       const r0 = await s.inject({ method: "GET", url: "/" });
       const cookie = extractCookie(r0.headers["set-cookie"])!;
@@ -1347,6 +1241,42 @@ describe("WebServer", () => {
       server.cleanupSessions();
       expect(server.sessions.size).to.equal(1);
     });
+
+    it("prunes webhook registrations of removed clients, keeps active + unowned ones (v1.35.2)", async () => {
+      // Active client: webhook stays. Removed client: webhook pruned.
+      // Unowned ("" — authRequired=false registration without Bearer): stays.
+      const active = await registry.identifyOrCreate(null, "10.0.0.1", null);
+      const removed = await registry.identifyOrCreate(null, "10.0.0.2", null);
+      server.webhookRegistrations.set("wh-active", active.id);
+      server.webhookRegistrations.set("wh-removed", removed.id);
+      server.webhookRegistrations.set("wh-unowned", "");
+      await registry.remove(removed.id);
+
+      server.cleanupSessions();
+
+      expect(server.webhookRegistrations.has("wh-active")).to.be.true;
+      expect(server.webhookRegistrations.has("wh-unowned")).to.be.true;
+      expect(server.webhookRegistrations.has("wh-removed")).to.be.false;
+    });
+
+    it("a pruned webhook id falls back to the 200-empty re-registration branch", async () => {
+      // End-to-end consequence of the prune: the orphaned display POSTs to its
+      // old webhook and must hit the stale-id branch (200 empty body) so the
+      // Companion App re-registers — not the typed success responses.
+      const removed = await registry.identifyOrCreate(null, "10.0.0.3", null);
+      server.webhookRegistrations.set("wh-orphan", removed.id);
+      await registry.remove(removed.id);
+      server.cleanupSessions();
+
+      const res = await server.inject({
+        method: "POST",
+        url: "/api/webhook/wh-orphan",
+        headers: { "content-type": "application/json" },
+        payload: { type: "get_config" },
+      });
+      expect(res.statusCode).to.equal(200);
+      expect(res.body).to.equal("");
+    });
   });
 
   describe("sessions cap (security fix v1.2.0)", () => {
@@ -1361,22 +1291,7 @@ describe("WebServer", () => {
 
   describe("auth-required setup tests", () => {
     async function buildAuthServer(): Promise<WebServer> {
-      const built = createMockAdapter();
-      const reg = new ClientRegistry(built.adapter as never);
-      const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
-      const s = new WebServer(
-        built.adapter as never,
-        { ...baseConfig, authRequired: true },
-        reg,
-        g,
-        crypto.randomUUID(),
-      );
-      await s["app"].register((await import("@fastify/cookie")).default);
-      await s["app"].register((await import("@fastify/formbody")).default);
-      s["setupAuthGuard"]();
-      s["setupErrorHandler"]();
-      s["setupRoutes"]();
-      await s["app"].ready();
+      const { s } = await buildServer({ config: { authRequired: true }, authGuard: true });
       return s;
     }
 
@@ -1734,41 +1649,37 @@ describe("WebServer bindAddress / start-stop", () => {
   // --- D6: Request-error log cooldown (v1.9.x) ---
 
   describe("shouldEmitRequestErrorWarn — 5xx log dedup (D6 v1.9.x)", () => {
-    const buildServer = async (): Promise<WebServer> => {
-      const built = createMockAdapter();
-      const reg = new ClientRegistry(built.adapter as never);
-      const g = await buildGlobalConfig(built.adapter, "http://x/");
-      return new WebServer(built.adapter as never, baseConfig, reg, g, crypto.randomUUID());
-    };
+    const buildCooldownServer = async (): Promise<WebServer> =>
+      (await buildServer({ globalMode: "http://x/", globalEnabled: false })).s;
 
     it("returns true on first occurrence of a message", async () => {
-      const s = await buildServer();
+      const s = await buildCooldownServer();
       expect(s.shouldEmitRequestErrorWarn("boom", 1000)).to.be.true;
     });
 
     it("returns false within cooldown window for same message", async () => {
-      const s = await buildServer();
+      const s = await buildCooldownServer();
       s.shouldEmitRequestErrorWarn("boom", 1000);
       // 59s later — still in cooldown (< REQUEST_ERROR_COOLDOWN_MS=60000)
       expect(s.shouldEmitRequestErrorWarn("boom", 60_000)).to.be.false;
     });
 
     it("returns true after cooldown elapsed for same message", async () => {
-      const s = await buildServer();
+      const s = await buildCooldownServer();
       s.shouldEmitRequestErrorWarn("boom", 1000);
       // 61s later — outside cooldown window
       expect(s.shouldEmitRequestErrorWarn("boom", 62_000)).to.be.true;
     });
 
     it("different messages have independent cooldowns", async () => {
-      const s = await buildServer();
+      const s = await buildCooldownServer();
       expect(s.shouldEmitRequestErrorWarn("a", 1000)).to.be.true;
       expect(s.shouldEmitRequestErrorWarn("b", 1001)).to.be.true; // 1ms later, but different key
       expect(s.shouldEmitRequestErrorWarn("a", 1002)).to.be.false; // a is in cooldown
     });
 
     it("FIFO-caps the cooldown map (E9 + D6 consistency)", async () => {
-      const s = await buildServer();
+      const s = await buildCooldownServer();
       for (let i = 0; i < 250; i++) {
         s.shouldEmitRequestErrorWarn(`err-${i}`, 1000 + i);
       }

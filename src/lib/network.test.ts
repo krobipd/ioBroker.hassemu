@@ -1,4 +1,3 @@
-import { expect } from "chai";
 import { generateClientId, getLocalIp, isWildcardBind } from "./network";
 
 describe("network", () => {

@@ -1,5 +1,3 @@
-import { expect } from "chai";
-
 vi.mock("@iobroker/adapter-core", async () => {
   const { readdirSync, readFileSync } = await import("node:fs");
   const { join } = await import("node:path");

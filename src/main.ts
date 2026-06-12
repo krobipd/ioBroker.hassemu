@@ -17,7 +17,11 @@ import type { AdapterConfig } from "./lib/types";
 import iobrokerPackage from "../io-package.json";
 const instanceObjectsList = (iobrokerPackage as { instanceObjects: unknown[] }).instanceObjects ?? [];
 
-class HassEmu extends utils.Adapter {
+/**
+ * HA emulator adapter — lifecycle, migrations, state-dispatch, master switch.
+ * Exported so the orchestration unit tests can drive its handlers directly.
+ */
+export class HassEmu extends utils.Adapter {
   /**
    * ioBroker system language used to render the user-facing landing page
    * (HTML) in the user's language. Adapter logs themselves stay English by
@@ -33,8 +37,21 @@ class HassEmu extends utils.Adapter {
   private globalConfig: GlobalConfig | null = null;
   private urlDiscovery: UrlDiscovery | null = null;
 
+  // Factory seams — production builds the real collaborators; the orchestration
+  // unit tests (src/main.test.ts) override these fields with fakes so onReady &
+  // friends can run without sockets, mDNS or a js-controller.
+  private makeGlobalConfig: () => GlobalConfig = () => new GlobalConfig(this);
+  private makeRegistry: () => ClientRegistry = () => new ClientRegistry(this);
+  private makeUrlDiscovery: (onChange: ConstructorParameters<typeof UrlDiscovery>[1]) => UrlDiscovery = onChange =>
+    new UrlDiscovery(this, onChange);
+  private makeWebServer: (instanceUuid: string) => WebServer = instanceUuid =>
+    new WebServer(this, this.config, this.registry!, this.globalConfig!, instanceUuid, this.systemLanguage);
+  private makeMdnsService: (instanceUuid: string) => MDNSService = instanceUuid =>
+    new MDNSService(this, this.config, instanceUuid);
+
   declare config: AdapterConfig;
 
+  /** @param options Adapter options forwarded to the ioBroker base class. */
   public constructor(options: Partial<utils.AdapterOptions> = {}) {
     super({ ...options, name: "hassemu" });
 
@@ -68,10 +85,10 @@ class HassEmu extends utils.Adapter {
       // user-facing Landing-Seite (HTML). Adapter-Logs sind Englisch.
       this.systemLanguage = await this.readSystemLanguage();
 
-      this.globalConfig = new GlobalConfig(this);
+      this.globalConfig = this.makeGlobalConfig();
       await this.globalConfig.restore();
 
-      this.registry = new ClientRegistry(this);
+      this.registry = this.makeRegistry();
       await this.registry.restore();
 
       // Migrations run before subscriptions / webserver — first the legacy
@@ -101,7 +118,7 @@ class HassEmu extends utils.Adapter {
         `Config: port=${this.config.port}, auth=${this.config.authRequired}, mdns=${this.config.mdnsEnabled}`,
       );
 
-      this.urlDiscovery = new UrlDiscovery(this, async states => {
+      this.urlDiscovery = this.makeUrlDiscovery(async states => {
         await this.globalConfig?.syncUrlDropdown(states);
         await this.registry?.syncUrlDropdown(states);
       });
@@ -112,14 +129,7 @@ class HassEmu extends utils.Adapter {
       await this.urlDiscovery.collect();
 
       try {
-        this.webServer = new WebServer(
-          this,
-          this.config,
-          this.registry,
-          this.globalConfig,
-          instanceUuid,
-          this.systemLanguage,
-        );
+        this.webServer = this.makeWebServer(instanceUuid);
         await this.webServer.start();
       } catch (err) {
         this.log.error(`Web server failed to start: ${String(err)}`);
@@ -148,7 +158,7 @@ class HassEmu extends utils.Adapter {
 
       let mdnsActive = false;
       if (this.config.mdnsEnabled) {
-        this.mdnsService = new MDNSService(this, this.config, instanceUuid);
+        this.mdnsService = this.makeMdnsService(instanceUuid);
         this.mdnsService.start();
         // v1.10.0 (H1): mdns.start() catched intern und setzt active=false
         // bei Fehler — vorher wurde info.connection=true unabhängig gesetzt
@@ -241,6 +251,26 @@ class HassEmu extends utils.Adapter {
   }
 
   /**
+   * Drops the legacy `defaultVisUrl`/`visUrl` keys from the instance native
+   * config. Shared by both exits of {@link migrateLegacyDefaultVisUrl} —
+   * the unsafe-rejected path and the successfully-migrated path clean up
+   * identically. Best-effort: failures only warn.
+   */
+  private async cleanupLegacyNativeUrl(): Promise<void> {
+    try {
+      const id = `system.adapter.${this.namespace}`;
+      const obj = await this.getForeignObjectAsync(id);
+      if (obj?.native) {
+        delete obj.native.defaultVisUrl;
+        delete obj.native.visUrl;
+        await this.setForeignObjectAsync(id, obj);
+      }
+    } catch (err) {
+      this.log.warn(`Legacy config cleanup failed: ${String(err)}`);
+    }
+  }
+
+  /**
    * 1.0.x / 1.1.0 → 1.1.1 migration — move the legacy `defaultVisUrl` from
    * instance native into `global.visUrl` + `global.enabled=true` and drop it
    * from native. Subsequent migrations (`migrateVisUrlToMode`) then move
@@ -260,17 +290,7 @@ class HassEmu extends utils.Adapter {
     const safe = coerceSafeUrl(url);
     if (!safe) {
       this.log.warn(`Migration: legacy global URL rejected as unsafe — please set global.manualUrl manually`);
-      try {
-        const id = `system.adapter.${this.namespace}`;
-        const obj = await this.getForeignObjectAsync(id);
-        if (obj?.native) {
-          delete obj.native.defaultVisUrl;
-          delete obj.native.visUrl;
-          await this.setForeignObjectAsync(id, obj);
-        }
-      } catch (err) {
-        this.log.warn(`Legacy config cleanup failed: ${String(err)}`);
-      }
+      await this.cleanupLegacyNativeUrl();
       return;
     }
 
@@ -306,17 +326,7 @@ class HassEmu extends utils.Adapter {
       return;
     }
 
-    try {
-      const id = `system.adapter.${this.namespace}`;
-      const obj = await this.getForeignObjectAsync(id);
-      if (obj?.native) {
-        delete obj.native.defaultVisUrl;
-        delete obj.native.visUrl;
-        await this.setForeignObjectAsync(id, obj);
-      }
-    } catch (err) {
-      this.log.warn(`Legacy config cleanup failed: ${String(err)}`);
-    }
+    await this.cleanupLegacyNativeUrl();
   }
 
   /**

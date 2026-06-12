@@ -5,6 +5,10 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
     for (let key of __getOwnPropNames(from))
@@ -21,6 +25,12 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
   mod
 ));
+var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+var main_exports = {};
+__export(main_exports, {
+  HassEmu: () => HassEmu
+});
+module.exports = __toCommonJS(main_exports);
 var import_node_crypto = __toESM(require("node:crypto"));
 var import_node_path = require("node:path");
 var import_adapter_core = require("@iobroker/adapter-core");
@@ -50,6 +60,15 @@ class HassEmu extends utils.Adapter {
   registry = null;
   globalConfig = null;
   urlDiscovery = null;
+  // Factory seams — production builds the real collaborators; the orchestration
+  // unit tests (src/main.test.ts) override these fields with fakes so onReady &
+  // friends can run without sockets, mDNS or a js-controller.
+  makeGlobalConfig = () => new import_global_config.GlobalConfig(this);
+  makeRegistry = () => new import_client_registry.ClientRegistry(this);
+  makeUrlDiscovery = (onChange) => new import_url_discovery.UrlDiscovery(this, onChange);
+  makeWebServer = (instanceUuid) => new import_webserver.WebServer(this, this.config, this.registry, this.globalConfig, instanceUuid, this.systemLanguage);
+  makeMdnsService = (instanceUuid) => new import_mdns.MDNSService(this, this.config, instanceUuid);
+  /** @param options Adapter options forwarded to the ioBroker base class. */
   constructor(options = {}) {
     super({ ...options, name: "hassemu" });
     this.on("ready", this.onReady.bind(this));
@@ -74,9 +93,9 @@ class HassEmu extends utils.Adapter {
       await import_adapter_core.I18n.init((0, import_node_path.join)(this.adapterDir, "admin"), this);
       await this.setState("info.connection", { val: false, ack: true });
       this.systemLanguage = await this.readSystemLanguage();
-      this.globalConfig = new import_global_config.GlobalConfig(this);
+      this.globalConfig = this.makeGlobalConfig();
       await this.globalConfig.restore();
-      this.registry = new import_client_registry.ClientRegistry(this);
+      this.registry = this.makeRegistry();
       await this.registry.restore();
       await this.migrateLegacyDefaultVisUrl();
       await this.migrateVisUrlToMode();
@@ -86,7 +105,7 @@ class HassEmu extends utils.Adapter {
       this.log.debug(
         `Config: port=${this.config.port}, auth=${this.config.authRequired}, mdns=${this.config.mdnsEnabled}`
       );
-      this.urlDiscovery = new import_url_discovery.UrlDiscovery(this, async (states) => {
+      this.urlDiscovery = this.makeUrlDiscovery(async (states) => {
         var _a3, _b;
         await ((_a3 = this.globalConfig) == null ? void 0 : _a3.syncUrlDropdown(states));
         await ((_b = this.registry) == null ? void 0 : _b.syncUrlDropdown(states));
@@ -94,14 +113,7 @@ class HassEmu extends utils.Adapter {
       this.registry.setNewClientModeProvider(() => this.computeNewClientMode());
       await this.urlDiscovery.collect();
       try {
-        this.webServer = new import_webserver.WebServer(
-          this,
-          this.config,
-          this.registry,
-          this.globalConfig,
-          instanceUuid,
-          this.systemLanguage
-        );
+        this.webServer = this.makeWebServer(instanceUuid);
         await this.webServer.start();
       } catch (err) {
         this.log.error(`Web server failed to start: ${String(err)}`);
@@ -114,7 +126,7 @@ class HassEmu extends utils.Adapter {
       await this.subscribeStatesAsync("info.refresh_urls");
       let mdnsActive = false;
       if (this.config.mdnsEnabled) {
-        this.mdnsService = new import_mdns.MDNSService(this, this.config, instanceUuid);
+        this.mdnsService = this.makeMdnsService(instanceUuid);
         this.mdnsService.start();
         mdnsActive = this.mdnsService.isActive();
         if (!mdnsActive) {
@@ -193,6 +205,25 @@ class HassEmu extends utils.Adapter {
     }
   }
   /**
+   * Drops the legacy `defaultVisUrl`/`visUrl` keys from the instance native
+   * config. Shared by both exits of {@link migrateLegacyDefaultVisUrl} —
+   * the unsafe-rejected path and the successfully-migrated path clean up
+   * identically. Best-effort: failures only warn.
+   */
+  async cleanupLegacyNativeUrl() {
+    try {
+      const id = `system.adapter.${this.namespace}`;
+      const obj = await this.getForeignObjectAsync(id);
+      if (obj == null ? void 0 : obj.native) {
+        delete obj.native.defaultVisUrl;
+        delete obj.native.visUrl;
+        await this.setForeignObjectAsync(id, obj);
+      }
+    } catch (err) {
+      this.log.warn(`Legacy config cleanup failed: ${String(err)}`);
+    }
+  }
+  /**
    * 1.0.x / 1.1.0 → 1.1.1 migration — move the legacy `defaultVisUrl` from
    * instance native into `global.visUrl` + `global.enabled=true` and drop it
    * from native. Subsequent migrations (`migrateVisUrlToMode`) then move
@@ -207,17 +238,7 @@ class HassEmu extends utils.Adapter {
     const safe = (0, import_coerce.coerceSafeUrl)(url);
     if (!safe) {
       this.log.warn(`Migration: legacy global URL rejected as unsafe \u2014 please set global.manualUrl manually`);
-      try {
-        const id = `system.adapter.${this.namespace}`;
-        const obj = await this.getForeignObjectAsync(id);
-        if (obj == null ? void 0 : obj.native) {
-          delete obj.native.defaultVisUrl;
-          delete obj.native.visUrl;
-          await this.setForeignObjectAsync(id, obj);
-        }
-      } catch (err) {
-        this.log.warn(`Legacy config cleanup failed: ${String(err)}`);
-      }
+      await this.cleanupLegacyNativeUrl();
       return;
     }
     this.log.info(`Migrating legacy URL configuration to the new model`);
@@ -240,17 +261,7 @@ class HassEmu extends utils.Adapter {
       this.log.warn(`Legacy URL preserved in instance config \u2014 neither global URL write succeeded`);
       return;
     }
-    try {
-      const id = `system.adapter.${this.namespace}`;
-      const obj = await this.getForeignObjectAsync(id);
-      if (obj == null ? void 0 : obj.native) {
-        delete obj.native.defaultVisUrl;
-        delete obj.native.visUrl;
-        await this.setForeignObjectAsync(id, obj);
-      }
-    } catch (err) {
-      this.log.warn(`Legacy config cleanup failed: ${String(err)}`);
-    }
+    await this.cleanupLegacyNativeUrl();
   }
   /**
    * 1.x → 1.2.0 migration — move legacy per-client `visUrl`-states to the
@@ -475,4 +486,8 @@ if (require.main !== module) {
 } else {
   (() => new HassEmu())();
 }
+// Annotate the CommonJS export names for ESM import in node:
+0 && (module.exports = {
+  HassEmu
+});
 //# sourceMappingURL=main.js.map

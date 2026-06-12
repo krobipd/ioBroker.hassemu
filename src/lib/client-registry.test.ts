@@ -1,4 +1,3 @@
-import { expect } from "chai";
 import crypto from "node:crypto";
 
 vi.mock("@iobroker/adapter-core", async () => {
