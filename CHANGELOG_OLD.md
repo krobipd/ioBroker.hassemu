@@ -1,4 +1,8 @@
 # Older Changes
+## 1.33.1 (2026-05-23)
+
+- Fixed incorrect role assignment on global mode selector.
+
 ## 1.33.0 (2026-05-22)
 
 - User-modified state names are no longer overwritten on adapter restart
