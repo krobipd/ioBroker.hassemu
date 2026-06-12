@@ -1,4 +1,3 @@
-import { expect } from "chai";
 import { type InstanceObjectSchema, repairGlobalSchemas, type SchemaRepairAdapter } from "./schema-repair";
 
 const THROWS = Symbol("throws");

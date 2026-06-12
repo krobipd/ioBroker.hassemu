@@ -1,427 +1,427 @@
 {
-  "common": {
-    "name": "hassemu",
-    "version": "1.35.1",
-    "news": {
-      "1.35.1": {
-        "en": "Internal cleanup. No user-facing changes.",
-        "de": "Interne Bereinigung. Keine für Nutzer sichtbaren Änderungen.",
-        "ru": "Внутренняя очистка. Никаких изменений для пользователей.",
-        "pt": "Limpeza interna. Sem alterações visíveis para o utilizador.",
-        "nl": "Interne opruiming. Geen zichtbare wijzigingen voor gebruikers.",
-        "fr": "Nettoyage interne. Aucun changement visible pour l'utilisateur.",
-        "it": "Pulizia interna. Nessuna modifica visibile per l'utente.",
-        "es": "Limpieza interna. Sin cambios visibles para el usuario.",
-        "pl": "Wewnętrzne porządki. Brak zmian widocznych dla użytkownika.",
-        "uk": "Внутрішнє прибирання. Жодних змін для користувачів.",
-        "zh-cn": "内部清理。对用户无可见变化。"
-      },
-      "1.35.0": {
-        "en": "Added optional Sentry error reporting: crashes are sent to the developer so issues get fixed faster. Active only with ioBroker diagnostics enabled; anonymous.",
-        "de": "Optionale Fehlermeldung über Sentry hinzugefügt: Abstürze werden an den Entwickler gesendet, damit Probleme schneller behoben werden. Nur aktiv bei eingeschalteter ioBroker-Diagnose; anonym.",
-        "ru": "Добавлена необязательная отправка ошибок через Sentry: сбои отправляются разработчику, чтобы быстрее их устранять. Работает только при включённой диагностике ioBroker; анонимно.",
-        "pt": "Adicionado relatório de erros opcional via Sentry: as falhas são enviadas ao programador para corrigir problemas mais rápido. Ativo apenas com o diagnóstico do ioBroker ligado; anónimo.",
-        "nl": "Optionele foutrapportage via Sentry toegevoegd: crashes worden naar de ontwikkelaar gestuurd om problemen sneller op te lossen. Alleen actief met ioBroker-diagnostiek ingeschakeld; anoniem.",
-        "fr": "Rapport d'erreurs optionnel via Sentry ajouté : les plantages sont envoyés au développeur pour corriger plus vite. Actif seulement si le diagnostic ioBroker est activé ; anonyme.",
-        "it": "Aggiunta segnalazione errori opzionale via Sentry: gli arresti vengono inviati allo sviluppatore per risolvere prima i problemi. Attivo solo con la diagnostica ioBroker attiva; anonimo.",
-        "es": "Añadido informe de errores opcional mediante Sentry: los fallos se envían al desarrollador para solucionar problemas más rápido. Activo solo con el diagnóstico de ioBroker activado; anónimo.",
-        "pl": "Dodano opcjonalne raportowanie błędów przez Sentry: awarie są wysyłane do dewelopera, aby szybciej rozwiązywać problemy. Aktywne tylko przy włączonej diagnostyce ioBroker; anonimowo.",
-        "uk": "Додано необов'язкову відправку помилок через Sentry: збої надсилаються розробнику, щоб швидше їх виправляти. Працює лише з увімкненою діагностикою ioBroker; анонімно.",
-        "zh-cn": "新增可选的 Sentry 错误上报：崩溃信息会发送给开发者以更快修复问题。仅在启用 ioBroker 诊断时生效；匿名。"
-      },
-      "1.34.0": {
-        "en": "Home Assistant Companion App and Shelly Wall Display (firmware 2.6.0+): sign-out and device registration now complete reliably.",
-        "de": "Home Assistant Companion App und Shelly Wall Display (Firmware 2.6.0+): Abmeldung und Geräteregistrierung laufen jetzt zuverlässig durch.",
-        "ru": "Приложение Home Assistant Companion и Shelly Wall Display (прошивка 2.6.0+): выход и регистрация устройства теперь выполняются надёжно.",
-        "pt": "Aplicação Home Assistant Companion e Shelly Wall Display (firmware 2.6.0+): o fim de sessão e o registo do dispositivo agora concluem de forma fiável.",
-        "nl": "Home Assistant Companion-app en Shelly Wall Display (firmware 2.6.0+): afmelden en apparaatregistratie verlopen nu betrouwbaar.",
-        "fr": "Application Home Assistant Companion et Shelly Wall Display (firmware 2.6.0+) : la déconnexion et l'enregistrement de l'appareil aboutissent désormais de façon fiable.",
-        "it": "App Home Assistant Companion e Shelly Wall Display (firmware 2.6.0+): disconnessione e registrazione del dispositivo ora si completano in modo affidabile.",
-        "es": "Aplicación Home Assistant Companion y Shelly Wall Display (firmware 2.6.0+): el cierre de sesión y el registro del dispositivo ahora se completan de forma fiable.",
-        "pl": "Aplikacja Home Assistant Companion i Shelly Wall Display (firmware 2.6.0+): wylogowanie i rejestracja urządzenia działają teraz niezawodnie.",
-        "uk": "Застосунок Home Assistant Companion і Shelly Wall Display (прошивка 2.6.0+): вихід і реєстрація пристрою тепер завершуються надійно.",
-        "zh-cn": "Home Assistant Companion 应用和 Shelly Wall Display（固件 2.6.0+）：退出登录和设备注册现在能可靠完成。"
-      },
-      "1.33.2": {
-        "en": "Changelog rewritten in user-centric style across all versions.",
-        "de": "Changelog in benutzerfreundlichem Stil über alle Versionen umgeschrieben.",
-        "ru": "Журнал изменений переписан в пользовательском стиле для всех версий.",
-        "pt": "Changelog reescrito em estilo orientado ao utilizador em todas as versões.",
-        "nl": "Changelog herschreven in gebruikersgerichte stijl voor alle versies.",
-        "fr": "Journal des modifications réécrit dans un style orienté utilisateur pour toutes les versions.",
-        "it": "Changelog riscritto in stile orientato all utente per tutte le versioni.",
-        "es": "Registro de cambios reescrito en estilo orientado al usuario en todas las versiones.",
-        "pl": "Dziennik zmian przepisany w stylu zorientowanym na użytkownika we wszystkich wersjach.",
-        "uk": "Журнал змін переписано у стилі орієнтованому на користувача для всіх версій.",
-        "zh-cn": "所有版本的更新日志已改写为面向用户的风格。"
-      },
-      "1.33.1": {
-        "en": "Fixed incorrect role assignment on global mode selector.",
-        "de": "Falsche Rollenzuweisung am globalen Modus-Selektor korrigiert.",
-        "ru": "Исправлено неверное назначение роли глобального селектора режима.",
-        "pt": "Corrigida a atribuição de função incorreta no seletor de modo global.",
-        "nl": "Onjuiste roltoewijzing op de globale modusselector gecorrigeerd.",
-        "fr": "Correction de l attribution de rôle incorrecte sur le sélecteur de mode global.",
-        "it": "Corretta l assegnazione errata del ruolo sul selettore di modalità globale.",
-        "es": "Corregida la asignación de rol incorrecta en el selector de modo global.",
-        "pl": "Poprawiono nieprawidłowe przypisanie roli selektora trybu globalnego.",
-        "uk": "Виправлено неправильне призначення ролі глобального селектора режиму.",
-        "zh-cn": "修复全局模式选择器上不正确的角色分配。"
-      },
-      "1.33.0": {
-        "en": "User-modified state names are no longer overwritten on adapter restart.",
-        "de": "Vom Benutzer geänderte Datenpunktnamen werden beim Neustart nicht mehr überschrieben.",
-        "ru": "Пользовательские имена состояний больше не перезаписываются при перезапуске адаптера.",
-        "pt": "Nomes de estados modificados pelo utilizador já não são substituídos ao reiniciar o adaptador.",
-        "nl": "Door gebruiker gewijzigde statusnamen worden niet meer overschreven bij herstart van de adapter.",
-        "fr": "Les noms d états modifiés par l utilisateur ne sont plus écrasés au redémarrage de l adaptateur.",
-        "it": "I nomi degli stati modificati dall utente non vengono più sovrascritti al riavvio dell adattatore.",
-        "es": "Los nombres de estados modificados por el usuario ya no se sobrescriben al reiniciar el adaptador.",
-        "pl": "Nazwy stanów zmienione przez użytkownika nie są już nadpisywane przy restarcie adaptera.",
-        "uk": "Змінені користувачем назви станів більше не перезаписуються при перезапуску адаптера.",
-        "zh-cn": "用户修改的状态名称在适配器重启时不再被覆盖。"
-      },
-      "1.32.6": {
-        "en": "Improved error handling and stability.",
-        "de": "Verbesserte Fehlerbehandlung und Stabilität.",
-        "ru": "Улучшена обработка ошибок и стабильность.",
-        "pt": "Tratamento de erros e estabilidade melhorados.",
-        "nl": "Verbeterde foutafhandeling en stabiliteit.",
-        "fr": "Gestion des erreurs et stabilité améliorées.",
-        "it": "Gestione degli errori e stabilità migliorate.",
-        "es": "Mejora del manejo de errores y la estabilidad.",
-        "pl": "Poprawiona obsługa błędów i stabilność.",
-        "uk": "Покращено обробку помилок та стабільність.",
-        "zh-cn": "改进了错误处理和稳定性。"
-      }
+    "common": {
+        "name": "hassemu",
+        "version": "1.35.1",
+        "news": {
+            "NEXT": {
+                "en": "Displays with a stale registration now re-register automatically after an adapter restart; removing a display also clears its leftover app registration",
+                "de": "Displays mit veralteter Registrierung registrieren sich nach einem Adapter-Neustart jetzt automatisch neu; beim Entfernen eines Displays wird auch seine App-Registrierung aufgeräumt",
+                "ru": "Дисплеи с устаревшей регистрацией теперь автоматически перерегистрируются после перезапуска адаптера; при удалении дисплея также очищается его регистрация приложения",
+                "pt": "Displays com registo desatualizado voltam a registar-se automaticamente após o reinício do adaptador; remover um display também limpa o seu registo de app restante",
+                "nl": "Displays met een verouderde registratie registreren zich nu automatisch opnieuw na een herstart van de adapter; bij het verwijderen van een display wordt ook de app-registratie opgeruimd",
+                "fr": "Les écrans avec un enregistrement obsolète se réenregistrent automatiquement après un redémarrage de l'adaptateur ; la suppression d'un écran nettoie aussi son enregistrement d'app restant",
+                "it": "I display con una registrazione obsoleta ora si ri-registrano automaticamente dopo un riavvio dell'adattatore; la rimozione di un display elimina anche la registrazione app residua",
+                "es": "Las pantallas con un registro obsoleto ahora se vuelven a registrar automáticamente tras reiniciar el adaptador; al eliminar una pantalla también se limpia su registro de app restante",
+                "pl": "Wyświetlacze z nieaktualną rejestracją po restarcie adaptera rejestrują się teraz automatycznie ponownie; usunięcie wyświetlacza czyści też jego pozostałą rejestrację aplikacji",
+                "uk": "Дисплеї із застарілою реєстрацією тепер автоматично перереєструються після перезапуску адаптера; видалення дисплея також очищає його залишкову реєстрацію застосунку",
+                "zh-cn": "注册信息过期的显示设备在适配器重启后现在会自动重新注册；移除显示设备时也会清理其遗留的应用注册"
+            },
+            "1.35.1": {
+                "en": "Internal cleanup. No user-facing changes.",
+                "de": "Interne Bereinigung. Keine für Nutzer sichtbaren Änderungen.",
+                "ru": "Внутренняя очистка. Никаких изменений для пользователей.",
+                "pt": "Limpeza interna. Sem alterações visíveis para o utilizador.",
+                "nl": "Interne opruiming. Geen zichtbare wijzigingen voor gebruikers.",
+                "fr": "Nettoyage interne. Aucun changement visible pour l'utilisateur.",
+                "it": "Pulizia interna. Nessuna modifica visibile per l'utente.",
+                "es": "Limpieza interna. Sin cambios visibles para el usuario.",
+                "pl": "Wewnętrzne porządki. Brak zmian widocznych dla użytkownika.",
+                "uk": "Внутрішнє прибирання. Жодних змін для користувачів.",
+                "zh-cn": "内部清理。对用户无可见变化。"
+            },
+            "1.35.0": {
+                "en": "Added optional Sentry error reporting: crashes are sent to the developer so issues get fixed faster. Active only with ioBroker diagnostics enabled; anonymous.",
+                "de": "Optionale Fehlermeldung über Sentry hinzugefügt: Abstürze werden an den Entwickler gesendet, damit Probleme schneller behoben werden. Nur aktiv bei eingeschalteter ioBroker-Diagnose; anonym.",
+                "ru": "Добавлена необязательная отправка ошибок через Sentry: сбои отправляются разработчику, чтобы быстрее их устранять. Работает только при включённой диагностике ioBroker; анонимно.",
+                "pt": "Adicionado relatório de erros opcional via Sentry: as falhas são enviadas ao programador para corrigir problemas mais rápido. Ativo apenas com o diagnóstico do ioBroker ligado; anónimo.",
+                "nl": "Optionele foutrapportage via Sentry toegevoegd: crashes worden naar de ontwikkelaar gestuurd om problemen sneller op te lossen. Alleen actief met ioBroker-diagnostiek ingeschakeld; anoniem.",
+                "fr": "Rapport d'erreurs optionnel via Sentry ajouté : les plantages sont envoyés au développeur pour corriger plus vite. Actif seulement si le diagnostic ioBroker est activé ; anonyme.",
+                "it": "Aggiunta segnalazione errori opzionale via Sentry: gli arresti vengono inviati allo sviluppatore per risolvere prima i problemi. Attivo solo con la diagnostica ioBroker attiva; anonimo.",
+                "es": "Añadido informe de errores opcional mediante Sentry: los fallos se envían al desarrollador para solucionar problemas más rápido. Activo solo con el diagnóstico de ioBroker activado; anónimo.",
+                "pl": "Dodano opcjonalne raportowanie błędów przez Sentry: awarie są wysyłane do dewelopera, aby szybciej rozwiązywać problemy. Aktywne tylko przy włączonej diagnostyce ioBroker; anonimowo.",
+                "uk": "Додано необов'язкову відправку помилок через Sentry: збої надсилаються розробнику, щоб швидше їх виправляти. Працює лише з увімкненою діагностикою ioBroker; анонімно.",
+                "zh-cn": "新增可选的 Sentry 错误上报：崩溃信息会发送给开发者以更快修复问题。仅在启用 ioBroker 诊断时生效；匿名。"
+            },
+            "1.34.0": {
+                "en": "Home Assistant Companion App and Shelly Wall Display (firmware 2.6.0+): sign-out and device registration now complete reliably.",
+                "de": "Home Assistant Companion App und Shelly Wall Display (Firmware 2.6.0+): Abmeldung und Geräteregistrierung laufen jetzt zuverlässig durch.",
+                "ru": "Приложение Home Assistant Companion и Shelly Wall Display (прошивка 2.6.0+): выход и регистрация устройства теперь выполняются надёжно.",
+                "pt": "Aplicação Home Assistant Companion e Shelly Wall Display (firmware 2.6.0+): o fim de sessão e o registo do dispositivo agora concluem de forma fiável.",
+                "nl": "Home Assistant Companion-app en Shelly Wall Display (firmware 2.6.0+): afmelden en apparaatregistratie verlopen nu betrouwbaar.",
+                "fr": "Application Home Assistant Companion et Shelly Wall Display (firmware 2.6.0+) : la déconnexion et l'enregistrement de l'appareil aboutissent désormais de façon fiable.",
+                "it": "App Home Assistant Companion e Shelly Wall Display (firmware 2.6.0+): disconnessione e registrazione del dispositivo ora si completano in modo affidabile.",
+                "es": "Aplicación Home Assistant Companion y Shelly Wall Display (firmware 2.6.0+): el cierre de sesión y el registro del dispositivo ahora se completan de forma fiable.",
+                "pl": "Aplikacja Home Assistant Companion i Shelly Wall Display (firmware 2.6.0+): wylogowanie i rejestracja urządzenia działają teraz niezawodnie.",
+                "uk": "Застосунок Home Assistant Companion і Shelly Wall Display (прошивка 2.6.0+): вихід і реєстрація пристрою тепер завершуються надійно.",
+                "zh-cn": "Home Assistant Companion 应用和 Shelly Wall Display（固件 2.6.0+）：退出登录和设备注册现在能可靠完成。"
+            },
+            "1.33.2": {
+                "en": "Changelog rewritten in user-centric style across all versions.",
+                "de": "Changelog in benutzerfreundlichem Stil über alle Versionen umgeschrieben.",
+                "ru": "Журнал изменений переписан в пользовательском стиле для всех версий.",
+                "pt": "Changelog reescrito em estilo orientado ao utilizador em todas as versões.",
+                "nl": "Changelog herschreven in gebruikersgerichte stijl voor alle versies.",
+                "fr": "Journal des modifications réécrit dans un style orienté utilisateur pour toutes les versions.",
+                "it": "Changelog riscritto in stile orientato all utente per tutte le versioni.",
+                "es": "Registro de cambios reescrito en estilo orientado al usuario en todas las versiones.",
+                "pl": "Dziennik zmian przepisany w stylu zorientowanym na użytkownika we wszystkich wersjach.",
+                "uk": "Журнал змін переписано у стилі орієнтованому на користувача для всіх версій.",
+                "zh-cn": "所有版本的更新日志已改写为面向用户的风格。"
+            },
+            "1.33.1": {
+                "en": "Fixed incorrect role assignment on global mode selector.",
+                "de": "Falsche Rollenzuweisung am globalen Modus-Selektor korrigiert.",
+                "ru": "Исправлено неверное назначение роли глобального селектора режима.",
+                "pt": "Corrigida a atribuição de função incorreta no seletor de modo global.",
+                "nl": "Onjuiste roltoewijzing op de globale modusselector gecorrigeerd.",
+                "fr": "Correction de l attribution de rôle incorrecte sur le sélecteur de mode global.",
+                "it": "Corretta l assegnazione errata del ruolo sul selettore di modalità globale.",
+                "es": "Corregida la asignación de rol incorrecta en el selector de modo global.",
+                "pl": "Poprawiono nieprawidłowe przypisanie roli selektora trybu globalnego.",
+                "uk": "Виправлено неправильне призначення ролі глобального селектора режиму.",
+                "zh-cn": "修复全局模式选择器上不正确的角色分配。"
+            },
+            "1.33.0": {
+                "en": "User-modified state names are no longer overwritten on adapter restart.",
+                "de": "Vom Benutzer geänderte Datenpunktnamen werden beim Neustart nicht mehr überschrieben.",
+                "ru": "Пользовательские имена состояний больше не перезаписываются при перезапуске адаптера.",
+                "pt": "Nomes de estados modificados pelo utilizador já não são substituídos ao reiniciar o adaptador.",
+                "nl": "Door gebruiker gewijzigde statusnamen worden niet meer overschreven bij herstart van de adapter.",
+                "fr": "Les noms d états modifiés par l utilisateur ne sont plus écrasés au redémarrage de l adaptateur.",
+                "it": "I nomi degli stati modificati dall utente non vengono più sovrascritti al riavvio dell adattatore.",
+                "es": "Los nombres de estados modificados por el usuario ya no se sobrescriben al reiniciar el adaptador.",
+                "pl": "Nazwy stanów zmienione przez użytkownika nie są już nadpisywane przy restarcie adaptera.",
+                "uk": "Змінені користувачем назви станів більше не перезаписуються при перезапуску адаптера.",
+                "zh-cn": "用户修改的状态名称在适配器重启时不再被覆盖。"
+            }
+        },
+        "plugins": {
+            "sentry": {
+                "dsn": "https://66f27ceff38c1ce1e6cdcc3095ba06d3@o4511524771266560.ingest.de.sentry.io/4511524773560400"
+            }
+        },
+        "titleLang": {
+            "en": "Home Assistant Emulator",
+            "de": "Home Assistant Emulator",
+            "ru": "Эмулятор Home Assistant",
+            "pt": "Emulador de Home Assistant",
+            "nl": "Home Assistant Emulator",
+            "fr": "Émulateur Home Assistant",
+            "it": "Emulatore Home Assistant",
+            "es": "Emulador de Home Assistant",
+            "pl": "Emulator Home Assistant",
+            "uk": "Емулятор Home Assistant",
+            "zh-cn": "Home Assistant模拟器"
+        },
+        "desc": {
+            "en": "Emulates a minimal Home Assistant server so devices expecting a Home Assistant dashboard can display any custom web URL.",
+            "de": "Emuliert einen minimalen Home Assistant Server, sodass Geräte mit Home-Assistant-Dashboard-Unterstützung beliebige Web-URLs anzeigen können.",
+            "ru": "Эмулирует минимальный сервер Home Assistant, чтобы устройства, ожидающие панель управления Home Assistant, могли отображать любой пользовательский URL.",
+            "pt": "Emula um servidor Home Assistant mínimo para que dispositivos que esperam um painel do Home Assistant possam exibir qualquer URL web personalizado.",
+            "nl": "Emuleert een minimale Home Assistant server zodat apparaten die een Home Assistant dashboard verwachten elke aangepaste web-URL kunnen weergeven.",
+            "fr": "Émule un serveur Home Assistant minimal pour que les appareils attendant un tableau de bord Home Assistant puissent afficher n'importe quelle URL web personnalisée.",
+            "it": "Emula un server Home Assistant minimale in modo che i dispositivi che si aspettano una dashboard Home Assistant possano visualizzare qualsiasi URL web personalizzato.",
+            "es": "Emula un servidor Home Assistant mínimo para que los dispositivos que esperan un panel de Home Assistant puedan mostrar cualquier URL web personalizada.",
+            "pl": "Emuluje minimalny serwer Home Assistant, dzięki czemu urządzenia oczekujące pulpitu nawigacyjnego Home Assistant mogą wyświetlać dowolny niestandardowy adres URL.",
+            "uk": "Емулює мінімальний сервер Home Assistant, щоб пристрої, що очікують панель Home Assistant, могли відображати будь-яку користувацьку URL-адресу.",
+            "zh-cn": "模拟一个最小的Home Assistant服务器，使期望Home Assistant仪表板的设备能够显示任何自定义网址。"
+        },
+        "authors": [
+            "krobi <krobi@power-dreams.com>"
+        ],
+        "keywords": [
+            "homeassistant",
+            "hass",
+            "emulator",
+            "dashboard",
+            "redirect",
+            "vis"
+        ],
+        "licenseInformation": {
+            "license": "MIT",
+            "type": "free"
+        },
+        "platform": "Javascript/Node.js",
+        "icon": "hassemu.svg",
+        "extIcon": "https://raw.githubusercontent.com/krobipd/ioBroker.hassemu/main/admin/hassemu.svg",
+        "readme": "https://github.com/krobipd/ioBroker.hassemu/blob/main/README.md",
+        "enabled": true,
+        "tier": 3,
+        "loglevel": "info",
+        "mode": "daemon",
+        "type": "infrastructure",
+        "compact": true,
+        "connectionType": "local",
+        "dataSource": "push",
+        "adminUI": {
+            "config": "json"
+        },
+        "supportedMessages": {
+            "stopInstance": true
+        },
+        "dependencies": [
+            {
+                "js-controller": ">=7.1.2"
+            }
+        ],
+        "globalDependencies": [
+            {
+                "admin": ">=7.8.23"
+            }
+        ]
     },
-    "plugins": {
-      "sentry": {
-        "dsn": "https://66f27ceff38c1ce1e6cdcc3095ba06d3@o4511524771266560.ingest.de.sentry.io/4511524773560400"
-      }
-    },
-    "titleLang": {
-      "en": "Home Assistant Emulator",
-      "de": "Home Assistant Emulator",
-      "ru": "Эмулятор Home Assistant",
-      "pt": "Emulador de Home Assistant",
-      "nl": "Home Assistant Emulator",
-      "fr": "Émulateur Home Assistant",
-      "it": "Emulatore Home Assistant",
-      "es": "Emulador de Home Assistant",
-      "pl": "Emulator Home Assistant",
-      "uk": "Емулятор Home Assistant",
-      "zh-cn": "Home Assistant模拟器"
-    },
-    "desc": {
-      "en": "Emulates a minimal Home Assistant server so devices expecting a Home Assistant dashboard can display any custom web URL.",
-      "de": "Emuliert einen minimalen Home Assistant Server, sodass Geräte mit Home-Assistant-Dashboard-Unterstützung beliebige Web-URLs anzeigen können.",
-      "ru": "Эмулирует минимальный сервер Home Assistant, чтобы устройства, ожидающие панель управления Home Assistant, могли отображать любой пользовательский URL.",
-      "pt": "Emula um servidor Home Assistant mínimo para que dispositivos que esperam um painel do Home Assistant possam exibir qualquer URL web personalizado.",
-      "nl": "Emuleert een minimale Home Assistant server zodat apparaten die een Home Assistant dashboard verwachten elke aangepaste web-URL kunnen weergeven.",
-      "fr": "Émule un serveur Home Assistant minimal pour que les appareils attendant un tableau de bord Home Assistant puissent afficher n'importe quelle URL web personnalisée.",
-      "it": "Emula un server Home Assistant minimale in modo che i dispositivi che si aspettano una dashboard Home Assistant possano visualizzare qualsiasi URL web personalizzato.",
-      "es": "Emula un servidor Home Assistant mínimo para que los dispositivos que esperan un panel de Home Assistant puedan mostrar cualquier URL web personalizada.",
-      "pl": "Emuluje minimalny serwer Home Assistant, dzięki czemu urządzenia oczekujące pulpitu nawigacyjnego Home Assistant mogą wyświetlać dowolny niestandardowy adres URL.",
-      "uk": "Емулює мінімальний сервер Home Assistant, щоб пристрої, що очікують панель Home Assistant, могли відображати будь-яку користувацьку URL-адресу.",
-      "zh-cn": "模拟一个最小的Home Assistant服务器，使期望Home Assistant仪表板的设备能够显示任何自定义网址。"
-    },
-    "authors": [
-      "krobi <krobi@power-dreams.com>"
+    "encryptedNative": [
+        "password"
     ],
-    "keywords": [
-      "homeassistant",
-      "hass",
-      "emulator",
-      "dashboard",
-      "redirect",
-      "vis"
+    "protectedNative": [
+        "password"
     ],
-    "licenseInformation": {
-      "license": "MIT",
-      "type": "free"
+    "native": {
+        "port": 8123,
+        "bindAddress": "0.0.0.0",
+        "authRequired": false,
+        "username": "admin",
+        "password": "",
+        "mdnsEnabled": true,
+        "serviceName": "ioBroker"
     },
-    "platform": "Javascript/Node.js",
-    "icon": "hassemu.svg",
-    "extIcon": "https://raw.githubusercontent.com/krobipd/ioBroker.hassemu/main/admin/hassemu.svg",
-    "readme": "https://github.com/krobipd/ioBroker.hassemu/blob/main/README.md",
-    "enabled": true,
-    "tier": 3,
-    "loglevel": "info",
-    "mode": "daemon",
-    "type": "infrastructure",
-    "compact": true,
-    "connectionType": "local",
-    "dataSource": "push",
-    "adminUI": {
-      "config": "json"
-    },
-    "supportedMessages": {
-      "stopInstance": true
-    },
-    "dependencies": [
-      {
-        "js-controller": ">=7.1.2"
-      }
-    ],
-    "globalDependencies": [
-      {
-        "admin": ">=7.8.23"
-      }
+    "objects": [],
+    "instanceObjects": [
+        {
+            "_id": "info",
+            "type": "channel",
+            "common": {
+                "name": {
+                    "en": "Information",
+                    "de": "Information",
+                    "ru": "Информация",
+                    "pt": "Informação",
+                    "nl": "Informatie",
+                    "fr": "Informations",
+                    "it": "Informazioni",
+                    "es": "Información",
+                    "pl": "Informacje",
+                    "uk": "Інформація",
+                    "zh-cn": "信息"
+                }
+            },
+            "native": {}
+        },
+        {
+            "_id": "info.connection",
+            "type": "state",
+            "common": {
+                "role": "indicator.connected",
+                "name": {
+                    "en": "Server is running",
+                    "de": "Server läuft",
+                    "ru": "Сервер запущен",
+                    "pt": "Servidor em execução",
+                    "nl": "Server draait",
+                    "fr": "Serveur en marche",
+                    "it": "Server in esecuzione",
+                    "es": "Servidor en ejecución",
+                    "pl": "Serwer działa",
+                    "uk": "Сервер працює",
+                    "zh-cn": "服务器运行中"
+                },
+                "type": "boolean",
+                "read": true,
+                "write": false,
+                "def": false
+            },
+            "native": {}
+        },
+        {
+            "_id": "clients",
+            "type": "folder",
+            "common": {
+                "name": {
+                    "en": "Known display clients",
+                    "de": "Bekannte Display-Clients",
+                    "ru": "Известные display-клиенты",
+                    "pt": "Clientes de ecrã conhecidos",
+                    "nl": "Bekende display-clients",
+                    "fr": "Clients d’affichage connus",
+                    "it": "Client di display noti",
+                    "es": "Clientes de pantalla conocidos",
+                    "pl": "Znani klienci wyświetlaczy",
+                    "uk": "Відомі клієнти дисплеїв",
+                    "zh-cn": "已知显示客户端"
+                }
+            },
+            "native": {}
+        },
+        {
+            "_id": "global",
+            "type": "channel",
+            "common": {
+                "name": {
+                    "en": "Global redirect override",
+                    "de": "Globaler Weiterleitungs-Override",
+                    "ru": "Глобальное переопределение redirect",
+                    "pt": "Substituição global de redireccionamento",
+                    "nl": "Globale redirect-override",
+                    "fr": "Substitution globale de redirection",
+                    "it": "Override globale del redirect",
+                    "es": "Sobrescritura global de redirección",
+                    "pl": "Globalny redirect override",
+                    "uk": "Глобальне перевизначення redirect",
+                    "zh-cn": "全局重定向覆盖"
+                }
+            },
+            "native": {}
+        },
+        {
+            "_id": "global.enabled",
+            "type": "state",
+            "common": {
+                "name": {
+                    "en": "Apply global URL to all clients",
+                    "de": "Globale URL für alle Clients anwenden",
+                    "ru": "Применять глобальный URL для всех клиентов",
+                    "pt": "Aplicar URL global a todos os clientes",
+                    "nl": "Globale URL toepassen op alle clients",
+                    "fr": "Appliquer l’URL globale à tous les clients",
+                    "it": "Applica URL globale a tutti i client",
+                    "es": "Aplicar URL global a todos los clientes",
+                    "pl": "Stosuj globalny URL do wszystkich klientów",
+                    "uk": "Застосувати глобальний URL до всіх клієнтів",
+                    "zh-cn": "将全局 URL 应用到所有客户端"
+                },
+                "type": "boolean",
+                "role": "switch",
+                "read": true,
+                "write": true,
+                "def": false
+            },
+            "native": {}
+        },
+        {
+            "_id": "info.serverUuid",
+            "type": "state",
+            "common": {
+                "name": {
+                    "en": "HA-server UUID (stable across restarts)",
+                    "de": "HA-Server-UUID (bleibt über Neustarts hinweg)",
+                    "ru": "UUID HA-сервера (стабилен при перезапусках)",
+                    "pt": "UUID do servidor HA (estável entre reinícios)",
+                    "nl": "HA-server UUID (stabiel over herstarts)",
+                    "fr": "UUID du serveur HA (stable entre les redémarrages)",
+                    "it": "UUID del server HA (stabile tra i riavvii)",
+                    "es": "UUID del servidor HA (estable entre reinicios)",
+                    "pl": "UUID serwera HA (stabilny między restartami)",
+                    "uk": "UUID HA-сервера (стабільний між перезапусками)",
+                    "zh-cn": "HA 服务器 UUID（重启后保持不变）"
+                },
+                "desc": {
+                    "en": "Persistent UUID broadcast via mDNS and /api/discovery_info. Generated once on first start and re-used across restarts so HA-Clients don't treat each restart as a new server (which would invalidate cached identity, force re-onboarding and drop tokens).",
+                    "de": "Persistente UUID, broadcastet via mDNS und /api/discovery_info. Wird beim ersten Start einmal erzeugt und über Neustarts hinweg wiederverwendet, sodass HA-Clients nicht jeden Neustart als neuen Server behandeln (was die gecachte Identität ungültig machen, Re-Onboarding erzwingen und Tokens verwerfen würde).",
+                    "ru": "Постоянный UUID, транслируемый через mDNS и /api/discovery_info. Генерируется один раз при первом старте и переиспользуется при перезапусках, чтобы HA-клиенты не считали каждый рестарт новым сервером.",
+                    "pt": "UUID persistente difundido via mDNS e /api/discovery_info. Gerado uma vez no primeiro arranque e reutilizado entre reinícios para que os clientes HA não tratem cada reinício como um novo servidor.",
+                    "nl": "Persistente UUID die via mDNS en /api/discovery_info wordt uitgezonden. Wordt eenmaal gegenereerd bij de eerste start en blijft over herstarts behouden zodat HA-clients elke herstart niet als nieuwe server zien.",
+                    "fr": "UUID persistant diffusé via mDNS et /api/discovery_info. Généré une fois au premier démarrage et réutilisé entre redémarrages, ainsi les clients HA ne traitent pas chaque redémarrage comme un nouveau serveur.",
+                    "it": "UUID persistente trasmesso via mDNS e /api/discovery_info. Generato una volta al primo avvio e riutilizzato tra i riavvii: così i client HA non considerano ogni riavvio come un nuovo server.",
+                    "es": "UUID persistente difundido vía mDNS y /api/discovery_info. Se genera una vez en el primer arranque y se reutiliza entre reinicios para que los clientes HA no traten cada reinicio como un servidor nuevo.",
+                    "pl": "Trwały UUID rozgłaszany przez mDNS i /api/discovery_info. Generowany raz przy pierwszym starcie i ponownie używany przy restartach, aby klienci HA nie traktowali każdego restartu jako nowego serwera.",
+                    "uk": "Постійний UUID, що транслюється через mDNS та /api/discovery_info. Створюється один раз при першому запуску й повторно використовується після перезапусків, щоб HA-клієнти не сприймали кожен перезапуск як новий сервер.",
+                    "zh-cn": "通过 mDNS 和 /api/discovery_info 广播的持久 UUID。首次启动时生成一次，重启之间复用，避免 HA 客户端每次重启都视为新服务器。"
+                },
+                "type": "string",
+                "role": "text",
+                "read": true,
+                "write": false,
+                "def": ""
+            },
+            "native": {}
+        },
+        {
+            "_id": "info.refresh_urls",
+            "type": "state",
+            "common": {
+                "name": {
+                    "en": "Refresh URL discovery",
+                    "de": "URL-Erkennung neu laden",
+                    "ru": "Обновить URL-обнаружение",
+                    "pt": "Atualizar deteção de URLs",
+                    "nl": "URL-ontdekking vernieuwen",
+                    "fr": "Rafraîchir la découverte des URL",
+                    "it": "Aggiorna rilevamento URL",
+                    "es": "Refrescar detección de URLs",
+                    "pl": "Odśwież wykrywanie URL",
+                    "uk": "Оновити пошук URL",
+                    "zh-cn": "刷新 URL 发现"
+                },
+                "desc": {
+                    "en": "Write true to re-scan the broker for VIS/VIS-2 projects, Admin tiles and other discovered URLs. Useful after creating a new VIS view without restarting the adapter.",
+                    "de": "Auf true setzen, um den Broker nach VIS/VIS-2-Projekten, Admin-Kacheln und weiteren URLs neu zu durchsuchen. Sinnvoll nach Anlegen einer neuen VIS-View ohne Adapter-Neustart.",
+                    "ru": "Запишите true, чтобы пересканировать брокер на VIS/VIS-2-проекты, Admin-плитки и другие URL. Удобно после создания новой VIS-view без перезапуска адаптера.",
+                    "pt": "Escreve true para voltar a procurar projetos VIS/VIS-2, mosaicos Admin e outros URLs no broker. Útil após criar uma nova view VIS sem reiniciar o adaptador.",
+                    "nl": "Schrijf true om de broker opnieuw te scannen op VIS/VIS-2-projecten, admin-tegels en andere URLs. Handig na het aanmaken van een nieuwe VIS-view zonder de adapter te herstarten.",
+                    "fr": "Écrivez true pour ré-analyser le broker à la recherche de projets VIS/VIS-2, de tuiles Admin et d’autres URL. Utile après la création d’une nouvelle vue VIS sans redémarrer l’adaptateur.",
+                    "it": "Scrivi true per ri-scansionare il broker per progetti VIS/VIS-2, tile Admin e altri URL. Utile dopo aver creato una nuova view VIS senza riavviare l’adattatore.",
+                    "es": "Escribe true para volver a escanear el broker en busca de proyectos VIS/VIS-2, mosaicos Admin y otras URLs. Útil tras crear una nueva vista VIS sin reiniciar el adaptador.",
+                    "pl": "Wpisz true, aby ponownie przeszukać broker pod kątem projektów VIS/VIS-2, kafelków Admin i innych URL. Przydatne po utworzeniu nowego widoku VIS bez restartu adaptera.",
+                    "uk": "Запишіть true, щоб повторно сканувати брокер на проекти VIS/VIS-2, admin-плитки та інші URL. Корисно після створення нової VIS-view без перезапуску адаптера.",
+                    "zh-cn": "写入 true 以重新扫描 broker 上的 VIS/VIS-2 项目、Admin 瓷贴和其他 URL。在不重启适配器的情况下创建新 VIS 视图后很有用。"
+                },
+                "type": "boolean",
+                "role": "button",
+                "read": false,
+                "write": true,
+                "def": false
+            },
+            "native": {}
+        },
+        {
+            "_id": "global.mode",
+            "type": "state",
+            "common": {
+                "name": {
+                    "en": "Global redirect mode",
+                    "de": "Globaler Weiterleitungs-Modus",
+                    "ru": "Глобальный режим redirect",
+                    "pt": "Modo de redireccionamento global",
+                    "nl": "Globale redirect-modus",
+                    "fr": "Mode de redirection global",
+                    "it": "Modalità di redirect globale",
+                    "es": "Modo de redirección global",
+                    "pl": "Globalny tryb redirect",
+                    "uk": "Глобальний режим redirect",
+                    "zh-cn": "全局重定向模式"
+                },
+                "type": "mixed",
+                "role": "state",
+                "read": true,
+                "write": true,
+                "def": 0
+            },
+            "native": {}
+        },
+        {
+            "_id": "global.manualUrl",
+            "type": "state",
+            "common": {
+                "name": {
+                    "en": "Global manual URL (used when mode='manual')",
+                    "de": "Globale manuelle URL (genutzt wenn mode='manual')",
+                    "ru": "Глобальный ручной URL (используется при mode='manual')",
+                    "pt": "URL manual global (usado quando mode='manual')",
+                    "nl": "Globale handmatige URL (gebruikt als mode='manual')",
+                    "fr": "URL manuelle globale (utilisée quand mode='manual')",
+                    "it": "URL manuale globale (usato quando mode='manual')",
+                    "es": "URL manual global (se usa cuando mode='manual')",
+                    "pl": "Globalny ręczny URL (gdy mode='manual')",
+                    "uk": "Глобальний ручний URL (коли mode='manual')",
+                    "zh-cn": "全局手动 URL（当 mode='manual' 时使用）"
+                },
+                "type": "string",
+                "role": "url",
+                "read": true,
+                "write": true,
+                "def": ""
+            },
+            "native": {}
+        }
     ]
-  },
-  "encryptedNative": [
-    "password"
-  ],
-  "protectedNative": [
-    "password"
-  ],
-  "native": {
-    "port": 8123,
-    "bindAddress": "0.0.0.0",
-    "authRequired": false,
-    "username": "admin",
-    "password": "",
-    "mdnsEnabled": true,
-    "serviceName": "ioBroker"
-  },
-  "objects": [],
-  "instanceObjects": [
-    {
-      "_id": "info",
-      "type": "channel",
-      "common": {
-        "name": {
-          "en": "Information",
-          "de": "Information",
-          "ru": "Информация",
-          "pt": "Informação",
-          "nl": "Informatie",
-          "fr": "Informations",
-          "it": "Informazioni",
-          "es": "Información",
-          "pl": "Informacje",
-          "uk": "Інформація",
-          "zh-cn": "信息"
-        }
-      },
-      "native": {}
-    },
-    {
-      "_id": "info.connection",
-      "type": "state",
-      "common": {
-        "role": "indicator.connected",
-        "name": {
-          "en": "Server is running",
-          "de": "Server läuft",
-          "ru": "Сервер запущен",
-          "pt": "Servidor em execução",
-          "nl": "Server draait",
-          "fr": "Serveur en marche",
-          "it": "Server in esecuzione",
-          "es": "Servidor en ejecución",
-          "pl": "Serwer działa",
-          "uk": "Сервер працює",
-          "zh-cn": "服务器运行中"
-        },
-        "type": "boolean",
-        "read": true,
-        "write": false,
-        "def": false
-      },
-      "native": {}
-    },
-    {
-      "_id": "clients",
-      "type": "folder",
-      "common": {
-        "name": {
-          "en": "Known display clients",
-          "de": "Bekannte Display-Clients",
-          "ru": "Известные display-клиенты",
-          "pt": "Clientes de ecrã conhecidos",
-          "nl": "Bekende display-clients",
-          "fr": "Clients d’affichage connus",
-          "it": "Client di display noti",
-          "es": "Clientes de pantalla conocidos",
-          "pl": "Znani klienci wyświetlaczy",
-          "uk": "Відомі клієнти дисплеїв",
-          "zh-cn": "已知显示客户端"
-        }
-      },
-      "native": {}
-    },
-    {
-      "_id": "global",
-      "type": "channel",
-      "common": {
-        "name": {
-          "en": "Global redirect override",
-          "de": "Globaler Weiterleitungs-Override",
-          "ru": "Глобальное переопределение redirect",
-          "pt": "Substituição global de redireccionamento",
-          "nl": "Globale redirect-override",
-          "fr": "Substitution globale de redirection",
-          "it": "Override globale del redirect",
-          "es": "Sobrescritura global de redirección",
-          "pl": "Globalny redirect override",
-          "uk": "Глобальне перевизначення redirect",
-          "zh-cn": "全局重定向覆盖"
-        }
-      },
-      "native": {}
-    },
-    {
-      "_id": "global.enabled",
-      "type": "state",
-      "common": {
-        "name": {
-          "en": "Apply global URL to all clients",
-          "de": "Globale URL für alle Clients anwenden",
-          "ru": "Применять глобальный URL для всех клиентов",
-          "pt": "Aplicar URL global a todos os clientes",
-          "nl": "Globale URL toepassen op alle clients",
-          "fr": "Appliquer l’URL globale à tous les clients",
-          "it": "Applica URL globale a tutti i client",
-          "es": "Aplicar URL global a todos los clientes",
-          "pl": "Stosuj globalny URL do wszystkich klientów",
-          "uk": "Застосувати глобальний URL до всіх клієнтів",
-          "zh-cn": "将全局 URL 应用到所有客户端"
-        },
-        "type": "boolean",
-        "role": "switch",
-        "read": true,
-        "write": true,
-        "def": false
-      },
-      "native": {}
-    },
-    {
-      "_id": "info.serverUuid",
-      "type": "state",
-      "common": {
-        "name": {
-          "en": "HA-server UUID (stable across restarts)",
-          "de": "HA-Server-UUID (bleibt über Neustarts hinweg)",
-          "ru": "UUID HA-сервера (стабилен при перезапусках)",
-          "pt": "UUID do servidor HA (estável entre reinícios)",
-          "nl": "HA-server UUID (stabiel over herstarts)",
-          "fr": "UUID du serveur HA (stable entre les redémarrages)",
-          "it": "UUID del server HA (stabile tra i riavvii)",
-          "es": "UUID del servidor HA (estable entre reinicios)",
-          "pl": "UUID serwera HA (stabilny między restartami)",
-          "uk": "UUID HA-сервера (стабільний між перезапусками)",
-          "zh-cn": "HA 服务器 UUID（重启后保持不变）"
-        },
-        "desc": {
-          "en": "Persistent UUID broadcast via mDNS and /api/discovery_info. Generated once on first start and re-used across restarts so HA-Clients don't treat each restart as a new server (which would invalidate cached identity, force re-onboarding and drop tokens).",
-          "de": "Persistente UUID, broadcastet via mDNS und /api/discovery_info. Wird beim ersten Start einmal erzeugt und über Neustarts hinweg wiederverwendet, sodass HA-Clients nicht jeden Neustart als neuen Server behandeln (was die gecachte Identität ungültig machen, Re-Onboarding erzwingen und Tokens verwerfen würde).",
-          "ru": "Постоянный UUID, транслируемый через mDNS и /api/discovery_info. Генерируется один раз при первом старте и переиспользуется при перезапусках, чтобы HA-клиенты не считали каждый рестарт новым сервером.",
-          "pt": "UUID persistente difundido via mDNS e /api/discovery_info. Gerado uma vez no primeiro arranque e reutilizado entre reinícios para que os clientes HA não tratem cada reinício como um novo servidor.",
-          "nl": "Persistente UUID die via mDNS en /api/discovery_info wordt uitgezonden. Wordt eenmaal gegenereerd bij de eerste start en blijft over herstarts behouden zodat HA-clients elke herstart niet als nieuwe server zien.",
-          "fr": "UUID persistant diffusé via mDNS et /api/discovery_info. Généré une fois au premier démarrage et réutilisé entre redémarrages, ainsi les clients HA ne traitent pas chaque redémarrage comme un nouveau serveur.",
-          "it": "UUID persistente trasmesso via mDNS e /api/discovery_info. Generato una volta al primo avvio e riutilizzato tra i riavvii: così i client HA non considerano ogni riavvio come un nuovo server.",
-          "es": "UUID persistente difundido vía mDNS y /api/discovery_info. Se genera una vez en el primer arranque y se reutiliza entre reinicios para que los clientes HA no traten cada reinicio como un servidor nuevo.",
-          "pl": "Trwały UUID rozgłaszany przez mDNS i /api/discovery_info. Generowany raz przy pierwszym starcie i ponownie używany przy restartach, aby klienci HA nie traktowali każdego restartu jako nowego serwera.",
-          "uk": "Постійний UUID, що транслюється через mDNS та /api/discovery_info. Створюється один раз при першому запуску й повторно використовується після перезапусків, щоб HA-клієнти не сприймали кожен перезапуск як новий сервер.",
-          "zh-cn": "通过 mDNS 和 /api/discovery_info 广播的持久 UUID。首次启动时生成一次，重启之间复用，避免 HA 客户端每次重启都视为新服务器。"
-        },
-        "type": "string",
-        "role": "text",
-        "read": true,
-        "write": false,
-        "def": ""
-      },
-      "native": {}
-    },
-    {
-      "_id": "info.refresh_urls",
-      "type": "state",
-      "common": {
-        "name": {
-          "en": "Refresh URL discovery",
-          "de": "URL-Erkennung neu laden",
-          "ru": "Обновить URL-обнаружение",
-          "pt": "Atualizar deteção de URLs",
-          "nl": "URL-ontdekking vernieuwen",
-          "fr": "Rafraîchir la découverte des URL",
-          "it": "Aggiorna rilevamento URL",
-          "es": "Refrescar detección de URLs",
-          "pl": "Odśwież wykrywanie URL",
-          "uk": "Оновити пошук URL",
-          "zh-cn": "刷新 URL 发现"
-        },
-        "desc": {
-          "en": "Write true to re-scan the broker for VIS/VIS-2 projects, Admin tiles and other discovered URLs. Useful after creating a new VIS view without restarting the adapter.",
-          "de": "Auf true setzen, um den Broker nach VIS/VIS-2-Projekten, Admin-Kacheln und weiteren URLs neu zu durchsuchen. Sinnvoll nach Anlegen einer neuen VIS-View ohne Adapter-Neustart.",
-          "ru": "Запишите true, чтобы пересканировать брокер на VIS/VIS-2-проекты, Admin-плитки и другие URL. Удобно после создания новой VIS-view без перезапуска адаптера.",
-          "pt": "Escreve true para voltar a procurar projetos VIS/VIS-2, mosaicos Admin e outros URLs no broker. Útil após criar uma nova view VIS sem reiniciar o adaptador.",
-          "nl": "Schrijf true om de broker opnieuw te scannen op VIS/VIS-2-projecten, admin-tegels en andere URLs. Handig na het aanmaken van een nieuwe VIS-view zonder de adapter te herstarten.",
-          "fr": "Écrivez true pour ré-analyser le broker à la recherche de projets VIS/VIS-2, de tuiles Admin et d’autres URL. Utile après la création d’une nouvelle vue VIS sans redémarrer l’adaptateur.",
-          "it": "Scrivi true per ri-scansionare il broker per progetti VIS/VIS-2, tile Admin e altri URL. Utile dopo aver creato una nuova view VIS senza riavviare l’adattatore.",
-          "es": "Escribe true para volver a escanear el broker en busca de proyectos VIS/VIS-2, mosaicos Admin y otras URLs. Útil tras crear una nueva vista VIS sin reiniciar el adaptador.",
-          "pl": "Wpisz true, aby ponownie przeszukać broker pod kątem projektów VIS/VIS-2, kafelków Admin i innych URL. Przydatne po utworzeniu nowego widoku VIS bez restartu adaptera.",
-          "uk": "Запишіть true, щоб повторно сканувати брокер на проекти VIS/VIS-2, admin-плитки та інші URL. Корисно після створення нової VIS-view без перезапуску адаптера.",
-          "zh-cn": "写入 true 以重新扫描 broker 上的 VIS/VIS-2 项目、Admin 瓷贴和其他 URL。在不重启适配器的情况下创建新 VIS 视图后很有用。"
-        },
-        "type": "boolean",
-        "role": "button",
-        "read": false,
-        "write": true,
-        "def": false
-      },
-      "native": {}
-    },
-    {
-      "_id": "global.mode",
-      "type": "state",
-      "common": {
-        "name": {
-          "en": "Global redirect mode",
-          "de": "Globaler Weiterleitungs-Modus",
-          "ru": "Глобальный режим redirect",
-          "pt": "Modo de redireccionamento global",
-          "nl": "Globale redirect-modus",
-          "fr": "Mode de redirection global",
-          "it": "Modalità di redirect globale",
-          "es": "Modo de redirección global",
-          "pl": "Globalny tryb redirect",
-          "uk": "Глобальний режим redirect",
-          "zh-cn": "全局重定向模式"
-        },
-        "type": "mixed",
-        "role": "state",
-        "read": true,
-        "write": true,
-        "def": 0
-      },
-      "native": {}
-    },
-    {
-      "_id": "global.manualUrl",
-      "type": "state",
-      "common": {
-        "name": {
-          "en": "Global manual URL (used when mode='manual')",
-          "de": "Globale manuelle URL (genutzt wenn mode='manual')",
-          "ru": "Глобальный ручной URL (используется при mode='manual')",
-          "pt": "URL manual global (usado quando mode='manual')",
-          "nl": "Globale handmatige URL (gebruikt als mode='manual')",
-          "fr": "URL manuelle globale (utilisée quand mode='manual')",
-          "it": "URL manuale globale (usato quando mode='manual')",
-          "es": "URL manual global (se usa cuando mode='manual')",
-          "pl": "Globalny ręczny URL (gdy mode='manual')",
-          "uk": "Глобальний ручний URL (коли mode='manual')",
-          "zh-cn": "全局手动 URL（当 mode='manual' 时使用）"
-        },
-        "type": "string",
-        "role": "url",
-        "read": true,
-        "write": true,
-        "def": ""
-      },
-      "native": {}
-    }
-  ]
 }

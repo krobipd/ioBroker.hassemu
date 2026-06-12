@@ -27,6 +27,7 @@ export default [
       "*.config.mjs",
       "build",
       "admin",
+      "coverage",
       "node_modules",
       "**/adapter-config.d.ts",
     ],

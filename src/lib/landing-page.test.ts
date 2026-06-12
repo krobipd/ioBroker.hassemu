@@ -1,5 +1,3 @@
-import { expect } from "chai";
-
 // The page now pulls its copy from admin/i18n via adapter-core I18n — mock it to
 // serve the real translations from the JSON files (same pattern as webserver.test).
 vi.mock("@iobroker/adapter-core", async () => {

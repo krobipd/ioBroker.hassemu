@@ -81,7 +81,8 @@ export class WebServer {
    * Mobile-App webhook registrations from `POST /api/mobile_app/registrations`
    * (v1.29.1). Key = webhookId (URL secret), Value = owning client cookie id.
    * Subsequent `POST /api/webhook/<id>` requests are validated against this
-   * map. FIFO-capped at {@link WEBHOOK_REGISTRATIONS_CAP}.
+   * map. FIFO-capped at {@link WEBHOOK_REGISTRATIONS_CAP}; entries whose
+   * owning client was removed are pruned in {@link cleanupSessions} (v1.35.2).
    *
    * Reused for Shelly Wall Display FW 2.6.0+ onboarding — the on-device HA
    * Companion App requires this endpoint to complete device registration
@@ -90,16 +91,17 @@ export class WebServer {
    *
    * **Design — in-memory only, by intent.** The map is NOT persisted across
    * adapter restarts. Restart-recovery relies on the
-   * `POST /api/webhook/<unknown-id>` branch returning HTTP 200 with an
-   * empty body — the HA Companion App reads that as a stale webhook and
-   * re-runs `update_registration`, which on hassemu issues a fresh
-   * webhookId. (Source: home-assistant/android
-   * IntegrationRepositoryImpl.kt:170 — `200 with empty body triggers
-   * maybeReregisterDeviceOnFailedUpdate`.)
+   * `POST /api/webhook/<unknown-id>` branch returning HTTP 200 with a
+   * truly EMPTY body — the HA Companion App reads that as a stale webhook
+   * and re-runs `registerDevice`, which on hassemu issues a fresh
+   * webhookId. (Source, verified at tag 2026.4.4: home-assistant/android
+   * IntegrationRepositoryImpl.kt:167-171 — the trigger is
+   * `response.code() == 200 && response.body()?.contentLength() == 0L`.)
    *
    * If a future refactor changes the unknown-webhookId response from
-   * `200 empty` to `404`, displays will silently break across adapter
-   * restarts. Keep that response shape OR add real persistence here.
+   * `200 empty` to `404` or to any non-empty body (even JSON `null`),
+   * displays will silently break across adapter restarts. Keep that
+   * response shape OR add real persistence here.
    */
   public readonly webhookRegistrations: Map<string, string> = new Map();
   /**
@@ -276,6 +278,22 @@ export class WebServer {
     if (prunedTargets > 0) {
       this.adapter.log.debug(`Cleanup: pruned ${prunedTargets} stale redirect-target entries`);
     }
+
+    // v1.35.2: prune webhook registrations whose owning client was removed
+    // (remove button / stale-GC). Without this, an orphaned display keeps
+    // getting 200s on its webhook instead of falling into re-registration.
+    // ownerId === "" means "unowned" (authRequired=false registration without
+    // a Bearer token) — those have no client to check against and must stay.
+    let prunedWebhooks = 0;
+    for (const [webhookId, ownerId] of this.webhookRegistrations) {
+      if (ownerId !== "" && !activeClients.has(ownerId)) {
+        this.webhookRegistrations.delete(webhookId);
+        prunedWebhooks++;
+      }
+    }
+    if (prunedWebhooks > 0) {
+      this.adapter.log.debug(`Cleanup: pruned ${prunedWebhooks} webhook registrations of removed clients`);
+    }
   }
 
   /**
@@ -337,8 +355,6 @@ export class WebServer {
     } else {
       const reason = cookie ? "cookie-stale (unknown)" : "no-cookie";
       this.adapter.log.debug(`identify: ${reason}, new client=${record.id} ip=${ip ?? "?"}`);
-    }
-    if (cookie !== record.cookie) {
       // v1.25.0 (C11): Cookie `secure: true` wenn TLS — Browser sendet
       // den Cookie dann nur über HTTPS. Bei trustProxy=true kommt
       // `req.protocol` aus `X-Forwarded-Proto`-Header. Default ohne
@@ -652,18 +668,21 @@ export class WebServer {
     }>("/api/webhook/:webhookId", async (req, reply) => {
       const id = req.params.webhookId;
       if (!this.webhookRegistrations.has(id)) {
-        // Unknown webhookId — match HA's 200-empty for stale webhooks
-        // so the App falls back to `update_registration` (which on
-        // hassemu re-issues a new registration). Source:
-        // home-assistant/android IntegrationRepositoryImpl.kt:170 —
-        // 200 with empty body triggers `maybeReregisterDeviceOnFailedUpdate`.
+        // Unknown webhookId — match HA's 200-empty for stale webhooks so the
+        // App re-registers. Source (verified at tag 2026.4.4):
+        // home-assistant/android IntegrationRepositoryImpl.kt:167-171 —
+        // `updateRegistration` re-runs `registerDevice` ONLY when
+        // `response.code() == 200 && response.body()?.contentLength() == 0L`.
+        // The body MUST therefore be truly empty: `return null` would let
+        // Fastify serialize the 4-byte JSON text "null" (contentLength 4),
+        // the Companion would take the success branch and the display would
+        // stay broken silently (v1.35.2 fix).
         // v1.32.0 E3: stale-id ist DAS Symptom für re-registration-loop —
         // Companion macht webhook-call mit Token aus Pre-Restart-Era.
         this.adapter.log.debug(
           `Webhook fallthrough: stale id=${id.substring(0, 8)}… — App will trigger re-registration`,
         );
-        reply.status(200);
-        return null;
+        return reply.status(200).send();
       }
       const body = req.body ?? {};
       const type = typeof body.type === "string" ? body.type : "";
