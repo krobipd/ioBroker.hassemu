@@ -60,8 +60,8 @@ class MDNSService {
   /** Start mDNS broadcasting via bonjour-service */
   start() {
     var _a, _b, _c;
-    const localIP = (0, import_network.getLocalIp)();
-    const baseUrl = `http://${localIP}:${this.config.port}`;
+    const host = (0, import_network.resolveAdvertisedHost)(this.config.bindAddress);
+    const baseUrl = `http://${host}:${this.config.port}`;
     const serviceName = this.config.serviceName || "ioBroker";
     try {
       this.bonjour = new import_bonjour_service.default();
@@ -96,7 +96,7 @@ class MDNSService {
       });
       this.active = true;
       this.adapter.log.debug(
-        `mDNS: Broadcasting ${serviceName}._home-assistant._tcp.local on ${localIP}:${this.config.port}`
+        `mDNS: Broadcasting ${serviceName}._home-assistant._tcp.local on ${host}:${this.config.port}`
       );
       this.adapter.log.debug(`mDNS: UUID: ${this.uuid}`);
     } catch (error) {

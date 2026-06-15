@@ -30,7 +30,8 @@ var network_exports = {};
 __export(network_exports, {
   generateClientId: () => generateClientId,
   getLocalIp: () => getLocalIp,
-  isWildcardBind: () => isWildcardBind
+  isWildcardBind: () => isWildcardBind,
+  resolveAdvertisedHost: () => resolveAdvertisedHost
 });
 module.exports = __toCommonJS(network_exports);
 var import_node_crypto = __toESM(require("node:crypto"));
@@ -70,6 +71,12 @@ function isWildcardBind(bindAddress) {
   }
   return bindAddress === "0.0.0.0" || bindAddress === "::";
 }
+function resolveAdvertisedHost(bindAddress) {
+  if (bindAddress && !isWildcardBind(bindAddress)) {
+    return bindAddress;
+  }
+  return getLocalIp();
+}
 function generateClientId() {
   return import_node_crypto.default.randomBytes(3).toString("hex");
 }
@@ -77,6 +84,7 @@ function generateClientId() {
 0 && (module.exports = {
   generateClientId,
   getLocalIp,
-  isWildcardBind
+  isWildcardBind,
+  resolveAdvertisedHost
 });
 //# sourceMappingURL=network.js.map

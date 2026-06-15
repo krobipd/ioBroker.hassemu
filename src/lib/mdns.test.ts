@@ -150,6 +150,17 @@ describe("MDNSService", () => {
       defaultService.stop();
     });
   });
+
+  describe("advertised host (bind-aware base_url)", () => {
+    it("advertises the configured concrete bind address (matches /api/discovery_info)", () => {
+      const boundConfig: AdapterConfig = { ...config, bindAddress: "192.168.1.50" };
+      const boundService = new MDNSService(adapter as never, boundConfig, crypto.randomUUID());
+      boundService.start();
+      const broadcastLog = adapter._logs.find(l => l.level === "debug" && l.msg.includes("mDNS: Broadcasting"));
+      expect(broadcastLog!.msg).to.include("192.168.1.50:8123");
+      boundService.stop();
+    });
+  });
 });
 
 describe("MDNSService cross-platform", () => {

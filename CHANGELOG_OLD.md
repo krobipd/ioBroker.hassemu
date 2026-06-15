@@ -1,4 +1,8 @@
 # Older Changes
+## 1.33.2 (2026-05-23)
+
+- Changelog rewritten in user-centric style across all versions.
+
 ## 1.33.1 (2026-05-23)
 
 - Fixed incorrect role assignment on global mode selector.

@@ -1,4 +1,4 @@
-import { generateClientId, getLocalIp, isWildcardBind } from "./network";
+import { generateClientId, getLocalIp, isWildcardBind, resolveAdvertisedHost } from "./network";
 
 describe("network", () => {
   describe("getLocalIp", () => {
@@ -28,6 +28,26 @@ describe("network", () => {
       expect(isWildcardBind("192.168.1.10")).to.be.false;
       expect(isWildcardBind("127.0.0.1")).to.be.false;
       expect(isWildcardBind("::1")).to.be.false;
+    });
+  });
+
+  describe("resolveAdvertisedHost", () => {
+    it("advertises a concrete bind address verbatim", () => {
+      expect(resolveAdvertisedHost("192.168.1.10")).to.equal("192.168.1.10");
+      expect(resolveAdvertisedHost("127.0.0.1")).to.equal("127.0.0.1");
+      expect(resolveAdvertisedHost("::1")).to.equal("::1");
+    });
+
+    it("falls back to getLocalIp() for wildcard / empty binds — identical to before", () => {
+      // Regression surface: almost every install runs a wildcard bind, so the
+      // resolved host MUST stay exactly getLocalIp() for these — no behaviour
+      // change vs. the previous unconditional getLocalIp() in mdns.ts.
+      const local = getLocalIp();
+      expect(resolveAdvertisedHost("")).to.equal(local);
+      expect(resolveAdvertisedHost(undefined)).to.equal(local);
+      expect(resolveAdvertisedHost(null)).to.equal(local);
+      expect(resolveAdvertisedHost("0.0.0.0")).to.equal(local);
+      expect(resolveAdvertisedHost("::")).to.equal(local);
     });
   });
 
