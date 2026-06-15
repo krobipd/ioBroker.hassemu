@@ -59,6 +59,32 @@ export function isWildcardBind(bindAddress: string | undefined | null): boolean 
 }
 
 /**
+ * Returns the host this server should advertise as its OWN address — used by
+ * both the mDNS `base_url`/`internal_url` TXT records and `/api/discovery_info`.
+ *
+ * A concrete (non-wildcard) bind address is exactly where the server listens,
+ * so advertise it verbatim. Only for a wildcard bind (`0.0.0.0` / `::` / empty)
+ * do we fall back to the first routable non-internal IPv4 via {@link getLocalIp}.
+ *
+ * Single source of truth so the two discovery channels never diverge: before
+ * this, `mdns.ts` advertised `getLocalIp()` unconditionally while
+ * `/api/discovery_info` already preferred the bind address — on a multi-homed
+ * host mDNS could point Home Assistant clients at a different interface than the
+ * one actually bound, breaking auto-discovery.
+ *
+ * @param bindAddress The configured bind address.
+ */
+export function resolveAdvertisedHost(bindAddress: string | undefined | null): string {
+  // The `bindAddress &&` keeps the type narrowed to a non-empty string for the
+  // return (isWildcardBind alone doesn't narrow); it also short-circuits the
+  // wildcard/empty cases to getLocalIp below.
+  if (bindAddress && !isWildcardBind(bindAddress)) {
+    return bindAddress;
+  }
+  return getLocalIp();
+}
+
+/**
  * Generates a short (6-char), URL-safe, lowercase hex client ID.
  * 16^6 = 16.7 million combinations — sufficient for home networks, readable as
  * a datapoint segment. Uses `crypto.randomBytes` for consistency with the rest

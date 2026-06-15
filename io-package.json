@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.35.2",
+    "version": "1.35.3",
     "news": {
+      "1.35.3": {
+        "en": "Fixed Home Assistant discovery pointing the display at the wrong address on multi-interface hosts; it now uses the address the adapter actually listens on.",
+        "de": "Behoben: Home-Assistant-Discovery verwies das Display auf Multi-Interface-Hosts auf die falsche Adresse; jetzt wird die Adresse genutzt, auf der der Adapter wirklich lauscht.",
+        "ru": "Исправлено: обнаружение Home Assistant на хостах с несколькими интерфейсами направляло дисплей на неверный адрес; теперь используется адрес, который адаптер действительно слушает.",
+        "pt": "Corrigido: a deteção do Home Assistant apontava o ecrã para o endereço errado em hosts com várias interfaces; agora usa o endereço em que o adaptador realmente escuta.",
+        "nl": "Opgelost: Home Assistant-detectie wees het display op multi-interface hosts naar het verkeerde adres; nu wordt het adres gebruikt waarop de adapter echt luistert.",
+        "fr": "Corrigé : la découverte Home Assistant dirigeait l'écran vers la mauvaise adresse sur les hôtes multi-interfaces ; elle utilise maintenant l'adresse réelle d'écoute de l'adaptateur.",
+        "it": "Corretto: il rilevamento di Home Assistant indirizzava il display all'indirizzo sbagliato su host multi-interfaccia; ora usa l'indirizzo su cui l'adattatore è davvero in ascolto.",
+        "es": "Corregido: la detección de Home Assistant dirigía la pantalla a la dirección equivocada en hosts con varias interfaces; ahora usa la dirección en la que el adaptador realmente escucha.",
+        "pl": "Naprawiono: wykrywanie Home Assistant kierowało wyświetlacz na zły adres na hostach z wieloma interfejsami; teraz używa adresu, na którym adapter faktycznie nasłuchuje.",
+        "uk": "Виправлено: виявлення Home Assistant спрямовувало дисплей на неправильну адресу на хостах із кількома інтерфейсами; тепер використовується адреса, яку адаптер дійсно слухає.",
+        "zh-cn": "修复了在多网络接口主机上 Home Assistant 发现将显示设备指向错误地址的问题；现在使用适配器实际监听的地址。"
+      },
       "1.35.2": {
         "en": "Displays with a stale registration now re-register automatically after an adapter restart; removing a display also clears its leftover app registration",
         "de": "Displays mit veralteter Registrierung registrieren sich nach einem Adapter-Neustart jetzt automatisch neu; beim Entfernen eines Displays wird auch seine App-Registrierung aufgeräumt",
@@ -80,19 +93,6 @@
         "pl": "Poprawiono nieprawidłowe przypisanie roli selektora trybu globalnego.",
         "uk": "Виправлено неправильне призначення ролі глобального селектора режиму.",
         "zh-cn": "修复全局模式选择器上不正确的角色分配。"
-      },
-      "1.33.0": {
-        "en": "User-modified state names are no longer overwritten on adapter restart.",
-        "de": "Vom Benutzer geänderte Datenpunktnamen werden beim Neustart nicht mehr überschrieben.",
-        "ru": "Пользовательские имена состояний больше не перезаписываются при перезапуске адаптера.",
-        "pt": "Nomes de estados modificados pelo utilizador já não são substituídos ao reiniciar o adaptador.",
-        "nl": "Door gebruiker gewijzigde statusnamen worden niet meer overschreven bij herstart van de adapter.",
-        "fr": "Les noms d états modifiés par l utilisateur ne sont plus écrasés au redémarrage de l adaptateur.",
-        "it": "I nomi degli stati modificati dall utente non vengono più sovrascritti al riavvio dell adattatore.",
-        "es": "Los nombres de estados modificados por el usuario ya no se sobrescriben al reiniciar el adaptador.",
-        "pl": "Nazwy stanów zmienione przez użytkownika nie są już nadpisywane przy restarcie adaptera.",
-        "uk": "Змінені користувачем назви станів більше не перезаписуються при перезапуску адаптера.",
-        "zh-cn": "用户修改的状态名称在适配器重启时不再被覆盖。"
       }
     },
     "plugins": {

@@ -1,6 +1,6 @@
 import Bonjour from "bonjour-service";
 import { HA_VERSION } from "./constants";
-import { getLocalIp } from "./network";
+import { resolveAdvertisedHost } from "./network";
 import type { AdapterConfig, AdapterInterface } from "./types";
 
 type PublishedService = ReturnType<InstanceType<typeof Bonjour>["publish"]>;
@@ -34,8 +34,8 @@ export class MDNSService {
 
   /** Start mDNS broadcasting via bonjour-service */
   start(): void {
-    const localIP = getLocalIp();
-    const baseUrl = `http://${localIP}:${this.config.port}`;
+    const host = resolveAdvertisedHost(this.config.bindAddress);
+    const baseUrl = `http://${host}:${this.config.port}`;
     const serviceName = this.config.serviceName || "ioBroker";
 
     try {
@@ -81,7 +81,7 @@ export class MDNSService {
       this.active = true;
 
       this.adapter.log.debug(
-        `mDNS: Broadcasting ${serviceName}._home-assistant._tcp.local on ${localIP}:${this.config.port}`,
+        `mDNS: Broadcasting ${serviceName}._home-assistant._tcp.local on ${host}:${this.config.port}`,
       );
       this.adapter.log.debug(`mDNS: UUID: ${this.uuid}`);
     } catch (error) {

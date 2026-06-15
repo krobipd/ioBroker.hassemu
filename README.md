@@ -160,6 +160,9 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+### 1.35.3 (2026-06-15)
+- Fixed Home Assistant discovery pointing the display at the wrong address on multi-interface hosts; it now uses the address the adapter actually listens on.
+
 ### 1.35.2 (2026-06-12)
 
 - Displays whose registration became stale after an adapter restart now re-register automatically — the server previously answered in a way the companion app did not recognize as "please register again"
@@ -176,10 +179,6 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 ### 1.34.0 (2026-06-02)
 
 - Home Assistant Companion App and Shelly Wall Display (firmware 2.6.0+): sign-out and device registration now complete reliably.
-
-### 1.33.2 (2026-05-23)
-
-- Changelog rewritten in user-centric style across all versions.
 
 [Older changelogs can be found there](CHANGELOG_OLD.md)
 

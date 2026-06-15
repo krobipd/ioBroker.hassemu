@@ -413,8 +413,7 @@ class WebServer {
     this.app.get("/api/", () => ({ message: "API running." }));
     this.app.get("/api/config", () => this.buildHaConfig());
     this.app.get("/api/discovery_info", () => {
-      const isWildcard = !this.config.bindAddress || (0, import_network.isWildcardBind)(this.config.bindAddress);
-      const host = isWildcard ? (0, import_network.getLocalIp)() : this.config.bindAddress;
+      const host = (0, import_network.resolveAdvertisedHost)(this.config.bindAddress);
       const baseUrl = `http://${host}:${this.config.port}`;
       return {
         base_url: baseUrl,

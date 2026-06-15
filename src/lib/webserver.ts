@@ -23,7 +23,7 @@ import { buildRedirectUrl, renderAuthorizeError, renderAuthorizeForm, renderAuth
 import type { ClientRegistry } from "./client-registry";
 import type { GlobalConfig } from "./global-config";
 import { renderLandingPage } from "./landing-page";
-import { getLocalIp, isWildcardBind } from "./network";
+import { resolveAdvertisedHost } from "./network";
 import { renderRedirectWrapper } from "./redirect-wrapper";
 import type { AdapterConfig, AdapterInterface, ClientRecord, SessionData } from "./types";
 
@@ -555,10 +555,9 @@ export class WebServer {
       // v1.17.0 (E11): NICHT mehr `req.hostname` — der Host-Header ist
       // client-controlled und ein Angreifer könnte mit `Host: attacker.lan`
       // andere HA-Clients zur falschen URL umleiten. Stattdessen die
-      // tatsächlich gebundene Adresse: bindAddress (ggf. wildcard) oder
-      // ersten lokalen non-internal IPv4 via getLocalIp.
-      const isWildcard = !this.config.bindAddress || isWildcardBind(this.config.bindAddress);
-      const host = isWildcard ? getLocalIp() : this.config.bindAddress;
+      // tatsächlich gebundene Adresse via resolveAdvertisedHost (konkrete
+      // bindAddress, sonst getLocalIp) — identisch zum mDNS-Advert.
+      const host = resolveAdvertisedHost(this.config.bindAddress);
       const baseUrl = `http://${host}:${this.config.port}`;
       return {
         base_url: baseUrl,
