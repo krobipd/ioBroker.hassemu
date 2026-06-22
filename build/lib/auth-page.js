@@ -69,7 +69,7 @@ ${opts.bodyExtra}` : ""}
 }
 function renderAuthorizeRedirect(target) {
   const a = (0, import_coerce.escapeHtml)(target);
-  const j = JSON.stringify(target);
+  const j = JSON.stringify(target).replace(/</g, "\\u003C");
   return htmlShell({
     title: "Home Assistant",
     headExtra: `<meta http-equiv="refresh" content="0; URL=${a}">`,

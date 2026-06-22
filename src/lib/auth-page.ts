@@ -101,7 +101,10 @@ ${opts.cardInner}
  */
 export function renderAuthorizeRedirect(target: string): string {
   const a = escAttr(target);
-  const j = JSON.stringify(target); // safe for inline JS string literal
+  // A `</script>` inside `target` would close the inline <script> at the HTML
+  // tokenizer level (before JS parses the string literal), so JSON.stringify
+  // alone is NOT enough — also escape `<` to its JS unicode escape `<`.
+  const j = JSON.stringify(target).replace(/</g, "\\u003C");
   return htmlShell({
     title: "Home Assistant",
     headExtra: `<meta http-equiv="refresh" content="0; URL=${a}">`,

@@ -17,12 +17,19 @@ import {
   coerceUuid,
   evictOldest,
   isPlainObject,
+  oneLine,
   parseAdapterStateId,
   parseManualUrlWrite,
   parseModeWrite,
   safeGetState,
 } from "./coerce";
-import { MODE_GLOBAL, MODE_MANUAL, NEW_CLIENT_BURST_CAP } from "./constants";
+import {
+  MODE_GLOBAL,
+  MODE_MANUAL,
+  NEW_CLIENT_BURST_CAP,
+  NEW_CLIENT_THROTTLE_PER_HOUR,
+  OAUTH_ACCESS_TOKEN_TTL_S,
+} from "./constants";
 import { resolveLabel, tName } from "./i18n";
 import { generateClientId } from "./network";
 import type { AdapterInterface, ClientRecord, UrlStates } from "./types";
@@ -133,6 +140,9 @@ export class ClientRegistry {
         const ip = coerceString(ipRaw);
         const token = coerceUuid(native.token);
         const refreshToken = coerceUuid(native.refreshToken);
+        // v1.36.0 (S5): restore the persisted access-token expiry so a token that
+        // already expired before the restart is rejected by getByToken on next use.
+        const tokenExpiresAt = token && typeof native.tokenExpiresAt === "number" ? native.tokenExpiresAt : null;
 
         // Legacy migration (<=1.1.1): hostname lived in its own state. If present,
         // move the value into common.name and drop the state.
@@ -154,7 +164,7 @@ export class ClientRegistry {
         }
         const hostname = channelName && channelName !== ip && channelName !== id ? channelName : null;
 
-        const record: ClientRecord = { id, cookie, token, refreshToken, mode, manualUrl, ip, hostname };
+        const record: ClientRecord = { id, cookie, token, tokenExpiresAt, refreshToken, mode, manualUrl, ip, hostname };
         this.trackInMemory(record);
         // Legacy clients (v1.1.x) only had `visUrl` + `ip` + `remove` objects;
         // ensure the v1.2.0+ objects (`mode`, `manualUrl`) exist before any
@@ -210,6 +220,14 @@ export class ClientRegistry {
     // Klau-Vektor). UA-Hash truncated auf 12 Hex-Chars um Memory-Footprint
     // klein zu halten. Bei UA=null fällt der Bucket auf reines IP zurück.
     if (ip) {
+      // Refuse to mint a new *persistent* client for an IP spraying cookieless
+      // requests — hand out a transient (non-persisted, no object) record so the
+      // ioBroker object DB cannot grow without bound. A real display keeps its
+      // cookie and is identified above, so it never reaches this throttle.
+      if (this.isIpThrottled(ip)) {
+        this.adapter.log.debug(`identify: IP ${ip} over new-client throttle — serving a transient record (no object)`);
+        return this.transientRecord(ip, hostname);
+      }
       const bucketKey = userAgent
         ? `${ip}|${crypto.createHash("sha256").update(userAgent).digest("hex").substring(0, 12)}`
         : ip;
@@ -268,7 +286,21 @@ export class ClientRegistry {
    * @param token Bearer token.
    */
   getByToken(token: string): ClientRecord | null {
-    return this.byToken.get(token) ?? null;
+    const record = this.byToken.get(token);
+    if (!record) {
+      return null;
+    }
+    // v1.36.0 (S5): reject (and drop) an expired access token so the advertised
+    // 30-min TTL is enforced — a captured token stops working once it expires.
+    // Refresh tokens stay long-lived (byRefreshToken) for HA Companion compat.
+    if (record.tokenExpiresAt != null && Date.now() > record.tokenExpiresAt) {
+      this.byToken.delete(token);
+      if (record.token === token) {
+        record.token = null;
+      }
+      return null;
+    }
+    return record;
   }
 
   /**
@@ -300,10 +332,15 @@ export class ClientRegistry {
       this.byToken.delete(record.token);
     }
     record.token = token;
+    // v1.36.0 (S5): stamp the access-token expiry so the advertised 30-min TTL is
+    // actually enforced (see getByToken) — a captured token can't be replayed forever.
+    record.tokenExpiresAt = token ? Date.now() + OAUTH_ACCESS_TOKEN_TTL_S * 1000 : null;
     if (token) {
       this.byToken.set(token, record);
     }
-    await this.adapter.extendObjectAsync(`clients.${id}`, { native: { token } });
+    await this.adapter.extendObjectAsync(`clients.${id}`, {
+      native: { token, tokenExpiresAt: record.tokenExpiresAt },
+    });
   }
 
   /**
@@ -537,7 +574,9 @@ export class ClientRegistry {
     this.trackInMemory(record);
     await this.createObjects(record);
     this.touchLastSeen(record);
-    this.adapter.log.info(ip ? `New client connected: ${id} (${hostname ?? ip})` : `New client connected: ${id}`);
+    this.adapter.log.info(
+      ip ? `New client connected: ${id} (${oneLine(hostname ?? ip)})` : `New client connected: ${id}`,
+    );
     // v1.19.0 (G5): IP-Burst-Detection für broken-cookie-Displays. Wenn
     // dieselbe IP > 3 neue Clients in einer Stunde erzeugt, ist der Cookie-
     // Mechanismus auf dem Display kaputt (aggressive Privacy, refresh-bug).
@@ -547,6 +586,46 @@ export class ClientRegistry {
       this.recordNewClientIp(ip);
     }
     return record;
+  }
+
+  /**
+   * True when `ip` has already minted {@link NEW_CLIENT_THROTTLE_PER_HOUR} new
+   * clients in the current rolling hour — {@link recordNewClientIp} owns the
+   * per-IP burst window. Once true, `identifyOrCreate` hands out transient
+   * records (no object) until the window resets one hour after the burst began.
+   *
+   * @param ip Remote IP to check.
+   */
+  private isIpThrottled(ip: string): boolean {
+    const entry = this.newClientBurst.get(ip);
+    if (!entry || Date.now() - entry.since > 60 * 60 * 1000) {
+      return false;
+    }
+    return entry.count >= NEW_CLIENT_THROTTLE_PER_HOUR;
+  }
+
+  /**
+   * A non-persisted, untracked client handed out when an IP is over the
+   * new-client throttle. No `clients.<id>` object is created and the record is
+   * not added to any lookup map, so a cookieless spray cannot grow the object
+   * DB. Mode is the normal new-client default, so a legitimate-but-throttled
+   * client (e.g. behind a busy NAT) still resolves to the configured dashboard
+   * — it just doesn't get a persistent identity.
+   *
+   * @param ip       Remote IP (advisory).
+   * @param hostname Reverse-DNS hostname, if any.
+   */
+  private transientRecord(ip: string | null, hostname: string | null): ClientRecord {
+    return {
+      id: generateClientId(),
+      cookie: crypto.randomUUID(),
+      token: null,
+      refreshToken: null,
+      mode: this.newClientModeProvider(),
+      manualUrl: null,
+      ip,
+      hostname,
+    };
   }
 
   /**
@@ -760,11 +839,21 @@ export class ClientRegistry {
 
   private async updateIpHostname(record: ClientRecord, ip: string | null, hostname: string | null): Promise<void> {
     if (ip && ip !== record.ip) {
+      const previousIp = record.ip;
       record.ip = ip;
       await this.adapter.setStateAsync(`clients.${record.id}.ip`, { val: ip, ack: true });
-      // If no hostname known yet, common.name falls back to the IP — keep it current.
+      // If no hostname is known, common.name falls back to the IP. Only refresh it
+      // when the channel name is STILL the old auto-IP — never clobber a name the
+      // user set in the admin UI (the README documents the channel name as the
+      // user-owned display label). onObjectChange does not observe clients.* renames,
+      // so record.hostname stays null and this read-before-overwrite is the only
+      // guard protecting a user rename across an IP change. v1.36.0 (C4).
       if (!record.hostname) {
-        await this.adapter.extendObjectAsync(`clients.${record.id}`, { common: { name: ip } });
+        const obj = await this.adapter.getObjectAsync(`clients.${record.id}`);
+        const currentName = obj?.common?.name;
+        if (currentName === undefined || (typeof currentName === "string" && currentName === previousIp)) {
+          await this.adapter.extendObjectAsync(`clients.${record.id}`, { common: { name: ip } });
+        }
       }
     }
     if (hostname && hostname !== record.hostname) {

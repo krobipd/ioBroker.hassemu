@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.35.3",
     "news": {
+      "NEXT": {
+        "en": "Fixed a rare crash that briefly took displays offline; a custom display name is no longer overwritten by the device IP when the address changes; and with authentication enabled, displays reload automatically again after a URL change.",
+        "de": "Behoben: ein seltener Absturz, der Displays kurz offline nahm; ein selbst vergebener Display-Name wird bei IP-Wechsel nicht mehr durch die Geräte-IP überschrieben; und mit aktivierter Authentifizierung laden Displays nach einer URL-Änderung wieder automatisch neu.",
+        "ru": "Исправлен редкий сбой, из-за которого дисплеи ненадолго отключались; заданное вручную имя дисплея больше не перезаписывается IP-адресом устройства при смене адреса; при включённой аутентификации дисплеи снова автоматически перезагружаются после изменения URL.",
+        "pt": "Corrigida uma falha rara que deixava os ecrãs offline por breves instantes; um nome de ecrã definido por si deixa de ser substituído pelo IP do dispositivo quando o endereço muda; e com a autenticação ativada, os ecrãs voltam a recarregar automaticamente após alterar o URL.",
+        "nl": "Een zeldzame crash die schermen kort offline haalde, is verholpen; een zelf ingestelde schermnaam wordt niet langer overschreven door het IP-adres van het apparaat bij een adreswijziging; en met authenticatie aan herladen schermen weer automatisch na een URL-wijziging.",
+        "fr": "Correction d'un plantage rare qui mettait brièvement les écrans hors ligne ; un nom d'écran personnalisé n'est plus écrasé par l'adresse IP de l'appareil lors d'un changement d'adresse ; et avec l'authentification activée, les écrans se rechargent à nouveau automatiquement après un changement d'URL.",
+        "it": "Corretto un raro arresto anomalo che metteva brevemente offline i display; un nome del display impostato manualmente non viene più sovrascritto dall'IP del dispositivo al cambio di indirizzo; e con l'autenticazione attiva i display si ricaricano di nuovo automaticamente dopo una modifica dell'URL.",
+        "es": "Corregido un fallo poco frecuente que dejaba las pantallas sin conexión brevemente; un nombre de pantalla personalizado ya no se sobrescribe con la IP del dispositivo al cambiar la dirección; y con la autenticación activada, las pantallas vuelven a recargarse automáticamente tras un cambio de URL.",
+        "pl": "Naprawiono rzadką awarię, która na chwilę odłączała wyświetlacze; własna nazwa wyświetlacza nie jest już nadpisywana adresem IP urządzenia przy zmianie adresu; a przy włączonym uwierzytelnianiu wyświetlacze ponownie automatycznie się przeładowują po zmianie adresu URL.",
+        "uk": "Виправлено рідкісний збій, через який дисплеї ненадовго вимикалися; задане вручну ім'я дисплея більше не перезаписується IP-адресою пристрою під час зміни адреси; з увімкненою автентифікацією дисплеї знову автоматично перезавантажуються після зміни URL.",
+        "zh-cn": "修复了一个会导致显示器短暂离线的罕见崩溃；更改地址时，自定义的显示器名称不再被设备 IP 覆盖；并且在启用身份验证后，更改 URL 后显示器会再次自动重新加载。"
+      },
       "1.35.3": {
         "en": "Fixed Home Assistant discovery pointing the display at the wrong address on multi-interface hosts; it now uses the address the adapter actually listens on.",
         "de": "Behoben: Home-Assistant-Discovery verwies das Display auf Multi-Interface-Hosts auf die falsche Adresse; jetzt wird die Adresse genutzt, auf der der Adapter wirklich lauscht.",
@@ -80,19 +93,6 @@
         "pl": "Dziennik zmian przepisany w stylu zorientowanym na użytkownika we wszystkich wersjach.",
         "uk": "Журнал змін переписано у стилі орієнтованому на користувача для всіх версій.",
         "zh-cn": "所有版本的更新日志已改写为面向用户的风格。"
-      },
-      "1.33.1": {
-        "en": "Fixed incorrect role assignment on global mode selector.",
-        "de": "Falsche Rollenzuweisung am globalen Modus-Selektor korrigiert.",
-        "ru": "Исправлено неверное назначение роли глобального селектора режима.",
-        "pt": "Corrigida a atribuição de função incorreta no seletor de modo global.",
-        "nl": "Onjuiste roltoewijzing op de globale modusselector gecorrigeerd.",
-        "fr": "Correction de l attribution de rôle incorrecte sur le sélecteur de mode global.",
-        "it": "Corretta l assegnazione errata del ruolo sul selettore di modalità globale.",
-        "es": "Corregida la asignación de rol incorrecta en el selector de modo global.",
-        "pl": "Poprawiono nieprawidłowe przypisanie roli selektora trybu globalnego.",
-        "uk": "Виправлено неправильне призначення ролі глобального селектора режиму.",
-        "zh-cn": "修复全局模式选择器上不正确的角色分配。"
       }
     },
     "plugins": {
@@ -161,7 +161,7 @@
     },
     "dependencies": [
       {
-        "js-controller": ">=7.1.2"
+        "js-controller": ">=7.2.2"
       }
     ],
     "globalDependencies": [

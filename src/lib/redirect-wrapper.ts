@@ -42,7 +42,10 @@ export function renderRedirectWrapper(
   ip: string | null = null,
 ): string {
   const escTarget = escapeHtml(target);
-  const escJs = JSON.stringify(target);
+  // A `</script>` in `target` would close the inline <script> at the HTML
+  // tokenizer level, so JSON.stringify alone is not enough — also escape `<`
+  // to its JS unicode escape `<`.
+  const escJs = JSON.stringify(target).replace(/</g, "\\u003C");
 
   // Page copy from admin/i18n via adapter-core I18n, resolved for the passed
   // `language` (English fallback) — single i18n source, no private table here.

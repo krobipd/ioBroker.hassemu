@@ -583,6 +583,48 @@ describe("migrateVisUrlToMode", () => {
     expect(logsOf(stub, "warn").some(m => m.includes(`client ${rec.id} legacy URL rejected`))).toBe(true);
   });
 
+  it("global migration write fails → legacy global.visUrl object preserved + warn (v1.36.0 C5)", async () => {
+    const { internal, stub } = setup();
+    internal.globalConfig = internal.makeGlobalConfig();
+    internal.registry = internal.makeRegistry();
+    stub.states.set("hassemu.0.global.visUrl", { val: "http://old.local/vis", ack: true });
+    stub.objects.set("hassemu.0.global.visUrl", { type: "state" });
+    const original = stub.setStateAsync.bind(stub);
+    stub.setStateAsync = async (id, state) => {
+      if (id === "global.mode" || id === "global.manualUrl") {
+        throw new Error("broker down");
+      }
+      return original(id, state);
+    };
+
+    await internal.migrateVisUrlToMode();
+
+    // The legacy source MUST survive as a recovery anchor — never deleted on a write-fail.
+    expect(stub.objects.has("hassemu.0.global.visUrl")).toBe(true);
+    expect(logsOf(stub, "warn").some(m => m.includes("global.visUrl preserved"))).toBe(true);
+  });
+
+  it("per-client migration write fails → legacy clients.<id>.visUrl object preserved + warn (v1.36.0 C5)", async () => {
+    const { internal, stub } = setup();
+    internal.globalConfig = internal.makeGlobalConfig();
+    internal.registry = internal.makeRegistry();
+    const rec = await internal.registry!.identifyOrCreate(null, "10.0.0.3", null);
+    stub.states.set(`hassemu.0.clients.${rec.id}.visUrl`, { val: "http://client-old.local/", ack: true });
+    stub.objects.set(`hassemu.0.clients.${rec.id}.visUrl`, { type: "state" });
+    const original = stub.setStateAsync.bind(stub);
+    stub.setStateAsync = async (id, state) => {
+      if (id === `clients.${rec.id}.mode` || id === `clients.${rec.id}.manualUrl`) {
+        throw new Error("broker down");
+      }
+      return original(id, state);
+    };
+
+    await internal.migrateVisUrlToMode();
+
+    expect(stub.objects.has(`hassemu.0.clients.${rec.id}.visUrl`)).toBe(true);
+    expect(logsOf(stub, "warn").some(m => m.includes("visUrl preserved"))).toBe(true);
+  });
+
   it("idempotent: nothing to migrate → no state writes, no logs above debug", async () => {
     const { internal, stub } = setup();
     internal.globalConfig = internal.makeGlobalConfig();

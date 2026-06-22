@@ -28,7 +28,7 @@ var import_i18n = require("./i18n");
 const DOWN_THRESHOLD = 3;
 function renderRedirectWrapper(target, clientId, language = "en", ip = null) {
   const escTarget = (0, import_coerce.escapeHtml)(target);
-  const escJs = JSON.stringify(target);
+  const escJs = JSON.stringify(target).replace(/</g, "\\u003C");
   const t = (0, import_i18n.makePageTranslator)(language);
   const id = (0, import_coerce.escapeHtml)(clientId);
   const ipRow = (0, import_html_shared.renderIpRow)(t("pageIpAddress"), ip);
