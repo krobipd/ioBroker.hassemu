@@ -160,7 +160,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
-### **WORK IN PROGRESS**
+### 1.36.0 (2026-06-22)
 - Fixed a rare adapter crash and restart loop that a malformed connection message could trigger — it briefly took all connected displays offline until the adapter recovered.
 - A custom name you give a display (its channel name) is no longer overwritten with the device's IP address when that IP changes.
 - With authentication enabled, a display again reloads automatically after you change its target URL.
@@ -181,10 +181,6 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 ### 1.35.0 (2026-06-07)
 
 - Added optional Sentry error reporting: crashes are sent to the developer so issues get fixed faster. Active only with ioBroker diagnostics enabled; anonymous.
-
-### 1.34.0 (2026-06-02)
-
-- Home Assistant Companion App and Shelly Wall Display (firmware 2.6.0+): sign-out and device registration now complete reliably.
 
 [Older changelogs can be found there](CHANGELOG_OLD.md)
 

@@ -1,4 +1,8 @@
 # Older Changes
+## 1.34.0 (2026-06-02)
+
+- Home Assistant Companion App and Shelly Wall Display (firmware 2.6.0+): sign-out and device registration now complete reliably.
+
 ## 1.33.2 (2026-05-23)
 
 - Changelog rewritten in user-centric style across all versions.
