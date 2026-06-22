@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.35.3",
+    "version": "1.36.0",
     "news": {
-      "NEXT": {
+      "1.36.0": {
         "en": "Fixed a rare crash that briefly took displays offline and a display name being overwritten by the device IP, plus authentication and reliability fixes.",
         "de": "Behoben: ein seltener Absturz (Displays kurz offline) und ein Display-Name, der durch die Geräte-IP überschrieben wurde, plus Authentifizierungs- und Zuverlässigkeitsfixes.",
         "ru": "Исправлены: редкий сбой (дисплеи ненадолго отключались) и перезапись имени дисплея IP-адресом устройства, а также исправления аутентификации и надёжности.",
