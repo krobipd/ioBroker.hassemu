@@ -41,6 +41,7 @@ __export(coerce_exports, {
   isNoChoice: () => isNoChoice,
   isPlainObject: () => isPlainObject,
   isValidRedirectUri: () => isValidRedirectUri,
+  oneLine: () => oneLine,
   parseAdapterStateId: () => parseAdapterStateId,
   parseManualUrlWrite: () => parseManualUrlWrite,
   parseModeWrite: () => parseModeWrite,
@@ -60,13 +61,6 @@ function isValidRedirectUri(clientId, redirectUri) {
   if (redirectUri.length > 2048 || clientId.length > 2048) {
     return false;
   }
-  const lower = redirectUri.toLowerCase();
-  const forbidden = ["javascript:", "data:", "vbscript:", "file:"];
-  for (const scheme of forbidden) {
-    if (lower.startsWith(scheme)) {
-      return false;
-    }
-  }
   if (clientId === "https://home-assistant.io/iOS" && redirectUri === "homeassistant://auth-callback") {
     return true;
   }
@@ -76,6 +70,9 @@ function isValidRedirectUri(clientId, redirectUri) {
   try {
     const cid = new URL(clientId);
     const ru = new URL(redirectUri);
+    if (ru.protocol !== "http:" && ru.protocol !== "https:") {
+      return false;
+    }
     return cid.protocol === ru.protocol && cid.host === ru.host;
   } catch {
     return false;
@@ -238,6 +235,9 @@ function escapeHtml(s) {
     }
   });
 }
+function oneLine(value) {
+  return value.replace(/[\r\n\t]+/g, " ");
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   buildDropdownStates,
@@ -253,6 +253,7 @@ function escapeHtml(s) {
   isNoChoice,
   isPlainObject,
   isValidRedirectUri,
+  oneLine,
   parseAdapterStateId,
   parseManualUrlWrite,
   parseModeWrite,

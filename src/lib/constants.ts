@@ -26,6 +26,15 @@ export const OAUTH_ACCESS_TOKEN_TTL_S = 30 * 60;
  */
 export const WS_AUTH_TIMEOUT_MS = 5 * 1000;
 
+/**
+ * Max accepted WebSocket frame size in bytes. hassemu's WS frames are tiny
+ * auth/command JSON messages — without an explicit cap, `@fastify/websocket`
+ * inherits ws's 100 MiB default, letting an unauthenticated client buffer
+ * huge pre-auth frames (memory pressure). 64 KiB is far above any real HA
+ * command frame.
+ */
+export const WS_MAX_PAYLOAD_BYTES = 64 * 1024;
+
 /** Stale-Client-GC threshold: clients without token + lastSeen older are auto-removed. */
 export const STALE_CLIENT_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
@@ -56,6 +65,17 @@ export const REQUEST_ERROR_COOLDOWN_CAP = 200;
  * Display-Farmen oder Brute-Force-Burst.
  */
 export const NEW_CLIENT_BURST_CAP = 200;
+
+/**
+ * Above this many new (cookieless) clients per hour from a single IP, the
+ * registry stops minting *persistent* `clients.<id>` objects for that IP and
+ * serves transient (non-persisted) records instead — so a cookieless request
+ * spray (or a badly broken client that never keeps its cookie) cannot grow the
+ * ioBroker object DB without bound. Generous: a normal install onboards a
+ * handful of displays once each (each then keeps its cookie), so a real client
+ * never approaches this; the existing burst-warn already fires at >3/h.
+ */
+export const NEW_CLIENT_THROTTLE_PER_HOUR = 30;
 
 /**
  * Resolver-Sentinels für `client.mode` und `global.mode`. `'global'` heißt:

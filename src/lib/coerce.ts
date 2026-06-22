@@ -20,9 +20,10 @@ import { MODE_GLOBAL, MODE_MANUAL } from "./constants";
  * 3. IndieAuth 4.2.2 — fetch client_id URL, parse `<link rel="redirect_uri">`
  *    tags. NOT implemented here — LAN emulation can't rely on internet fetch.
  *
- * Always rejects dangerous schemes (javascript:, data:, vbscript:, file:)
- * regardless of any other rule. Defense-in-depth — defense against an
- * accidental whitelist drift.
+ * Beyond the whitelist, only `http:`/`https:` redirect URIs are accepted: the
+ * scheme is checked on the URL parsed by `new URL()`, so dangerous schemes
+ * (javascript:, data:, vbscript:, file:, …) are rejected even when obfuscated
+ * with leading/embedded tab/newline/CR that a raw-string prefix check misses.
  *
  * @param clientId    Untrusted `client_id` from OAuth2 query (an absolute URL).
  * @param redirectUri Untrusted `redirect_uri` from OAuth2 query.
@@ -37,15 +38,6 @@ export function isValidRedirectUri(clientId: string, redirectUri: string): boole
   if (redirectUri.length > 2048 || clientId.length > 2048) {
     return false;
   }
-  // Dangerous schemes — never accept regardless of any other rule.
-  const lower = redirectUri.toLowerCase();
-  const forbidden = ["javascript:", "data:", "vbscript:", "file:"];
-  for (const scheme of forbidden) {
-    if (lower.startsWith(scheme)) {
-      return false;
-    }
-  }
-
   // (2) HA Companion App whitelist — must be checked before (1) because
   // these apps use `homeassistant://` which has no http(s) netloc to match.
   // Source: home-assistant/core indieauth.py:39-50.
@@ -61,10 +53,18 @@ export function isValidRedirectUri(clientId: string, redirectUri: string): boole
     return true;
   }
 
-  // (1) Default IndieAuth rule — same scheme + netloc.
+  // (1) Default IndieAuth rule — same scheme + netloc, evaluated on the PARSED
+  // URLs. Checking the normalized `protocol` (not a raw-string prefix) is what
+  // makes the dangerous-scheme rejection robust: `new URL()` strips tab/newline/
+  // CR anywhere in the input, so a `"\tjavascript:…"` that would slip past a raw
+  // `startsWith("javascript:")` blacklist still normalizes to
+  // `protocol === "javascript:"` here and is rejected by the http(s)-only gate.
   try {
     const cid = new URL(clientId);
     const ru = new URL(redirectUri);
+    if (ru.protocol !== "http:" && ru.protocol !== "https:") {
+      return false;
+    }
     return cid.protocol === ru.protocol && cid.host === ru.host;
   } catch {
     return false;
@@ -454,4 +454,16 @@ export function escapeHtml(s: string): string {
         return "&#39;";
     }
   });
+}
+
+/**
+ * Collapse CR / LF / TAB runs in an untrusted string to a single space before
+ * it is interpolated into a log line — prevents log-injection (a forged second
+ * log line) from client-controlled values (redirect_uri, client_id, app_id,
+ * device_name, reverse-DNS hostname, …). v1.36.0 (S4).
+ *
+ * @param value Untrusted string to flatten for single-line logging.
+ */
+export function oneLine(value: string): string {
+  return value.replace(/[\r\n\t]+/g, " ");
 }

@@ -23,6 +23,7 @@ vi.mock("@iobroker/adapter-core", async () => {
 });
 
 import { ClientRegistry, parseClientStateId } from "./client-registry";
+import { NEW_CLIENT_THROTTLE_PER_HOUR, OAUTH_ACCESS_TOKEN_TTL_S } from "./constants";
 import { MODE_GLOBAL, MODE_MANUAL } from "./global-config";
 import type { ClientRecord } from "./types";
 
@@ -231,6 +232,16 @@ describe("ClientRegistry", () => {
       await registry.identifyOrCreate(rec.cookie, "2.2.2.2", null);
       const ch = store.objects.get(`hassemu.0.clients.${rec.id}`);
       expect(ch?.common?.name).to.equal("2.2.2.2");
+    });
+
+    it("preserves a user-renamed common.name across an IP change (v1.36.0 C4)", async () => {
+      const rec = await registry.identifyOrCreate(null, "1.1.1.1", null); // auto name = "1.1.1.1"
+      const ch = store.objects.get(`hassemu.0.clients.${rec.id}`)!;
+      ch.common = { ...ch.common, name: "Kitchen Display" }; // user renames in the admin UI
+      // Reconnect from a new DHCP lease — the IP change must NOT clobber the user
+      // name (record.hostname is still null; the old guard overwrote it with the IP).
+      await registry.identifyOrCreate(rec.cookie, "2.2.2.2", null);
+      expect(store.objects.get(`hassemu.0.clients.${rec.id}`)?.common?.name).to.equal("Kitchen Display");
     });
 
     it("keeps common.name fixed to hostname when only ip changes", async () => {
@@ -1010,6 +1021,49 @@ describe("ClientRegistry", () => {
       expect(access.newClientBurst.size).to.be.at.most(200);
       // Newest entries survive
       expect(access.newClientBurst.has("10.0.0.249")).to.be.true;
+    });
+
+    it("throttles cookieless new-client creation per IP, serving transient records (v1.36.0 S1)", async () => {
+      const { reg } = buildReg();
+      const ip = "9.9.9.9";
+      // The first NEW_CLIENT_THROTTLE_PER_HOUR cookieless requests (distinct UA so the
+      // pendingByIp bucket doesn't collapse the sequential creates) are persisted.
+      for (let i = 0; i < NEW_CLIENT_THROTTLE_PER_HOUR; i++) {
+        await reg.identifyOrCreate(null, ip, null, `UA-${i}`);
+      }
+      expect(reg.listAll()).to.have.length(NEW_CLIENT_THROTTLE_PER_HOUR);
+      // Beyond the threshold the IP gets a transient (non-persisted, untracked) record.
+      const transient = await reg.identifyOrCreate(null, ip, null, "UA-extra");
+      expect(reg.getById(transient.id)).to.be.null;
+      expect(reg.listAll()).to.have.length(NEW_CLIENT_THROTTLE_PER_HOUR); // no object growth
+      // A different IP is unaffected — the throttle is per-IP.
+      const other = await reg.identifyOrCreate(null, "8.8.8.8", null);
+      expect(reg.getById(other.id)).to.not.be.null;
+    });
+  });
+
+  describe("access-token expiry (S5 v1.36.0)", () => {
+    it("getByToken rejects and drops an expired access token", async () => {
+      const built = createMockAdapter();
+      const reg = new ClientRegistry(built.adapter as never);
+      const rec = await reg.identifyOrCreate(null, "10.0.0.9", null);
+      await reg.setToken(rec.id, "tok-123");
+      expect(reg.getByToken("tok-123")?.id).to.equal(rec.id); // valid immediately
+      rec.tokenExpiresAt = Date.now() - 1000; // force past expiry
+      expect(reg.getByToken("tok-123")).to.be.null;
+      expect(rec.token).to.be.null; // also dropped from the record
+    });
+
+    it("setToken stamps an expiry ~OAUTH_ACCESS_TOKEN_TTL_S ahead; clearing the token clears it", async () => {
+      const built = createMockAdapter();
+      const reg = new ClientRegistry(built.adapter as never);
+      const rec = await reg.identifyOrCreate(null, "10.0.0.10", null);
+      const before = Date.now();
+      await reg.setToken(rec.id, "tok-x");
+      expect(rec.tokenExpiresAt).to.be.a("number");
+      expect(rec.tokenExpiresAt!).to.be.at.least(before + OAUTH_ACCESS_TOKEN_TTL_S * 1000 - 5000);
+      await reg.setToken(rec.id, null);
+      expect(rec.tokenExpiresAt).to.be.null;
     });
   });
 });

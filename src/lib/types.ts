@@ -54,6 +54,13 @@ export interface ClientRecord {
   /** Currently active OAuth2 access token, or null if not authenticated. */
   token: string | null;
   /**
+   * Wall-clock ms (Date.now()) when {@link token} expires; null/absent when there
+   * is no token. Enforces the advertised 30-min access-token TTL so a captured
+   * token cannot be replayed indefinitely. Persisted to
+   * `clients.<id>.native.tokenExpiresAt` so it survives a restart. v1.36.0 (S5).
+   */
+  tokenExpiresAt?: number | null;
+  /**
    * Currently active OAuth2 refresh token, or null if not authenticated. Stored
    * plain-text in `clients.<id>.native.refreshToken` so it survives adapter
    * restarts (ioBroker update, network glitch, power cut). Same exposure

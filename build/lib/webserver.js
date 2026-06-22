@@ -56,6 +56,13 @@ class WebServer {
   app;
   sessions = /* @__PURE__ */ new Map();
   /**
+   * Issued OAuth2 authorization codes, kept SEPARATE from the login-flow
+   * `sessions` map (both are short-lived UUID→SessionData). An unauthenticated
+   * `POST /auth/login_flow` flood can fill `sessions` and evict old flow-ids, but
+   * it can no longer evict a victim's in-flight auth code. v1.36.0 (S2).
+   */
+  codeSessions = /* @__PURE__ */ new Map();
+  /**
    * Mobile-App webhook registrations from `POST /api/mobile_app/registrations`
    * (v1.29.1). Key = webhookId (URL secret), Value = owning client cookie id.
    * Subsequent `POST /api/webhook/<id>` requests are validated against this
@@ -147,7 +154,7 @@ class WebServer {
     }
     await this.app.register(import_cookie.default);
     await this.app.register(import_formbody.default);
-    await this.app.register(import_websocket.default);
+    await this.app.register(import_websocket.default, { options: { maxPayload: import_constants.WS_MAX_PAYLOAD_BYTES } });
     this.setupAuthGuard();
     this.setupErrorHandler();
     this.setupRoutes();
@@ -161,6 +168,11 @@ class WebServer {
       throw err;
     }
     this.adapter.log.debug(`Web server listening on ${bindAddress}:${this.config.port}`);
+    if (this.config.authRequired && this.config.password === "") {
+      this.adapter.log.warn(
+        "Authentication is enabled but no password is configured \u2014 the HA API stays locked until you set a password in the adapter settings (the display itself is unaffected)."
+      );
+    }
     this.cleanupTimer = (_a = this.adapter.setInterval(() => this.cleanupSessions(), import_constants.CLEANUP_INTERVAL_MS)) != null ? _a : null;
   }
   /** Stops the listener and cancels the session cleanup timer. */
@@ -187,6 +199,12 @@ class WebServer {
     for (const [key, session] of this.sessions) {
       if (now - session.created > import_constants.SESSION_TTL_MS) {
         this.sessions.delete(key);
+        cleanedSessions++;
+      }
+    }
+    for (const [key, session] of this.codeSessions) {
+      if (now - session.created > import_constants.SESSION_TTL_MS) {
+        this.codeSessions.delete(key);
         cleanedSessions++;
       }
     }
@@ -239,12 +257,23 @@ class WebServer {
   /**
    * Inserts a session, dropping the oldest entry if {@link SESSIONS_CAP} is exceeded.
    *
-   * @param key  Session key (flow id or auth code).
+   * @param key  Login-flow id.
    * @param data Session payload.
    */
   storeSession(key, data) {
     (0, import_coerce.evictOldest)(this.sessions, import_constants.SESSIONS_CAP);
     this.sessions.set(key, data);
+  }
+  /**
+   * Store an issued OAuth2 authorization code in the SEPARATE `codeSessions` map
+   * (S2) so a login-flow flood cannot evict it. Same FIFO cap as the flow map.
+   *
+   * @param code Auth code (UUID).
+   * @param data Session payload.
+   */
+  storeCode(code, data) {
+    (0, import_coerce.evictOldest)(this.codeSessions, import_constants.SESSIONS_CAP);
+    this.codeSessions.set(code, data);
   }
   // --- client identification ---
   /**
@@ -255,6 +284,21 @@ class WebServer {
    */
   static getClientIp(req) {
     return (0, import_coerce.coerceString)(req.ip);
+  }
+  /**
+   * Extract the Bearer access token from a request's Authorization header, or ""
+   * if absent. Uses a typeof guard (Fastify yields `string[]` for a duplicated
+   * header) instead of an `as string` cast, and centralises the `Bearer `-strip
+   * that was duplicated in the auth guard + the mobile_app handler. v1.36.0 (C9).
+   *
+   * @param req Fastify request.
+   */
+  static bearerToken(req) {
+    const header = req.headers.authorization;
+    if (typeof header !== "string" || !header.startsWith("Bearer ")) {
+      return "";
+    }
+    return header.substring("Bearer ".length).trim();
   }
   async identify(req, reply) {
     var _a;
@@ -333,7 +377,11 @@ class WebServer {
         return;
       }
       const path = ((_a = req.url) != null ? _a : "/").split("?")[0];
-      if (path === "/" || path === "/api/" || path === "/api/discovery_info" || path === "/manifest.json" || path === "/health" || path.startsWith("/auth/") || // v1.34.0: the WebSocket does its own auth in the handshake
+      if (path === "/" || path === "/api/" || path === "/api/discovery_info" || path === "/manifest.json" || path === "/health" || // C7 (v1.36.0): the display's down-page polls /api/redirect_check with its
+      // cookie (no Bearer) — without this it 401s when authRequired=true and the
+      // auto-reload-on-URL-change silently stops. It returns only the display's
+      // own resolved target URL, so it is safe to serve cookie-authenticated.
+      path === "/api/redirect_check" || path.startsWith("/auth/") || // v1.34.0: the WebSocket does its own auth in the handshake
       // (`auth_required` → `auth` frame), not via a Bearer header — so the
       // HTTP upgrade itself must pass the guard.
       path === "/api/websocket" || // v1.29.1: Mobile-App webhooks carry the secret in the URL
@@ -342,13 +390,12 @@ class WebServer {
       path.startsWith("/api/webhook/")) {
         return;
       }
-      const authHeader = req.headers.authorization;
-      if (typeof authHeader !== "string" || !authHeader.startsWith("Bearer ")) {
+      const token = WebServer.bearerToken(req);
+      if (!token) {
         this.adapter.log.debug(`Auth required for ${path} \u2014 missing Bearer token`);
         reply.status(401).send({ error: "unauthorized" });
         return;
       }
-      const token = authHeader.substring("Bearer ".length).trim();
       const client = this.registry.getByToken(token);
       if (!client) {
         this.adapter.log.debug(`Auth required for ${path} \u2014 unknown Bearer token`);
@@ -432,17 +479,15 @@ class WebServer {
     }
     this.app.get("/api/error_log", () => "");
     this.app.post("/api/mobile_app/registrations", async (req, reply) => {
-      var _a, _b, _c, _d, _e;
+      var _a, _b, _c, _d;
       const body = (_a = req.body) != null ? _a : {};
-      const authHeader = (_b = req.headers.authorization) != null ? _b : "";
-      const token = authHeader.startsWith("Bearer ") ? authHeader.substring(7).trim() : "";
-      const client = this.registry.getByToken(token);
-      const ownerId = (_c = client == null ? void 0 : client.id) != null ? _c : "";
+      const client = this.registry.getByToken(WebServer.bearerToken(req));
+      const ownerId = (_b = client == null ? void 0 : client.id) != null ? _b : "";
       const webhookId = import_node_crypto.default.randomUUID().replace(/-/g, "");
       (0, import_coerce.evictOldest)(this.webhookRegistrations, import_constants.WEBHOOK_REGISTRATIONS_CAP);
       this.webhookRegistrations.set(webhookId, ownerId);
       this.adapter.log.debug(
-        `Mobile-App registration \u2014 client=${ownerId} app_id=${(_d = body.app_id) != null ? _d : "?"} device_name=${(_e = body.device_name) != null ? _e : "?"} \u2192 webhook=${webhookId}`
+        `Mobile-App registration \u2014 client=${ownerId} app_id=${(0, import_coerce.oneLine)((_c = body.app_id) != null ? _c : "?")} device_name=${(0, import_coerce.oneLine)((_d = body.device_name) != null ? _d : "?")} \u2192 webhook=${webhookId}`
       );
       reply.status(201);
       return mobileRegResponse(webhookId);
@@ -512,7 +557,7 @@ class WebServer {
    */
   issueAuthorizationCode(clientId) {
     const code = import_node_crypto.default.randomUUID();
-    this.storeSession(code, { created: Date.now(), clientId });
+    this.storeCode(code, { created: Date.now(), clientId });
     return code;
   }
   /**
@@ -551,7 +596,7 @@ class WebServer {
     }
     if (!(0, import_coerce.isValidRedirectUri)(clientId, redirectUri)) {
       this.adapter.log.debug(
-        `Authorize ${method} rejected: redirect_uri "${redirectUri}" not allowed for client_id "${clientId}"`
+        `Authorize ${method} rejected: redirect_uri "${(0, import_coerce.oneLine)(redirectUri)}" not allowed for client_id "${(0, import_coerce.oneLine)(clientId)}"`
       );
       reply.status(400).type("text/html");
       return {
@@ -599,6 +644,25 @@ class WebServer {
       this.adapter.log.debug("Revoke: unknown/missing token \u2014 returning 200 (HA behavior)");
     }
   }
+  /**
+   * Validate submitted login credentials in constant time. An EMPTY submitted
+   * password is ALWAYS rejected: with the default blank `config.password`, an
+   * empty submission would otherwise match (`safeStringEqual("", "")`) and grant
+   * access — so a blank password must never authenticate. Both comparisons run
+   * unconditionally (no `&&` short-circuit) to avoid leaking which field was
+   * wrong via response timing. v1.36.0 (C6).
+   *
+   * @param username Submitted username (untrusted).
+   * @param password Submitted password (untrusted).
+   */
+  credentialsValid(username, password) {
+    if (typeof username !== "string" || typeof password !== "string" || password.length === 0) {
+      return false;
+    }
+    const userOk = (0, import_coerce.safeStringEqual)(username, this.config.username);
+    const passOk = (0, import_coerce.safeStringEqual)(password, this.config.password);
+    return userOk && passOk;
+  }
   setupAuthRoutes() {
     this.app.get("/auth/providers", () => [{ name: "Home Assistant Local", type: "homeassistant", id: null }]);
     this.app.get("/auth/authorize", async (req, reply) => {
@@ -619,7 +683,9 @@ class WebServer {
       } catch {
         redirectHost = v.redirectUri;
       }
-      this.adapter.log.debug(`Authorize form rendered \u2014 client_id=${v.clientId} redirect_uri-host=${redirectHost}`);
+      this.adapter.log.debug(
+        `Authorize form rendered \u2014 client_id=${(0, import_coerce.oneLine)(v.clientId)} redirect_uri-host=${redirectHost}`
+      );
       reply.type("text/html");
       return (0, import_auth_page.renderAuthorizeForm)({ clientId: v.clientId, redirectUri: v.redirectUri, state });
     });
@@ -635,9 +701,7 @@ class WebServer {
         return this.issueAuthorizeRedirect(reply, client.id, v.redirectUri, state);
       }
       const ip = WebServer.getClientIp(req);
-      const userOk = typeof username === "string" && (0, import_coerce.safeStringEqual)(username, this.config.username);
-      const passOk = typeof password === "string" && (0, import_coerce.safeStringEqual)(password, this.config.password);
-      if (!userOk || !passOk) {
+      if (!this.credentialsValid(username, password)) {
         const ipSuffix = ip ? ` (IP ${ip})` : "";
         this.adapter.log.warn(`Invalid credentials${ipSuffix}`);
         reply.status(401).type("text/html");
@@ -687,9 +751,7 @@ class WebServer {
         if (this.config.authRequired) {
           const ip = WebServer.getClientIp(req);
           const { username, password } = (_a = req.body) != null ? _a : {};
-          const userOk = typeof username === "string" && (0, import_coerce.safeStringEqual)(username, this.config.username);
-          const passOk = typeof password === "string" && (0, import_coerce.safeStringEqual)(password, this.config.password);
-          if (!userOk || !passOk) {
+          if (!this.credentialsValid(username, password)) {
             const ipSuffix = ip ? ` (IP ${ip})` : "";
             this.adapter.log.warn(`Invalid credentials${ipSuffix}`);
             reply.status(400);
@@ -706,7 +768,7 @@ class WebServer {
         }
         this.sessions.delete(flowId);
         const code = import_node_crypto.default.randomUUID();
-        this.storeSession(code, { created: Date.now(), clientId: session.clientId });
+        this.storeCode(code, { created: Date.now(), clientId: session.clientId });
         this.adapter.log.debug("Auth flow completed \u2014 code issued");
         return {
           version: 1,
@@ -731,9 +793,9 @@ class WebServer {
         await this.revokeToken((_c = (_b = req.body) == null ? void 0 : _b.token) != null ? _c : refresh_token);
         return {};
       }
-      if (grant_type === "authorization_code" && code && this.sessions.has(code)) {
-        const session = this.sessions.get(code);
-        this.sessions.delete(code);
+      if (grant_type === "authorization_code" && code && this.codeSessions.has(code)) {
+        const session = this.codeSessions.get(code);
+        this.codeSessions.delete(code);
         const token = import_node_crypto.default.randomUUID();
         const refreshToken = import_node_crypto.default.randomUUID();
         if (session.clientId) {
@@ -801,6 +863,9 @@ class WebServer {
         try {
           msg = JSON.parse(text);
         } catch {
+          return;
+        }
+        if (!(0, import_coerce.isPlainObject)(msg)) {
           return;
         }
         if (!authed) {

@@ -271,6 +271,7 @@ class HassEmu extends utils.Adapter {
    */
   async migrateVisUrlToMode() {
     var _a2, _b;
+    let globalMigrated = true;
     try {
       const legacyGlobal = await this.getStateAsync("global.visUrl");
       const decision = (0, import_coerce.decideLegacyVisMigration)(legacyGlobal == null ? void 0 : legacyGlobal.val);
@@ -281,14 +282,19 @@ class HassEmu extends utils.Adapter {
         await this.globalConfig.migrationSet(import_constants.MODE_MANUAL, null);
         this.log.warn(`Migration: legacy global URL rejected as unsafe \u2014 please set global.manualUrl manually`);
       }
-    } catch {
+    } catch (err) {
+      globalMigrated = false;
+      this.log.warn(`Migration: global URL move failed \u2014 legacy global.visUrl preserved (${String(err)})`);
     }
-    try {
-      await this.delObjectAsync("global.visUrl");
-    } catch {
+    if (globalMigrated) {
+      try {
+        await this.delObjectAsync("global.visUrl");
+      } catch {
+      }
     }
     const records = (_b = (_a2 = this.registry) == null ? void 0 : _a2.listAll()) != null ? _b : [];
     for (const record of records) {
+      let clientMigrated = true;
       try {
         const legacy = await this.getStateAsync(`clients.${record.id}.visUrl`);
         const decision = (0, import_coerce.decideLegacyVisMigration)(legacy == null ? void 0 : legacy.val);
@@ -301,11 +307,15 @@ class HassEmu extends utils.Adapter {
         } else if (decision.kind === "unsafe-rejected") {
           this.log.warn(`Migration: client ${record.id} legacy URL rejected as unsafe \u2014 please set the URL manually`);
         }
-      } catch {
+      } catch (err) {
+        clientMigrated = false;
+        this.log.warn(`Migration: client ${record.id} URL move failed \u2014 legacy visUrl preserved (${String(err)})`);
       }
-      try {
-        await this.delObjectAsync(`clients.${record.id}.visUrl`);
-      } catch {
+      if (clientMigrated) {
+        try {
+          await this.delObjectAsync(`clients.${record.id}.visUrl`);
+        } catch {
+        }
       }
     }
   }

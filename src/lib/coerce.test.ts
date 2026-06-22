@@ -10,6 +10,7 @@ import {
   evictOldest,
   isPlainObject,
   isValidRedirectUri,
+  oneLine,
   safeStringEqual,
 } from "./coerce";
 
@@ -376,6 +377,22 @@ describe("coerce", () => {
       // Companion App. Defense against client-spoofing.
       expect(isValidRedirectUri("http://10.0.0.1:8123/", "homeassistant://auth-callback")).to.be.false;
     });
+
+    it("rejects control-char-obfuscated dangerous schemes (v1.36.0 C2 — parser differential)", () => {
+      // `new URL()` strips tab/newline/CR anywhere, so a raw-string
+      // `startsWith("javascript:")` blacklist was bypassable: a leading tab made
+      // the prefix-check miss while the parsed protocol normalized to javascript:.
+      // The parsed-protocol allowlist closes it (attacker controls client_id too).
+      expect(isValidRedirectUri("javascript:x", "\tjavascript:alert(1)")).to.be.false;
+      expect(isValidRedirectUri("javascript:x", "java\tscript:alert(1)")).to.be.false;
+      expect(isValidRedirectUri("javascript:x", "\njavascript:alert(1)")).to.be.false;
+      expect(isValidRedirectUri("data:x", "\rdata:text/html,x")).to.be.false;
+    });
+
+    it("rejects any non-http(s) scheme even when client_id matches it (v1.36.0 C2)", () => {
+      expect(isValidRedirectUri("ftp://10.0.0.1/", "ftp://10.0.0.1/cb")).to.be.false;
+      expect(isValidRedirectUri("ws://10.0.0.1:8123/", "ws://10.0.0.1:8123/cb")).to.be.false;
+    });
   });
 
   describe("evictOldest", () => {
@@ -441,6 +458,19 @@ describe("coerce", () => {
 
     it("escapes apostrophe (defense-in-depth for href='...' attributes)", () => {
       expect(escapeHtml("a'b")).to.equal("a&#39;b");
+    });
+  });
+
+  describe("oneLine (S4 v1.36.0)", () => {
+    it("collapses CR / LF / TAB runs to single spaces (log-injection guard)", () => {
+      expect(oneLine("a\r\nb")).to.equal("a b");
+      expect(oneLine("evil\nINFO 2026 forged log line")).to.equal("evil INFO 2026 forged log line");
+      expect(oneLine("a\t\tb")).to.equal("a b");
+    });
+
+    it("leaves single-line input unchanged", () => {
+      expect(oneLine("plain text 123")).to.equal("plain text 123");
+      expect(oneLine("")).to.equal("");
     });
   });
 });

@@ -339,6 +339,7 @@ export class HassEmu extends utils.Adapter {
     // v1.25.0 (J2): Decision-Logik in pure helper coerce.decideLegacyVisMigration
     // (testbar). Hier nur das I/O zum Broker.
     // 1) Global visUrl → mode + manualUrl
+    let globalMigrated = true;
     try {
       const legacyGlobal = await this.getStateAsync("global.visUrl");
       const decision = decideLegacyVisMigration(legacyGlobal?.val);
@@ -349,18 +350,26 @@ export class HassEmu extends utils.Adapter {
         await this.globalConfig!.migrationSet(MODE_MANUAL, null);
         this.log.warn(`Migration: legacy global URL rejected as unsafe — please set global.manualUrl manually`);
       }
-    } catch {
-      /* state didn't exist — fresh install or already migrated */
+    } catch (err) {
+      // A missing state does NOT throw (getStateAsync returns null) — the realistic
+      // thrower is the migrationSet write. Do NOT delete the legacy source below on a
+      // write failure, or the user's URL is lost silently: keep global.visUrl as a
+      // recovery anchor + warn once. Mirrors migrateLegacyDefaultVisUrl. v1.36.0 (C5).
+      globalMigrated = false;
+      this.log.warn(`Migration: global URL move failed — legacy global.visUrl preserved (${String(err)})`);
     }
-    try {
-      await this.delObjectAsync("global.visUrl");
-    } catch {
-      /* didn't exist */
+    if (globalMigrated) {
+      try {
+        await this.delObjectAsync("global.visUrl");
+      } catch {
+        /* didn't exist */
+      }
     }
 
     // 2) Per-client visUrl → mode='manual' + manualUrl
     const records = this.registry?.listAll() ?? [];
     for (const record of records) {
+      let clientMigrated = true;
       try {
         const legacy = await this.getStateAsync(`clients.${record.id}.visUrl`);
         const decision = decideLegacyVisMigration(legacy?.val);
@@ -373,13 +382,18 @@ export class HassEmu extends utils.Adapter {
         } else if (decision.kind === "unsafe-rejected") {
           this.log.warn(`Migration: client ${record.id} legacy URL rejected as unsafe — please set the URL manually`);
         }
-      } catch {
-        /* state didn't exist for this client */
+      } catch (err) {
+        // Same as the global block: a write failure must not delete the legacy
+        // source — keep clients.<id>.visUrl as a recovery anchor + warn. v1.36.0 (C5).
+        clientMigrated = false;
+        this.log.warn(`Migration: client ${record.id} URL move failed — legacy visUrl preserved (${String(err)})`);
       }
-      try {
-        await this.delObjectAsync(`clients.${record.id}.visUrl`);
-      } catch {
-        /* didn't exist */
+      if (clientMigrated) {
+        try {
+          await this.delObjectAsync(`clients.${record.id}.visUrl`);
+        } catch {
+          /* didn't exist */
+        }
       }
     }
 

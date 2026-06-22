@@ -55,7 +55,7 @@ Want to add a URL the adapter doesn't auto-detect? Set `manual` and paste it.
 ## Requirements
 
 - Node.js ≥ 22
-- ioBroker js-controller ≥ 7.1.2
+- ioBroker js-controller ≥ 7.2.2
 - ioBroker Admin ≥ 7.8.23
 
 ---
@@ -160,6 +160,11 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+### **WORK IN PROGRESS**
+- Fixed a rare adapter crash and restart loop that a malformed connection message could trigger — it briefly took all connected displays offline until the adapter recovered.
+- A custom name you give a display (its channel name) is no longer overwritten with the device's IP address when that IP changes.
+- With authentication enabled, a display again reloads automatically after you change its target URL.
+
 ### 1.35.3 (2026-06-15)
 - Fixed Home Assistant discovery pointing the display at the wrong address on multi-interface hosts; it now uses the address the adapter actually listens on.
 

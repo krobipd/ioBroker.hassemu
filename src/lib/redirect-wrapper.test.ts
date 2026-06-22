@@ -53,17 +53,16 @@ describe("redirect-wrapper", () => {
       expect(html).to.include("showDown");
     });
 
-    it("escapes the target URL in both the src attribute and the JS literal", () => {
-      const html = renderRedirectWrapper('https://attacker.test/"><script>alert(1)</script>', "a1b2c3", "en");
-      // The attribute escape kills `"`, `<` and `>`.
-      expect(html).not.to.include('attacker.test/"><script>');
-      expect(html).to.include("&quot;");
-      expect(html).to.include("&lt;script&gt;");
-      // JSON.stringify makes a safe JS string literal — embedded `</script>`
-      // sequence would close the script tag in the JS context, so the
-      // safest check is that we use `JSON.stringify(target)` semantics
-      // (escape sequences appear).
-      expect(html).to.match(/var current="[^"]*\\u003[Cc][^"]*"|var current="https:[^"]+"/);
+    it("neutralizes </script> in the target so it cannot break out of the inline <script> (v1.36.0 C3)", () => {
+      const html = renderRedirectWrapper("https://attacker.test/a</script><script>alert(1)</script>", "a1b2c3", "en");
+      // iframe src attribute escape kills `<`/`>`/`"` — the entity-escaped copy is safe.
+      expect(html).to.include("&lt;/script&gt;");
+      // The inline `var current=` JS sink must NOT contain a raw `</script>`: at the
+      // HTML-tokenizer level that closes the <script> regardless of JS string nesting.
+      // JSON.stringify does NOT escape `<`; the `.replace(/</g, "\\u003C")` does.
+      const line = html.split("\n").find(l => l.includes("var current="))!;
+      expect(line).to.not.include("</script>");
+      expect(line).to.include("\\u003C/script"); // `<` escaped to its JS unicode escape
     });
 
     it('renders the German down-page strings when language is "de"', () => {

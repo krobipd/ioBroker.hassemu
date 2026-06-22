@@ -507,6 +507,23 @@ describe("WebServer", () => {
       expect((r2.json() as { errors: { base: string } }).errors.base).to.equal("invalid_auth");
       await s["app"].close();
     });
+
+    it("rejects a blank password even when the configured password is blank (v1.36.0 C6)", async () => {
+      // Default config.password is "" — an empty submission used to match
+      // (safeStringEqual("","")) and authenticate. A blank password must never auth.
+      const { s } = await buildServer({ config: { authRequired: true, password: "" } });
+
+      const r1 = await s.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
+      const flowId = (r1.json() as { flow_id: string }).flow_id;
+      const r2 = await s.inject({
+        method: "POST",
+        url: `/auth/login_flow/${flowId}`,
+        payload: { username: "admin", password: "" },
+      });
+      expect(r2.statusCode).to.equal(400);
+      expect((r2.json() as { errors: { base: string } }).errors.base).to.equal("invalid_auth");
+      await s["app"].close();
+    });
   });
 
   describe("OAuth2 browser flow (v1.29.0 — Shelly FW 2.6+, HA Companion)", () => {
@@ -578,10 +595,11 @@ describe("WebServer", () => {
       expect(res.body).to.match(/document\.location\.assign/);
       expect(res.body).to.include("homeassistant://auth-callback?code=");
       expect(res.body).to.include("state=xyz123");
-      // Same code is in the sessions map so /auth/token can consume it.
+      // Same code is in the codeSessions map (S2: separate from flow-ids) so
+      // /auth/token can consume it.
       const codeMatch = res.body.match(/code=([a-f0-9-]+)/);
       expect(codeMatch, "auth code not in body").to.not.be.null;
-      expect(server.sessions.has(codeMatch![1])).to.be.true;
+      expect(server.codeSessions.has(codeMatch![1])).to.be.true;
     });
 
     it("GET /auth/authorize (authRequired=true): renders login form with hidden OAuth2 params", async () => {
@@ -1287,6 +1305,26 @@ describe("WebServer", () => {
       }
       expect(server.sessions.size).to.be.at.most(100);
     });
+
+    it("a login_flow flood does not evict an in-flight auth code (v1.36.0 S2)", async () => {
+      const r1 = await server.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
+      const flowId = (r1.json() as { flow_id: string }).flow_id;
+      const r2 = await server.inject({ method: "POST", url: `/auth/login_flow/${flowId}`, payload: {} });
+      const code = (r2.json() as { result: string }).result;
+      expect(server.codeSessions.has(code)).to.be.true;
+      // Flood the flow-id map well past its cap — the auth code lives in a separate map.
+      for (let i = 0; i < 150; i++) {
+        await server.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
+      }
+      expect(server.codeSessions.has(code)).to.be.true;
+      // ...and exchanging the survived code still works.
+      const r3 = await server.inject({
+        method: "POST",
+        url: "/auth/token",
+        payload: { grant_type: "authorization_code", code },
+      });
+      expect(r3.statusCode).to.equal(200);
+    });
   });
 
   describe("auth-required setup tests", () => {
@@ -1294,6 +1332,16 @@ describe("WebServer", () => {
       const { s } = await buildServer({ config: { authRequired: true }, authGuard: true });
       return s;
     }
+
+    it("GET /api/redirect_check is whitelisted under authRequired (no Bearer) → 200, not 401 (v1.36.0 C7)", async () => {
+      const s = await buildAuthServer();
+      try {
+        const res = await s.inject({ method: "GET", url: "/api/redirect_check" });
+        expect(res.statusCode).to.equal(200);
+      } finally {
+        await s["app"].close();
+      }
+    });
 
     it("POST /auth/token with valid refresh_token returns 200 (C7 v1.11.0)", async () => {
       const s = await buildAuthServer();
@@ -1891,5 +1939,36 @@ describe("WebServer /api/websocket (v1.34.0)", () => {
     expect((await col.next()).type).to.equal("auth_ok");
     ws.close();
     await s2.stop();
+  });
+
+  it("ignores a pre-auth non-object frame instead of crashing the adapter (v1.36.0 C1)", async () => {
+    const ws = new WebSocket(wsUrl);
+    const col = wsCollector(ws);
+    expect((await col.next()).type).to.equal("auth_required");
+    // JSON.parse("null") === null → dereferencing `null.access_token` in the sync
+    // ws message listener would throw an uncaught TypeError and crash the adapter
+    // (uncaughtException → js-controller terminate → restart-loop). Arrays and bare
+    // primitives are dropped by the same isPlainObject guard.
+    ws.send("null");
+    ws.send("[1,2,3]");
+    ws.send("42");
+    // The server must still be alive: a fresh connection completes the handshake.
+    const ws2 = new WebSocket(wsUrl);
+    const col2 = wsCollector(ws2);
+    expect((await col2.next()).type).to.equal("auth_required");
+    ws2.send(JSON.stringify({ type: "auth", access_token: TOKEN }));
+    expect((await col2.next()).type).to.equal("auth_ok");
+    ws.close();
+    ws2.close();
+  });
+
+  it("closes the connection on an oversized frame above maxPayload (v1.36.0 S3)", async () => {
+    const ws = new WebSocket(wsUrl);
+    const col = wsCollector(ws);
+    await col.next(); // auth_required
+    // > WS_MAX_PAYLOAD_BYTES (64 KiB) — ws rejects the frame and closes with 1009.
+    ws.send("x".repeat(70 * 1024));
+    const [code] = (await once(ws, "close")) as [number, Buffer];
+    expect(code).to.equal(1009); // 1009 = message too big
   });
 });
