@@ -55,5 +55,6 @@
     "pageOfflineSubhead": "De pagina hierboven is de laatste weergave die dit display heeft ontvangen. Zodra hassemu weer bereikbaar is, wordt het scherm automatisch bijgewerkt.",
     "pageReload": "Opnieuw laden",
     "pageDeviceId": "Apparaat-ID",
-    "pageIpAddress": "IP-adres"
+    "pageIpAddress": "IP-adres",
+    "passwordRequiredWhenAuth": "Een wachtwoord is vereist wanneer authenticatie is ingeschakeld."
 }

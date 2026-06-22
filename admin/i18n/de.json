@@ -55,5 +55,6 @@
     "pageOfflineSubhead": "Die Seite oben ist die letzte Ansicht, die das Display erhalten hat. Sobald hassemu wieder erreichbar ist, aktualisiert sich die Anzeige automatisch.",
     "pageReload": "Jetzt neu laden",
     "pageDeviceId": "Geräte-ID",
-    "pageIpAddress": "IP-Adresse"
+    "pageIpAddress": "IP-Adresse",
+    "passwordRequiredWhenAuth": "Bei aktivierter Authentifizierung ist ein Passwort erforderlich."
 }

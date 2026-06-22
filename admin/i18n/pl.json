@@ -55,5 +55,6 @@
     "pageOfflineSubhead": "Strona powyżej to ostatni widok otrzymany przez ten wyświetlacz. Gdy hassemu znów będzie dostępny, ekran odświeży się sam.",
     "pageReload": "Załaduj ponownie",
     "pageDeviceId": "ID urządzenia",
-    "pageIpAddress": "Adres IP"
+    "pageIpAddress": "Adres IP",
+    "passwordRequiredWhenAuth": "Hasło jest wymagane, gdy uwierzytelnianie jest włączone."
 }
