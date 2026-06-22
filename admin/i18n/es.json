@@ -55,5 +55,6 @@
     "pageOfflineSubhead": "La página de arriba es la última vista que recibió esta pantalla. En cuanto hassemu vuelva a estar disponible, la pantalla se actualizará automáticamente.",
     "pageReload": "Recargar",
     "pageDeviceId": "ID del dispositivo",
-    "pageIpAddress": "Dirección IP"
+    "pageIpAddress": "Dirección IP",
+    "passwordRequiredWhenAuth": "Se requiere una contraseña cuando la autenticación está habilitada."
 }

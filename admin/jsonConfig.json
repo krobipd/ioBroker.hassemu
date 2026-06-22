@@ -97,6 +97,8 @@
       "label": "password",
       "visible": true,
       "hidden": "!data.authRequired",
+      "validator": "!data.authRequired || !!data.password",
+      "validatorErrorText": "passwordRequiredWhenAuth",
       "xs": 12,
       "sm": 6,
       "md": 6,

@@ -55,5 +55,6 @@
     "pageOfflineSubhead": "Сторінка вище — останній вигляд, який отримав цей дисплей. Щойно hassemu знову буде доступним, екран оновиться автоматично.",
     "pageReload": "Перезавантажити",
     "pageDeviceId": "ID пристрою",
-    "pageIpAddress": "IP-адреса"
+    "pageIpAddress": "IP-адреса",
+    "passwordRequiredWhenAuth": "Коли автентифікацію ввімкнено, потрібен пароль."
 }

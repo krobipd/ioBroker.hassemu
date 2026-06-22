@@ -55,5 +55,6 @@
     "pageOfflineSubhead": "上方页面是此显示器收到的最后一次视图。hassemu 重新可用后，屏幕会自动刷新。",
     "pageReload": "立即重新加载",
     "pageDeviceId": "设备 ID",
-    "pageIpAddress": "IP 地址"
+    "pageIpAddress": "IP 地址",
+    "passwordRequiredWhenAuth": "启用身份验证时需要设置密码。"
 }
