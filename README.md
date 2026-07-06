@@ -160,7 +160,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
-### 1.36.0 (2026-06-22)
+### 1.36.0 (2026-06-22) — stable
 - Fixed a rare adapter crash and restart loop that a malformed connection message could trigger — it briefly took all connected displays offline until the adapter recovered.
 - A custom name you give a display (its channel name) is no longer overwritten with the device's IP address when that IP changes.
 - With authentication enabled, a display again reloads automatically after you change its target URL.
