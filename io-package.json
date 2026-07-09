@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.36.0",
+    "version": "1.37.0",
     "news": {
-      "NEXT": {
+      "1.37.0": {
         "en": "A display name you set now survives a later network-name change, and a misbehaving display no longer piles up unused entries in ioBroker.",
         "de": "Ein von dir gesetzter Display-Name überlebt jetzt eine spätere Netzwerknamen-Änderung, und ein fehlerhaftes Display häuft keine unnötigen Einträge mehr in ioBroker an.",
         "ru": "Заданное вами имя дисплея теперь сохраняется при последующем изменении сетевого имени, а сбойный дисплей больше не накапливает лишние записи в ioBroker.",
