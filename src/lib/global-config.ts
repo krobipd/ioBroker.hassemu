@@ -16,10 +16,12 @@ import {
   coerceBoolean,
   coerceSafeUrl,
   isNoChoice,
+  oneLine,
   parseAdapterStateId,
   parseManualUrlWrite,
   parseModeWrite,
   safeGetState,
+  shallowStatesEqual,
 } from "./coerce";
 import { MODE_GLOBAL, MODE_MANUAL } from "./constants";
 import { resolveLabel } from "./i18n";
@@ -27,13 +29,10 @@ import type { AdapterInterface, ClientRecord, UrlStates } from "./types";
 
 /** Extended adapter interface — needs state I/O and object extend. */
 export type GlobalConfigAdapter = AdapterInterface &
-  Pick<ioBroker.Adapter, "getStateAsync" | "setStateAsync" | "getObjectAsync" | "setObjectAsync" | "extendObjectAsync">;
+  Pick<ioBroker.Adapter, "getStateAsync" | "setState" | "getObjectAsync" | "setObject" | "extendObject">;
 
 /** Kinds of state IDs the GlobalConfig reacts to. */
 export type GlobalStateKind = "mode" | "manualUrl" | "enabled";
-
-// Re-export für Backwards-Kompatibilität — Tests importieren direkt von hier.
-export { MODE_GLOBAL, MODE_MANUAL } from "./constants";
 
 /** Holds the runtime state of the global redirect override. */
 export class GlobalConfig {
@@ -56,13 +55,14 @@ export class GlobalConfig {
     this.manualUrl = coerceSafeUrl(manualState?.val);
     this.enabled = coerceBoolean(enabledState?.val) === true;
 
-    // Promote a blank state-value (`''`/null/undefined) to numeric `0` so
-    // the admin dropdown renders the `0='---'` option as selected. v1.2.0
-    // installs left the value as `''` which doesn't match any common.states
-    // entry, so the dropdown showed an empty selection.
+    // Promote a blank (`''`/null/undefined) OR a legacy numeric `0` mode value to
+    // the string `"0"` so the admin dropdown renders the `0='---'` option as selected
+    // AND the stored value type stays consistent (I19 v1.37.0 — the dropdown key is
+    // the string "0"; older installs wrote the number 0). v1.2.0 installs left it as
+    // `''`, which matched no common.states entry (empty selection).
     const v = modeState?.val;
-    if (v === "" || v === null || v === undefined) {
-      await this.adapter.setStateAsync("global.mode", { val: 0, ack: true });
+    if (v === "" || v === null || v === undefined || v === 0) {
+      await this.adapter.setState("global.mode", { val: "0", ack: true });
     }
   }
 
@@ -97,30 +97,37 @@ export class GlobalConfig {
    * @param record Client to resolve for.
    */
   resolveUrlForWithChain(record: ClientRecord): { url: string | null; chain: string } {
-    const m: unknown = record.mode;
-    if (isNoChoice(m)) {
-      return { url: null, chain: "landing" };
-    }
-    if (m === MODE_GLOBAL) {
+    // `global` recurses into the global config; every other mode value resolves the
+    // same way at the client and global level, so both delegate to resolveOne().
+    if (record.mode === MODE_GLOBAL) {
       const inner = this.resolveGlobalModeWithChain();
       return { url: inner.url, chain: `global→${inner.chain}` };
     }
-    if (m === MODE_MANUAL) {
-      const url = record.manualUrl ?? null;
-      return { url, chain: url ? `manual→${url}` : "manual→landing" };
-    }
-    const safe = coerceSafeUrl(m);
-    return { url: safe, chain: safe ? `direct→${safe}` : "landing" };
+    return this.resolveOne(record.mode, record.manualUrl);
   }
 
   private resolveGlobalModeWithChain(): { url: string | null; chain: string } {
-    if (isNoChoice(this.mode)) {
+    return this.resolveOne(this.mode, this.manualUrl);
+  }
+
+  /**
+   * I16 (v1.37.0): resolve a single (mode, manualUrl) pair to a URL + debug chain.
+   * The shared tail of {@link resolveUrlForWithChain} (client level) and
+   * {@link resolveGlobalModeWithChain} (global level) — they differ only in whether
+   * `global` is a legal mode (client-only), which the client caller handles before
+   * delegating here. `ClientRecord.manualUrl` is already `string | null` (L45).
+   *
+   * @param mode      A `mode` value (`'manual'`, a URL, or a no-choice sentinel).
+   * @param manualUrl The `manualUrl` paired with `mode === 'manual'`.
+   */
+  private resolveOne(mode: unknown, manualUrl: string | null): { url: string | null; chain: string } {
+    if (isNoChoice(mode)) {
       return { url: null, chain: "landing" };
     }
-    if (this.mode === MODE_MANUAL) {
-      return { url: this.manualUrl, chain: this.manualUrl ? `manual→${this.manualUrl}` : "manual→landing" };
+    if (mode === MODE_MANUAL) {
+      return { url: manualUrl, chain: manualUrl ? `manual→${manualUrl}` : "manual→landing" };
     }
-    const safe = coerceSafeUrl(this.mode);
+    const safe = coerceSafeUrl(mode);
     return { url: safe, chain: safe ? `direct→${safe}` : "landing" };
   }
 
@@ -144,17 +151,18 @@ export class GlobalConfig {
     switch (result.kind) {
       case "no-choice":
         this.mode = "";
-        await this.adapter.setStateAsync("global.mode", { val: 0, ack: true });
+        await this.adapter.setState("global.mode", { val: "0", ack: true });
         this.adapter.log.debug(`global.mode → cleared (no-choice)`);
         return;
       case "rejected-non-string":
         this.adapter.log.warn(`global.mode rejected — non-string value`);
-        await this.adapter.setStateAsync("global.mode", { val: this.mode || 0, ack: true });
+        await this.adapter.setState("global.mode", { val: this.mode || "0", ack: true });
         return;
       case "rejected-disallowed-sentinel":
         // MODE_GLOBAL bei global.mode → self-referential.
         this.adapter.log.warn(`global.mode rejected — "global" is not allowed at the global level (self-referential)`);
-        await this.adapter.setStateAsync("global.mode", { val: this.mode, ack: true });
+        // L37: revert to `this.mode || "0"` so a blank mode reverts to the dropdown's `0='---'`.
+        await this.adapter.setState("global.mode", { val: this.mode || "0", ack: true });
         return;
       case "sentinel":
         if (result.value === MODE_MANUAL && !this.manualUrl) {
@@ -163,16 +171,18 @@ export class GlobalConfig {
           );
         }
         this.mode = result.value;
-        await this.adapter.setStateAsync("global.mode", { val: result.value, ack: true });
+        await this.adapter.setState("global.mode", { val: result.value, ack: true });
         this.adapter.log.debug(`global.mode → '${result.value}' (sentinel)`);
         return;
       case "rejected-unsafe-url":
-        this.adapter.log.warn(`global.mode rejected — unsafe URL value "${result.raw}"`);
-        await this.adapter.setStateAsync("global.mode", { val: this.mode, ack: true });
+        // L1(b): raw is an unvalidated state value — flatten + cap it for the log.
+        this.adapter.log.warn(`global.mode rejected — unsafe URL value "${oneLine(result.raw).substring(0, 120)}"`);
+        // L37: revert to `this.mode || "0"` so a blank mode reverts to the dropdown's `0='---'`.
+        await this.adapter.setState("global.mode", { val: this.mode || "0", ack: true });
         return;
       case "url":
         this.mode = result.value;
-        await this.adapter.setStateAsync("global.mode", { val: result.value, ack: true });
+        await this.adapter.setState("global.mode", { val: result.value, ack: true });
         this.adapter.log.debug(`global.mode → ${result.value} (direct URL)`);
         return;
     }
@@ -188,11 +198,11 @@ export class GlobalConfig {
     const result = parseManualUrlWrite(rawValue);
     if (!result.ok) {
       this.adapter.log.warn(`global.manualUrl rejected — unsafe URL`);
-      await this.adapter.setStateAsync("global.manualUrl", { val: this.manualUrl ?? "", ack: true });
+      await this.adapter.setState("global.manualUrl", { val: this.manualUrl ?? "", ack: true });
       return;
     }
     this.manualUrl = result.safe;
-    await this.adapter.setStateAsync("global.manualUrl", { val: result.safe ?? "", ack: true });
+    await this.adapter.setState("global.manualUrl", { val: result.safe ?? "", ack: true });
     this.adapter.log.debug(`global.manualUrl → ${result.safe ?? "cleared"}`);
     if (this.mode === MODE_MANUAL && !result.safe) {
       this.adapter.log.warn(
@@ -209,10 +219,19 @@ export class GlobalConfig {
    * @param rawValue Value written to the state.
    */
   async handleEnabledWrite(rawValue: unknown): Promise<void> {
-    const enabled = coerceBoolean(rawValue) === true;
-    this.enabled = enabled;
-    await this.adapter.setStateAsync("global.enabled", { val: enabled, ack: true });
-    this.adapter.log.debug(`global.enabled → ${enabled} (master switch)`);
+    const coerced = coerceBoolean(rawValue);
+    if (coerced === null) {
+      // L9: a non-boolean write (a script setting 1 or "true") must not silently
+      // flip the master switch off — revert to the current value + warn, like the
+      // mode-write rejects. main.ts reads isEnabled() afterwards, so an unchanged
+      // value bulk-syncs to a no-op.
+      this.adapter.log.warn(`global.enabled rejected — non-boolean value`);
+      await this.adapter.setState("global.enabled", { val: this.enabled, ack: true });
+      return;
+    }
+    this.enabled = coerced;
+    await this.adapter.setState("global.enabled", { val: coerced, ack: true });
+    this.adapter.log.debug(`global.enabled → ${coerced} (master switch)`);
   }
 
   /**
@@ -226,19 +245,24 @@ export class GlobalConfig {
     // hatten client-registry und global-config identische `0='---' +
     // sentinels + states`-Composition. Hier nur `manual`-Sentinel weil
     // `global` in global-config self-referential wäre.
-    // v1.28.4: Sentinel-Label als plain-string in adapter.systemLanguage
-    // (NICHT als Translation-Object) — Admin rendert common.states-VALUES
-    // direkt als React-child und crasht bei Objects mit React Error #31.
+    // resolveLabel() returns a plain string (I18n.translate) — NOT a translation
+    // object: Admin renders common.states VALUES directly as a React child and
+    // crashes on translation objects with React Error #31.
     const merged = buildDropdownStates({ [MODE_MANUAL]: resolveLabel("manualUrl") }, states);
-    // v1.27.2: extendObjectAsync mergt `common.states` tief — alte
+    // v1.27.2: extendObject mergt `common.states` tief — alte
     // URL-Schlüssel bleiben drin nach Format-Wechsel (z.B. v1.26→v1.27).
-    // Object lesen, common.states ersetzen, setObjectAsync.
+    // Object lesen, common.states ersetzen, setObject.
     const existing = await this.adapter.getObjectAsync("global.mode");
     if (!existing) {
       return;
     }
+    // I4: skip the write when the dropdown is already identical — no jsonl churn
+    // / objectChange fan-out for a discovery run that changed nothing.
+    if (shallowStatesEqual(existing.common.states, merged)) {
+      return;
+    }
     existing.common.states = merged;
-    await this.adapter.setObjectAsync("global.mode", existing);
+    await this.adapter.setObject("global.mode", existing);
   }
 
   /**
@@ -258,8 +282,8 @@ export class GlobalConfig {
     const safeManual = manualUrl !== null ? coerceSafeUrl(manualUrl) : null;
     this.mode = safeMode;
     this.manualUrl = safeManual;
-    await this.adapter.setStateAsync("global.mode", { val: safeMode, ack: true });
-    await this.adapter.setStateAsync("global.manualUrl", { val: safeManual ?? "", ack: true });
+    await this.adapter.setState("global.mode", { val: safeMode, ack: true });
+    await this.adapter.setState("global.manualUrl", { val: safeManual ?? "", ack: true });
   }
 
   // v1.20.0 (F10): private safeGetState war duplicate zu coerce.ts:safeGetState —

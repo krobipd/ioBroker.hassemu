@@ -3,12 +3,13 @@ import { join } from "node:path";
 import { I18n } from "@iobroker/adapter-core";
 import * as utils from "@iobroker/adapter-core";
 import { ClientRegistry, parseClientStateId } from "./lib/client-registry";
-import { coerceSafeUrl, decideGcAction, decideLegacyVisMigration } from "./lib/coerce";
-import { MODE_GLOBAL, MODE_MANUAL, STALE_CLIENT_TTL_MS } from "./lib/constants";
+import { coerceUuid, decideGcAction } from "./lib/coerce";
+import { MODE_GLOBAL, STALE_CLIENT_TTL_MS } from "./lib/constants";
 import { GlobalConfig, parseGlobalStateId } from "./lib/global-config";
+import { migrateLegacyDefaultVisUrl, migrateVisUrlToMode } from "./lib/legacy-migration";
 import { MDNSService } from "./lib/mdns";
 import { type InstanceObjectSchema, repairGlobalSchemas } from "./lib/schema-repair";
-import { isUrlSourceAdapterEvent, UrlDiscovery } from "./lib/url-discovery";
+import { isUrlSourceAdapterEvent, UrlDiscovery, type UrlStatesListener } from "./lib/url-discovery";
 import { WebServer } from "./lib/webserver";
 import type { AdapterConfig } from "./lib/types";
 // v1.25.0 (F3): instanceObjects als single source of truth — repairGlobalSchemas
@@ -23,13 +24,12 @@ const instanceObjectsList = (iobrokerPackage as { instanceObjects: unknown[] }).
  */
 export class HassEmu extends utils.Adapter {
   /**
-   * ioBroker system language used to render the user-facing landing page
-   * (HTML) in the user's language. Adapter logs themselves stay English by
-   * ioBroker convention. Read in `onReady` from `system.config.language`,
-   * EN-Fallback. Public so library modules can access it via the
-   * `AdapterInterface` they receive.
+   * ioBroker system language used to render the user-facing landing page (HTML)
+   * in the user's language. Adapter logs themselves stay English by ioBroker
+   * convention. Read in `onReady` from `system.config.language` (EN fallback) and
+   * passed to WebServer as a constructor argument — not part of AdapterInterface.
    */
-  public systemLanguage: string = "en";
+  private systemLanguage: string = "en";
 
   private mdnsService: MDNSService | null = null;
   private webServer: WebServer | null = null;
@@ -42,7 +42,7 @@ export class HassEmu extends utils.Adapter {
   // friends can run without sockets, mDNS or a js-controller.
   private makeGlobalConfig: () => GlobalConfig = () => new GlobalConfig(this);
   private makeRegistry: () => ClientRegistry = () => new ClientRegistry(this);
-  private makeUrlDiscovery: (onChange: ConstructorParameters<typeof UrlDiscovery>[1]) => UrlDiscovery = onChange =>
+  private makeUrlDiscovery: (onChange: UrlStatesListener) => UrlDiscovery = onChange =>
     new UrlDiscovery(this, onChange);
   private makeWebServer: (instanceUuid: string) => WebServer = instanceUuid =>
     new WebServer(this, this.config, this.registry!, this.globalConfig!, instanceUuid, this.systemLanguage);
@@ -100,9 +100,20 @@ export class HassEmu extends utils.Adapter {
       // idempotent (cheap no-op on already-migrated installs). Removable in a
       // future major once pre-1.2.0 upgrades are no longer plausible — until then
       // dropping them would silently break those upgrade paths.
-      await this.migrateLegacyDefaultVisUrl();
-      await this.migrateVisUrlToMode();
+      await migrateLegacyDefaultVisUrl(this, this.config, this.globalConfig);
+      await migrateVisUrlToMode(this, this.globalConfig, this.registry);
       await repairGlobalSchemas(this, instanceObjectsList as InstanceObjectSchema[]);
+
+      // L59 (v1.37.0): the manual-refresh button was renamed info.refresh_urls →
+      // info.refreshUrls. Delete the old state once on upgrade so it doesn't linger
+      // as an orphan beside the new one — js-controller does not auto-remove states
+      // dropped from instanceObjects. Guarded like the visUrl cleanups (I5): no
+      // wasted delObject round-trip once it's gone.
+      if (await this.getObjectAsync("info.refresh_urls")) {
+        await this.delObjectAsync("info.refresh_urls").catch(() => {
+          /* raced with another delete — already gone */
+        });
+      }
 
       // Garbage-collect stale clients (no token + lastSeen older than 30 days).
       await this.gcStaleClients();
@@ -154,7 +165,7 @@ export class HassEmu extends utils.Adapter {
       await this.subscribeForeignObjectsAsync("system.adapter.*");
       await this.subscribeStatesAsync("clients.*");
       await this.subscribeStatesAsync("global.*");
-      await this.subscribeStatesAsync("info.refresh_urls");
+      await this.subscribeStatesAsync("info.refreshUrls");
 
       let mdnsActive = false;
       if (this.config.mdnsEnabled) {
@@ -167,8 +178,7 @@ export class HassEmu extends utils.Adapter {
         // running-Meldung.
         mdnsActive = this.mdnsService.isActive();
         if (!mdnsActive) {
-          // Use mdnsStartFailed (User-Hint) — `error` slot uses generic phrase since
-          // the underlying cause was already warn'd by MDNSService itself.
+          // Generic warn — MDNSService already logged the underlying cause.
           this.log.warn("mDNS failed to start — see preceding mDNS warning");
         }
       } else {
@@ -180,7 +190,13 @@ export class HassEmu extends utils.Adapter {
       const mdnsSuffix = this.config.mdnsEnabled ? (mdnsActive ? ", mDNS active" : ", mDNS FAILED") : "";
       this.log.info(`HA emulation running on ${bindAddr}:${this.config.port}${mdnsSuffix}`);
     } catch (err: unknown) {
+      // M2: don't sit idle as a zombie (info.connection=false, server maybe up but
+      // no state subscriptions, no restart signal) if any onReady step other than
+      // webServer.start() throws. Mirror the B4 server-start-fail path: stop a
+      // partially-started server and terminate so js-controller restarts with backoff.
       this.log.error(`onReady failed: ${String(err)}`);
+      await this.webServer?.stop().catch(() => {});
+      this.terminate(11);
     }
   }
 
@@ -197,16 +213,17 @@ export class HassEmu extends utils.Adapter {
   private async getOrCreateServerUuid(): Promise<string> {
     try {
       const existing = await this.getStateAsync("info.serverUuid");
-      const val = existing?.val;
-      if (typeof val === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)) {
-        this.log.debug(`Server UUID reused from info.serverUuid: ${val}`);
-        return val;
+      // L19: reuse the shared coerceUuid instead of an inline copy of the regex.
+      const reused = coerceUuid(existing?.val);
+      if (reused) {
+        this.log.debug(`Server UUID reused from info.serverUuid: ${reused}`);
+        return reused;
       }
     } catch {
       /* state didn't exist yet — fresh install */
     }
     const fresh = crypto.randomUUID();
-    await this.setStateAsync("info.serverUuid", { val: fresh, ack: true }).catch(err => {
+    await this.setState("info.serverUuid", { val: fresh, ack: true }).catch(err => {
       // info.serverUuid is an instanceObject — should always exist. Falls
       // doch nicht: log + fortfahren mit der frischen UUID, sie wird beim
       // nächsten Start erneut generiert (kein bleibender Schaden).
@@ -233,12 +250,12 @@ export class HassEmu extends utils.Adapter {
   }
 
   /**
-   * Read the ioBroker system language (set in Admin → Main Settings).
-   * Used for the landing page so the end-user sees the same language as
-   * their admin UI. Falls back to `en` when `system.config` can't be read
-   * or holds a language we don't translate. Read once on startup — a
-   * language switch at runtime only takes effect after an adapter restart,
-   * which is fine for a setup-hint page that most users see once.
+   * Read the ioBroker system language (set in Admin → Main Settings). Used for the
+   * landing page so the end-user sees the same language as their admin UI. Any
+   * non-empty language is passed through as-is; an unknown one falls back to
+   * English only at render time (htmlLangFor / tPage). An unreadable system.config
+   * falls back to `en` here. Read once on startup — a runtime language switch takes
+   * effect after an adapter restart, fine for a setup-hint page seen once.
    */
   private async readSystemLanguage(): Promise<string> {
     try {
@@ -248,159 +265,6 @@ export class HassEmu extends utils.Adapter {
     } catch {
       return "en";
     }
-  }
-
-  /**
-   * Drops the legacy `defaultVisUrl`/`visUrl` keys from the instance native
-   * config. Shared by both exits of {@link migrateLegacyDefaultVisUrl} —
-   * the unsafe-rejected path and the successfully-migrated path clean up
-   * identically. Best-effort: failures only warn.
-   */
-  private async cleanupLegacyNativeUrl(): Promise<void> {
-    try {
-      const id = `system.adapter.${this.namespace}`;
-      const obj = await this.getForeignObjectAsync(id);
-      if (obj?.native) {
-        delete obj.native.defaultVisUrl;
-        delete obj.native.visUrl;
-        await this.setForeignObjectAsync(id, obj);
-      }
-    } catch (err) {
-      this.log.warn(`Legacy config cleanup failed: ${String(err)}`);
-    }
-  }
-
-  /**
-   * 1.0.x / 1.1.0 → 1.1.1 migration — move the legacy `defaultVisUrl` from
-   * instance native into `global.visUrl` + `global.enabled=true` and drop it
-   * from native. Subsequent migrations (`migrateVisUrlToMode`) then move
-   * `global.visUrl` into the mode/manualUrl model.
-   */
-  private async migrateLegacyDefaultVisUrl(): Promise<void> {
-    const legacy = this.config as AdapterConfig & { defaultVisUrl?: string; visUrl?: string };
-    const url = legacy.defaultVisUrl || legacy.visUrl;
-    if (!url) {
-      return;
-    }
-    // Defensive: validiere die legacy-URL bevor wir sie nach `global.visUrl`
-    // schreiben. Malicious-Werte (`javascript:`, `data:`) sollen nicht durch
-    // die Migration durchrutschen — `migrateVisUrlToMode` validiert zwar
-    // nochmal, aber zwischen den Migrations-Schritten würde unsafe-Wert
-    // sichtbar sein, und die native-Cleanup ist unbedingt.
-    const safe = coerceSafeUrl(url);
-    if (!safe) {
-      this.log.warn(`Migration: legacy global URL rejected as unsafe — please set global.manualUrl manually`);
-      await this.cleanupLegacyNativeUrl();
-      return;
-    }
-
-    this.log.info(`Migrating legacy URL configuration to the new model`);
-    // We cannot call globalConfig.handleVisUrlWrite — that method is gone in
-    // v1.2.0. Write the legacy state directly so migrateVisUrlToMode picks it up.
-    // Wichtig: wenn der State-Write FEHLSCHLÄGT (z.B. weil global.visUrl-Object
-    // in v1.2.0+ schon weg ist), dürfen wir die native-Werte NICHT löschen —
-    // sonst ist die User-URL silent verloren. Stattdessen direkt nach
-    // global.mode/manualUrl schreiben (das Ziel wo migrateVisUrlToMode
-    // sie sonst hingeschrieben hätte).
-    let stateWritten = false;
-    try {
-      await this.setStateAsync("global.visUrl", { val: safe, ack: true });
-      stateWritten = true;
-    } catch {
-      // global.visUrl-Object existiert nicht mehr → direkt ins Ziel schreiben
-      try {
-        if (this.globalConfig) {
-          await this.globalConfig.migrationSet(MODE_MANUAL, safe);
-          // Tech-Internal-Pfad: shortcut wenn global.visUrl-state fehlt — debug-only.
-          this.log.debug(`Migration shortcut: global.visUrl-state missing — wrote directly to manualUrl=${safe}`);
-          stateWritten = true;
-        }
-      } catch (err) {
-        this.log.debug(`Legacy URL migration fallback failed: ${String(err)}`);
-      }
-    }
-
-    if (!stateWritten) {
-      // Both paths failed — keep native values as a recovery anchor for the user.
-      this.log.warn(`Legacy URL preserved in instance config — neither global URL write succeeded`);
-      return;
-    }
-
-    await this.cleanupLegacyNativeUrl();
-  }
-
-  /**
-   * 1.x → 1.2.0 migration — move legacy per-client `visUrl`-states to the
-   * `mode`/`manualUrl` model, plus the global `visUrl` to `global.mode` +
-   * `global.manualUrl`. Old datapoints are removed, type of mode-states
-   * upgraded to 'mixed'. Idempotent — does nothing on subsequent starts.
-   */
-  private async migrateVisUrlToMode(): Promise<void> {
-    // v1.25.0 (J2): Decision-Logik in pure helper coerce.decideLegacyVisMigration
-    // (testbar). Hier nur das I/O zum Broker.
-    // 1) Global visUrl → mode + manualUrl
-    let globalMigrated = true;
-    try {
-      const legacyGlobal = await this.getStateAsync("global.visUrl");
-      const decision = decideLegacyVisMigration(legacyGlobal?.val);
-      if (decision.kind === "safe-url") {
-        await this.globalConfig!.migrationSet(MODE_MANUAL, decision.safe);
-        this.log.info(`Migration: global URL "${decision.safe}" moved to global.manualUrl`);
-      } else if (decision.kind === "unsafe-rejected") {
-        await this.globalConfig!.migrationSet(MODE_MANUAL, null);
-        this.log.warn(`Migration: legacy global URL rejected as unsafe — please set global.manualUrl manually`);
-      }
-    } catch (err) {
-      // A missing state does NOT throw (getStateAsync returns null) — the realistic
-      // thrower is the migrationSet write. Do NOT delete the legacy source below on a
-      // write failure, or the user's URL is lost silently: keep global.visUrl as a
-      // recovery anchor + warn once. Mirrors migrateLegacyDefaultVisUrl. v1.36.0 (C5).
-      globalMigrated = false;
-      this.log.warn(`Migration: global URL move failed — legacy global.visUrl preserved (${String(err)})`);
-    }
-    if (globalMigrated) {
-      try {
-        await this.delObjectAsync("global.visUrl");
-      } catch {
-        /* didn't exist */
-      }
-    }
-
-    // 2) Per-client visUrl → mode='manual' + manualUrl
-    const records = this.registry?.listAll() ?? [];
-    for (const record of records) {
-      let clientMigrated = true;
-      try {
-        const legacy = await this.getStateAsync(`clients.${record.id}.visUrl`);
-        const decision = decideLegacyVisMigration(legacy?.val);
-        if (decision.kind === "safe-url") {
-          record.mode = MODE_MANUAL;
-          record.manualUrl = decision.safe;
-          await this.setStateAsync(`clients.${record.id}.mode`, { val: MODE_MANUAL, ack: true });
-          await this.setStateAsync(`clients.${record.id}.manualUrl`, { val: decision.safe, ack: true });
-          this.log.info(`Migration: client ${record.id} URL "${decision.safe}" moved to manualUrl`);
-        } else if (decision.kind === "unsafe-rejected") {
-          this.log.warn(`Migration: client ${record.id} legacy URL rejected as unsafe — please set the URL manually`);
-        }
-      } catch (err) {
-        // Same as the global block: a write failure must not delete the legacy
-        // source — keep clients.<id>.visUrl as a recovery anchor + warn. v1.36.0 (C5).
-        clientMigrated = false;
-        this.log.warn(`Migration: client ${record.id} URL move failed — legacy visUrl preserved (${String(err)})`);
-      }
-      if (clientMigrated) {
-        try {
-          await this.delObjectAsync(`clients.${record.id}.visUrl`);
-        } catch {
-          /* didn't exist */
-        }
-      }
-    }
-
-    // 3) global.mode + global.manualUrl repair handled by repairGlobalSchemas()
-    // (called separately in onReady so it ALSO runs for users upgrading from
-    // v1.2.0/v1.3.0/v1.3.1 where the legacy visUrl is already gone but the
-    // partial-formed mode-object from the v1.2.0 extendObject-bug persists).
   }
 
   /**
@@ -487,41 +351,50 @@ export class HassEmu extends utils.Adapter {
       if (!state || state.ack) {
         return;
       }
-      const clientParsed = this.registry ? parseClientStateId(id, this.namespace) : null;
-      if (clientParsed) {
+      // L41: narrow the collaborators once so the branch bodies below are
+      // assertion-free (was a mix of `this.registry ? … : null` guards and
+      // `this.registry!` asserts in the same function).
+      const registry = this.registry;
+      const globalConfig = this.globalConfig;
+      const clientParsed = registry ? parseClientStateId(id, this.namespace) : null;
+      if (clientParsed && registry) {
         if (clientParsed.kind === "mode") {
-          await this.registry!.handleModeWrite(clientParsed.id, state.val);
+          await registry.handleModeWrite(clientParsed.id, state.val);
           // B4: if the user picked 'global' but global resolves to nothing,
           // give them a one-shot heads-up so the cause of the empty redirect
           // is obvious without digging through the resolver code.
-          const record = this.registry!.getById(clientParsed.id);
-          if (record?.mode === MODE_GLOBAL && this.globalConfig!.resolveUrlFor(record) === null) {
+          const record = registry.getById(clientParsed.id);
+          if (record?.mode === MODE_GLOBAL && globalConfig?.resolveUrlFor(record) === null) {
             this.log.warn(
               `Client ${record.id}: mode is "global" but global has no resolvable URL — fill global.mode/manualUrl, or pick a different mode`,
             );
           }
         } else if (clientParsed.kind === "manualUrl") {
-          await this.registry!.handleManualUrlWrite(clientParsed.id, state.val);
+          await registry.handleManualUrlWrite(clientParsed.id, state.val);
         } else if (clientParsed.kind === "remove" && state.val === true) {
-          await this.registry!.remove(clientParsed.id);
+          await registry.remove(clientParsed.id);
         }
         return;
       }
-      const globalParsed = this.globalConfig ? parseGlobalStateId(id, this.namespace) : null;
-      if (globalParsed === "mode") {
-        await this.globalConfig!.handleModeWrite(state.val);
-      } else if (globalParsed === "manualUrl") {
-        await this.globalConfig!.handleManualUrlWrite(state.val);
-      } else if (globalParsed === "enabled") {
-        await this.globalConfig!.handleEnabledWrite(state.val);
-        await this.applyMasterSwitch(this.globalConfig!.isEnabled());
-        return;
+      const globalParsed = globalConfig ? parseGlobalStateId(id, this.namespace) : null;
+      if (globalParsed && globalConfig) {
+        if (globalParsed === "mode") {
+          await globalConfig.handleModeWrite(state.val);
+        } else if (globalParsed === "manualUrl") {
+          await globalConfig.handleManualUrlWrite(state.val);
+        } else if (globalParsed === "enabled") {
+          await globalConfig.handleEnabledWrite(state.val);
+          // L9-Interaktion: a non-boolean write reverts (no change), so bulkSetMode
+          // sees an unchanged value and no-ops — harmless. A real toggle propagates.
+          await this.applyMasterSwitch(globalConfig.isEnabled());
+          return;
+        }
       }
 
-      // info.refresh_urls — User-Trigger für manuelles Dropdown-Refresh ohne
+      // info.refreshUrls — User-Trigger für manuelles Dropdown-Refresh ohne
       // Adapter-Neustart. Re-scan'd den Broker nach VIS/VIS-2-Projekten und
       // Admin-Tiles, schreibt die neuen states-Maps in alle Mode-Dropdowns.
-      if (id === `${this.namespace}.info.refresh_urls` && state.val === true) {
+      if (id === `${this.namespace}.info.refreshUrls` && state.val === true) {
         await this.handleRefreshUrlsWrite();
       }
     } catch (err: unknown) {
@@ -530,7 +403,7 @@ export class HassEmu extends utils.Adapter {
   }
 
   /**
-   * Handler for the `info.refresh_urls` button.
+   * Handler for the `info.refreshUrls` button.
    * Triggert eine sofortige `urlDiscovery.collect()` (statt Debounce-Schedule),
    * damit der User nicht 2s warten muss. Schreibt anschließend `false ack` damit
    * der Button in der Admin-UI wieder „klickbar" wird.
@@ -541,24 +414,28 @@ export class HassEmu extends utils.Adapter {
     }
     try {
       await this.urlDiscovery.collect();
-      this.log.info(`URL list refreshed on user request`);
+      // I3: success on debug — the visible feedback is the refreshed dropdown +
+      // the re-armed button, so no "success" line belongs on info.
+      this.log.debug(`URL list refreshed on user request`);
     } catch (err) {
       this.log.warn(`URL refresh failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
-      await this.setStateAsync("info.refresh_urls", { val: false, ack: true }).catch(() => {});
+      // I2: log a re-arm failure instead of swallowing it — a failed re-arm leaves
+      // the admin button visually "pressed" (val=true) with no trace of why.
+      await this.setState("info.refreshUrls", { val: false, ack: true }).catch(err =>
+        this.log.debug(`refreshUrls re-arm failed: ${String(err)}`),
+      );
     }
   }
 
   private onObjectChange(id: string, obj: ioBroker.Object | null | undefined): void {
     try {
-      // v1.13.0 (H4): Narrow filter — vorher feuerte JEDER objectChange
-      // im `system.adapter.*`-Namespace ein scheduleRefresh, auch wenn
-      // ein anderer Adapter (mit Discovery-irrelevanten Properties) eine
-      // Konfiguration änderte. Jetzt nur Trigger bei:
-      //  - Instance-Add/-Remove (obj=null bei delete, oder fresh _id ohne obj)
-      //  - native.intro / native.welcomeScreen / native.welcomeScreenPro
-      //    (Quellen für discovered URLs)
-      //  - admin/web/vis/vis-2 generell (deren Available-Status entscheidet)
+      // v1.13.0 (H4): narrow filter — earlier EVERY objectChange in the
+      // `system.adapter.*` namespace triggered a scheduleRefresh, even from an
+      // adapter changing discovery-irrelevant config. Now it triggers only when the
+      // changed object belongs to a URL-source adapter (isUrlSourceAdapterEvent)
+      // OR looks like an instance add/remove (obj deleted, or an instance object
+      // without a resolved host). The 2s debounce coalesces bursts.
       if (!id?.startsWith("system.adapter.")) {
         return;
       }
@@ -581,23 +458,28 @@ export class HassEmu extends utils.Adapter {
       // v1.13.0 (H10): info.connection=false zuerst, vor jedem cleanup —
       // wenn ein cleanup-Step throws, bleibt der State mindestens als
       // false ack'd statt als true hängen.
-      void this.setState("info.connection", { val: false, ack: true });
+      // L8: `void` marks the promise as intentionally not awaited (onUnload MUST
+      // stay synchronous, or SIGKILL), but it does NOT handle a rejection — a
+      // broker write that rejects during shutdown would be an unhandledRejection.
+      // `.catch(() => {})` makes each fire-and-forget explicit and safe (webServer
+      // .stop() below already does this).
+      void this.setState("info.connection", { val: false, ack: true }).catch(() => {});
 
       // v1.10.0 (H2): subscriptions explizit lösen bevor Refs nullen.
       // js-controller cleant das normalerweise — aber im compact-mode mit
       // hot-remove + re-add kann Residual entstehen, das dann auf eine
-      // bereits genullte Adapter-Instance feuert. Sync-call (void) weil
-      // onUnload synchron sein MUSS (sonst SIGKILL).
-      void this.unsubscribeStatesAsync("clients.*");
-      void this.unsubscribeStatesAsync("global.*");
-      void this.unsubscribeStatesAsync("info.refresh_urls");
-      void this.unsubscribeForeignObjectsAsync("system.adapter.*");
+      // bereits genullte Adapter-Instance feuert.
+      void this.unsubscribeStatesAsync("clients.*").catch(() => {});
+      void this.unsubscribeStatesAsync("global.*").catch(() => {});
+      void this.unsubscribeStatesAsync("info.refreshUrls").catch(() => {});
+      void this.unsubscribeForeignObjectsAsync("system.adapter.*").catch(() => {});
 
       this.urlDiscovery?.cancelRefresh();
       this.urlDiscovery = null;
 
       if (this.mdnsService) {
-        this.mdnsService.stop();
+        // synchronous: onUnload must not arm a managed fallback timer (I1).
+        this.mdnsService.stop(true);
         this.mdnsService = null;
       }
 

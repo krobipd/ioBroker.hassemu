@@ -1,5 +1,5 @@
 import Bonjour from "bonjour-service";
-import { HA_VERSION } from "./constants";
+import { DEFAULT_SERVICE_NAME, HA_VERSION } from "./constants";
 import { resolveAdvertisedHost } from "./network";
 import type { AdapterConfig, AdapterInterface } from "./types";
 
@@ -9,6 +9,7 @@ type PublishedService = ReturnType<InstanceType<typeof Bonjour>["publish"]>;
 export class MDNSService {
   private readonly adapter: AdapterInterface;
   private readonly config: AdapterConfig;
+  /** Shared server UUID (constructor input). Exposed read-only for the unit tests only — no production reader (main.ts already holds the uuid). v1.37.0 (L25). */
   public readonly uuid: string;
   private active = false;
   private bonjour: Bonjour | null = null;
@@ -36,13 +37,13 @@ export class MDNSService {
   start(): void {
     const host = resolveAdvertisedHost(this.config.bindAddress);
     const baseUrl = `http://${host}:${this.config.port}`;
-    const serviceName = this.config.serviceName || "ioBroker";
+    const serviceName = this.config.serviceName || DEFAULT_SERVICE_NAME;
 
     try {
       this.bonjour = new Bonjour();
 
-      // Empty TXT records are dropped — bonjour-service publishes them as
-      // empty strings otherwise, which clutters the discovery payload.
+      // L35: all TXT values below are non-empty by construction (no conditional
+      // drop happens here) — build the advertised record.
       const txt: Record<string, string> = {
         base_url: baseUrl,
         internal_url: baseUrl,
@@ -100,27 +101,64 @@ export class MDNSService {
     }
   }
 
-  /** Stop mDNS broadcasting */
-  stop(): void {
+  /**
+   * Stop mDNS broadcasting.
+   *
+   * @param synchronous pass `true` from the synchronous onUnload path — there the
+   *   process is tearing down, so we skip the managed fallback timer (adapter-core
+   *   warns when a managed timer is armed during shutdown, and process exit
+   *   releases the sockets regardless). Defaults to `false` for the runtime
+   *   re-init path, where the adapter keeps running and the fallback matters.
+   */
+  stop(synchronous = false): void {
     if (!this.active) {
       return;
     }
+    this.active = false;
+    const published = this.published;
+    const bonjour = this.bonjour;
+    this.published = null;
+    this.bonjour = null;
 
-    try {
-      if (this.published) {
-        this.published.stop?.();
-        this.published = null;
+    // I1: give the mDNS goodbye a chance to leave the socket buffer before the
+    // sockets are destroyed. `published.stop(cb)` sends the unregister (TTL=0)
+    // announcement asynchronously and then calls `cb`; `destroy()` closes the
+    // sockets. So destroy from the stop-callback instead of destroying immediately
+    // (which dropped the goodbye). Best-effort: in the synchronous onUnload path
+    // js-controller may end the process before the goodbye leaves the buffer, so a
+    // guaranteed goodbye isn't achievable — this only improves the odds without
+    // blocking unload. (Verified against bonjour-service 1.4.2: registry.stop takes
+    // a callback and teardown announces before invoking it.) v1.37.0 (I1).
+    let destroyed = false;
+    const destroy = (): void => {
+      if (destroyed) {
+        return;
       }
-      if (this.bonjour) {
-        this.bonjour.destroy();
-        this.bonjour = null;
+      destroyed = true;
+      try {
+        bonjour?.destroy();
+      } catch {
+        /* best effort — we just want the socket released */
+      }
+    };
+    try {
+      if (published?.stop) {
+        published.stop(destroy);
+        if (!synchronous) {
+          // Runtime re-init (onReady H7): the adapter keeps running, so arm a
+          // short fallback to release the sockets if stop's callback never fires.
+          // Skipped on shutdown — process exit releases them and the managed
+          // timer would only warn.
+          this.adapter.setTimeout(destroy, 300);
+        }
+      } else {
+        destroy();
       }
       this.adapter.log.debug("mDNS: Service stopped");
     } catch (error) {
       const err = error as Error;
       this.adapter.log.warn(`mDNS could not stop cleanly: ${err.message}`);
+      destroy();
     }
-
-    this.active = false;
   }
 }

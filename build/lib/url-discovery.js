@@ -18,7 +18,6 @@ var __copyProps = (to, from, except, desc) => {
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 var url_discovery_exports = {};
 __export(url_discovery_exports, {
-  DEFAULT_REFRESH_DEBOUNCE_MS: () => DEFAULT_REFRESH_DEBOUNCE_MS,
   URL_SOURCE_PREFIXES: () => URL_SOURCE_PREFIXES,
   UrlDiscovery: () => UrlDiscovery,
   buildCrossRefs: () => buildCrossRefs,
@@ -37,6 +36,7 @@ const URL_SOURCE_PREFIXES = Object.freeze([
   "system.adapter.vis-2.",
   "system.adapter.aura."
 ]);
+const AURA_PREFIX = "aura.";
 function isUrlSourceAdapterEvent(id) {
   return URL_SOURCE_PREFIXES.some((p) => id.startsWith(p));
 }
@@ -77,7 +77,12 @@ class UrlDiscovery {
       this.debounceTimer = null;
     }
   }
-  /** Collects all discoverable URLs from the broker. Updates cache, returns states map. */
+  /**
+   * Collects all discoverable URLs from the broker and pushes them to listeners
+   * via the `onChange` callback (the production effect channel). The returned
+   * states map and the {@link cached} fallback exist for the unit tests —
+   * production `await`s collect() and ignores the result. v1.37.0 (L29).
+   */
   async collect() {
     var _a;
     const result = {};
@@ -100,16 +105,14 @@ class UrlDiscovery {
     }
     const webInstances = Array.from(crossRefs.entries()).filter(([n]) => n.startsWith("web."));
     const showWebSuffix = webInstances.length > 1;
-    await Promise.all(
-      webInstances.flatMap(([shortName, native]) => {
-        const labelSuffix = showWebSuffix ? ` (${shortName})` : "";
-        return [
-          this.addVisProjects(result, native, hostIp, "vis-2.0", "vis-2", `VIS-2${labelSuffix}`, skipped),
-          this.addVisProjects(result, native, hostIp, "vis.0", "vis", `VIS${labelSuffix}`, skipped)
-        ];
-      })
-    );
-    const auraInstances = Array.from(crossRefs.entries()).filter(([n]) => n.startsWith("aura."));
+    for (const [shortName, native] of webInstances) {
+      const labelSuffix = showWebSuffix ? ` (${shortName})` : "";
+      await Promise.all([
+        this.addVisProjects(result, native, hostIp, "vis-2.0", "vis-2", `VIS-2${labelSuffix}`, skipped),
+        this.addVisProjects(result, native, hostIp, "vis.0", "vis", `VIS${labelSuffix}`, skipped)
+      ]);
+    }
+    const auraInstances = Array.from(crossRefs.entries()).filter(([n]) => n.startsWith(AURA_PREFIX));
     const showAuraSuffix = auraInstances.length > 1;
     for (const [shortName, obj] of auraInstances) {
       const enabled = (0, import_coerce.isPlainObject)(obj.common) && obj.common.enabled === true;
@@ -120,11 +123,11 @@ class UrlDiscovery {
       this.addAuraInstance(result, obj, hostIp, shortName, showAuraSuffix, skipped);
     }
     this.cached = result;
-    const entries = Object.keys(result);
-    const skippedDetail = skipped.length > 0 ? `, skipped: ${skipped.map((s) => `${s.adapter}=${s.reason}`).join(", ")}` : "";
-    this.adapter.log.debug(
-      `URL discovery: ${entries.length} entr${entries.length === 1 ? "y" : "ies"}${entries.length > 0 ? ` [${entries.map((u) => result[u]).join(", ")}]` : ""}${skippedDetail}`
-    );
+    const labels = Object.values(result);
+    const count = labels.length;
+    const listPart = count > 0 ? ` [${labels.join(", ")}]` : "";
+    const skippedPart = skipped.length > 0 ? `, skipped: ${skipped.map((s) => `${s.adapter}=${s.reason}`).join(", ")}` : "";
+    this.adapter.log.debug(`URL discovery: ${count} entr${count === 1 ? "y" : "ies"}${listPart}${skippedPart}`);
     if (this.onChange) {
       try {
         await this.onChange(result);
@@ -304,19 +307,19 @@ function collectFromInstance(id, obj, crossRefs, hostIp, result, skipped) {
   }
   const instanceId = id.startsWith("system.adapter.") ? id.substring("system.adapter.".length) : id;
   if (common.enabled !== true) {
-    if (skipped && ((0, import_coerce.isPlainObject)(common.localLinks) || typeof common.localLink === "string" || common.welcomeScreen || common.welcomeScreenPro)) {
+    if ((0, import_coerce.isPlainObject)(common.localLinks) || typeof common.localLink === "string" || common.welcomeScreen || common.welcomeScreenPro) {
       skipped.push({ adapter: instanceId, reason: "disabled" });
     }
     return;
   }
-  if (instanceId.startsWith("aura.")) {
+  if (instanceId.startsWith(AURA_PREFIX)) {
     return;
   }
   const native = (0, import_coerce.isPlainObject)(obj.native) ? obj.native : {};
   const ctx = { instanceId, native, crossRefs, hostIp };
   if ((0, import_coerce.isPlainObject)(common.localLinks)) {
     for (const entry of Object.values(common.localLinks)) {
-      addFromEntry(entry, ctx, instanceId, result);
+      addFromEntry(entry, ctx, result);
     }
   }
   if (typeof common.localLink === "string" && !(0, import_coerce.isPlainObject)(common.localLinks)) {
@@ -332,11 +335,11 @@ function collectFromInstance(id, obj, crossRefs, hostIp, result, skipped) {
     const ws = common[key];
     const entries = Array.isArray(ws) ? ws : (0, import_coerce.isPlainObject)(ws) ? [ws] : [];
     for (const entry of entries) {
-      addFromEntry(entry, ctx, instanceId, result);
+      addFromEntry(entry, ctx, result);
     }
   }
 }
-function addFromEntry(entry, ctx, instanceId, result) {
+function addFromEntry(entry, ctx, result) {
   if (!(0, import_coerce.isPlainObject)(entry)) {
     return;
   }
@@ -353,7 +356,7 @@ function addFromEntry(entry, ctx, instanceId, result) {
     return;
   }
   const name = (0, import_coerce.coerceString)(entry.name);
-  result[safe] = name ? `${instanceId}: ${name}` : instanceId;
+  result[safe] = name ? `${ctx.instanceId}: ${name}` : ctx.instanceId;
 }
 function resolvePlaceholders(template, ctx) {
   let failed = false;
@@ -435,7 +438,6 @@ function primitiveToString(v) {
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
-  DEFAULT_REFRESH_DEBOUNCE_MS,
   URL_SOURCE_PREFIXES,
   UrlDiscovery,
   buildCrossRefs,

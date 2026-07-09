@@ -20,9 +20,10 @@
  * `document.location.assign(url)` with `code=<encoded>&state=<encoded>`.
  */
 
-// v1.32.0: lokales `escAttr` (4 Char) ersetzt durch shared `escapeHtml` (5 Char)
-// aus `coerce.ts` — defense-in-depth, `'` zusätzlich gehärtet.
-import { escapeHtml as escAttr } from "./coerce";
+// v1.32.0: local `escAttr` (4-char) replaced by the shared 5-char escapeHtml
+// (defense-in-depth, `'` also hardened). v1.37.0 (L34/L39): imported from
+// html-shared under its real name (no alias) alongside jsStringLiteral.
+import { escapeHtml, jsStringLiteral } from "./html-shared";
 
 /**
  * Build the final redirect URL with the auth code appended.
@@ -47,6 +48,10 @@ export function buildRedirectUrl(redirectUri: string, code: string, state: strin
   return url;
 }
 
+// I9 (v1.37.0): the auth page keeps its own compact login CSS on purpose. It is a
+// narrow 380px form (inputs + button) with no info-table or code chip, so the shared
+// `cardTableCss` emitter (a 44rem info card used by the landing + down pages) does
+// not apply — folding this in would only distort the login look for zero dedup.
 const STYLE = `
 html,body{margin:0;padding:0;height:100%;background:#111;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}
 .card{max-width:380px;margin:64px auto;padding:32px;background:#1c1c1c;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.5);}
@@ -100,11 +105,11 @@ ${opts.cardInner}
  * @param target The fully-built `redirect_uri?code=…&state=…` URL.
  */
 export function renderAuthorizeRedirect(target: string): string {
-  const a = escAttr(target);
-  // A `</script>` inside `target` would close the inline <script> at the HTML
-  // tokenizer level (before JS parses the string literal), so JSON.stringify
-  // alone is NOT enough — also escape `<` to its JS unicode escape `<`.
-  const j = JSON.stringify(target).replace(/</g, "\\u003C");
+  const a = escapeHtml(target);
+  // M8: shared jsStringLiteral escapes `</script>` breakout (JSON.stringify alone
+  // does not neutralise `<`, which would close the inline <script> at the HTML
+  // tokenizer level before JS parses the string literal).
+  const j = jsStringLiteral(target);
   return htmlShell({
     title: "Home Assistant",
     headExtra: `<meta http-equiv="refresh" content="0; URL=${a}">`,
@@ -131,10 +136,10 @@ export function renderAuthorizeForm(
   params: { clientId: string; redirectUri: string; state?: string },
   errorMessage?: string,
 ): string {
-  const cid = escAttr(params.clientId);
-  const ru = escAttr(params.redirectUri);
-  const st = params.state ? escAttr(params.state) : "";
-  const errBlock = errorMessage ? `<div class="err">${escAttr(errorMessage)}</div>` : "";
+  const cid = escapeHtml(params.clientId);
+  const ru = escapeHtml(params.redirectUri);
+  const st = params.state ? escapeHtml(params.state) : "";
+  const errBlock = errorMessage ? `<div class="err">${escapeHtml(errorMessage)}</div>` : "";
   return htmlShell({
     title: "Home Assistant — Sign In",
     headExtra: `<meta name="viewport" content="width=device-width, initial-scale=1">`,
@@ -163,10 +168,10 @@ ${errBlock}
  */
 export function renderAuthorizeError(reason: string, detail: string): string {
   return htmlShell({
-    title: `Home Assistant — ${escAttr(reason)}`,
+    title: `Home Assistant — ${escapeHtml(reason)}`,
     headExtra: `<meta name="viewport" content="width=device-width, initial-scale=1">`,
     cardInner: `<h1>Authorization failed</h1>
-<div class="err">${escAttr(detail)}</div>
-<p class="subtitle">${escAttr(reason)}</p>`,
+<div class="err">${escapeHtml(detail)}</div>
+<p class="subtitle">${escapeHtml(reason)}</p>`,
   });
 }

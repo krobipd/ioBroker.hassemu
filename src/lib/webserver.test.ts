@@ -1,6 +1,5 @@
 import crypto from "node:crypto";
 import { once } from "node:events";
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import WebSocket from "ws";
 
@@ -28,7 +27,8 @@ vi.mock("@iobroker/adapter-core", async () => {
 
 import { CLIENT_COOKIE, WebServer } from "./webserver";
 import { ClientRegistry } from "./client-registry";
-import { GlobalConfig, MODE_GLOBAL, MODE_MANUAL } from "./global-config";
+import { GlobalConfig } from "./global-config";
+import { MODE_GLOBAL, MODE_MANUAL } from "./constants";
 import { HA_VERSION } from "./constants";
 import type { AdapterConfig, ClientRecord } from "./types";
 
@@ -43,6 +43,8 @@ interface MockStore {
   objects: Map<string, ObjEntry>;
   states: Map<string, { val: unknown; ack: boolean }>;
   logs: { level: string; msg: string }[];
+  /** Live interval handles (added by setInterval, removed by clearInterval) — L7 cleanup test. */
+  activeIntervals: Set<object>;
 }
 
 function createMockAdapter(namespace = "hassemu.0"): {
@@ -54,6 +56,7 @@ function createMockAdapter(namespace = "hassemu.0"): {
     objects: new Map(),
     states: new Map(),
     logs: [],
+    activeIntervals: new Set(),
   };
 
   function build() {
@@ -65,15 +68,26 @@ function createMockAdapter(namespace = "hassemu.0"): {
         warn: (m: string) => store.logs.push({ level: "warn", msg: m }),
         error: (m: string) => store.logs.push({ level: "error", msg: m }),
       },
-      setInterval: (_cb: () => void, _ms: number) => undefined,
-      clearInterval: () => undefined,
+      // Return a handle and track it so the L7 test can prove the per-socket
+      // heartbeat interval is cleared on close. The callback is never invoked
+      // (no real timer), which is fine — the test asserts lifecycle, not ticks.
+      setInterval: (_cb: () => void, _ms: number) => {
+        const h = {};
+        store.activeIntervals.add(h);
+        return h as unknown as ioBroker.Interval;
+      },
+      clearInterval: (h?: unknown) => {
+        if (h) {
+          store.activeIntervals.delete(h as object);
+        }
+      },
       setTimeout: () => undefined,
       clearTimeout: () => undefined,
       getForeignObjectsAsync: async (pattern: string) => {
         const prefix = pattern.replace("*", "");
         const out: Record<string, ObjEntry> = {};
         for (const [id, obj] of store.objects) {
-          if (id.startsWith(prefix) && obj.type === "channel") {
+          if (id.startsWith(prefix) && (obj.type === "channel" || obj.type === "device")) {
             out[id] = obj;
           }
         }
@@ -86,7 +100,7 @@ function createMockAdapter(namespace = "hassemu.0"): {
           store.objects.set(full, obj);
         }
       },
-      extendObjectAsync: async (id: string, obj: Partial<ObjEntry>) => {
+      extendObject: async (id: string, obj: Partial<ObjEntry>) => {
         const full = `${namespace}.${id}`;
         const ex = store.objects.get(full) ?? { type: "state" };
         store.objects.set(full, {
@@ -99,10 +113,10 @@ function createMockAdapter(namespace = "hassemu.0"): {
       getObjectAsync: async (id: string): Promise<ObjEntry | null> => {
         return store.objects.get(`${namespace}.${id}`) ?? null;
       },
-      setObjectAsync: async (id: string, obj: ObjEntry) => {
+      setObject: async (id: string, obj: ObjEntry) => {
         store.objects.set(`${namespace}.${id}`, obj);
       },
-      setStateAsync: async (id: string, val: { val: unknown; ack?: boolean }) => {
+      setState: async (id: string, val: { val: unknown; ack?: boolean }) => {
         store.states.set(`${namespace}.${id}`, { val: val.val, ack: val.ack ?? false });
       },
       delObjectAsync: async (id: string) => {
@@ -977,17 +991,6 @@ describe("WebServer", () => {
       expect(whConfig).to.deep.equal(apiConfig);
     });
 
-    it("io-package info.refresh_urls is a button with read:false (W1134)", () => {
-      const iopkg = JSON.parse(readFileSync(join(__dirname, "../../io-package.json"), "utf8")) as {
-        instanceObjects: Array<{ _id: string; common: { role?: string; read?: boolean; write?: boolean } }>;
-      };
-      const obj = iopkg.instanceObjects.find(o => o._id === "info.refresh_urls");
-      expect(obj, "info.refresh_urls present").to.not.be.undefined;
-      expect(obj!.common.role).to.equal("button");
-      expect(obj!.common.read).to.equal(false);
-      expect(obj!.common.write).to.equal(true);
-    });
-
     it("Companion registration completes and the display loads without any WebSocket (no-WS fallback)", async () => {
       // registerDevice persists the registration via REST BEFORE the best-effort
       // WS auth/current_user call (home-assistant/android @2026.4.4 line 142 vs 154).
@@ -1246,16 +1249,16 @@ describe("WebServer", () => {
     it("removes expired sessions", () => {
       server.sessions.set("old", {
         created: Date.now() - 1_000_000_000,
-        clientId: null,
+        clientId: "c1",
       });
-      server.sessions.set("fresh", { created: Date.now(), clientId: null });
+      server.sessions.set("fresh", { created: Date.now(), clientId: "c1" });
       server.cleanupSessions();
       expect(server.sessions.has("old")).to.be.false;
       expect(server.sessions.has("fresh")).to.be.true;
     });
 
     it("is a no-op when nothing has expired", () => {
-      server.sessions.set("a", { created: Date.now(), clientId: null });
+      server.sessions.set("a", { created: Date.now(), clientId: "c1" });
       server.cleanupSessions();
       expect(server.sessions.size).to.equal(1);
     });
@@ -1263,8 +1266,8 @@ describe("WebServer", () => {
     it("prunes webhook registrations of removed clients, keeps active + unowned ones (v1.35.2)", async () => {
       // Active client: webhook stays. Removed client: webhook pruned.
       // Unowned ("" — authRequired=false registration without Bearer): stays.
-      const active = await registry.identifyOrCreate(null, "10.0.0.1", null);
-      const removed = await registry.identifyOrCreate(null, "10.0.0.2", null);
+      const active = await registry.identifyOrCreate(null, "10.0.0.1");
+      const removed = await registry.identifyOrCreate(null, "10.0.0.2");
       server.webhookRegistrations.set("wh-active", active.id);
       server.webhookRegistrations.set("wh-removed", removed.id);
       server.webhookRegistrations.set("wh-unowned", "");
@@ -1281,7 +1284,7 @@ describe("WebServer", () => {
       // End-to-end consequence of the prune: the orphaned display POSTs to its
       // old webhook and must hit the stale-id branch (200 empty body) so the
       // Companion App re-registers — not the typed success responses.
-      const removed = await registry.identifyOrCreate(null, "10.0.0.3", null);
+      const removed = await registry.identifyOrCreate(null, "10.0.0.3");
       server.webhookRegistrations.set("wh-orphan", removed.id);
       await registry.remove(removed.id);
       server.cleanupSessions();
@@ -1298,12 +1301,18 @@ describe("WebServer", () => {
   });
 
   describe("sessions cap (security fix v1.2.0)", () => {
-    it("drops the oldest session when cap is exceeded", async () => {
-      // Fire 105 login_flow calls — cap is 100
+    it("drops the OLDEST session when cap is exceeded (FIFO, L54)", async () => {
+      // The first flow_id is the oldest entry; after flooding past the cap it
+      // must be the one gone — proves FIFO order, not just the size cap.
+      const first = await server.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
+      const firstFlowId = (first.json() as { flow_id: string }).flow_id;
+      expect(server.sessions.has(firstFlowId)).to.be.true;
+      // Fire enough more login_flow calls to push well past the cap (100).
       for (let i = 0; i < 105; i++) {
         await server.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
       }
       expect(server.sessions.size).to.be.at.most(100);
+      expect(server.sessions.has(firstFlowId), "oldest session was evicted first").to.be.false;
     });
 
     it("a login_flow flood does not evict an in-flight auth code (v1.36.0 S2)", async () => {
@@ -1567,6 +1576,61 @@ describe("WebServer", () => {
       }
     });
 
+    // --- M6: enumerated public/protected partition (bisect net for the route-config guard) ---
+    // Every public path must NOT 401 under authRequired; every protected path MUST 401
+    // without a Bearer. Pins the guard's whole partition so the v1.37.0 route-config
+    // rewrite is proven equivalent to the path-whitelist it replaces (not just "nicer").
+    // /api/websocket is a WS-upgrade route, covered separately by the socket test below.
+    const M6_PUBLIC: Array<{ method: "GET" | "POST"; url: string; payload?: unknown }> = [
+      { method: "GET", url: "/" },
+      { method: "GET", url: "/api/" },
+      { method: "GET", url: "/api/discovery_info" },
+      { method: "GET", url: "/manifest.json" },
+      { method: "GET", url: "/health" },
+      { method: "GET", url: "/api/redirect_check" },
+      { method: "GET", url: "/auth/providers" },
+      { method: "POST", url: "/auth/login_flow", payload: {} },
+      {
+        method: "GET",
+        url: "/auth/authorize?response_type=code&client_id=https%3A%2F%2Fx.io%2F&redirect_uri=https%3A%2F%2Fx.io%2Fcb",
+      },
+      { method: "POST", url: "/auth/revoke", payload: {} },
+      { method: "POST", url: "/auth/token", payload: {} },
+      { method: "POST", url: "/api/webhook/anyid", payload: {} },
+    ];
+    const M6_PROTECTED: Array<{ method: "GET" | "POST"; url: string }> = [
+      { method: "GET", url: "/api/config" },
+      { method: "GET", url: "/api/states" },
+      { method: "GET", url: "/api/services" },
+      { method: "GET", url: "/api/events" },
+      { method: "GET", url: "/api/error_log" },
+      { method: "POST", url: "/api/mobile_app/registrations" },
+    ];
+
+    for (const r of M6_PUBLIC) {
+      it(`public partition: ${r.method} ${r.url.split("?")[0]} is not 401 under authRequired (M6)`, async () => {
+        const s = await buildAuthServer();
+        try {
+          const res = await s.inject({ method: r.method, url: r.url, payload: r.payload as never });
+          expect(res.statusCode, `${r.method} ${r.url}`).to.not.equal(401);
+        } finally {
+          await s["app"].close();
+        }
+      });
+    }
+
+    for (const r of M6_PROTECTED) {
+      it(`protected partition: ${r.method} ${r.url} is 401 without Bearer under authRequired (M6)`, async () => {
+        const s = await buildAuthServer();
+        try {
+          const res = await s.inject({ method: r.method, url: r.url });
+          expect(res.statusCode, `${r.method} ${r.url}`).to.equal(401);
+        } finally {
+          await s["app"].close();
+        }
+      });
+    }
+
     it("GET /api/states with valid Bearer returns 200 (v1.6.0)", async () => {
       const s = await buildAuthServer();
       try {
@@ -1665,6 +1729,44 @@ describe("WebServer bindAddress / start-stop", () => {
     await s.stop();
   });
 
+  it("start() with authRequired and no password warns the operator (C6, L50)", async () => {
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never);
+    const g = await buildGlobalConfig(built.adapter, "http://x/");
+    const s = new WebServer(
+      built.adapter as never,
+      { ...baseConfig, port: 0, bindAddress: "127.0.0.1", authRequired: true, password: "" },
+      reg,
+      g,
+      crypto.randomUUID(),
+    );
+    await s.start();
+    try {
+      expect(built.store.logs.some(l => l.level === "warn" && l.msg.includes("no password is configured"))).to.be.true;
+    } finally {
+      await s.stop();
+    }
+  });
+
+  it("start() with a password set does not emit the C6 warning (L50)", async () => {
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never);
+    const g = await buildGlobalConfig(built.adapter, "http://x/");
+    const s = new WebServer(
+      built.adapter as never,
+      { ...baseConfig, port: 0, bindAddress: "127.0.0.1", authRequired: true, password: "secret" },
+      reg,
+      g,
+      crypto.randomUUID(),
+    );
+    await s.start();
+    try {
+      expect(built.store.logs.some(l => l.level === "warn" && l.msg.includes("no password is configured"))).to.be.false;
+    } finally {
+      await s.stop();
+    }
+  });
+
   it("returns null for boundAddress when server not running", async () => {
     const built = createMockAdapter();
     const reg = new ClientRegistry(built.adapter as never);
@@ -1747,6 +1849,7 @@ describe("WebServer /api/websocket (v1.34.0)", () => {
   let s: WebServer;
   let reg: ClientRegistry;
   let wsUrl: string;
+  let store: MockStore;
 
   /** Buffer all incoming JSON frames; `next()` resolves the oldest unread frame. */
   function wsCollector(ws: WebSocket): { next: () => Promise<Record<string, unknown>> } {
@@ -1771,6 +1874,7 @@ describe("WebServer /api/websocket (v1.34.0)", () => {
 
   beforeEach(async () => {
     const built = createMockAdapter();
+    store = built.store;
     reg = new ClientRegistry(built.adapter as never);
     const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
     s = new WebServer(
@@ -1781,7 +1885,7 @@ describe("WebServer /api/websocket (v1.34.0)", () => {
       "ws-test-uuid-0001",
     );
     await s.start();
-    const client = await reg.identifyOrCreate(null, "127.0.0.1", null);
+    const client = await reg.identifyOrCreate(null, "127.0.0.1");
     await reg.setToken(client.id, TOKEN);
     wsUrl = `ws://127.0.0.1:${s.boundAddress!.port}/api/websocket`;
   });
@@ -1797,6 +1901,25 @@ describe("WebServer /api/websocket (v1.34.0)", () => {
     ws.send(JSON.stringify({ type: "auth", access_token: TOKEN }));
     expect(await col.next()).to.deep.equal({ type: "auth_ok", ha_version: HA_VERSION });
     ws.close();
+  });
+
+  it("starts a keep-alive heartbeat after auth and clears it on close (no timer leak, L7)", async () => {
+    const before = store.activeIntervals.size; // the server's cleanupTimer from start()
+    const ws = new WebSocket(wsUrl);
+    const col = wsCollector(ws);
+    await col.next(); // auth_required
+    ws.send(JSON.stringify({ type: "auth", access_token: TOKEN }));
+    await col.next(); // auth_ok → per-socket heartbeat interval started
+    expect(store.activeIntervals.size, "heartbeat started after auth").to.equal(before + 1);
+    ws.close();
+    await once(ws, "close");
+    // The server-side close handler runs clearTimers() a network round-trip later;
+    // poll (no fixed sleep) until it has, with a generous deadline.
+    const deadline = Date.now() + 2000;
+    while (store.activeIntervals.size > before && Date.now() < deadline) {
+      await new Promise(resolve => setImmediate(resolve));
+    }
+    expect(store.activeIntervals.size, "heartbeat cleared on close").to.equal(before);
   });
 
   it("rejects an unknown token with auth_invalid and closes the socket", async () => {
@@ -1930,7 +2053,7 @@ describe("WebServer /api/websocket (v1.34.0)", () => {
       "ws-authreq-uuid",
     );
     await s2.start();
-    const client = await reg2.identifyOrCreate(null, "127.0.0.1", null);
+    const client = await reg2.identifyOrCreate(null, "127.0.0.1");
     await reg2.setToken(client.id, "authreq-token");
     const ws = new WebSocket(`ws://127.0.0.1:${s2.boundAddress!.port}/api/websocket`);
     const col = wsCollector(ws);

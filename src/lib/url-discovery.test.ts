@@ -94,7 +94,7 @@ describe("url-discovery helpers", () => {
     // handler delegates here. If a new URL source adapter is supported,
     // it MUST appear in this set; otherwise its add/remove/reconfigure
     // events won't trigger url-discovery.scheduleRefresh and the user
-    // has to click info.refresh_urls manually (= v1.29.2 aura miss).
+    // has to click info.refreshUrls manually (= v1.29.2 aura miss).
 
     it("accepts admin, web, vis, vis-2 instances", () => {
       expect(isUrlSourceAdapterEvent("system.adapter.admin.0")).to.be.true;
@@ -234,7 +234,7 @@ describe("url-discovery helpers", () => {
 
     it("skips non-object", () => {
       const result: Record<string, string> = {};
-      collectFromInstance("system.adapter.bad.0", null, crossRefs, hostIp, result);
+      collectFromInstance("system.adapter.bad.0", null, crossRefs, hostIp, result, []);
       expect(Object.keys(result)).to.have.lengthOf(0);
     });
 
@@ -249,6 +249,7 @@ describe("url-discovery helpers", () => {
         crossRefs,
         hostIp,
         result,
+        [],
       );
       expect(Object.keys(result)).to.have.lengthOf(0);
     });
@@ -261,6 +262,7 @@ describe("url-discovery helpers", () => {
         crossRefs,
         hostIp,
         result,
+        [],
       );
       expect(result["http://192.168.1.99:8081/"]).to.equal("admin.0");
     });
@@ -280,6 +282,7 @@ describe("url-discovery helpers", () => {
         crossRefs,
         hostIp,
         result,
+        [],
       );
       expect(result["http://192.168.1.99:8081/new/"]).to.equal("admin.0: Admin");
       expect(result["http://192.168.1.99:8081/"]).to.be.undefined;
@@ -295,6 +298,7 @@ describe("url-discovery helpers", () => {
         crossRefs,
         hostIp,
         result,
+        [],
       );
       expect(result["http://192.168.1.99/vis/"]).to.equal("vis.0: VIS Main");
     });
@@ -314,6 +318,7 @@ describe("url-discovery helpers", () => {
         crossRefs,
         hostIp,
         result,
+        [],
       );
       expect(result["http://192.168.1.99:8081/"]).to.equal("admin.0: Admin");
       expect(result["http://192.168.1.99:8081/log"]).to.equal("admin.0: Logs");
@@ -329,6 +334,7 @@ describe("url-discovery helpers", () => {
         crossRefs,
         hostIp,
         result,
+        [],
       );
       expect(result["http://192.168.1.99:8081/pro"]).to.equal("admin.0: Admin Pro");
     });
@@ -341,6 +347,7 @@ describe("url-discovery helpers", () => {
         crossRefs,
         hostIp,
         result,
+        [],
       );
       expect(Object.keys(result)).to.have.lengthOf(0);
     });
@@ -356,6 +363,7 @@ describe("url-discovery helpers", () => {
         crossRefs,
         hostIp,
         result,
+        [],
       );
       expect(Object.keys(result)).to.have.lengthOf(0);
     });
@@ -370,6 +378,7 @@ describe("url-discovery helpers", () => {
         crossRefs,
         hostIp,
         result,
+        [],
       );
       expect(result["http://192.168.1.99/"]).to.equal("x.0");
     });

@@ -62,9 +62,11 @@ class ClientRegistry {
    */
   lastSeenFlushedAt = /* @__PURE__ */ new Map();
   /**
-   * v1.19.0 (G5): per-IP burst tracking für broken-cookie-Displays.
-   * Wenn eine IP > 3 neue Clients in einer Stunde erzeugt, kommt ein
-   * einmaliger warn-log mit Hinweis (cookie-Persistenz auf Display kaputt).
+   * v1.19.0 (G5): per-IP burst tracking for broken-cookie displays. v1.37.0 (M4):
+   * the window is now SLIDING — keyed on `lastActivity`, not a fixed start — so an
+   * IP that keeps spraying cookieless requests stays throttled instead of getting
+   * a fresh NEW_CLIENT_THROTTLE_PER_HOUR budget every hour. An IP idle for a full
+   * NEW_CLIENT_WINDOW_MS recovers and can mint persistent clients again.
    */
   newClientBurst = /* @__PURE__ */ new Map();
   /** @param adapter Adapter instance used for object/state I/O. */
@@ -82,76 +84,107 @@ class ClientRegistry {
   }
   /** Loads existing clients from ioBroker objects into memory. Call once on adapter start. */
   async restore() {
-    var _a, _b;
-    let channels = {};
+    var _a;
+    let objects = {};
     try {
-      channels = (_a = await this.adapter.getForeignObjectsAsync(`${this.adapter.namespace}.clients.*`, "channel")) != null ? _a : {};
+      objects = (_a = await this.adapter.getForeignObjectsAsync(`${this.adapter.namespace}.${CLIENTS_PREFIX}*`)) != null ? _a : {};
     } catch (err) {
-      this.adapter.log.debug(`client-registry: restore failed: ${String(err)}`);
+      this.adapter.log.warn(
+        `client-registry: restore failed \u2014 known displays will be re-created as new clients: ${String(err)}`
+      );
       return;
     }
-    for (const [fullId, obj] of Object.entries(channels)) {
-      const id = fullId.substring(`${this.adapter.namespace}.clients.`.length);
-      if (!id || id.includes(".")) {
-        continue;
-      }
-      try {
-        const native = (0, import_coerce.isPlainObject)(obj.native) ? obj.native : {};
-        const cookie = (0, import_coerce.coerceUuid)(native.cookie);
-        if (!cookie) {
-          continue;
-        }
-        const [modeRaw, manualUrlRaw, ipRaw, hostnameRaw] = await Promise.all([
-          this.readState(`${id}.mode`),
-          this.readState(`${id}.manualUrl`),
-          this.readState(`${id}.ip`),
-          this.readState(`${id}.hostname`)
-        ]);
-        const mode = typeof modeRaw === "string" ? modeRaw : "";
-        const manualUrl = (0, import_coerce.coerceSafeUrl)(manualUrlRaw);
-        const ip = (0, import_coerce.coerceString)(ipRaw);
-        const token = (0, import_coerce.coerceUuid)(native.token);
-        const refreshToken = (0, import_coerce.coerceUuid)(native.refreshToken);
-        const tokenExpiresAt = token && typeof native.tokenExpiresAt === "number" ? native.tokenExpiresAt : null;
-        const legacyHostname = (0, import_coerce.coerceString)(hostnameRaw);
-        let channelName = (0, import_coerce.coerceString)((_b = obj.common) == null ? void 0 : _b.name);
-        if (legacyHostname) {
-          this.adapter.log.debug(
-            `restore: legacy hostname migration for client ${id} \u2014 '${legacyHostname}' moved to common.name`
-          );
-          if (legacyHostname !== channelName) {
-            await this.adapter.extendObjectAsync(`clients.${id}`, { common: { name: legacyHostname } });
-            channelName = legacyHostname;
-          }
-          try {
-            await this.adapter.delObjectAsync(`clients.${id}.hostname`);
-          } catch {
-          }
-        }
-        const hostname = channelName && channelName !== ip && channelName !== id ? channelName : null;
-        const record = { id, cookie, token, tokenExpiresAt, refreshToken, mode, manualUrl, ip, hostname };
-        this.trackInMemory(record);
-        await this.ensureObjects(record);
-        const modeStateRaw = await this.readState(`${id}.mode`);
-        if (modeStateRaw === "" || modeStateRaw === null || modeStateRaw === void 0) {
-          await this.adapter.setStateAsync(`clients.${id}.mode`, { val: 0, ack: true });
-        }
-      } catch (err) {
-        this.adapter.log.debug(`client-registry: skipping ${id} during restore \u2014 ${String(err)}`);
-      }
+    for (const [fullId, obj] of Object.entries(objects)) {
+      await this.restoreChannel(fullId, obj);
     }
     this.adapter.log.debug(`client-registry: restored ${this.byId.size} client(s)`);
+  }
+  /**
+   * Restore a single `clients.<id>` channel into the in-memory registry. Extracted
+   * from restore() (I11 v1.37.0) so restore() reads as a thin loop over the channels.
+   * Per-client try/catch (HE1 v1.28.3): one broken channel — a corrupt state during a
+   * jsonl-store migration, a missing object — costs only itself, never the whole restore.
+   *
+   * @param fullId Full object id (`<namespace>.clients.<id>`).
+   * @param obj    The client object (channel or device) read from the objects DB.
+   */
+  async restoreChannel(fullId, obj) {
+    var _a;
+    const id = fullId.substring(`${this.adapter.namespace}.${CLIENTS_PREFIX}`.length);
+    if (!id || id.includes(".")) {
+      return;
+    }
+    try {
+      const native = (0, import_coerce.isPlainObject)(obj.native) ? obj.native : {};
+      const cookie = (0, import_coerce.coerceUuid)(native.cookie);
+      if (!cookie) {
+        this.adapter.log.warn(`client-registry: removing orphaned client channel without cookie: ${id}`);
+        try {
+          await this.adapter.delObjectAsync(`clients.${id}`, { recursive: true });
+        } catch (err) {
+          this.adapter.log.debug(`client-registry: orphan cleanup failed for ${id}: ${String(err)}`);
+        }
+        return;
+      }
+      if (obj.type === "channel") {
+        try {
+          await this.adapter.extendObject(`clients.${id}`, { type: "device" });
+        } catch (err) {
+          this.adapter.log.debug(`client-registry: channel\u2192device migration failed for ${id}: ${String(err)}`);
+        }
+      }
+      const [modeRaw, manualUrlRaw, ipRaw, hostnameRaw] = await Promise.all([
+        this.readState(`${id}.mode`),
+        this.readState(`${id}.manualUrl`),
+        this.readState(`${id}.ip`),
+        this.readState(`${id}.hostname`)
+      ]);
+      const mode = typeof modeRaw === "string" ? modeRaw : "";
+      const manualUrl = (0, import_coerce.coerceSafeUrl)(manualUrlRaw);
+      const ip = (0, import_coerce.coerceString)(ipRaw);
+      const token = (0, import_coerce.coerceUuid)(native.token);
+      const refreshToken = (0, import_coerce.coerceUuid)(native.refreshToken);
+      const tokenExpiresAt = token && typeof native.tokenExpiresAt === "number" ? native.tokenExpiresAt : null;
+      const legacyHostname = (0, import_coerce.coerceString)(hostnameRaw);
+      let channelName = (0, import_coerce.coerceString)((_a = obj.common) == null ? void 0 : _a.name);
+      if (legacyHostname) {
+        this.adapter.log.debug(
+          `restore: legacy hostname migration for client ${id} \u2014 '${legacyHostname}' moved to common.name`
+        );
+        if (legacyHostname !== channelName) {
+          await this.adapter.extendObject(`clients.${id}`, { common: { name: legacyHostname } });
+          channelName = legacyHostname;
+        }
+        try {
+          await this.adapter.delObjectAsync(`clients.${id}.hostname`);
+        } catch {
+        }
+      }
+      const hostname = channelName && channelName !== ip && channelName !== id ? channelName : null;
+      const record = { id, cookie, token, tokenExpiresAt, refreshToken, mode, manualUrl, ip, hostname };
+      this.trackInMemory(record);
+      await this.ensureObjects(record);
+      if (mode === "") {
+        await this.adapter.setState(`clients.${id}.mode`, { val: "0", ack: true });
+      }
+    } catch (err) {
+      this.adapter.log.debug(`client-registry: skipping ${id} during restore \u2014 ${String(err)}`);
+    }
   }
   /**
    * Find the client for this cookie or create a new one.
    * Creates channel + states on first call and updates IP/hostname if changed.
    *
-   * @param cookie    Incoming cookie value (may be null/invalid).
-   * @param ip        Remote IP observed by the server.
-   * @param hostname  Optional hostname (from reverse DNS), stored for the admin UI.
-   * @param userAgent Optional User-Agent header for NAT-collision-Schutz im Pending-Lock.
+   * @param cookie         Incoming cookie value (may be null/invalid).
+   * @param ip             Remote IP observed by the server.
+   * @param opts           Optional details, named so a call site can't transpose the nullable strings. v1.37.0 (L30).
+   * @param opts.hostname  Hostname (from reverse DNS), stored for the admin UI.
+   * @param opts.userAgent User-Agent header for NAT-collision protection in the pending lock.
    */
-  async identifyOrCreate(cookie, ip, hostname, userAgent = null) {
+  async identifyOrCreate(cookie, ip, opts = {}) {
+    var _a, _b;
+    const hostname = (_a = opts.hostname) != null ? _a : null;
+    const userAgent = (_b = opts.userAgent) != null ? _b : null;
     const validCookie = (0, import_coerce.coerceUuid)(cookie);
     if (validCookie) {
       const existing = this.byCookie.get(validCookie);
@@ -163,6 +196,7 @@ class ClientRegistry {
     }
     if (ip) {
       if (this.isIpThrottled(ip)) {
+        this.recordNewClientActivity(ip, false);
         this.adapter.log.debug(`identify: IP ${ip} over new-client throttle \u2014 serving a transient record (no object)`);
         return this.transientRecord(ip, hostname);
       }
@@ -259,7 +293,7 @@ class ClientRegistry {
     if (token) {
       this.byToken.set(token, record);
     }
-    await this.adapter.extendObjectAsync(`clients.${id}`, {
+    await this.adapter.extendObject(`clients.${id}`, {
       native: { token, tokenExpiresAt: record.tokenExpiresAt }
     });
   }
@@ -283,7 +317,7 @@ class ClientRegistry {
     if (refreshToken) {
       this.byRefreshToken.set(refreshToken, record);
     }
-    await this.adapter.extendObjectAsync(`clients.${id}`, { native: { refreshToken } });
+    await this.adapter.extendObject(`clients.${id}`, { native: { refreshToken } });
   }
   /**
    * Accept an external mode write on `clients.<id>.mode`.
@@ -303,12 +337,12 @@ class ClientRegistry {
     switch (result.kind) {
       case "no-choice":
         record.mode = "";
-        await this.adapter.setStateAsync(`clients.${id}.mode`, { val: 0, ack: true });
+        await this.adapter.setState(`clients.${id}.mode`, { val: "0", ack: true });
         this.adapter.log.debug(`Client ${id}: mode \u2192 cleared (no-choice)`);
         return;
       case "rejected-non-string":
         this.adapter.log.debug(`client-registry: rejected non-string mode for ${id}`);
-        await this.adapter.setStateAsync(`clients.${id}.mode`, { val: record.mode || 0, ack: true });
+        await this.adapter.setState(`clients.${id}.mode`, { val: record.mode || "0", ack: true });
         return;
       case "sentinel":
         if (result.value === import_constants.MODE_MANUAL && !record.manualUrl) {
@@ -317,22 +351,22 @@ class ClientRegistry {
           );
         }
         record.mode = result.value;
-        await this.adapter.setStateAsync(`clients.${id}.mode`, { val: result.value, ack: true });
+        await this.adapter.setState(`clients.${id}.mode`, { val: result.value, ack: true });
         this.adapter.log.debug(`Client ${id}: mode \u2192 '${result.value}' (sentinel)`);
         return;
       case "rejected-unsafe-url":
-        this.adapter.log.warn(`Client ${id}: rejected unsafe mode value "${result.raw}"`);
-        await this.adapter.setStateAsync(`clients.${id}.mode`, { val: record.mode, ack: true });
+        this.adapter.log.warn(`Client ${id}: rejected unsafe mode value "${(0, import_coerce.oneLine)(result.raw).substring(0, 120)}"`);
+        await this.adapter.setState(`clients.${id}.mode`, { val: record.mode || "0", ack: true });
         return;
       case "url":
         record.mode = result.value;
-        await this.adapter.setStateAsync(`clients.${id}.mode`, { val: result.value, ack: true });
+        await this.adapter.setState(`clients.${id}.mode`, { val: result.value, ack: true });
         this.adapter.log.debug(`Client ${id}: mode \u2192 ${result.value} (direct URL)`);
         return;
       // 'rejected-disallowed-sentinel' kommt hier nicht vor weil beide
       // Sentinels (global/manual) erlaubt sind. Defensive: revert.
       default:
-        await this.adapter.setStateAsync(`clients.${id}.mode`, { val: record.mode || 0, ack: true });
+        await this.adapter.setState(`clients.${id}.mode`, { val: record.mode || "0", ack: true });
     }
   }
   /**
@@ -351,11 +385,11 @@ class ClientRegistry {
     const result = (0, import_coerce.parseManualUrlWrite)(rawValue);
     if (!result.ok) {
       this.adapter.log.warn(`Client ${id}: rejected unsafe manualUrl value`);
-      await this.adapter.setStateAsync(`clients.${id}.manualUrl`, { val: (_a = record.manualUrl) != null ? _a : "", ack: true });
+      await this.adapter.setState(`clients.${id}.manualUrl`, { val: (_a = record.manualUrl) != null ? _a : "", ack: true });
       return;
     }
     record.manualUrl = result.safe;
-    await this.adapter.setStateAsync(`clients.${id}.manualUrl`, { val: (_b = result.safe) != null ? _b : "", ack: true });
+    await this.adapter.setState(`clients.${id}.manualUrl`, { val: (_b = result.safe) != null ? _b : "", ack: true });
     this.adapter.log.debug(`Client ${id}: manualUrl \u2192 ${(_c = result.safe) != null ? _c : "cleared"}`);
     if (record.mode === import_constants.MODE_MANUAL && !result.safe) {
       this.adapter.log.warn(`Client ${id}: manualUrl cleared while mode is "manual" \u2014 display will see the setup page`);
@@ -378,7 +412,7 @@ class ClientRegistry {
         continue;
       }
       record.mode = value;
-      writes.push(this.adapter.setStateAsync(`clients.${record.id}.mode`, { val: value, ack: true }));
+      writes.push(this.adapter.setState(`clients.${record.id}.mode`, { val: value, ack: true }));
       changed++;
     }
     if (writes.length > 0) {
@@ -407,12 +441,20 @@ class ClientRegistry {
       this.byRefreshToken.delete(record.refreshToken);
     }
     this.lastSeenFlushedAt.delete(id);
+    let objectRemoved = true;
     try {
       await this.adapter.delObjectAsync(`clients.${id}`, { recursive: true });
     } catch (err) {
+      objectRemoved = false;
       this.adapter.log.debug(`client-registry: delObject failed for ${id}: ${String(err)}`);
     }
-    this.adapter.log.info(`Client forgotten: ${id}`);
+    if (objectRemoved) {
+      this.adapter.log.info(`Client forgotten: ${id}`);
+    } else {
+      this.adapter.log.warn(
+        `Client ${id} forgotten in memory, but its object could not be removed \u2014 it will reappear after an adapter restart`
+      );
+    }
   }
   /**
    * Updates the mode dropdown states (`common.states`) on every client's mode datapoint.
@@ -430,8 +472,11 @@ class ClientRegistry {
         if (!existing) {
           return;
         }
+        if ((0, import_coerce.shallowStatesEqual)(existing.common.states, merged)) {
+          return;
+        }
         existing.common.states = merged;
-        await this.adapter.setObjectAsync(stateId, existing);
+        await this.adapter.setObject(stateId, existing);
       })
     );
   }
@@ -451,18 +496,7 @@ class ClientRegistry {
     while (this.byId.has(id)) {
       id = (0, import_network.generateClientId)();
     }
-    const cookie = import_node_crypto.default.randomUUID();
-    const mode = this.newClientModeProvider();
-    const record = {
-      id,
-      cookie,
-      token: null,
-      refreshToken: null,
-      mode,
-      manualUrl: null,
-      ip,
-      hostname
-    };
+    const record = this.buildRecord(id, ip, hostname);
     this.trackInMemory(record);
     await this.createObjects(record);
     this.touchLastSeen(record);
@@ -470,21 +504,24 @@ class ClientRegistry {
       ip ? `New client connected: ${id} (${(0, import_coerce.oneLine)(hostname != null ? hostname : ip)})` : `New client connected: ${id}`
     );
     if (ip) {
-      this.recordNewClientIp(ip);
+      this.recordNewClientActivity(ip, true);
     }
     return record;
   }
   /**
-   * True when `ip` has already minted {@link NEW_CLIENT_THROTTLE_PER_HOUR} new
-   * clients in the current rolling hour — {@link recordNewClientIp} owns the
-   * per-IP burst window. Once true, `identifyOrCreate` hands out transient
-   * records (no object) until the window resets one hour after the burst began.
+   * True when `ip` has minted at least {@link NEW_CLIENT_THROTTLE_PER_HOUR} new
+   * clients AND is still active within the sliding {@link NEW_CLIENT_WINDOW_MS}.
+   * Once true, `identifyOrCreate` hands out transient records (no object). An IP
+   * that stops spraying for a full window recovers here; {@link recordNewClientActivity}
+   * refreshes the window on every cookieless request (throttled or not), so
+   * continuous spraying never recovers. v1.37.0 (M4).
    *
-   * @param ip Remote IP to check.
+   * @param ip  Remote IP to check.
+   * @param now Current time in ms (injectable for tests).
    */
-  isIpThrottled(ip) {
+  isIpThrottled(ip, now = Date.now()) {
     const entry = this.newClientBurst.get(ip);
-    if (!entry || Date.now() - entry.since > 60 * 60 * 1e3) {
+    if (!entry || now - entry.lastActivity >= import_constants.NEW_CLIENT_WINDOW_MS) {
       return false;
     }
     return entry.count >= import_constants.NEW_CLIENT_THROTTLE_PER_HOUR;
@@ -501,10 +538,25 @@ class ClientRegistry {
    * @param hostname Reverse-DNS hostname, if any.
    */
   transientRecord(ip, hostname) {
+    return this.buildRecord((0, import_network.generateClientId)(), ip, hostname);
+  }
+  /**
+   * Builds a fresh ClientRecord with a new cookie and the current default mode.
+   * Single construction site so every field — notably the nullable
+   * token / tokenExpiresAt / refreshToken — is set in exactly one place:
+   * createClient persists + tracks it, transientRecord hands it out untracked.
+   * v1.37.0 (L13).
+   *
+   * @param id       Short client id (createClient de-dupes it against byId).
+   * @param ip       Last observed IP.
+   * @param hostname Reverse-DNS hostname, if any.
+   */
+  buildRecord(id, ip, hostname) {
     return {
-      id: (0, import_network.generateClientId)(),
+      id,
       cookie: import_node_crypto.default.randomUUID(),
       token: null,
+      tokenExpiresAt: null,
       refreshToken: null,
       mode: this.newClientModeProvider(),
       manualUrl: null,
@@ -513,27 +565,32 @@ class ClientRegistry {
     };
   }
   /**
-   * v1.19.0 (G5): tracking-only — wenn eine IP > 3 neue Clients pro Stunde
-   * erzeugt, einmaliger warn-log mit Diagnose-Hinweis. Danach 1h cooldown
-   * pro IP. Map-Cap 200 (FIFO).
+   * Records cookieless-identify activity for an IP into the sliding burst window.
+   * Called on EVERY cookieless identify — a persistent create (`persistent = true`,
+   * bumps the count and may warn once per window) and a throttled transient
+   * (`persistent = false`, only refreshes `lastActivity`). Refreshing on the
+   * throttled path is what keeps a continuously-spraying IP from recovering. The
+   * window resets only after a full idle window. Map-cap 200 (FIFO).
+   * v1.19.0 (G5); sliding window v1.37.0 (M4).
    *
-   * @param ip Remote IP that just got a new ClientRecord assigned.
+   * @param ip         Remote IP that just performed a cookieless identify.
+   * @param persistent True if a persistent client was minted (bumps the count).
+   * @param now        Current time in ms (injectable for tests).
    */
-  recordNewClientIp(ip) {
-    var _a;
-    const now = Date.now();
-    const HOUR = 60 * 60 * 1e3;
-    const entry = (_a = this.newClientBurst.get(ip)) != null ? _a : { count: 0, since: now, warnedAt: 0 };
-    if (now - entry.since > HOUR) {
-      entry.count = 0;
-      entry.since = now;
+  recordNewClientActivity(ip, persistent, now = Date.now()) {
+    let entry = this.newClientBurst.get(ip);
+    if (!entry || now - entry.lastActivity >= import_constants.NEW_CLIENT_WINDOW_MS) {
+      entry = { count: 0, lastActivity: now, warnedAt: 0 };
     }
-    entry.count += 1;
-    if (entry.count > 3 && now - entry.warnedAt > HOUR) {
-      this.adapter.log.warn(
-        `IP ${ip} created ${entry.count} clients within an hour \u2014 display likely is not persisting cookies (privacy mode? refresh bug?)`
-      );
-      entry.warnedAt = now;
+    entry.lastActivity = now;
+    if (persistent) {
+      entry.count += 1;
+      if (entry.count > import_constants.NEW_CLIENT_BURST_WARN_THRESHOLD && now - entry.warnedAt > import_constants.NEW_CLIENT_WINDOW_MS) {
+        this.adapter.log.warn(
+          `IP ${ip} created ${entry.count} clients within an hour \u2014 display likely is not persisting cookies (privacy mode? refresh bug?)`
+        );
+        entry.warnedAt = now;
+      }
     }
     this.newClientBurst.set(ip, entry);
     (0, import_coerce.evictOldest)(this.newClientBurst, import_constants.NEW_CLIENT_BURST_CAP);
@@ -549,17 +606,20 @@ class ClientRegistry {
    */
   touchLastSeen(record) {
     var _a;
+    if (!this.byId.has(record.id)) {
+      return;
+    }
     const now = Date.now();
     const last = (_a = this.lastSeenFlushedAt.get(record.id)) != null ? _a : 0;
-    if (now - last < 60 * 60 * 1e3) {
+    if (now - last < import_constants.LASTSEEN_FLUSH_INTERVAL_MS) {
       return;
     }
     this.lastSeenFlushedAt.set(record.id, now);
-    this.adapter.extendObjectAsync(`clients.${record.id}`, { native: { lastSeen: now } }).catch((err) => this.adapter.log.debug(`touchLastSeen failed for ${record.id}: ${String(err)}`));
+    this.adapter.extendObject(`clients.${record.id}`, { native: { lastSeen: now } }).catch((err) => this.adapter.log.debug(`touchLastSeen failed for ${record.id}: ${String(err)}`));
   }
   /**
    * v1.19.0 (F11): zentraler lastSeen-Seed-Pfad. Vorher hatte main.ts
-   * gcStaleClients seinen eigenen extendObjectAsync-Call mit identischem
+   * gcStaleClients seinen eigenen extendObject-Call mit identischem
    * native-Format — DRY-Violation und gefährlich wenn das Format mal ändert.
    * Jetzt nutzen beide Pfade diese Methode. Throttle-Map wird auch upgedated,
    * damit der nächste touchLastSeen den seed nicht direkt überschreibt.
@@ -570,7 +630,7 @@ class ClientRegistry {
   async seedLastSeen(id, now = Date.now()) {
     this.lastSeenFlushedAt.set(id, now);
     try {
-      await this.adapter.extendObjectAsync(`clients.${id}`, { native: { lastSeen: now } });
+      await this.adapter.extendObject(`clients.${id}`, { native: { lastSeen: now } });
     } catch (err) {
       this.adapter.log.debug(`seedLastSeen failed for ${id}: ${String(err)}`);
     }
@@ -602,7 +662,7 @@ class ClientRegistry {
     const { id, cookie, ip, hostname } = record;
     const mergedStates = this.buildModeStates();
     await this.adapter.setObjectNotExistsAsync(`clients.${id}`, {
-      type: "channel",
+      type: "device",
       common: { name: (_a = hostname != null ? hostname : ip) != null ? _a : id },
       native: { cookie, token: null }
     });
@@ -622,15 +682,19 @@ class ClientRegistry {
       var _a2;
       const existing = await this.adapter.getObjectAsync(`clients.${id}.mode`);
       if (existing) {
+        const c = existing.common;
+        if (existing.type === "state" && (c == null ? void 0 : c.type) === "mixed" && c.role === "state" && (0, import_coerce.shallowStatesEqual)(c.states, mergedStates)) {
+          return;
+        }
         const preservedName = (_a2 = existing.common) == null ? void 0 : _a2.name;
         existing.common = { ...existing.common, ...modeFullCommon };
         if (preservedName !== void 0) {
           existing.common.name = preservedName;
         }
         existing.type = "state";
-        await this.adapter.setObjectAsync(`clients.${id}.mode`, existing);
+        await this.adapter.setObject(`clients.${id}.mode`, existing);
       } else {
-        await this.adapter.setObjectAsync(`clients.${id}.mode`, {
+        await this.adapter.setObject(`clients.${id}.mode`, {
           type: "state",
           common: modeFullCommon,
           native: {}
@@ -639,7 +703,7 @@ class ClientRegistry {
     };
     await Promise.all([
       ensureModeObject(),
-      this.adapter.extendObjectAsync(
+      this.adapter.extendObject(
         `clients.${id}.manualUrl`,
         {
           type: "state",
@@ -685,9 +749,9 @@ class ClientRegistry {
     await this.ensureObjects(record);
     const { id, mode, ip } = record;
     await Promise.all([
-      this.adapter.setStateAsync(`clients.${id}.ip`, { val: ip != null ? ip : "", ack: true }),
-      this.adapter.setStateAsync(`clients.${id}.mode`, { val: mode, ack: true }),
-      this.adapter.setStateAsync(`clients.${id}.manualUrl`, { val: "", ack: true })
+      this.adapter.setState(`clients.${id}.ip`, { val: ip != null ? ip : "", ack: true }),
+      this.adapter.setState(`clients.${id}.mode`, { val: mode, ack: true }),
+      this.adapter.setState(`clients.${id}.manualUrl`, { val: "", ack: true })
     ]);
   }
   async updateIpHostname(record, ip, hostname) {
@@ -695,18 +759,59 @@ class ClientRegistry {
     if (ip && ip !== record.ip) {
       const previousIp = record.ip;
       record.ip = ip;
-      await this.adapter.setStateAsync(`clients.${record.id}.ip`, { val: ip, ack: true });
+      await this.adapter.setState(`clients.${record.id}.ip`, { val: ip, ack: true });
       if (!record.hostname) {
         const obj = await this.adapter.getObjectAsync(`clients.${record.id}`);
         const currentName = (_a = obj == null ? void 0 : obj.common) == null ? void 0 : _a.name;
         if (currentName === void 0 || typeof currentName === "string" && currentName === previousIp) {
-          await this.adapter.extendObjectAsync(`clients.${record.id}`, { common: { name: ip } });
+          await this.adapter.extendObject(`clients.${record.id}`, { common: { name: ip } });
         }
       }
     }
     if (hostname && hostname !== record.hostname) {
-      record.hostname = hostname;
-      await this.adapter.extendObjectAsync(`clients.${record.id}`, { common: { name: hostname } });
+      await this.applyHostname(record, hostname);
+    }
+  }
+  /**
+   * Updates a KNOWN client's reverse-DNS hostname — the target of the web server's
+   * asynchronous reverse-DNS callback. A byCookie miss is a deliberate no-op: the
+   * client was removed (or the cookie became unknown) while the up-to-5s lookup
+   * ran, and we must NOT create a new client here — that would mint a ghost with a
+   * fresh cookie no display owns. Replaces the earlier `identifyOrCreate` misuse
+   * as an update channel. v1.37.0 (M5).
+   *
+   * @param cookie   Cookie of the client whose hostname resolved.
+   * @param hostname Reverse-DNS hostname.
+   */
+  async updateHostname(cookie, hostname) {
+    const record = this.getByCookie(cookie);
+    if (!record || !hostname || hostname === record.hostname) {
+      return;
+    }
+    await this.applyHostname(record, hostname);
+  }
+  /**
+   * Writes the reverse-DNS hostname to the record and the channel's common.name,
+   * but only when common.name still holds an auto value (the previous hostname,
+   * the current IP, or the id) — never clobber a name the user set in the admin
+   * UI. onObjectChange does not observe clients.* renames, so record.hostname
+   * stays null and this read-before-overwrite is the only guard protecting a user
+   * rename across a late-resolving reverse-DNS result. The IP branch above guards
+   * the same way; before v1.37.0 this hostname branch overwrote unconditionally.
+   * v1.36.0 (C4) / v1.37.0 (M1).
+   *
+   * @param record   Tracked client record.
+   * @param hostname Resolved hostname (already non-empty and != record.hostname).
+   */
+  async applyHostname(record, hostname) {
+    var _a;
+    const previousHostname = record.hostname;
+    record.hostname = hostname;
+    const obj = await this.adapter.getObjectAsync(`clients.${record.id}`);
+    const currentName = (_a = obj == null ? void 0 : obj.common) == null ? void 0 : _a.name;
+    const isAutoName = currentName === void 0 || typeof currentName === "string" && (currentName === previousHostname || currentName === record.ip || currentName === record.id);
+    if (isAutoName) {
+      await this.adapter.extendObject(`clients.${record.id}`, { common: { name: hostname } });
     }
   }
   async readState(subId) {

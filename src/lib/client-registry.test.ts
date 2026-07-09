@@ -23,8 +23,13 @@ vi.mock("@iobroker/adapter-core", async () => {
 });
 
 import { ClientRegistry, parseClientStateId } from "./client-registry";
-import { NEW_CLIENT_THROTTLE_PER_HOUR, OAUTH_ACCESS_TOKEN_TTL_S } from "./constants";
-import { MODE_GLOBAL, MODE_MANUAL } from "./global-config";
+import {
+  MODE_GLOBAL,
+  MODE_MANUAL,
+  NEW_CLIENT_THROTTLE_PER_HOUR,
+  NEW_CLIENT_WINDOW_MS,
+  OAUTH_ACCESS_TOKEN_TTL_S,
+} from "./constants";
 import type { ClientRecord } from "./types";
 
 interface ObjEntry {
@@ -71,10 +76,10 @@ function createMockAdapter(namespace = "hassemu.0"): {
     getForeignObjectsAsync: (pattern: string, type: "channel") => Promise<Record<string, ObjEntry>>;
     getStateAsync: (id: string) => Promise<{ val: unknown; ack: boolean } | null>;
     getObjectAsync: (id: string) => Promise<ObjEntry | null>;
-    setObjectAsync: (id: string, obj: ObjEntry) => Promise<void>;
+    setObject: (id: string, obj: ObjEntry) => Promise<void>;
     setObjectNotExistsAsync: (id: string, obj: ObjEntry) => Promise<void>;
-    extendObjectAsync: (id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>) => Promise<void>;
-    setStateAsync: (id: string, value: { val: unknown; ack?: boolean }, _ack?: boolean) => Promise<void>;
+    extendObject: (id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>) => Promise<void>;
+    setState: (id: string, value: { val: unknown; ack?: boolean }, _ack?: boolean) => Promise<void>;
     delObjectAsync: (id: string, options?: { recursive?: boolean }) => Promise<void>;
   } {
     return {
@@ -93,7 +98,7 @@ function createMockAdapter(namespace = "hassemu.0"): {
         const prefix = pattern.replace("*", "");
         const out: Record<string, ObjEntry> = {};
         for (const [id, obj] of store.objects) {
-          if (id.startsWith(prefix) && obj.type === "channel") {
+          if (id.startsWith(prefix) && (obj.type === "channel" || obj.type === "device")) {
             out[id] = obj;
           }
         }
@@ -104,7 +109,7 @@ function createMockAdapter(namespace = "hassemu.0"): {
         const fullId = id.startsWith(`${namespace}.`) ? id : `${namespace}.${id}`;
         return store.objects.get(fullId) ?? null;
       },
-      setObjectAsync: async (id: string, obj: ObjEntry) => {
+      setObject: async (id: string, obj: ObjEntry) => {
         const fullId = id.startsWith(`${namespace}.`) ? id : `${namespace}.${id}`;
         store.objects.set(fullId, obj);
       },
@@ -114,7 +119,7 @@ function createMockAdapter(namespace = "hassemu.0"): {
           store.objects.set(fullId, obj);
         }
       },
-      extendObjectAsync: async (id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>) => {
+      extendObject: async (id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>) => {
         const fullId = `${namespace}.${id}`;
         const existing = store.objects.get(fullId) ?? { type: "state" };
         const preserve = (options?.preserve as { common?: string[] })?.common ?? [];
@@ -131,7 +136,7 @@ function createMockAdapter(namespace = "hassemu.0"): {
           native: { ...(existing.native ?? {}), ...(obj.native ?? {}) },
         });
       },
-      setStateAsync: async (id: string, value: { val: unknown; ack?: boolean }) => {
+      setState: async (id: string, value: { val: unknown; ack?: boolean }) => {
         store.states.set(`${namespace}.${id}`, { val: value.val, ack: value.ack ?? false });
       },
       delObjectAsync: async (id: string) => {
@@ -168,7 +173,7 @@ describe("ClientRegistry", () => {
 
   describe("identifyOrCreate", () => {
     it("creates a new client when cookie is missing", async () => {
-      const rec = await registry.identifyOrCreate(null, "192.168.1.5", "tablet.local");
+      const rec = await registry.identifyOrCreate(null, "192.168.1.5", { hostname: "tablet.local" });
       expect(rec.id).to.match(/^[0-9a-f]{6}$/);
       expect(rec.cookie).to.match(/^[0-9a-f-]{36}$/);
       expect(rec.ip).to.equal("192.168.1.5");
@@ -178,7 +183,7 @@ describe("ClientRegistry", () => {
     });
 
     it("creates ioBroker channel + mode/manualUrl/ip/remove states on new client", async () => {
-      const rec = await registry.identifyOrCreate(null, "192.168.1.5", null);
+      const rec = await registry.identifyOrCreate(null, "192.168.1.5");
       expect(store.objects.has(`hassemu.0.clients.${rec.id}`)).to.be.true;
       expect(store.objects.has(`hassemu.0.clients.${rec.id}.mode`)).to.be.true;
       expect(store.objects.has(`hassemu.0.clients.${rec.id}.manualUrl`)).to.be.true;
@@ -187,102 +192,102 @@ describe("ClientRegistry", () => {
     });
 
     it('mode state has type "mixed" (future-proof against strict-type cast)', async () => {
-      const rec = await registry.identifyOrCreate(null, null, null);
+      const rec = await registry.identifyOrCreate(null, null);
       const obj = store.objects.get(`hassemu.0.clients.${rec.id}.mode`);
       expect(obj?.common?.type).to.equal("mixed");
     });
 
     it('manualUrl state has role "url"', async () => {
-      const rec = await registry.identifyOrCreate(null, null, null);
+      const rec = await registry.identifyOrCreate(null, null);
       const obj = store.objects.get(`hassemu.0.clients.${rec.id}.manualUrl`);
       expect(obj?.common?.role).to.equal("url");
     });
 
     it("does not create a legacy hostname state", async () => {
-      const rec = await registry.identifyOrCreate(null, "192.168.1.5", "tablet.local");
+      const rec = await registry.identifyOrCreate(null, "192.168.1.5", { hostname: "tablet.local" });
       expect(store.objects.has(`hassemu.0.clients.${rec.id}.hostname`)).to.be.false;
     });
 
     it("does not create a legacy visUrl state", async () => {
-      const rec = await registry.identifyOrCreate(null, "192.168.1.5", null);
+      const rec = await registry.identifyOrCreate(null, "192.168.1.5");
       expect(store.objects.has(`hassemu.0.clients.${rec.id}.visUrl`)).to.be.false;
     });
 
     it("sets common.name to ip when hostname is unknown", async () => {
-      const rec = await registry.identifyOrCreate(null, "192.168.1.5", null);
+      const rec = await registry.identifyOrCreate(null, "192.168.1.5");
       const ch = store.objects.get(`hassemu.0.clients.${rec.id}`);
       expect(ch?.common?.name).to.equal("192.168.1.5");
     });
 
     it("sets common.name to hostname when known at creation", async () => {
-      const rec = await registry.identifyOrCreate(null, "192.168.1.5", "tablet.local");
+      const rec = await registry.identifyOrCreate(null, "192.168.1.5", { hostname: "tablet.local" });
       const ch = store.objects.get(`hassemu.0.clients.${rec.id}`);
       expect(ch?.common?.name).to.equal("tablet.local");
     });
 
     it("updates common.name when hostname resolves after creation", async () => {
-      const rec = await registry.identifyOrCreate(null, "192.168.1.5", null);
-      await registry.identifyOrCreate(rec.cookie, "192.168.1.5", "tablet.local");
+      const rec = await registry.identifyOrCreate(null, "192.168.1.5");
+      await registry.identifyOrCreate(rec.cookie, "192.168.1.5", { hostname: "tablet.local" });
       const ch = store.objects.get(`hassemu.0.clients.${rec.id}`);
       expect(ch?.common?.name).to.equal("tablet.local");
     });
 
     it("keeps common.name in sync with ip while hostname unknown", async () => {
-      const rec = await registry.identifyOrCreate(null, "1.1.1.1", null);
-      await registry.identifyOrCreate(rec.cookie, "2.2.2.2", null);
+      const rec = await registry.identifyOrCreate(null, "1.1.1.1");
+      await registry.identifyOrCreate(rec.cookie, "2.2.2.2");
       const ch = store.objects.get(`hassemu.0.clients.${rec.id}`);
       expect(ch?.common?.name).to.equal("2.2.2.2");
     });
 
     it("preserves a user-renamed common.name across an IP change (v1.36.0 C4)", async () => {
-      const rec = await registry.identifyOrCreate(null, "1.1.1.1", null); // auto name = "1.1.1.1"
+      const rec = await registry.identifyOrCreate(null, "1.1.1.1"); // auto name = "1.1.1.1"
       const ch = store.objects.get(`hassemu.0.clients.${rec.id}`)!;
       ch.common = { ...ch.common, name: "Kitchen Display" }; // user renames in the admin UI
       // Reconnect from a new DHCP lease — the IP change must NOT clobber the user
       // name (record.hostname is still null; the old guard overwrote it with the IP).
-      await registry.identifyOrCreate(rec.cookie, "2.2.2.2", null);
+      await registry.identifyOrCreate(rec.cookie, "2.2.2.2");
       expect(store.objects.get(`hassemu.0.clients.${rec.id}`)?.common?.name).to.equal("Kitchen Display");
     });
 
     it("keeps common.name fixed to hostname when only ip changes", async () => {
-      const rec = await registry.identifyOrCreate(null, "1.1.1.1", "tablet.local");
-      await registry.identifyOrCreate(rec.cookie, "2.2.2.2", null);
+      const rec = await registry.identifyOrCreate(null, "1.1.1.1", { hostname: "tablet.local" });
+      await registry.identifyOrCreate(rec.cookie, "2.2.2.2");
       const ch = store.objects.get(`hassemu.0.clients.${rec.id}`);
       expect(ch?.common?.name).to.equal("tablet.local");
     });
 
     it("persists cookie in channel.native", async () => {
-      const rec = await registry.identifyOrCreate(null, null, null);
+      const rec = await registry.identifyOrCreate(null, null);
       const channel = store.objects.get(`hassemu.0.clients.${rec.id}`);
       expect(channel?.native?.cookie).to.equal(rec.cookie);
     });
 
     it("persists IP to state", async () => {
-      const rec = await registry.identifyOrCreate(null, "10.0.0.1", null);
+      const rec = await registry.identifyOrCreate(null, "10.0.0.1");
       expect(store.states.get(`hassemu.0.clients.${rec.id}.ip`)?.val).to.equal("10.0.0.1");
     });
 
     it("persists initial mode value to state", async () => {
-      const rec = await registry.identifyOrCreate(null, null, null);
+      const rec = await registry.identifyOrCreate(null, null);
       expect(store.states.get(`hassemu.0.clients.${rec.id}.mode`)?.val).to.equal(rec.mode);
     });
 
     it("returns existing record when cookie matches", async () => {
-      const rec1 = await registry.identifyOrCreate(null, "192.168.1.5", null);
-      const rec2 = await registry.identifyOrCreate(rec1.cookie, "192.168.1.5", null);
+      const rec1 = await registry.identifyOrCreate(null, "192.168.1.5");
+      const rec2 = await registry.identifyOrCreate(rec1.cookie, "192.168.1.5");
       expect(rec2.id).to.equal(rec1.id);
     });
 
     it("creates new record when cookie is invalid UUID", async () => {
-      const rec1 = await registry.identifyOrCreate("not-a-uuid", "192.168.1.5", null);
-      const rec2 = await registry.identifyOrCreate("also-bad", "192.168.1.5", null);
+      const rec1 = await registry.identifyOrCreate("not-a-uuid", "192.168.1.5");
+      const rec2 = await registry.identifyOrCreate("also-bad", "192.168.1.5");
       expect(rec1.id).to.not.equal(rec2.id);
     });
 
     it("creates new record when cookie is unknown UUID", async () => {
-      const rec1 = await registry.identifyOrCreate(null, null, null);
+      const rec1 = await registry.identifyOrCreate(null, null);
       const stranger = crypto.randomUUID();
-      const rec2 = await registry.identifyOrCreate(stranger, null, null);
+      const rec2 = await registry.identifyOrCreate(stranger, null);
       expect(rec2.id).to.not.equal(rec1.id);
     });
 
@@ -290,9 +295,9 @@ describe("ClientRegistry", () => {
     // parallel cookieless request from the same display on initial connect.
     it("returns the same record for parallel cookieless requests from the same IP", async () => {
       const promises = [
-        registry.identifyOrCreate(null, "192.168.77.10", null),
-        registry.identifyOrCreate(null, "192.168.77.10", null),
-        registry.identifyOrCreate(null, "192.168.77.10", null),
+        registry.identifyOrCreate(null, "192.168.77.10"),
+        registry.identifyOrCreate(null, "192.168.77.10"),
+        registry.identifyOrCreate(null, "192.168.77.10"),
       ];
       const results = await Promise.all(promises);
       expect(results[0].id).to.equal(results[1].id);
@@ -302,9 +307,9 @@ describe("ClientRegistry", () => {
 
     it("still creates distinct clients for parallel requests from different IPs", async () => {
       const results = await Promise.all([
-        registry.identifyOrCreate(null, "10.0.0.1", null),
-        registry.identifyOrCreate(null, "10.0.0.2", null),
-        registry.identifyOrCreate(null, "10.0.0.3", null),
+        registry.identifyOrCreate(null, "10.0.0.1"),
+        registry.identifyOrCreate(null, "10.0.0.2"),
+        registry.identifyOrCreate(null, "10.0.0.3"),
       ]);
       const ids = new Set(results.map(r => r.id));
       expect(ids.size).to.equal(3);
@@ -312,8 +317,8 @@ describe("ClientRegistry", () => {
     });
 
     it("clears the pending-lock after creation so sequential cookieless visits create new clients", async () => {
-      const rec1 = await registry.identifyOrCreate(null, "192.168.77.20", null);
-      const rec2 = await registry.identifyOrCreate(null, "192.168.77.20", null);
+      const rec1 = await registry.identifyOrCreate(null, "192.168.77.20");
+      const rec2 = await registry.identifyOrCreate(null, "192.168.77.20");
       expect(rec1.id).to.not.equal(rec2.id);
     });
 
@@ -321,8 +326,8 @@ describe("ClientRegistry", () => {
     // ClientRecords statt cookie/token zu teilen.
     it("parallel cookieless requests with different UAs on same IP get distinct clients (C8 v1.17.0)", async () => {
       const promises = [
-        registry.identifyOrCreate(null, "10.0.0.1", null, "Display-A/1.0"),
-        registry.identifyOrCreate(null, "10.0.0.1", null, "Display-B/2.0"),
+        registry.identifyOrCreate(null, "10.0.0.1", { userAgent: "Display-A/1.0" }),
+        registry.identifyOrCreate(null, "10.0.0.1", { userAgent: "Display-B/2.0" }),
       ];
       const results = await Promise.all(promises);
       expect(results[0].id).to.not.equal(results[1].id);
@@ -333,9 +338,9 @@ describe("ClientRegistry", () => {
     // v1.17.0 (C8) — same UA on same IP behaves wie vorher: Bursts kollabieren.
     it("parallel cookieless requests with same UA on same IP collapse to one client", async () => {
       const promises = [
-        registry.identifyOrCreate(null, "10.0.0.2", null, "Display-A/1.0"),
-        registry.identifyOrCreate(null, "10.0.0.2", null, "Display-A/1.0"),
-        registry.identifyOrCreate(null, "10.0.0.2", null, "Display-A/1.0"),
+        registry.identifyOrCreate(null, "10.0.0.2", { userAgent: "Display-A/1.0" }),
+        registry.identifyOrCreate(null, "10.0.0.2", { userAgent: "Display-A/1.0" }),
+        registry.identifyOrCreate(null, "10.0.0.2", { userAgent: "Display-A/1.0" }),
       ];
       const results = await Promise.all(promises);
       expect(results[0].id).to.equal(results[1].id);
@@ -344,30 +349,33 @@ describe("ClientRegistry", () => {
     });
 
     it("updates IP when it changes on subsequent visit", async () => {
-      const rec = await registry.identifyOrCreate(null, "1.1.1.1", null);
-      await registry.identifyOrCreate(rec.cookie, "2.2.2.2", null);
+      const rec = await registry.identifyOrCreate(null, "1.1.1.1");
+      await registry.identifyOrCreate(rec.cookie, "2.2.2.2");
       expect(rec.ip).to.equal("2.2.2.2");
       expect(store.states.get(`hassemu.0.clients.${rec.id}.ip`)?.val).to.equal("2.2.2.2");
     });
 
     it("updates hostname when it changes on subsequent visit", async () => {
-      const rec = await registry.identifyOrCreate(null, "1.1.1.1", "old.local");
-      await registry.identifyOrCreate(rec.cookie, "1.1.1.1", "new.local");
+      const rec = await registry.identifyOrCreate(null, "1.1.1.1", { hostname: "old.local" });
+      await registry.identifyOrCreate(rec.cookie, "1.1.1.1", { hostname: "new.local" });
       expect(rec.hostname).to.equal("new.local");
       const ch = store.objects.get(`hassemu.0.clients.${rec.id}`);
       expect(ch?.common?.name).to.equal("new.local");
     });
 
     it("does not overwrite ip with null on subsequent visit", async () => {
-      const rec = await registry.identifyOrCreate(null, "1.1.1.1", null);
-      await registry.identifyOrCreate(rec.cookie, null, null);
+      const rec = await registry.identifyOrCreate(null, "1.1.1.1");
+      await registry.identifyOrCreate(rec.cookie, null);
       expect(rec.ip).to.equal("1.1.1.1");
     });
 
-    it("generates unique IDs for concurrent clients", async () => {
+    // L53: this is a sequential-creation uniqueness check (awaited in a loop) —
+    // the real concurrency guard (parallel cookieless requests → one client) is
+    // pinned separately via pendingByIp above.
+    it("generates unique IDs across many sequential creations", async () => {
       const seen = new Set<string>();
       for (let i = 0; i < 20; i++) {
-        const rec = await registry.identifyOrCreate(null, null, null);
+        const rec = await registry.identifyOrCreate(null, null);
         expect(seen.has(rec.id)).to.be.false;
         seen.add(rec.id);
       }
@@ -376,7 +384,7 @@ describe("ClientRegistry", () => {
 
     it("writes lastSeen native on first identify", async () => {
       const before = Date.now();
-      const rec = await registry.identifyOrCreate(null, "1.1.1.1", null);
+      const rec = await registry.identifyOrCreate(null, "1.1.1.1");
       const channel = store.objects.get(`hassemu.0.clients.${rec.id}`);
       const lastSeen = (channel?.native as { lastSeen?: number })?.lastSeen;
       expect(typeof lastSeen).to.equal("number");
@@ -387,12 +395,12 @@ describe("ClientRegistry", () => {
   describe("setNewClientModeProvider", () => {
     it("uses the provider value as default mode for new clients", async () => {
       registry.setNewClientModeProvider(() => "http://override.local/");
-      const rec = await registry.identifyOrCreate(null, null, null);
+      const rec = await registry.identifyOrCreate(null, null);
       expect(rec.mode).to.equal("http://override.local/");
     });
 
     it("falls back to 'global' when no provider was wired", async () => {
-      const rec = await registry.identifyOrCreate(null, null, null);
+      const rec = await registry.identifyOrCreate(null, null);
       expect(rec.mode).to.equal(MODE_GLOBAL);
     });
   });
@@ -401,7 +409,7 @@ describe("ClientRegistry", () => {
     let rec: ClientRecord;
 
     beforeEach(async () => {
-      rec = await registry.identifyOrCreate(null, "10.0.0.1", null);
+      rec = await registry.identifyOrCreate(null, "10.0.0.1");
     });
 
     it("getById returns the record", () => {
@@ -425,14 +433,14 @@ describe("ClientRegistry", () => {
     });
 
     it("listAll returns all clients", async () => {
-      await registry.identifyOrCreate(null, null, null);
+      await registry.identifyOrCreate(null, null);
       expect(registry.listAll().length).to.equal(2);
     });
   });
 
   describe("setToken", () => {
     it("sets the token and makes it findable", async () => {
-      const rec = await registry.identifyOrCreate(null, null, null);
+      const rec = await registry.identifyOrCreate(null, null);
       const token = crypto.randomUUID();
       await registry.setToken(rec.id, token);
       expect(rec.token).to.equal(token);
@@ -440,7 +448,7 @@ describe("ClientRegistry", () => {
     });
 
     it("persists token to channel.native", async () => {
-      const rec = await registry.identifyOrCreate(null, null, null);
+      const rec = await registry.identifyOrCreate(null, null);
       const token = crypto.randomUUID();
       await registry.setToken(rec.id, token);
       const channel = store.objects.get(`hassemu.0.clients.${rec.id}`);
@@ -448,7 +456,7 @@ describe("ClientRegistry", () => {
     });
 
     it("clears token on null", async () => {
-      const rec = await registry.identifyOrCreate(null, null, null);
+      const rec = await registry.identifyOrCreate(null, null);
       const token = crypto.randomUUID();
       await registry.setToken(rec.id, token);
       await registry.setToken(rec.id, null);
@@ -457,7 +465,7 @@ describe("ClientRegistry", () => {
     });
 
     it("replaces old token when new one is set", async () => {
-      const rec = await registry.identifyOrCreate(null, null, null);
+      const rec = await registry.identifyOrCreate(null, null);
       const t1 = crypto.randomUUID();
       const t2 = crypto.randomUUID();
       await registry.setToken(rec.id, t1);
@@ -474,7 +482,7 @@ describe("ClientRegistry", () => {
 
   describe("setRefreshToken (v1.31.0)", () => {
     it("sets the refresh token and makes it findable", async () => {
-      const rec = await registry.identifyOrCreate(null, null, null);
+      const rec = await registry.identifyOrCreate(null, null);
       const token = crypto.randomUUID();
       await registry.setRefreshToken(rec.id, token);
       expect(rec.refreshToken).to.equal(token);
@@ -482,7 +490,7 @@ describe("ClientRegistry", () => {
     });
 
     it("persists refresh token to channel.native.refreshToken", async () => {
-      const rec = await registry.identifyOrCreate(null, null, null);
+      const rec = await registry.identifyOrCreate(null, null);
       const token = crypto.randomUUID();
       await registry.setRefreshToken(rec.id, token);
       const channel = store.objects.get(`hassemu.0.clients.${rec.id}`);
@@ -490,7 +498,7 @@ describe("ClientRegistry", () => {
     });
 
     it("clears refresh token on null", async () => {
-      const rec = await registry.identifyOrCreate(null, null, null);
+      const rec = await registry.identifyOrCreate(null, null);
       const token = crypto.randomUUID();
       await registry.setRefreshToken(rec.id, token);
       await registry.setRefreshToken(rec.id, null);
@@ -499,7 +507,7 @@ describe("ClientRegistry", () => {
     });
 
     it("replaces old refresh token when new one is set (old no longer looked up)", async () => {
-      const rec = await registry.identifyOrCreate(null, null, null);
+      const rec = await registry.identifyOrCreate(null, null);
       const t1 = crypto.randomUUID();
       const t2 = crypto.randomUUID();
       await registry.setRefreshToken(rec.id, t1);
@@ -514,7 +522,7 @@ describe("ClientRegistry", () => {
     });
 
     it("restore() loads refreshToken from native field", async () => {
-      const rec = await registry.identifyOrCreate(null, null, null);
+      const rec = await registry.identifyOrCreate(null, null);
       const token = crypto.randomUUID();
       await registry.setRefreshToken(rec.id, token);
 
@@ -527,7 +535,7 @@ describe("ClientRegistry", () => {
     });
 
     it("restore() handles missing native.refreshToken (legacy install) without crash", async () => {
-      const rec = await registry.identifyOrCreate(null, null, null);
+      const rec = await registry.identifyOrCreate(null, null);
       // Simulate legacy install: client exists but no refreshToken ever set
       expect(rec.refreshToken).to.be.null;
 
@@ -538,7 +546,7 @@ describe("ClientRegistry", () => {
     });
 
     it("remove(id) clears byRefreshToken lookup", async () => {
-      const rec = await registry.identifyOrCreate(null, null, null);
+      const rec = await registry.identifyOrCreate(null, null);
       const token = crypto.randomUUID();
       await registry.setRefreshToken(rec.id, token);
       await registry.remove(rec.id);
@@ -550,7 +558,7 @@ describe("ClientRegistry", () => {
     let rec: ClientRecord;
 
     beforeEach(async () => {
-      rec = await registry.identifyOrCreate(null, null, null);
+      rec = await registry.identifyOrCreate(null, null);
     });
 
     it("accepts 'global' sentinel", async () => {
@@ -617,7 +625,7 @@ describe("ClientRegistry", () => {
     let rec: ClientRecord;
 
     beforeEach(async () => {
-      rec = await registry.identifyOrCreate(null, null, null);
+      rec = await registry.identifyOrCreate(null, null);
     });
 
     it("accepts a safe URL", async () => {
@@ -651,15 +659,15 @@ describe("ClientRegistry", () => {
 
   describe("bulkSetMode", () => {
     it("sets mode on every client", async () => {
-      const r1 = await registry.identifyOrCreate(null, "1.1.1.1", null);
-      const r2 = await registry.identifyOrCreate(null, "1.1.1.2", null);
+      const r1 = await registry.identifyOrCreate(null, "1.1.1.1");
+      const r2 = await registry.identifyOrCreate(null, "1.1.1.2");
       await registry.bulkSetMode("http://target/");
       expect(r1.mode).to.equal("http://target/");
       expect(r2.mode).to.equal("http://target/");
     });
 
     it("persists each new mode value to state with ack=true", async () => {
-      const r1 = await registry.identifyOrCreate(null, "1.1.1.1", null);
+      const r1 = await registry.identifyOrCreate(null, "1.1.1.1");
       await registry.bulkSetMode(MODE_GLOBAL);
       const stored = store.states.get(`hassemu.0.clients.${r1.id}.mode`);
       expect(stored?.val).to.equal(MODE_GLOBAL);
@@ -667,7 +675,7 @@ describe("ClientRegistry", () => {
     });
 
     it("skips clients whose mode already matches (no spurious writes)", async () => {
-      const r1 = await registry.identifyOrCreate(null, "1.1.1.1", null);
+      const r1 = await registry.identifyOrCreate(null, "1.1.1.1");
       r1.mode = "same";
       store.logs.length = 0;
       await registry.bulkSetMode("same");
@@ -679,8 +687,8 @@ describe("ClientRegistry", () => {
       // bulkSetMode-Trigger ist Tech-Internal — auf debug seit v1.27.0
       // (User wollte mode-Werte aus dem User-Log raus). Test prüft den
       // debug-Output mit Count statt info.
-      await registry.identifyOrCreate(null, "1.1.1.1", null);
-      await registry.identifyOrCreate(null, "1.1.1.2", null);
+      await registry.identifyOrCreate(null, "1.1.1.1");
+      await registry.identifyOrCreate(null, "1.1.1.2");
       store.logs.length = 0;
       await registry.bulkSetMode("http://new/");
       const dbg = store.logs.find(l => l.level === "debug" && l.msg.includes("bulkSetMode"));
@@ -694,14 +702,14 @@ describe("ClientRegistry", () => {
 
   describe("remove", () => {
     it("deletes in-memory entries", async () => {
-      const rec = await registry.identifyOrCreate(null, null, null);
+      const rec = await registry.identifyOrCreate(null, null);
       await registry.remove(rec.id);
       expect(registry.getById(rec.id)).to.be.null;
       expect(registry.getByCookie(rec.cookie)).to.be.null;
     });
 
     it("deletes ioBroker channel and all child states", async () => {
-      const rec = await registry.identifyOrCreate(null, "1.2.3.4", null);
+      const rec = await registry.identifyOrCreate(null, "1.2.3.4");
       await registry.remove(rec.id);
       expect(store.objects.has(`hassemu.0.clients.${rec.id}`)).to.be.false;
       expect(store.objects.has(`hassemu.0.clients.${rec.id}.mode`)).to.be.false;
@@ -709,7 +717,7 @@ describe("ClientRegistry", () => {
     });
 
     it("unregisters token so it cannot be reused", async () => {
-      const rec = await registry.identifyOrCreate(null, null, null);
+      const rec = await registry.identifyOrCreate(null, null);
       const token = crypto.randomUUID();
       await registry.setToken(rec.id, token);
       await registry.remove(rec.id);
@@ -717,16 +725,16 @@ describe("ClientRegistry", () => {
     });
 
     it("returning client gets new id and new cookie", async () => {
-      const rec1 = await registry.identifyOrCreate(null, "1.1.1.1", null);
+      const rec1 = await registry.identifyOrCreate(null, "1.1.1.1");
       const oldCookie = rec1.cookie;
       await registry.remove(rec1.id);
-      const rec2 = await registry.identifyOrCreate(oldCookie, "1.1.1.1", null);
+      const rec2 = await registry.identifyOrCreate(oldCookie, "1.1.1.1");
       expect(rec2.id).to.not.equal(rec1.id);
       expect(rec2.cookie).to.not.equal(oldCookie);
     });
 
     it("logs info on removal", async () => {
-      const rec = await registry.identifyOrCreate(null, null, null);
+      const rec = await registry.identifyOrCreate(null, null);
       await registry.remove(rec.id);
       const info = store.logs.find(l => l.level === "info" && l.msg.includes("forgotten"));
       expect(info).to.not.be.undefined;
@@ -741,7 +749,7 @@ describe("ClientRegistry", () => {
     it("updates common.states on existing mode datapoints with sentinels + URLs (plain-string labels, EN fallback)", async () => {
       // v1.28.4: Sentinel-labels sind plain-strings (system-language resolved),
       // nicht mehr Translation-Objects. Admin crasht sonst mit React Error #31.
-      const rec = await registry.identifyOrCreate(null, null, null);
+      const rec = await registry.identifyOrCreate(null, null);
       await registry.syncUrlDropdown({ "http://a.local/": "A", "http://b.local/": "B" });
       const obj = store.objects.get(`hassemu.0.clients.${rec.id}.mode`);
       expect(obj?.common?.states).to.deep.equal({
@@ -755,7 +763,7 @@ describe("ClientRegistry", () => {
 
     it("uses synced dropdown for newly created clients", async () => {
       await registry.syncUrlDropdown({ "http://a.local/": "A" });
-      const rec = await registry.identifyOrCreate(null, null, null);
+      const rec = await registry.identifyOrCreate(null, null);
       const obj = store.objects.get(`hassemu.0.clients.${rec.id}.mode`);
       expect(obj?.common?.states).to.deep.equal({
         0: "---",
@@ -766,7 +774,7 @@ describe("ClientRegistry", () => {
     });
 
     it("common.states VALUES sind alle plain-string (Regression-Test für React #31)", async () => {
-      const rec = await registry.identifyOrCreate(null, null, null);
+      const rec = await registry.identifyOrCreate(null, null);
       await registry.syncUrlDropdown({ "http://a.local/": "A", "http://b.local/": "B" });
       const obj = store.objects.get(`hassemu.0.clients.${rec.id}.mode`);
       const states = obj?.common?.states as Record<string, unknown>;
@@ -850,6 +858,47 @@ describe("ClientRegistry", () => {
       expect(store.states.has(`hassemu.0.clients.${id}.hostname`)).to.be.false;
     });
 
+    it("enforces a persisted access-token expiry across restart — an already-expired token is rejected (M11)", async () => {
+      const id = "exp1";
+      const cookie = crypto.randomUUID();
+      const token = crypto.randomUUID();
+      store.objects.set(`hassemu.0.clients.${id}`, {
+        type: "channel",
+        common: { name: "tab" },
+        native: { cookie, token, tokenExpiresAt: Date.now() - 60_000 }, // expired before the restart
+      });
+      store.states.set(`hassemu.0.clients.${id}.mode`, { val: MODE_GLOBAL, ack: true });
+      await registry.restore();
+      expect(registry.getById(id), "client itself is restored").to.not.be.null;
+      expect(registry.getByToken(token), "expired token rejected after restart").to.be.null;
+    });
+
+    it("keeps a legacy token without a stored expiry valid across restart (non-breaking, M11)", async () => {
+      const id = "exp2";
+      const cookie = crypto.randomUUID();
+      const token = crypto.randomUUID();
+      store.objects.set(`hassemu.0.clients.${id}`, {
+        type: "channel",
+        native: { cookie, token }, // no tokenExpiresAt (pre-v1.36.0 install)
+      });
+      store.states.set(`hassemu.0.clients.${id}.mode`, { val: MODE_GLOBAL, ack: true });
+      await registry.restore();
+      expect(registry.getByToken(token)?.id).to.equal(id);
+    });
+
+    it("removes an orphaned client channel that has no valid cookie (M5)", async () => {
+      const id = "orphan1";
+      store.objects.set(`hassemu.0.clients.${id}`, {
+        type: "channel",
+        native: { lastSeen: Date.now() }, // no cookie — a ghost left by a write that raced a remove()
+      });
+      await registry.restore();
+      expect(registry.getById(id), "orphan not tracked").to.be.null;
+      expect(store.objects.has(`hassemu.0.clients.${id}`), "orphan object deleted").to.be.false;
+      const warns = store.logs.filter(l => l.level === "warn" && l.msg.includes("orphaned client channel"));
+      expect(warns.length).to.be.greaterThan(0);
+    });
+
     it("skips channels without a valid cookie", async () => {
       store.objects.set("hassemu.0.clients.broken", {
         type: "channel",
@@ -867,7 +916,7 @@ describe("ClientRegistry", () => {
         native: { cookie },
       });
       await registry.restore();
-      const rec = await registry.identifyOrCreate(cookie, null, null);
+      const rec = await registry.identifyOrCreate(cookie, null);
       expect(rec.id).to.equal(id);
     });
 
@@ -896,6 +945,22 @@ describe("ClientRegistry", () => {
       store.states.set(`hassemu.0.clients.${id}.manualUrl`, { val: "javascript:bad", ack: true });
       await registry.restore();
       expect(registry.getById(id)?.manualUrl).to.be.null;
+    });
+
+    it("migrates a legacy channel client object to device on restore (I22 v1.37.0)", async () => {
+      const id = "legacydev";
+      const cookie = crypto.randomUUID();
+      store.objects.set(`hassemu.0.clients.${id}`, { type: "channel", native: { cookie } });
+      await registry.restore();
+      // still restored into memory (cookie/token preserved — no re-onboard)…
+      expect(registry.getById(id)?.cookie).to.equal(cookie);
+      // …and the object type was migrated channel → device in place.
+      expect(store.objects.get(`hassemu.0.clients.${id}`)?.type).to.equal("device");
+    });
+
+    it("creates a new client object as a device (I22 v1.37.0)", async () => {
+      const rec = await registry.identifyOrCreate(null, "10.9.9.9");
+      expect(store.objects.get(`hassemu.0.clients.${rec.id}`)?.type).to.equal("device");
     });
 
     it("a single broken client does not abort restore for the rest (HE1 v1.28.3)", async () => {
@@ -969,32 +1034,38 @@ describe("ClientRegistry", () => {
       return { reg, store: built.store };
     };
 
+    type BurstAccess = {
+      recordNewClientActivity: (ip: string, persistent: boolean, now?: number) => void;
+      isIpThrottled: (ip: string, now?: number) => boolean;
+      newClientBurst: Map<string, unknown>;
+    };
+
     it("does not warn on first 3 client creations from same IP", () => {
       const { reg, store } = buildReg();
-      const access = reg as unknown as { recordNewClientIp: (ip: string) => void };
-      access.recordNewClientIp("1.2.3.4");
-      access.recordNewClientIp("1.2.3.4");
-      access.recordNewClientIp("1.2.3.4");
+      const access = reg as unknown as BurstAccess;
+      access.recordNewClientActivity("1.2.3.4", true);
+      access.recordNewClientActivity("1.2.3.4", true);
+      access.recordNewClientActivity("1.2.3.4", true);
       const warnings = store.logs.filter(l => l.level === "warn");
       expect(warnings).to.have.length(0);
     });
 
-    it("emits one warn on the 4th client from same IP within 1h", () => {
+    it("emits one warn on the 4th client from same IP within the window", () => {
       const { reg, store } = buildReg();
-      const access = reg as unknown as { recordNewClientIp: (ip: string) => void };
+      const access = reg as unknown as BurstAccess;
       for (let i = 0; i < 4; i++) {
-        access.recordNewClientIp("1.2.3.4");
+        access.recordNewClientActivity("1.2.3.4", true);
       }
       const burstWarn = store.logs.filter(l => l.level === "warn" && l.msg.includes("not persisting cookies"));
       expect(burstWarn).to.have.length(1);
       expect(burstWarn[0].msg).to.include("1.2.3.4");
     });
 
-    it("does not double-warn within 1h cooldown", () => {
+    it("does not double-warn within the window", () => {
       const { reg, store } = buildReg();
-      const access = reg as unknown as { recordNewClientIp: (ip: string) => void };
+      const access = reg as unknown as BurstAccess;
       for (let i = 0; i < 10; i++) {
-        access.recordNewClientIp("1.2.3.4");
+        access.recordNewClientActivity("1.2.3.4", true);
       }
       const burstWarn = store.logs.filter(l => l.level === "warn" && l.msg.includes("not persisting cookies"));
       expect(burstWarn).to.have.length(1);
@@ -1002,25 +1073,55 @@ describe("ClientRegistry", () => {
 
     it("tracks bursts per IP independently", () => {
       const { reg, store } = buildReg();
-      const access = reg as unknown as { recordNewClientIp: (ip: string) => void };
-      for (let i = 0; i < 4; i++) access.recordNewClientIp("1.2.3.4");
-      for (let i = 0; i < 4; i++) access.recordNewClientIp("5.6.7.8");
+      const access = reg as unknown as BurstAccess;
+      for (let i = 0; i < 4; i++) access.recordNewClientActivity("1.2.3.4", true);
+      for (let i = 0; i < 4; i++) access.recordNewClientActivity("5.6.7.8", true);
       const burstWarn = store.logs.filter(l => l.level === "warn" && l.msg.includes("not persisting cookies"));
       expect(burstWarn).to.have.length(2);
     });
 
     it("caps the burst-tracking map at 200 entries (FIFO)", () => {
       const { reg } = buildReg();
-      const access = reg as unknown as {
-        recordNewClientIp: (ip: string) => void;
-        newClientBurst: Map<string, unknown>;
-      };
+      const access = reg as unknown as BurstAccess;
       for (let i = 0; i < 250; i++) {
-        access.recordNewClientIp(`10.0.0.${i}`);
+        access.recordNewClientActivity(`10.0.0.${i}`, true);
       }
       expect(access.newClientBurst.size).to.be.at.most(200);
       // Newest entries survive
       expect(access.newClientBurst.has("10.0.0.249")).to.be.true;
+    });
+
+    it("re-warns after a full idle window elapses (sliding cooldown, M4/M10)", () => {
+      const { reg, store } = buildReg();
+      const access = reg as unknown as BurstAccess;
+      const t0 = 10 * NEW_CLIENT_WINDOW_MS; // realistic (warn cooldown compares now - warnedAt)
+      for (let i = 0; i < 4; i++) access.recordNewClientActivity("1.2.3.4", true, t0 + i);
+      // Idle a full window past the last activity (t0+3), then spray again → fresh window, warns again.
+      const t1 = t0 + 3 + NEW_CLIENT_WINDOW_MS;
+      for (let i = 0; i < 4; i++) access.recordNewClientActivity("1.2.3.4", true, t1 + i);
+      const burstWarn = store.logs.filter(l => l.level === "warn" && l.msg.includes("not persisting cookies"));
+      expect(burstWarn).to.have.length(2);
+    });
+
+    it("recovers from the throttle only after a full idle window; continuous spraying stays throttled (M4/M10)", () => {
+      const { reg } = buildReg();
+      const access = reg as unknown as BurstAccess;
+      const ip = "7.7.7.7";
+      const t0 = 5_000_000;
+      // Drive the IP to the throttle threshold with persistent creates.
+      for (let i = 0; i < NEW_CLIENT_THROTTLE_PER_HOUR; i++) access.recordNewClientActivity(ip, true, t0 + i);
+      expect(access.isIpThrottled(ip, t0 + NEW_CLIENT_THROTTLE_PER_HOUR)).to.be.true;
+      // Continuous spraying (throttled transient path, persistent=false) just under
+      // the window keeps refreshing lastActivity → still throttled long after the
+      // first burst. This is the fix for the old "fresh 30/h budget" hole (M4).
+      let t = t0;
+      for (let step = 0; step < 5; step++) {
+        t += NEW_CLIENT_WINDOW_MS - 1;
+        access.recordNewClientActivity(ip, false, t);
+        expect(access.isIpThrottled(ip, t), `step ${step}`).to.be.true;
+      }
+      // A full idle window with no activity → recovered, persistent creates resume.
+      expect(access.isIpThrottled(ip, t + NEW_CLIENT_WINDOW_MS)).to.be.false;
     });
 
     it("throttles cookieless new-client creation per IP, serving transient records (v1.36.0 S1)", async () => {
@@ -1029,15 +1130,15 @@ describe("ClientRegistry", () => {
       // The first NEW_CLIENT_THROTTLE_PER_HOUR cookieless requests (distinct UA so the
       // pendingByIp bucket doesn't collapse the sequential creates) are persisted.
       for (let i = 0; i < NEW_CLIENT_THROTTLE_PER_HOUR; i++) {
-        await reg.identifyOrCreate(null, ip, null, `UA-${i}`);
+        await reg.identifyOrCreate(null, ip, { userAgent: `UA-${i}` });
       }
       expect(reg.listAll()).to.have.length(NEW_CLIENT_THROTTLE_PER_HOUR);
       // Beyond the threshold the IP gets a transient (non-persisted, untracked) record.
-      const transient = await reg.identifyOrCreate(null, ip, null, "UA-extra");
+      const transient = await reg.identifyOrCreate(null, ip, { userAgent: "UA-extra" });
       expect(reg.getById(transient.id)).to.be.null;
       expect(reg.listAll()).to.have.length(NEW_CLIENT_THROTTLE_PER_HOUR); // no object growth
       // A different IP is unaffected — the throttle is per-IP.
-      const other = await reg.identifyOrCreate(null, "8.8.8.8", null);
+      const other = await reg.identifyOrCreate(null, "8.8.8.8");
       expect(reg.getById(other.id)).to.not.be.null;
     });
   });
@@ -1046,7 +1147,7 @@ describe("ClientRegistry", () => {
     it("getByToken rejects and drops an expired access token", async () => {
       const built = createMockAdapter();
       const reg = new ClientRegistry(built.adapter as never);
-      const rec = await reg.identifyOrCreate(null, "10.0.0.9", null);
+      const rec = await reg.identifyOrCreate(null, "10.0.0.9");
       await reg.setToken(rec.id, "tok-123");
       expect(reg.getByToken("tok-123")?.id).to.equal(rec.id); // valid immediately
       rec.tokenExpiresAt = Date.now() - 1000; // force past expiry
@@ -1057,13 +1158,44 @@ describe("ClientRegistry", () => {
     it("setToken stamps an expiry ~OAUTH_ACCESS_TOKEN_TTL_S ahead; clearing the token clears it", async () => {
       const built = createMockAdapter();
       const reg = new ClientRegistry(built.adapter as never);
-      const rec = await reg.identifyOrCreate(null, "10.0.0.10", null);
+      const rec = await reg.identifyOrCreate(null, "10.0.0.10");
       const before = Date.now();
       await reg.setToken(rec.id, "tok-x");
       expect(rec.tokenExpiresAt).to.be.a("number");
       expect(rec.tokenExpiresAt!).to.be.at.least(before + OAUTH_ACCESS_TOKEN_TTL_S * 1000 - 5000);
       await reg.setToken(rec.id, null);
       expect(rec.tokenExpiresAt).to.be.null;
+    });
+  });
+
+  describe("updateHostname (M5 / M1 v1.37.0)", () => {
+    it("updates a known client's hostname when common.name is still the auto value", async () => {
+      const built = createMockAdapter();
+      const reg = new ClientRegistry(built.adapter as never);
+      const rec = await reg.identifyOrCreate(null, "10.0.0.30"); // name = ip
+      await reg.updateHostname(rec.cookie, "tablet.local");
+      expect(reg.getById(rec.id)?.hostname).to.equal("tablet.local");
+      expect(built.store.objects.get(`hassemu.0.clients.${rec.id}`)?.common?.name).to.equal("tablet.local");
+    });
+
+    it("is a no-op for an unknown cookie — never mints a ghost client (M5)", async () => {
+      const built = createMockAdapter();
+      const reg = new ClientRegistry(built.adapter as never);
+      const before = reg.listAll().length;
+      await reg.updateHostname(crypto.randomUUID(), "ghost.local");
+      expect(reg.listAll().length).to.equal(before);
+    });
+
+    it("does not overwrite a user-set channel name across a late reverse-DNS result (M1)", async () => {
+      const built = createMockAdapter();
+      const reg = new ClientRegistry(built.adapter as never);
+      const rec = await reg.identifyOrCreate(null, "10.0.0.31");
+      // User renames the channel in the admin UI.
+      built.store.objects.get(`hassemu.0.clients.${rec.id}`)!.common = { name: "Wohnzimmer" };
+      await reg.updateHostname(rec.cookie, "late-dns.local");
+      // The user's name survives; the resolved hostname is still tracked in memory.
+      expect(built.store.objects.get(`hassemu.0.clients.${rec.id}`)?.common?.name).to.equal("Wohnzimmer");
+      expect(reg.getById(rec.id)?.hostname).to.equal("late-dns.local");
     });
   });
 });

@@ -2,7 +2,7 @@ import type { AdapterInterface } from "./types";
 
 /** Adapter surface schema-repair needs — object I/O + namespace + logging. */
 export type SchemaRepairAdapter = AdapterInterface &
-  Pick<ioBroker.Adapter, "namespace" | "getObjectAsync" | "extendObjectAsync">;
+  Pick<ioBroker.Adapter, "namespace" | "getObjectAsync" | "extendObject">;
 
 /** One `instanceObjects` entry as read from io-package.json. */
 export interface InstanceObjectSchema {
@@ -16,15 +16,15 @@ export interface InstanceObjectSchema {
   native?: unknown;
 }
 
-/** Default repair targets: (state id, expected `common.type`). */
-export const DEFAULT_REPAIR_TARGETS: ReadonlyArray<readonly [string, string]> = [
+/** Default repair targets: (state id, expected `common.type`). L27: file-local (no external importer). */
+const DEFAULT_REPAIR_TARGETS: ReadonlyArray<readonly [string, string]> = [
   ["global.mode", "mixed"],
   ["global.manualUrl", "string"],
 ];
 
 /**
  * Repairs partial-formed `global.*` objects left behind by the v1.2.0 migration
- * bug (`extendObjectAsync` was called with only `common.type:'mixed'`, leaving
+ * bug (`extendObject` was called with only `common.type:'mixed'`, leaving
  * the object without top-level `type`/name/role/read/write/def). Merges the full
  * `instanceObjects` schema onto the existing partial object so js-controller
  * stops warning and the dropdown renders. Idempotent — an already-complete
@@ -53,7 +53,7 @@ async function repairOne(
   id: string,
   expectedCommonType: string,
 ): Promise<void> {
-  // v1.14.0 (H3): needs-repair-Check vor unconditional extendObjectAsync —
+  // v1.14.0 (H3): needs-repair-Check vor unconditional extendObject —
   // spart 2 Round-Trips bei jedem Start für ~99% der Installationen.
   try {
     const obj = await adapter.getObjectAsync(id);
@@ -72,7 +72,7 @@ async function repairOne(
     return;
   }
   try {
-    // `extendObjectAsync` erwartet die diskriminierte Union `PartialObject`,
+    // `extendObject` erwartet die diskriminierte Union `PartialObject`,
     // deren `type` ein `ObjectType`-LITERAL sein muss, damit der Compiler
     // `common` auf das passende Member narrowt. `schema` kommt aber aus der
     // (build-time-validierten) io-package.json, wo `type` zur Laufzeit ein
@@ -81,7 +81,7 @@ async function repairOne(
     // scheitert an `Partial<StateCommon>` vs `Partial<OtherCommon>`). Daher der
     // bewusste Cast auf `PartialObject` (statt `never`): die Shape ist durch das
     // Manifest garantiert.
-    await adapter.extendObjectAsync(
+    await adapter.extendObject(
       id,
       {
         type: schema.type,

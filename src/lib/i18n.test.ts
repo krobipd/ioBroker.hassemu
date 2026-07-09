@@ -9,7 +9,8 @@ vi.mock("@iobroker/adapter-core", () => ({
   },
 }));
 
-import { resolveLabel, tName } from "./i18n";
+import { I18n } from "@iobroker/adapter-core";
+import { resolveLabel, tName, tPage } from "./i18n";
 
 describe("tName", () => {
   it("delegates to I18n.getTranslatedObject", () => {
@@ -22,6 +23,29 @@ describe("resolveLabel", () => {
   it("delegates to I18n.translate", () => {
     const result = resolveLabel("manualUrl");
     expect(result).toBe("manualUrl");
+  });
+});
+
+// I24 (v1.37.0): tName/resolveLabel are pure one-line delegations (nothing to test
+// beyond the wiring above), but tPage carries the real page-language logic — assert
+// its branches directly instead of only covering it through the page renders.
+describe("tPage", () => {
+  it("returns the requested language's value from the translated object", () => {
+    expect(tPage("connection", "de")).toBe("connection_de");
+  });
+
+  it("falls back to English for an unknown language", () => {
+    expect(tPage("connection", "fr")).toBe("connection");
+  });
+
+  it("passes a plain-string translation through unchanged", () => {
+    vi.mocked(I18n.getTranslatedObject).mockReturnValueOnce("just a string" as never);
+    expect(tPage("connection", "de")).toBe("just a string");
+  });
+
+  it("falls back to the key when neither the language nor English is present", () => {
+    vi.mocked(I18n.getTranslatedObject).mockReturnValueOnce({ ru: "только русский" } as never);
+    expect(tPage("connection", "de")).toBe("connection");
   });
 });
 
@@ -58,7 +82,6 @@ describe("i18n completeness", () => {
       "clientRemove",
       "serverUuidDesc",
       "refreshUrlsDesc",
-      "noChoice",
       "globalUrl",
       "manualUrl",
     ];

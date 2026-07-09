@@ -49,10 +49,6 @@ vi.mock("@iobroker/adapter-core", () => {
       this.states.set(this.fullId(id), { val: state.val, ack: state.ack ?? false });
     }
 
-    async setStateAsync(id: string, state: { val: unknown; ack?: boolean }): Promise<void> {
-      this.states.set(this.fullId(id), { val: state.val, ack: state.ack ?? false });
-    }
-
     async getStateAsync(id: string): Promise<{ val: unknown; ack: boolean } | null> {
       return this.states.get(this.fullId(id)) ?? null;
     }
@@ -61,7 +57,7 @@ vi.mock("@iobroker/adapter-core", () => {
       return this.objects.get(this.fullId(id)) ?? null;
     }
 
-    async setObjectAsync(id: string, obj: ObjEntry): Promise<void> {
+    async setObject(id: string, obj: ObjEntry): Promise<void> {
       this.objects.set(this.fullId(id), obj);
     }
 
@@ -72,7 +68,7 @@ vi.mock("@iobroker/adapter-core", () => {
       }
     }
 
-    async extendObjectAsync(id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>): Promise<void> {
+    async extendObject(id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>): Promise<void> {
       const full = this.fullId(id);
       const existing = this.objects.get(full) ?? { type: "state" };
       const preserve = (options?.preserve as { common?: string[] } | undefined)?.common ?? [];
@@ -171,6 +167,8 @@ import { HassEmu } from "./main";
 import type { ClientRegistry } from "./lib/client-registry";
 import type { GlobalConfig } from "./lib/global-config";
 import { MODE_GLOBAL, MODE_MANUAL } from "./lib/constants";
+import { migrateLegacyDefaultVisUrl, migrateVisUrlToMode, type MigrationAdapter } from "./lib/legacy-migration";
+import type { AdapterConfig } from "./lib/types";
 
 interface ObjEntry {
   type: string;
@@ -189,7 +187,7 @@ interface StubSurface {
   objectSubscriptions: string[];
   stateUnsubscriptions: string[];
   objectUnsubscriptions: string[];
-  setStateAsync: (id: string, state: { val: unknown; ack?: boolean }) => Promise<void>;
+  setState: (id: string, state: { val: unknown; ack?: boolean }) => Promise<void>;
 }
 
 interface FakeWebServer {
@@ -218,8 +216,6 @@ interface Internal {
   getOrCreateServerUuid: () => Promise<string>;
   readSystemLanguage: () => Promise<string>;
   computeNewClientMode: () => string;
-  migrateLegacyDefaultVisUrl: () => Promise<void>;
-  migrateVisUrlToMode: () => Promise<void>;
   gcStaleClients: () => Promise<void>;
   applyMasterSwitch: (enabled: boolean) => Promise<void>;
   handleRefreshUrlsWrite: () => Promise<void>;
@@ -299,7 +295,7 @@ describe("HassEmu onReady", () => {
     expect(webServer.start).toHaveBeenCalledTimes(1);
     expect(discovery.collect).toHaveBeenCalledTimes(1);
     expect(stub.states.get("hassemu.0.info.connection")).toEqual({ val: true, ack: true });
-    expect(stub.stateSubscriptions).toEqual(["clients.*", "global.*", "info.refresh_urls"]);
+    expect(stub.stateSubscriptions).toEqual(["clients.*", "global.*", "info.refreshUrls"]);
     expect(stub.objectSubscriptions).toEqual(["system.adapter.*"]);
     expect(logsOf(stub, "info").some(m => m.includes("HA emulation running on 127.0.0.1:8123"))).toBe(true);
     expect(stub.terminations).toEqual([]);
@@ -315,6 +311,22 @@ describe("HassEmu onReady", () => {
     await internal.onReady();
     expect(subscribedWhenStarted).toBe(false);
     expect(stub.stateSubscriptions.length).toBeGreaterThan(0);
+  });
+
+  it("deletes the renamed info.refresh_urls orphan on upgrade, keeps info.refreshUrls (L59)", async () => {
+    const { internal, stub } = setup();
+    stub.objects.set("hassemu.0.info.refresh_urls", { type: "state", common: {} });
+    stub.objects.set("hassemu.0.info.refreshUrls", { type: "state", common: {} });
+    await internal.onReady();
+    expect(stub.objects.has("hassemu.0.info.refresh_urls")).toBe(false);
+    expect(stub.objects.has("hassemu.0.info.refreshUrls")).toBe(true);
+  });
+
+  it("info.refresh_urls cleanup is a no-op on a fresh install (state absent) (L59)", async () => {
+    const { internal, stub } = setup();
+    await internal.onReady();
+    expect(stub.objects.has("hassemu.0.info.refresh_urls")).toBe(false);
+    expect(logsOf(stub, "error")).toEqual([]);
   });
 
   it("webserver start failure → terminate(11), no subscriptions, no connection=true", async () => {
@@ -366,13 +378,16 @@ describe("HassEmu onReady", () => {
     expect(oldDiscovery.cancelRefresh).toHaveBeenCalledTimes(1);
   });
 
-  it("catches unexpected errors and logs onReady failed (no throw)", async () => {
+  it("catches an unexpected onReady error, logs it and terminates(11) (M2)", async () => {
     const { internal, stub } = setup();
     internal.makeGlobalConfig = () => {
       throw new Error("boom in factory");
     };
     await internal.onReady();
     expect(logsOf(stub, "error").some(m => m.includes("onReady failed"))).toBe(true);
+    // M2: an error in any onReady step (not just webServer.start) must not leave a
+    // zombie — terminate so js-controller restarts with backoff, like the B4 path.
+    expect(stub.terminations).toEqual([11]);
   });
 });
 
@@ -402,8 +417,8 @@ describe("getOrCreateServerUuid", () => {
 
   it("persist failure → warn, fresh UUID still returned (no crash)", async () => {
     const { internal, stub } = setup();
-    const original = stub.setStateAsync.bind(stub);
-    stub.setStateAsync = async (id, state) => {
+    const original = stub.setState.bind(stub);
+    stub.setState = async (id, state) => {
       if (id.includes("serverUuid")) {
         throw new Error("write refused");
       }
@@ -448,7 +463,7 @@ describe("migrateLegacyDefaultVisUrl", () => {
   it("no legacy URL in config → no-op", async () => {
     const { internal, stub } = setup();
     internal.globalConfig = internal.makeGlobalConfig();
-    await internal.migrateLegacyDefaultVisUrl();
+    await migrateLegacyDefaultVisUrl(internal as unknown as MigrationAdapter, stub.config as unknown as AdapterConfig, internal.globalConfig);
     expect(stub.states.has("hassemu.0.global.visUrl")).toBe(false);
   });
 
@@ -458,7 +473,7 @@ describe("migrateLegacyDefaultVisUrl", () => {
     stub.config.defaultVisUrl = "http://legacy.local/vis";
     seedInstanceNative(stub, { defaultVisUrl: "http://legacy.local/vis", other: "stays" });
 
-    await internal.migrateLegacyDefaultVisUrl();
+    await migrateLegacyDefaultVisUrl(internal as unknown as MigrationAdapter, stub.config as unknown as AdapterConfig, internal.globalConfig);
 
     expect(stub.states.get("hassemu.0.global.visUrl")).toEqual({ val: "http://legacy.local/vis", ack: true });
     const native = stub.objects.get("system.adapter.hassemu.0")!.native!;
@@ -473,7 +488,7 @@ describe("migrateLegacyDefaultVisUrl", () => {
     stub.config.defaultVisUrl = "javascript:alert(1)";
     seedInstanceNative(stub, { defaultVisUrl: "javascript:alert(1)" });
 
-    await internal.migrateLegacyDefaultVisUrl();
+    await migrateLegacyDefaultVisUrl(internal as unknown as MigrationAdapter, stub.config as unknown as AdapterConfig, internal.globalConfig);
 
     expect(stub.states.has("hassemu.0.global.visUrl")).toBe(false);
     expect(logsOf(stub, "warn").some(m => m.includes("rejected as unsafe"))).toBe(true);
@@ -485,15 +500,15 @@ describe("migrateLegacyDefaultVisUrl", () => {
     internal.globalConfig = internal.makeGlobalConfig();
     stub.config.visUrl = "http://fallback.local/";
     seedInstanceNative(stub, { visUrl: "http://fallback.local/" });
-    const original = stub.setStateAsync.bind(stub);
-    stub.setStateAsync = async (id, state) => {
+    const original = stub.setState.bind(stub);
+    stub.setState = async (id, state) => {
       if (id === "global.visUrl") {
         throw new Error("object gone in v1.2.0+");
       }
       return original(id, state);
     };
 
-    await internal.migrateLegacyDefaultVisUrl();
+    await migrateLegacyDefaultVisUrl(internal as unknown as MigrationAdapter, stub.config as unknown as AdapterConfig, internal.globalConfig);
 
     // Fallback wrote straight to the migration target.
     expect(stub.states.get("hassemu.0.global.mode")).toEqual({ val: MODE_MANUAL, ack: true });
@@ -507,11 +522,11 @@ describe("migrateLegacyDefaultVisUrl", () => {
     internal.globalConfig = internal.makeGlobalConfig();
     stub.config.visUrl = "http://precious.local/";
     seedInstanceNative(stub, { visUrl: "http://precious.local/" });
-    stub.setStateAsync = async () => {
+    stub.setState = async () => {
       throw new Error("broker down");
     };
 
-    await internal.migrateLegacyDefaultVisUrl();
+    await migrateLegacyDefaultVisUrl(internal as unknown as MigrationAdapter, stub.config as unknown as AdapterConfig, internal.globalConfig);
 
     expect(logsOf(stub, "warn").some(m => m.includes("Legacy URL preserved"))).toBe(true);
     // The recovery anchor MUST survive — this is the data-loss guard.
@@ -527,7 +542,7 @@ describe("migrateVisUrlToMode", () => {
     stub.states.set("hassemu.0.global.visUrl", { val: "http://old.local/vis", ack: true });
     stub.objects.set("hassemu.0.global.visUrl", { type: "state" });
 
-    await internal.migrateVisUrlToMode();
+    await migrateVisUrlToMode(internal as unknown as MigrationAdapter, internal.globalConfig, internal.registry);
 
     expect(stub.states.get("hassemu.0.global.mode")).toEqual({ val: MODE_MANUAL, ack: true });
     expect(stub.states.get("hassemu.0.global.manualUrl")).toEqual({ val: "http://old.local/vis", ack: true });
@@ -541,7 +556,7 @@ describe("migrateVisUrlToMode", () => {
     internal.registry = internal.makeRegistry();
     stub.states.set("hassemu.0.global.visUrl", { val: "javascript:alert(1)", ack: true });
 
-    await internal.migrateVisUrlToMode();
+    await migrateVisUrlToMode(internal as unknown as MigrationAdapter, internal.globalConfig, internal.registry);
 
     expect(stub.states.get("hassemu.0.global.mode")).toEqual({ val: MODE_MANUAL, ack: true });
     expect(stub.states.get("hassemu.0.global.manualUrl")).toEqual({ val: "", ack: true });
@@ -552,11 +567,11 @@ describe("migrateVisUrlToMode", () => {
     const { internal, stub } = setup();
     internal.globalConfig = internal.makeGlobalConfig();
     internal.registry = internal.makeRegistry();
-    const rec = await internal.registry!.identifyOrCreate(null, "10.0.0.1", null);
+    const rec = await internal.registry!.identifyOrCreate(null, "10.0.0.1");
     stub.states.set(`hassemu.0.clients.${rec.id}.visUrl`, { val: "http://client-old.local/", ack: true });
     stub.objects.set(`hassemu.0.clients.${rec.id}.visUrl`, { type: "state" });
 
-    await internal.migrateVisUrlToMode();
+    await migrateVisUrlToMode(internal as unknown as MigrationAdapter, internal.globalConfig, internal.registry);
 
     expect(rec.mode).toBe(MODE_MANUAL);
     expect(rec.manualUrl).toBe("http://client-old.local/");
@@ -572,11 +587,11 @@ describe("migrateVisUrlToMode", () => {
     const { internal, stub } = setup();
     internal.globalConfig = internal.makeGlobalConfig();
     internal.registry = internal.makeRegistry();
-    const rec = await internal.registry!.identifyOrCreate(null, "10.0.0.2", null);
+    const rec = await internal.registry!.identifyOrCreate(null, "10.0.0.2");
     const modeBefore = rec.mode;
     stub.states.set(`hassemu.0.clients.${rec.id}.visUrl`, { val: "data:text/html,x", ack: true });
 
-    await internal.migrateVisUrlToMode();
+    await migrateVisUrlToMode(internal as unknown as MigrationAdapter, internal.globalConfig, internal.registry);
 
     expect(rec.mode).toBe(modeBefore);
     expect(rec.manualUrl).toBeNull();
@@ -589,15 +604,15 @@ describe("migrateVisUrlToMode", () => {
     internal.registry = internal.makeRegistry();
     stub.states.set("hassemu.0.global.visUrl", { val: "http://old.local/vis", ack: true });
     stub.objects.set("hassemu.0.global.visUrl", { type: "state" });
-    const original = stub.setStateAsync.bind(stub);
-    stub.setStateAsync = async (id, state) => {
+    const original = stub.setState.bind(stub);
+    stub.setState = async (id, state) => {
       if (id === "global.mode" || id === "global.manualUrl") {
         throw new Error("broker down");
       }
       return original(id, state);
     };
 
-    await internal.migrateVisUrlToMode();
+    await migrateVisUrlToMode(internal as unknown as MigrationAdapter, internal.globalConfig, internal.registry);
 
     // The legacy source MUST survive as a recovery anchor — never deleted on a write-fail.
     expect(stub.objects.has("hassemu.0.global.visUrl")).toBe(true);
@@ -608,18 +623,18 @@ describe("migrateVisUrlToMode", () => {
     const { internal, stub } = setup();
     internal.globalConfig = internal.makeGlobalConfig();
     internal.registry = internal.makeRegistry();
-    const rec = await internal.registry!.identifyOrCreate(null, "10.0.0.3", null);
+    const rec = await internal.registry!.identifyOrCreate(null, "10.0.0.3");
     stub.states.set(`hassemu.0.clients.${rec.id}.visUrl`, { val: "http://client-old.local/", ack: true });
     stub.objects.set(`hassemu.0.clients.${rec.id}.visUrl`, { type: "state" });
-    const original = stub.setStateAsync.bind(stub);
-    stub.setStateAsync = async (id, state) => {
+    const original = stub.setState.bind(stub);
+    stub.setState = async (id, state) => {
       if (id === `clients.${rec.id}.mode` || id === `clients.${rec.id}.manualUrl`) {
         throw new Error("broker down");
       }
       return original(id, state);
     };
 
-    await internal.migrateVisUrlToMode();
+    await migrateVisUrlToMode(internal as unknown as MigrationAdapter, internal.globalConfig, internal.registry);
 
     expect(stub.objects.has(`hassemu.0.clients.${rec.id}.visUrl`)).toBe(true);
     expect(logsOf(stub, "warn").some(m => m.includes("visUrl preserved"))).toBe(true);
@@ -629,7 +644,7 @@ describe("migrateVisUrlToMode", () => {
     const { internal, stub } = setup();
     internal.globalConfig = internal.makeGlobalConfig();
     internal.registry = internal.makeRegistry();
-    await internal.migrateVisUrlToMode();
+    await migrateVisUrlToMode(internal as unknown as MigrationAdapter, internal.globalConfig, internal.registry);
     expect(stub.states.has("hassemu.0.global.mode")).toBe(false);
     expect(logsOf(stub, "warn")).toEqual([]);
     expect(logsOf(stub, "info")).toEqual([]);
@@ -639,7 +654,7 @@ describe("migrateVisUrlToMode", () => {
 describe("gcStaleClients", () => {
   /** Creates a client; tests then overwrite the lastSeen that touchLastSeen just seeded. */
   async function seedClient(internal: Internal, ip: string): Promise<string> {
-    const rec = await internal.registry!.identifyOrCreate(null, ip, null);
+    const rec = await internal.registry!.identifyOrCreate(null, ip);
     return rec.id;
   }
 
@@ -708,8 +723,8 @@ describe("applyMasterSwitch", () => {
   it("enabled=true → every client follows 'global'", async () => {
     const { internal } = setup();
     internal.registry = internal.makeRegistry();
-    const a = await internal.registry!.identifyOrCreate(null, "10.0.0.1", null);
-    const b = await internal.registry!.identifyOrCreate(null, "10.0.0.2", null);
+    const a = await internal.registry!.identifyOrCreate(null, "10.0.0.1");
+    const b = await internal.registry!.identifyOrCreate(null, "10.0.0.2");
     a.mode = "http://somewhere/";
     b.mode = "";
 
@@ -722,7 +737,7 @@ describe("applyMasterSwitch", () => {
   it("enabled=false → every client drops to '0' (no-choice → landing page)", async () => {
     const { internal } = setup();
     internal.registry = internal.makeRegistry();
-    const a = await internal.registry!.identifyOrCreate(null, "10.0.0.1", null);
+    const a = await internal.registry!.identifyOrCreate(null, "10.0.0.1");
     a.mode = MODE_GLOBAL;
 
     await internal.applyMasterSwitch(false);
@@ -748,7 +763,7 @@ describe("onStateChange routing", () => {
 
   it("ignores acked states and null states", async () => {
     const s = await readySetup();
-    const rec = await s.internal.registry!.identifyOrCreate(null, "10.0.0.1", null);
+    const rec = await s.internal.registry!.identifyOrCreate(null, "10.0.0.1");
     rec.mode = "http://keep/";
     await s.internal.onStateChange(`hassemu.0.clients.${rec.id}.mode`, { val: MODE_MANUAL, ack: true });
     await s.internal.onStateChange(`hassemu.0.clients.${rec.id}.mode`, null);
@@ -757,14 +772,14 @@ describe("onStateChange routing", () => {
 
   it("routes clients.<id>.mode writes to handleModeWrite", async () => {
     const s = await readySetup();
-    const rec = await s.internal.registry!.identifyOrCreate(null, "10.0.0.1", null);
+    const rec = await s.internal.registry!.identifyOrCreate(null, "10.0.0.1");
     await s.internal.onStateChange(`hassemu.0.clients.${rec.id}.mode`, { val: "http://picked.local/", ack: false });
     expect(rec.mode).toBe("http://picked.local/");
   });
 
   it("warns once when mode='global' but global has no resolvable URL (B4)", async () => {
     const s = await readySetup();
-    const rec = await s.internal.registry!.identifyOrCreate(null, "10.0.0.1", null);
+    const rec = await s.internal.registry!.identifyOrCreate(null, "10.0.0.1");
     await s.internal.onStateChange(`hassemu.0.clients.${rec.id}.mode`, { val: MODE_GLOBAL, ack: false });
     expect(logsOf(s.stub, "warn").some(m => m.includes("global has no resolvable URL"))).toBe(true);
   });
@@ -772,28 +787,28 @@ describe("onStateChange routing", () => {
   it("no B4 warning when global resolves to a URL", async () => {
     const s = await readySetup();
     await s.internal.globalConfig!.handleModeWrite("http://global.local/");
-    const rec = await s.internal.registry!.identifyOrCreate(null, "10.0.0.1", null);
+    const rec = await s.internal.registry!.identifyOrCreate(null, "10.0.0.1");
     await s.internal.onStateChange(`hassemu.0.clients.${rec.id}.mode`, { val: MODE_GLOBAL, ack: false });
     expect(logsOf(s.stub, "warn").some(m => m.includes("global has no resolvable URL"))).toBe(false);
   });
 
   it("routes clients.<id>.manualUrl writes to handleManualUrlWrite", async () => {
     const s = await readySetup();
-    const rec = await s.internal.registry!.identifyOrCreate(null, "10.0.0.1", null);
+    const rec = await s.internal.registry!.identifyOrCreate(null, "10.0.0.1");
     await s.internal.onStateChange(`hassemu.0.clients.${rec.id}.manualUrl`, { val: "http://manual.local/", ack: false });
     expect(rec.manualUrl).toBe("http://manual.local/");
   });
 
   it("remove button (val=true) forgets the client", async () => {
     const s = await readySetup();
-    const rec = await s.internal.registry!.identifyOrCreate(null, "10.0.0.1", null);
+    const rec = await s.internal.registry!.identifyOrCreate(null, "10.0.0.1");
     await s.internal.onStateChange(`hassemu.0.clients.${rec.id}.remove`, { val: true, ack: false });
     expect(s.internal.registry!.getById(rec.id)).toBeNull();
   });
 
   it("remove button with val=false does nothing", async () => {
     const s = await readySetup();
-    const rec = await s.internal.registry!.identifyOrCreate(null, "10.0.0.1", null);
+    const rec = await s.internal.registry!.identifyOrCreate(null, "10.0.0.1");
     await s.internal.onStateChange(`hassemu.0.clients.${rec.id}.remove`, { val: false, ack: false });
     expect(s.internal.registry!.getById(rec.id)).not.toBeNull();
   });
@@ -802,14 +817,14 @@ describe("onStateChange routing", () => {
     const s = await readySetup();
     await s.internal.onStateChange("hassemu.0.global.manualUrl", { val: "http://gm.local/", ack: false });
     await s.internal.onStateChange("hassemu.0.global.mode", { val: MODE_MANUAL, ack: false });
-    const rec = await s.internal.registry!.identifyOrCreate(null, "10.0.0.1", null);
+    const rec = await s.internal.registry!.identifyOrCreate(null, "10.0.0.1");
     rec.mode = MODE_GLOBAL;
     expect(s.internal.globalConfig!.resolveUrlFor(rec)).toBe("http://gm.local/");
   });
 
   it("global.enabled write persists AND bulk-syncs all client modes", async () => {
     const s = await readySetup();
-    const rec = await s.internal.registry!.identifyOrCreate(null, "10.0.0.1", null);
+    const rec = await s.internal.registry!.identifyOrCreate(null, "10.0.0.1");
     rec.mode = "";
 
     await s.internal.onStateChange("hassemu.0.global.enabled", { val: true, ack: false });
@@ -821,32 +836,34 @@ describe("onStateChange routing", () => {
     expect(rec.mode).toBe("0");
   });
 
-  it("info.refresh_urls=true triggers an immediate collect and re-arms the button", async () => {
+  it("info.refreshUrls=true triggers an immediate collect and re-arms the button", async () => {
     const s = await readySetup();
-    await s.internal.onStateChange("hassemu.0.info.refresh_urls", { val: true, ack: false });
+    await s.internal.onStateChange("hassemu.0.info.refreshUrls", { val: true, ack: false });
     expect(s.discovery.collect).toHaveBeenCalledTimes(1);
-    expect(s.stub.states.get("hassemu.0.info.refresh_urls")).toEqual({ val: false, ack: true });
-    expect(logsOf(s.stub, "info").some(m => m.includes("URL list refreshed"))).toBe(true);
+    expect(s.stub.states.get("hassemu.0.info.refreshUrls")).toEqual({ val: false, ack: true });
+    // I3: the success line is on debug now (no "success" on info) — the visible
+    // feedback is the refreshed dropdown + the re-armed button.
+    expect(logsOf(s.stub, "debug").some(m => m.includes("URL list refreshed"))).toBe(true);
   });
 
   it("refresh button: collect failure warns but still re-arms the button", async () => {
     const s = await readySetup();
     s.discovery.collect.mockRejectedValue(new Error("discovery broke"));
-    await s.internal.onStateChange("hassemu.0.info.refresh_urls", { val: true, ack: false });
+    await s.internal.onStateChange("hassemu.0.info.refreshUrls", { val: true, ack: false });
     expect(logsOf(s.stub, "warn").some(m => m.includes("URL refresh failed"))).toBe(true);
-    expect(s.stub.states.get("hassemu.0.info.refresh_urls")).toEqual({ val: false, ack: true });
+    expect(s.stub.states.get("hassemu.0.info.refreshUrls")).toEqual({ val: false, ack: true });
   });
 
   it("refresh button is a no-op before urlDiscovery exists", async () => {
     const s = await readySetup();
     s.internal.urlDiscovery = null;
-    await s.internal.onStateChange("hassemu.0.info.refresh_urls", { val: true, ack: false });
+    await s.internal.onStateChange("hassemu.0.info.refreshUrls", { val: true, ack: false });
     expect(s.discovery.collect).not.toHaveBeenCalled();
   });
 
   it("handler errors are caught and logged, never thrown", async () => {
     const s = await readySetup();
-    const rec = await s.internal.registry!.identifyOrCreate(null, "10.0.0.1", null);
+    const rec = await s.internal.registry!.identifyOrCreate(null, "10.0.0.1");
     s.internal.registry!.handleModeWrite = async () => {
       throw new Error("handler exploded");
     };
@@ -904,7 +921,7 @@ describe("onUnload", () => {
     expect(webServer.stop).toHaveBeenCalledTimes(1);
     expect(mdns.stop).toHaveBeenCalledTimes(1);
     expect(discovery.cancelRefresh).toHaveBeenCalledTimes(1);
-    expect(stub.stateUnsubscriptions).toEqual(["clients.*", "global.*", "info.refresh_urls"]);
+    expect(stub.stateUnsubscriptions).toEqual(["clients.*", "global.*", "info.refreshUrls"]);
     expect(stub.objectUnsubscriptions).toEqual(["system.adapter.*"]);
     expect(internal.webServer).toBeNull();
     expect(internal.mdnsService).toBeNull();

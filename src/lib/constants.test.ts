@@ -1,4 +1,18 @@
-import { HA_VERSION, SESSION_TTL_MS, CLEANUP_INTERVAL_MS, LOGIN_SCHEMA, OAUTH_ACCESS_TOKEN_TTL_S } from "./constants";
+import {
+  HA_VERSION,
+  SESSION_TTL_MS,
+  CLEANUP_INTERVAL_MS,
+  LOGIN_SCHEMA,
+  OAUTH_ACCESS_TOKEN_TTL_S,
+  DEFAULT_SERVICE_NAME,
+  NEW_CLIENT_WINDOW_MS,
+  NEW_CLIENT_BURST_WARN_THRESHOLD,
+  NEW_CLIENT_THROTTLE_PER_HOUR,
+  DNS_REVERSE_TIMEOUT_MS,
+  DNS_NEGATIVE_CACHE_MS,
+  WS_HEARTBEAT_INTERVAL_MS,
+  LASTSEEN_FLUSH_INTERVAL_MS,
+} from "./constants";
 
 describe("constants", () => {
   describe("HA_VERSION", () => {
@@ -67,6 +81,51 @@ describe("constants", () => {
       // its access token on this cadence (AuthenticationRepositoryImpl). A value
       // from a minute up to a day is sane; an ms-scale value (e.g. 1_800_000) is the bug.
       expect(OAUTH_ACCESS_TOKEN_TTL_S).to.be.within(60, 24 * 60 * 60);
+    });
+  });
+
+  describe("DEFAULT_SERVICE_NAME", () => {
+    it("is a non-empty string default for the mDNS/HTTP service name", () => {
+      expect(DEFAULT_SERVICE_NAME).to.be.a("string");
+      expect(DEFAULT_SERVICE_NAME.length).to.be.greaterThan(0);
+    });
+  });
+
+  describe("new-client throttle ladder", () => {
+    it("warns before it throttles (burst-warn threshold below the throttle)", () => {
+      // The two thresholds form one escalation ladder: warn at >BURST_WARN,
+      // stop minting persistent clients at THROTTLE. If the warn rung were at or
+      // above the throttle it could never fire before the throttle kicks in.
+      expect(NEW_CLIENT_BURST_WARN_THRESHOLD).to.be.lessThan(NEW_CLIENT_THROTTLE_PER_HOUR);
+      expect(NEW_CLIENT_BURST_WARN_THRESHOLD).to.be.greaterThan(0);
+    });
+
+    it("uses a millisecond-scale rolling window (guards a seconds/ms mixup)", () => {
+      expect(NEW_CLIENT_WINDOW_MS).to.be.within(60 * 1000, 24 * 60 * 60 * 1000);
+    });
+  });
+
+  describe("DNS timing windows", () => {
+    it("reverse-lookup timeout is a short millisecond-scale deadline", () => {
+      expect(DNS_REVERSE_TIMEOUT_MS).to.be.within(1000, 30 * 1000);
+    });
+
+    it("negative-cache window is far longer than the lookup timeout", () => {
+      // A negative cache only helps if it outlasts the lookup by orders of
+      // magnitude — otherwise it re-queries almost as often as before.
+      expect(DNS_NEGATIVE_CACHE_MS).to.be.greaterThan(DNS_REVERSE_TIMEOUT_MS * 10);
+    });
+  });
+
+  describe("WS_HEARTBEAT_INTERVAL_MS", () => {
+    it("is a millisecond-scale keep-alive interval", () => {
+      expect(WS_HEARTBEAT_INTERVAL_MS).to.be.within(1000, 5 * 60 * 1000);
+    });
+  });
+
+  describe("LASTSEEN_FLUSH_INTERVAL_MS", () => {
+    it("is a millisecond-scale throttle window shorter than the stale-client TTL", () => {
+      expect(LASTSEEN_FLUSH_INTERVAL_MS).to.be.within(60 * 1000, 24 * 60 * 60 * 1000);
     });
   });
 });

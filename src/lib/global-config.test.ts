@@ -20,7 +20,8 @@ vi.mock("@iobroker/adapter-core", async () => {
   };
 });
 
-import { GlobalConfig, MODE_GLOBAL, MODE_MANUAL, parseGlobalStateId } from "./global-config";
+import { GlobalConfig, parseGlobalStateId } from "./global-config";
+import { MODE_GLOBAL, MODE_MANUAL } from "./constants";
 import type { ClientRecord } from "./types";
 
 interface ObjEntry {
@@ -59,10 +60,10 @@ function createMockAdapter(namespace = "hassemu.0"): {
     setTimeout: () => undefined;
     clearTimeout: () => undefined;
     getStateAsync: (id: string) => Promise<{ val: unknown; ack: boolean } | null>;
-    setStateAsync: (id: string, value: { val: unknown; ack?: boolean }) => Promise<void>;
+    setState: (id: string, value: { val: unknown; ack?: boolean }) => Promise<void>;
     getObjectAsync: (id: string) => Promise<ObjEntry | null>;
-    setObjectAsync: (id: string, obj: ObjEntry) => Promise<void>;
-    extendObjectAsync: (id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>) => Promise<void>;
+    setObject: (id: string, obj: ObjEntry) => Promise<void>;
+    extendObject: (id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>) => Promise<void>;
   } {
     return {
       namespace,
@@ -77,10 +78,10 @@ function createMockAdapter(namespace = "hassemu.0"): {
       setTimeout: () => undefined,
       clearTimeout: () => undefined,
       getStateAsync: async (id: string) => store.states.get(`${namespace}.${id}`) ?? null,
-      setStateAsync: async (id: string, value: { val: unknown; ack?: boolean }) => {
+      setState: async (id: string, value: { val: unknown; ack?: boolean }) => {
         store.states.set(`${namespace}.${id}`, { val: value.val, ack: value.ack ?? false });
       },
-      extendObjectAsync: async (id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>) => {
+      extendObject: async (id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>) => {
         const fullId = `${namespace}.${id}`;
         const existing = store.objects.get(fullId) ?? { type: "state" };
         const preserve = (options?.preserve as { common?: string[] })?.common ?? [];
@@ -101,7 +102,7 @@ function createMockAdapter(namespace = "hassemu.0"): {
         const fullId = id.includes(".") && id.startsWith(`${namespace}.`) ? id : `${namespace}.${id}`;
         return store.objects.get(fullId) ?? null;
       },
-      setObjectAsync: async (id: string, obj: ObjEntry) => {
+      setObject: async (id: string, obj: ObjEntry) => {
         const fullId = id.includes(".") && id.startsWith(`${namespace}.`) ? id : `${namespace}.${id}`;
         store.objects.set(fullId, obj);
       },
@@ -116,6 +117,7 @@ function makeRecord(opts: Partial<ClientRecord>): ClientRecord {
     id: "abc123",
     cookie: "x",
     token: null,
+    tokenExpiresAt: null,
     refreshToken: null,
     mode: "",
     manualUrl: null,
@@ -249,7 +251,9 @@ describe("GlobalConfig", () => {
 
     it("rejects 'global' (self-referential)", async () => {
       await g.handleModeWrite(MODE_GLOBAL);
-      expect(modeVal()).to.equal(""); // unchanged
+      // L37: a blank mode reverts to numeric 0 (dropdown 0='---'), not bare ""
+      // (which showed no selection). The stored mode was "" here.
+      expect(modeVal()).to.equal("0");
       const warn = store.logs.find(l => l.level === "warn" && l.msg.includes("self-referential"));
       expect(warn).to.not.be.undefined;
     });
@@ -263,19 +267,19 @@ describe("GlobalConfig", () => {
       await g.handleModeWrite("http://x/");
       await g.handleModeWrite("");
       // Cleared modes are persisted as numeric 0 (matches the dropdown's '---' option).
-      expect(modeVal()).to.equal(0);
+      expect(modeVal()).to.equal("0");
     });
 
     it("accepts numeric 0 (no-choice marker)", async () => {
       await g.handleModeWrite("http://x/");
       await g.handleModeWrite(0);
-      expect(modeVal()).to.equal(0);
+      expect(modeVal()).to.equal("0");
     });
 
     it("accepts string '0' (dropdown selection of '---')", async () => {
       await g.handleModeWrite("http://x/");
       await g.handleModeWrite("0");
-      expect(modeVal()).to.equal(0);
+      expect(modeVal()).to.equal("0");
     });
 
     it("rejects javascript: URL and keeps previous value", async () => {
@@ -289,7 +293,7 @@ describe("GlobalConfig", () => {
     it("rejects non-string non-zero numbers", async () => {
       await g.handleModeWrite(42 as unknown);
       // mode stays unchanged → state is reverted to current value (0 by default)
-      expect(modeVal()).to.equal(0);
+      expect(modeVal()).to.equal("0");
       const warn = store.logs.find(l => l.level === "warn" && l.msg.includes("non-string"));
       expect(warn).to.not.be.undefined;
     });
@@ -338,9 +342,13 @@ describe("GlobalConfig", () => {
       expect(g.isEnabled()).to.be.false;
     });
 
-    it("coerces non-boolean to false", async () => {
-      await g.handleEnabledWrite("true");
-      expect(g.isEnabled()).to.be.false;
+    it("rejects a non-boolean write: keeps the current value and warns (L9)", async () => {
+      await g.handleEnabledWrite(true); // enable first
+      await g.handleEnabledWrite("true"); // a non-boolean must NOT silently flip it off
+      expect(g.isEnabled(), "master stays enabled on a non-boolean write").to.be.true;
+      expect(store.states.get("hassemu.0.global.enabled")?.val).to.equal(true); // reverted, not coerced
+      const warn = store.logs.find(l => l.level === "warn" && l.msg.includes("non-boolean"));
+      expect(warn, "warns on the rejected write").to.not.be.undefined;
     });
   });
 
@@ -372,7 +380,7 @@ describe("GlobalConfig", () => {
 
   describe("syncUrlDropdown", () => {
     // global.mode is an instanceObject — always present in real installs.
-    // Seed it in tests so syncUrlDropdown's getObjectAsync→setObjectAsync
+    // Seed it in tests so syncUrlDropdown's getObjectAsync→setObject
     // flow has something to read.
     beforeEach(() => {
       store.objects.set("hassemu.0.global.mode", {

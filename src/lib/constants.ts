@@ -9,6 +9,13 @@
  */
 export const HA_VERSION = "2026.4.0";
 
+/**
+ * Default mDNS service name / HTTP `location_name` when the user leaves the
+ * `serviceName` config blank. Single source so the mDNS advert and the HTTP
+ * responses never advertise different names.
+ */
+export const DEFAULT_SERVICE_NAME = "ioBroker";
+
 /** Session TTL: 10 minutes */
 export const SESSION_TTL_MS = 10 * 60 * 1000;
 
@@ -35,8 +42,35 @@ export const WS_AUTH_TIMEOUT_MS = 5 * 1000;
  */
 export const WS_MAX_PAYLOAD_BYTES = 64 * 1024;
 
+/**
+ * Keep-alive ping cadence for an authenticated `/api/websocket` connection.
+ * After `auth_ok` the server pings each socket every interval; a socket that
+ * has not answered a pong since the previous ping is terminated. Bounds the
+ * FD/memory build-up from displays that are power-cut without a clean close
+ * (ws 8.x does not ping server-side on its own — verified against the bundled lib).
+ */
+export const WS_HEARTBEAT_INTERVAL_MS = 30 * 1000;
+
+/**
+ * Reverse-DNS lookup deadline. Beyond this the lookup is abandoned (Promise.race)
+ * so a slow or broken resolver never stalls a request. Named here alongside the
+ * other adapter time windows (was an inline `5_000`).
+ */
+export const DNS_REVERSE_TIMEOUT_MS = 5 * 1000;
+
+/**
+ * Negative-cache window for reverse DNS: once a lookup yields no hostname for an
+ * IP, it is not retried until this elapses. Without it a DHCP client with no PTR
+ * record (the LAN norm) triggers a fresh `dns.reverse` + timeout timer on every
+ * single request. An IP change or a hostname the user set still short-circuits it.
+ */
+export const DNS_NEGATIVE_CACHE_MS = 60 * 60 * 1000;
+
 /** Stale-Client-GC threshold: clients without token + lastSeen older are auto-removed. */
 export const STALE_CLIENT_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+/** `native.lastSeen` is rewritten at most once per this window per client (GC input). */
+export const LASTSEEN_FLUSH_INTERVAL_MS = 60 * 60 * 1000;
 
 /** Browser cookie lifetime (10 years) — clients keep their identity essentially forever. */
 export const COOKIE_MAX_AGE_S = 10 * 365 * 24 * 60 * 60;
@@ -73,9 +107,25 @@ export const NEW_CLIENT_BURST_CAP = 200;
  * spray (or a badly broken client that never keeps its cookie) cannot grow the
  * ioBroker object DB without bound. Generous: a normal install onboards a
  * handful of displays once each (each then keeps its cookie), so a real client
- * never approaches this; the existing burst-warn already fires at >3/h.
+ * never approaches this; the existing burst-warn already fires at
+ * NEW_CLIENT_BURST_WARN_THRESHOLD/h.
  */
 export const NEW_CLIENT_THROTTLE_PER_HOUR = 30;
+
+/**
+ * Rolling window for the per-IP new-client tracking. Both the throttle decision
+ * ({@link NEW_CLIENT_THROTTLE_PER_HOUR}) and the burst-warn operate on the same
+ * `newClientBurst` map, so they MUST share this window — one named constant
+ * keeps them from drifting apart.
+ */
+export const NEW_CLIENT_WINDOW_MS = 60 * 60 * 1000;
+
+/**
+ * A one-time burst warning fires once an IP mints more than this many new
+ * clients within {@link NEW_CLIENT_WINDOW_MS} (typically a display not keeping
+ * its cookie). The lower rung of the escalation ladder below the throttle.
+ */
+export const NEW_CLIENT_BURST_WARN_THRESHOLD = 3;
 
 /**
  * Resolver-Sentinels für `client.mode` und `global.mode`. `'global'` heißt:

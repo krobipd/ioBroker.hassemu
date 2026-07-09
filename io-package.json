@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.36.0",
     "news": {
+      "NEXT": {
+        "en": "A display name you set now survives a later network-name change, and a misbehaving display no longer piles up unused entries in ioBroker.",
+        "de": "Ein von dir gesetzter Display-Name überlebt jetzt eine spätere Netzwerknamen-Änderung, und ein fehlerhaftes Display häuft keine unnötigen Einträge mehr in ioBroker an.",
+        "ru": "Заданное вами имя дисплея теперь сохраняется при последующем изменении сетевого имени, а сбойный дисплей больше не накапливает лишние записи в ioBroker.",
+        "pt": "Um nome de ecrã que definiu mantém-se agora após uma alteração posterior do nome de rede, e um ecrã com problemas já não acumula entradas inúteis no ioBroker.",
+        "nl": "Een schermnaam die je instelt blijft nu behouden na een latere netwerknaam-wijziging, en een haperend scherm stapelt geen overbodige items meer op in ioBroker.",
+        "fr": "Un nom d'écran que vous définissez survit désormais à un changement ultérieur de nom réseau, et un écran défaillant n'accumule plus d'entrées inutiles dans ioBroker.",
+        "it": "Un nome del display che imposti ora sopravvive a un successivo cambio di nome di rete, e un display difettoso non accumula più voci inutili in ioBroker.",
+        "es": "Un nombre de pantalla que definas ahora se conserva tras un cambio posterior de nombre de red, y una pantalla con fallos ya no acumula entradas inútiles en ioBroker.",
+        "pl": "Ustawiona przez Ciebie nazwa wyświetlacza pozostaje teraz po późniejszej zmianie nazwy sieciowej, a wadliwy wyświetlacz nie gromadzi już zbędnych wpisów w ioBroker.",
+        "uk": "Задане вами ім'я дисплея тепер зберігається після подальшої зміни мережевого імені, а несправний дисплей більше не накопичує зайві записи в ioBroker.",
+        "zh-cn": "你设置的显示器名称现在在网络名称稍后变更后仍会保留，出问题的显示器不再在 ioBroker 中堆积无用条目。"
+      },
       "1.36.0": {
         "en": "Fixed a rare crash that briefly took displays offline and a display name being overwritten by the device IP, plus authentication and reliability fixes.",
         "de": "Behoben: ein seltener Absturz (Displays kurz offline) und ein Display-Name, der durch die Geräte-IP überschrieben wurde, plus Authentifizierungs- und Zuverlässigkeitsfixes.",
@@ -80,19 +93,6 @@
         "pl": "Aplikacja Home Assistant Companion i Shelly Wall Display (firmware 2.6.0+): wylogowanie i rejestracja urządzenia działają teraz niezawodnie.",
         "uk": "Застосунок Home Assistant Companion і Shelly Wall Display (прошивка 2.6.0+): вихід і реєстрація пристрою тепер завершуються надійно.",
         "zh-cn": "Home Assistant Companion 应用和 Shelly Wall Display（固件 2.6.0+）：退出登录和设备注册现在能可靠完成。"
-      },
-      "1.33.2": {
-        "en": "Changelog rewritten in user-centric style across all versions.",
-        "de": "Changelog in benutzerfreundlichem Stil über alle Versionen umgeschrieben.",
-        "ru": "Журнал изменений переписан в пользовательском стиле для всех версий.",
-        "pt": "Changelog reescrito em estilo orientado ao utilizador em todas as versões.",
-        "nl": "Changelog herschreven in gebruikersgerichte stijl voor alle versies.",
-        "fr": "Journal des modifications réécrit dans un style orienté utilisateur pour toutes les versions.",
-        "it": "Changelog riscritto in stile orientato all utente per tutte le versioni.",
-        "es": "Registro de cambios reescrito en estilo orientado al usuario en todas las versiones.",
-        "pl": "Dziennik zmian przepisany w stylu zorientowanym na użytkownika we wszystkich wersjach.",
-        "uk": "Журнал змін переписано у стилі орієнтованому на користувача для всіх версій.",
-        "zh-cn": "所有版本的更新日志已改写为面向用户的风格。"
       }
     },
     "plugins": {
@@ -183,7 +183,8 @@
     "username": "admin",
     "password": "",
     "mdnsEnabled": true,
-    "serviceName": "ioBroker"
+    "serviceName": "ioBroker",
+    "trustProxy": false
   },
   "objects": [],
   "instanceObjects": [
@@ -290,7 +291,7 @@
           "zh-cn": "将全局 URL 应用到所有客户端"
         },
         "type": "boolean",
-        "role": "switch",
+        "role": "switch.enable",
         "read": true,
         "write": true,
         "def": false
@@ -336,7 +337,7 @@
       "native": {}
     },
     {
-      "_id": "info.refresh_urls",
+      "_id": "info.refreshUrls",
       "type": "state",
       "common": {
         "name": {

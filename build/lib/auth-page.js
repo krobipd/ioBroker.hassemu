@@ -24,7 +24,7 @@ __export(auth_page_exports, {
   renderAuthorizeRedirect: () => renderAuthorizeRedirect
 });
 module.exports = __toCommonJS(auth_page_exports);
-var import_coerce = require("./coerce");
+var import_html_shared = require("./html-shared");
 function buildRedirectUrl(redirectUri, code, state) {
   let url = redirectUri;
   if (!url.includes("?")) {
@@ -68,8 +68,8 @@ ${opts.bodyExtra}` : ""}
 </html>`;
 }
 function renderAuthorizeRedirect(target) {
-  const a = (0, import_coerce.escapeHtml)(target);
-  const j = JSON.stringify(target).replace(/</g, "\\u003C");
+  const a = (0, import_html_shared.escapeHtml)(target);
+  const j = (0, import_html_shared.jsStringLiteral)(target);
   return htmlShell({
     title: "Home Assistant",
     headExtra: `<meta http-equiv="refresh" content="0; URL=${a}">`,
@@ -79,10 +79,10 @@ function renderAuthorizeRedirect(target) {
   });
 }
 function renderAuthorizeForm(params, errorMessage) {
-  const cid = (0, import_coerce.escapeHtml)(params.clientId);
-  const ru = (0, import_coerce.escapeHtml)(params.redirectUri);
-  const st = params.state ? (0, import_coerce.escapeHtml)(params.state) : "";
-  const errBlock = errorMessage ? `<div class="err">${(0, import_coerce.escapeHtml)(errorMessage)}</div>` : "";
+  const cid = (0, import_html_shared.escapeHtml)(params.clientId);
+  const ru = (0, import_html_shared.escapeHtml)(params.redirectUri);
+  const st = params.state ? (0, import_html_shared.escapeHtml)(params.state) : "";
+  const errBlock = errorMessage ? `<div class="err">${(0, import_html_shared.escapeHtml)(errorMessage)}</div>` : "";
   return htmlShell({
     title: "Home Assistant \u2014 Sign In",
     headExtra: `<meta name="viewport" content="width=device-width, initial-scale=1">`,
@@ -102,11 +102,11 @@ ${errBlock}
 }
 function renderAuthorizeError(reason, detail) {
   return htmlShell({
-    title: `Home Assistant \u2014 ${(0, import_coerce.escapeHtml)(reason)}`,
+    title: `Home Assistant \u2014 ${(0, import_html_shared.escapeHtml)(reason)}`,
     headExtra: `<meta name="viewport" content="width=device-width, initial-scale=1">`,
     cardInner: `<h1>Authorization failed</h1>
-<div class="err">${(0, import_coerce.escapeHtml)(detail)}</div>
-<p class="subtitle">${(0, import_coerce.escapeHtml)(reason)}</p>`
+<div class="err">${(0, import_html_shared.escapeHtml)(detail)}</div>
+<p class="subtitle">${(0, import_html_shared.escapeHtml)(reason)}</p>`
   });
 }
 // Annotate the CommonJS export names for ESM import in node:

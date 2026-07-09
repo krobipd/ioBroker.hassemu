@@ -58,8 +58,10 @@ export interface ClientRecord {
    * is no token. Enforces the advertised 30-min access-token TTL so a captured
    * token cannot be replayed indefinitely. Persisted to
    * `clients.<id>.native.tokenExpiresAt` so it survives a restart. v1.36.0 (S5).
+   * Required + nullable (not optional) so every record-creation site makes an
+   * explicit decision — same shape as the sibling {@link refreshToken}.
    */
-  tokenExpiresAt?: number | null;
+  tokenExpiresAt: number | null;
   /**
    * Currently active OAuth2 refresh token, or null if not authenticated. Stored
    * plain-text in `clients.<id>.native.refreshToken` so it survives adapter
@@ -86,23 +88,26 @@ export interface ClientRecord {
 export interface SessionData {
   /** Timestamp when the session was created. */
   created: number;
-  /** ClientId this session belongs to (set by cookie at flow start). */
-  clientId: string | null;
+  /**
+   * ClientId this session belongs to. Always set — every flow/code is created
+   * from an already-identified request (the cookie is resolved to a client
+   * first). The former `| null` fed a dead headless path that would have issued
+   * tokens without persisting them. v1.37.0 (L10).
+   */
+  clientId: string;
 }
 
-/** Minimal adapter interface for dependency injection in library modules. */
+/**
+ * Minimal adapter interface for dependency injection in library modules.
+ *
+ * The system language is NOT part of this surface: the only consumer (the
+ * server-rendered pages) receives it as an explicit `WebServer` constructor
+ * argument, so a second channel on the adapter would just be a dead field.
+ */
 export type AdapterInterface = Pick<
   ioBroker.Adapter,
   "log" | "setInterval" | "clearInterval" | "setTimeout" | "clearTimeout"
-> & {
-  /**
-   * ioBroker system language (`'en'`, `'de'`, …). Read once in `onReady` from
-   * `system.config.language`, EN-Fallback. Used to render the user-facing
-   * landing page (HTML) in the user's language. Adapter logs themselves
-   * stay English by ioBroker convention.
-   */
-  readonly systemLanguage: string;
-};
+>;
 
 /** Entry returned by URL discovery: key = URL, value = human-readable label. */
 export type UrlStates = Record<string, string>;

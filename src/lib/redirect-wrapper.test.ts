@@ -41,6 +41,15 @@ describe("redirect-wrapper", () => {
       expect(html).to.match(/#hassemu-down\{display:none;/);
     });
 
+    it("renders the shared card/table CSS with the down (error-theme) colors (L21)", () => {
+      const html = renderRedirectWrapper("https://x.test/", "a1b2c3", "en");
+      expect(html).to.include("#hassemu-down .card {");
+      expect(html).to.include("max-width: 44rem;");
+      expect(html).to.include("#hassemu-down th, #hassemu-down td {");
+      expect(html).to.include("border-bottom: 1px solid #334155;");
+      expect(html).to.not.include("var(--"); // down page uses literal colors, no landing tokens
+    });
+
     it("includes 30s polling JS with consecutive-fail threshold", () => {
       const html = renderRedirectWrapper("https://x.test/", "a1b2c3", "en");
       // window.-prefixed timer keeps the repochecker W5004 regex from matching

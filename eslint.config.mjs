@@ -6,7 +6,10 @@ export default [
     languageOptions: {
       parserOptions: {
         projectService: {
-          allowDefaultProject: ["*.mjs", "test/*.ts", "vitest.config.ts"],
+          // L55: only vitest.config.ts needs this — `*.mjs` is covered by the
+          // `*.config.mjs` ignore below and `test/*.ts` matches nothing (test/ is
+          // .js only and ignored via `test/**`).
+          allowDefaultProject: ["vitest.config.ts"],
         },
         tsconfigRootDir: import.meta.dirname,
       },

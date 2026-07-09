@@ -6,8 +6,8 @@ import {
   coerceSafeUrl,
   decideGcAction,
   decideLegacyVisMigration,
-  escapeHtml,
   evictOldest,
+  isEmptyValue,
   isPlainObject,
   isValidRedirectUri,
   oneLine,
@@ -445,21 +445,6 @@ describe("coerce", () => {
     });
   });
 
-  describe("escapeHtml", () => {
-    it("escapes the 5 HTML-special characters", () => {
-      expect(escapeHtml('<script>alert("x\'y")</script>&')).to.equal(
-        "&lt;script&gt;alert(&quot;x&#39;y&quot;)&lt;/script&gt;&amp;",
-      );
-    });
-
-    it("returns input unchanged when no special chars", () => {
-      expect(escapeHtml("plain text 123")).to.equal("plain text 123");
-    });
-
-    it("escapes apostrophe (defense-in-depth for href='...' attributes)", () => {
-      expect(escapeHtml("a'b")).to.equal("a&#39;b");
-    });
-  });
 
   describe("oneLine (S4 v1.36.0)", () => {
     it("collapses CR / LF / TAB runs to single spaces (log-injection guard)", () => {
@@ -468,9 +453,29 @@ describe("coerce", () => {
       expect(oneLine("a\t\tb")).to.equal("a b");
     });
 
+    it("collapses NUL, VT, FF and the Unicode line separators (v1.37.0 parcelapp parity)", () => {
+      expect(oneLine("a\0b")).to.equal("a b");
+      expect(oneLine("a\u2028b\u2029c")).to.equal("a b c");
+      expect(oneLine("a b c")).to.equal("a b c");
+    });
+
     it("leaves single-line input unchanged", () => {
       expect(oneLine("plain text 123")).to.equal("plain text 123");
       expect(oneLine("")).to.equal("");
+    });
+  });
+
+  describe("isEmptyValue", () => {
+    it("is true for empty string, null and undefined", () => {
+      for (const v of ["", null, undefined]) {
+        expect(isEmptyValue(v), `v=${String(v)}`).to.be.true;
+      }
+    });
+
+    it("is false for any other value including 0 and whitespace", () => {
+      for (const v of [0, "0", " ", "x", false, {}]) {
+        expect(isEmptyValue(v), `v=${JSON.stringify(v)}`).to.be.false;
+      }
     });
   });
 });
