@@ -13,12 +13,26 @@ import { getLocalIp, isWildcardBind } from "./network";
 import type { AdapterInterface, UrlStates } from "./types";
 
 /** Minimal adapter interface the discovery needs — allows easy mocking in tests. */
+/**
+ * The subset of js-controller file/object APIs the discovery walker needs.
+ *
+ * I8 (v1.37.0): the three returns below are deliberately `unknown`-ish
+ * (`Record<string, unknown>`, `unknown[]`, a Buffer|string union) rather than the
+ * precise `ioBroker.*` shapes. That is the API-boundary type-guard pattern (CLAUDE.md
+ * HARDCORE): the dir/file/object APIs return shapes that vary across js-controller
+ * versions, so `collect()` treats every result as untrusted and narrows it at runtime
+ * (`Array.isArray`, `isPlainObject`, `coerce*`). Tightening these to `ioBroker.Object`
+ * / `ReadDirResult` would assert a trust the code deliberately withholds, make those
+ * defensive guards read as dead code, and force every test mock to fabricate full
+ * shapes — all for zero runtime-safety gain. The looseness is the boundary, not an
+ * oversight.
+ */
 export interface DiscoveryAdapter extends AdapterInterface {
-  /** Mirrors `ioBroker.Adapter.getForeignObjectsAsync`; typed loose so tests can mock it. */
+  /** Mirrors `ioBroker.Adapter.getForeignObjectsAsync`. Result narrowed at runtime (see above). */
   getForeignObjectsAsync: (pattern: string, type: "instance") => Promise<Record<string, unknown>>;
-  /** Mirrors `ioBroker.Adapter.readDirAsync`; returns an array of file entries. */
+  /** Mirrors `ioBroker.Adapter.readDirAsync`. Entries narrowed with `isPlainObject` (see above). */
   readDirAsync: (adapterName: string, path: string) => Promise<unknown[]>;
-  /** Mirrors `ioBroker.Adapter.readFileAsync`; tests mock this to provide vis-views.json. */
+  /** Mirrors `ioBroker.Adapter.readFileAsync`; the Buffer|string union is narrowed at the call site. */
   readFileAsync: (
     adapterName: string,
     path: string,
@@ -33,7 +47,16 @@ interface ResolveContext {
 }
 
 /** Default debounce (ms) for scheduleRefresh — groups bursts of objectChange events. */
-export const DEFAULT_REFRESH_DEBOUNCE_MS = 2000;
+// L27: file-local (was a re-added dead export — v1.3.0 already removed it once).
+const DEFAULT_REFRESH_DEBOUNCE_MS = 2000;
+
+/** One skipped URL source, collected for the discovery-summary log. v1.37.0 (L44). */
+export type SkipEntry = {
+  /** Short adapter/instance id that was skipped (e.g. `aura.0`, `vis-2.0`). */
+  adapter: string;
+  /** Machine-readable skip reason (e.g. `disabled`, `unsafe-url`, `no-web-instance`). */
+  reason: string;
+};
 
 /**
  * Adapter id-prefixes whose `objectChange` events should trigger an
@@ -51,6 +74,14 @@ export const URL_SOURCE_PREFIXES = Object.freeze([
   "system.adapter.vis-2.",
   "system.adapter.aura.",
 ] as const);
+
+/**
+ * Short-name prefix of the aura adapter. Aura is the one URL source handled
+ * specially (own HTTP server / port, no web extension): `collect()` builds its
+ * entries directly and `collectFromInstance` skips it. Named once so both those
+ * sites share the marker instead of each hardcoding `"aura."`. v1.37.0 (L32).
+ */
+const AURA_PREFIX = "aura.";
 
 /**
  * True when an `objectChange` event for `id` belongs to an adapter whose
@@ -108,13 +139,18 @@ export class UrlDiscovery {
     }
   }
 
-  /** Collects all discoverable URLs from the broker. Updates cache, returns states map. */
+  /**
+   * Collects all discoverable URLs from the broker and pushes them to listeners
+   * via the `onChange` callback (the production effect channel). The returned
+   * states map and the {@link cached} fallback exist for the unit tests —
+   * production `await`s collect() and ignores the result. v1.37.0 (L29).
+   */
   async collect(): Promise<UrlStates> {
     const result: UrlStates = {};
     const hostIp = getLocalIp();
     // v1.32.0 B2: per-Adapter-Tracking für Discovery-Summary statt N silent-skips.
     // Skip-Sites mutieren `skipped`; finale Zeile pro collect() summarisiert.
-    const skipped: Array<{ adapter: string; reason: string }> = [];
+    const skipped: SkipEntry[] = [];
 
     let instances: Record<string, unknown> = {};
     let instancesOk = false;
@@ -125,11 +161,11 @@ export class UrlDiscovery {
       this.adapter.log.debug(`url-discovery: getForeignObjectsAsync failed: ${String(err)}`);
     }
 
-    // v1.8.1 (D4): bei transientem Broker-Fehler nicht den Cache mit `{}`
-    // wipen. Listeners würden sonst leere Dropdowns sehen, mode='global'
-    // resolved-via-discovered-URL fiele in null durch. Beim nächsten Refresh
-    // (debounce 2s) erholt es sich. Neue States werden NUR bei Erfolg
-    // committed.
+    // v1.8.1 (D4): on a transient broker error, do NOT hand listeners an empty
+    // map — mode='global' resolved via a discovered URL would fall through to
+    // null. The actual protection is this early return BEFORE onChange fires, so
+    // onChange never sees `{}` on error; the returned `this.cached` is only read
+    // by tests. Recovers on the next refresh (debounce). v1.37.0 (L29).
     if (!instancesOk) {
       return { ...this.cached };
     }
@@ -162,15 +198,19 @@ export class UrlDiscovery {
     // Verifiziert in iobroker.vis-2 + iobroker.vis io-package.json.
     // adapterName (`vis-2.0`/`vis.0`) wird für `readDirAsync` /
     // `readFileAsync` gebraucht (Folder-Lookup), urlPath nur für die URL.
-    await Promise.all(
-      webInstances.flatMap(([shortName, native]) => {
-        const labelSuffix = showWebSuffix ? ` (${shortName})` : "";
-        return [
-          this.addVisProjects(result, native, hostIp, "vis-2.0", "vis-2", `VIS-2${labelSuffix}`, skipped),
-          this.addVisProjects(result, native, hostIp, "vis.0", "vis", `VIS${labelSuffix}`, skipped),
-        ];
-      }),
-    );
+    // I7 (v1.37.0): bound the fan-out. Process web instances sequentially while
+    // keeping the vis-2 + vis-1 lookup per instance parallel — concurrency is capped
+    // at 2 regardless of how many web instances exist, instead of an unbounded
+    // instance×2 Promise.all. Behaviour is identical for the common single-web-server
+    // case; with several web instances it also makes the `skipped` order deterministic
+    // (instance order) instead of completion-race order.
+    for (const [shortName, native] of webInstances) {
+      const labelSuffix = showWebSuffix ? ` (${shortName})` : "";
+      await Promise.all([
+        this.addVisProjects(result, native, hostIp, "vis-2.0", "vis-2", `VIS-2${labelSuffix}`, skipped),
+        this.addVisProjects(result, native, hostIp, "vis.0", "vis", `VIS${labelSuffix}`, skipped),
+      ]);
+    }
 
     // v1.29.2: aura adapter — standalone HTTP server (own port, default
     // 8095), frontend at `/`. Discovery uses native.port + native.secure
@@ -179,7 +219,7 @@ export class UrlDiscovery {
     // it). Skipped in collectFromInstance to avoid duplicate / wrong-port
     // entries. Source: forks/ioBroker.aura/io-package.json native = {
     //   port: 8095, socketPort: 8082, secure: false, customUrl: "" }.
-    const auraInstances = Array.from(crossRefs.entries()).filter(([n]) => n.startsWith("aura."));
+    const auraInstances = Array.from(crossRefs.entries()).filter(([n]) => n.startsWith(AURA_PREFIX));
     const showAuraSuffix = auraInstances.length > 1;
     for (const [shortName, obj] of auraInstances) {
       const enabled = isPlainObject(obj.common) && obj.common.enabled === true;
@@ -196,12 +236,13 @@ export class UrlDiscovery {
     // statt N silent-skip-lines. Bei busy ioBroker (30+ Adapter) hätte per-skip-log
     // ~36000 lines/Tag produziert — diese Summary ist deterministisch klein
     // (~150 chars worst-case) und gibt volle Triage-Information.
-    const entries = Object.keys(result);
-    const skippedDetail =
+    // L47: flat, readable summary line — the central discovery triage log.
+    const labels = Object.values(result);
+    const count = labels.length;
+    const listPart = count > 0 ? ` [${labels.join(", ")}]` : "";
+    const skippedPart =
       skipped.length > 0 ? `, skipped: ${skipped.map(s => `${s.adapter}=${s.reason}`).join(", ")}` : "";
-    this.adapter.log.debug(
-      `URL discovery: ${entries.length} entr${entries.length === 1 ? "y" : "ies"}${entries.length > 0 ? ` [${entries.map(u => result[u]).join(", ")}]` : ""}${skippedDetail}`,
-    );
+    this.adapter.log.debug(`URL discovery: ${count} entr${count === 1 ? "y" : "ies"}${listPart}${skippedPart}`);
 
     if (this.onChange) {
       try {
@@ -236,7 +277,7 @@ export class UrlDiscovery {
     hostIp: string,
     shortName: string,
     showSuffix: boolean,
-    skipped: Array<{ adapter: string; reason: string }>,
+    skipped: SkipEntry[],
   ): void {
     const native = isPlainObject(obj.native) ? obj.native : {};
     const customUrl = typeof native.customUrl === "string" ? native.customUrl.trim() : "";
@@ -265,7 +306,7 @@ export class UrlDiscovery {
     adapterName: string,
     urlPath: string,
     label: string,
-    skipped: Array<{ adapter: string; reason: string }>,
+    skipped: SkipEntry[],
   ): Promise<void> {
     if (!webInstance) {
       skipped.push({ adapter: adapterName, reason: "no-web-instance" });
@@ -456,7 +497,7 @@ export function collectFromInstance(
   crossRefs: Map<string, Record<string, unknown>>,
   hostIp: string,
   result: UrlStates,
-  skipped?: Array<{ adapter: string; reason: string }>,
+  skipped: SkipEntry[],
 ): void {
   if (!isPlainObject(obj)) {
     return;
@@ -472,11 +513,10 @@ export function collectFromInstance(
     // a URL-source (have localLinks/localLink/welcomeScreen). Otherwise we'd
     // flood the summary with every disabled adapter in the system.
     if (
-      skipped &&
-      (isPlainObject(common.localLinks) ||
-        typeof common.localLink === "string" ||
-        common.welcomeScreen ||
-        common.welcomeScreenPro)
+      isPlainObject(common.localLinks) ||
+      typeof common.localLink === "string" ||
+      common.welcomeScreen ||
+      common.welcomeScreenPro
     ) {
       skipped.push({ adapter: instanceId, reason: "disabled" });
     }
@@ -487,7 +527,7 @@ export function collectFromInstance(
   // (instead of `%port%`) AND advertises a `backend` link to `#/admin` —
   // both undesirable for hassemu's display dropdown. We handle aura
   // explicitly in addAuraInstances() with native.port + frontend-only.
-  if (instanceId.startsWith("aura.")) {
+  if (instanceId.startsWith(AURA_PREFIX)) {
     return;
   }
 
@@ -497,7 +537,7 @@ export function collectFromInstance(
   // New format: common.localLinks = { key: {link, name, ...}, ... }
   if (isPlainObject(common.localLinks)) {
     for (const entry of Object.values(common.localLinks)) {
-      addFromEntry(entry, ctx, instanceId, result);
+      addFromEntry(entry, ctx, result);
     }
   }
 
@@ -517,12 +557,14 @@ export function collectFromInstance(
     const ws = common[key];
     const entries = Array.isArray(ws) ? ws : isPlainObject(ws) ? [ws] : [];
     for (const entry of entries) {
-      addFromEntry(entry, ctx, instanceId, result);
+      addFromEntry(entry, ctx, result);
     }
   }
 }
 
-function addFromEntry(entry: unknown, ctx: ResolveContext, instanceId: string, result: UrlStates): void {
+// L48: instanceId comes from ctx (ctx.instanceId) — the separate parameter was
+// always the same value the caller had already put into ctx.
+function addFromEntry(entry: unknown, ctx: ResolveContext, result: UrlStates): void {
   if (!isPlainObject(entry)) {
     return;
   }
@@ -539,7 +581,7 @@ function addFromEntry(entry: unknown, ctx: ResolveContext, instanceId: string, r
     return;
   }
   const name = coerceString(entry.name);
-  result[safe] = name ? `${instanceId}: ${name}` : instanceId;
+  result[safe] = name ? `${ctx.instanceId}: ${name}` : ctx.instanceId;
 }
 
 /**

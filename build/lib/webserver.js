@@ -45,6 +45,7 @@ var import_landing_page = require("./landing-page");
 var import_network = require("./network");
 var import_redirect_wrapper = require("./redirect-wrapper");
 const CLIENT_COOKIE = "hassemu_client";
+const PUBLIC_ROUTE = { config: { public: true } };
 function mobileRegResponse(webhookId) {
   return { webhook_id: webhookId, cloudhook_url: null, remote_ui_url: null, secret: null };
 }
@@ -109,6 +110,14 @@ class WebServer {
   /** Set of IPs whose reverse DNS lookup is already in-flight — prevents duplicate work. */
   dnsInFlight = /* @__PURE__ */ new Set();
   /**
+   * Negative cache: IP → last time a reverse-DNS lookup yielded no hostname. An
+   * IP in here within {@link DNS_NEGATIVE_CACHE_MS} is not re-queried — without
+   * this a DHCP client with no PTR record (the LAN norm) triggers a fresh
+   * `dns.reverse` + timeout timer on every 30s poll. Pruned in {@link cleanupSessions}
+   * and cleared in {@link stop}. v1.37.0 (L6).
+   */
+  dnsNegativeCache = /* @__PURE__ */ new Map();
+  /**
    * Per-message cooldown timestamps for 5xx error logging. First occurrence
    * of a unique message logs at warn; repeats within {@link REQUEST_ERROR_COOLDOWN_MS}
    * fall to debug to prevent log-spam under attack/probe traffic.
@@ -134,7 +143,7 @@ class WebServer {
   }
   /** Human-readable service name advertised in responses and mDNS. */
   get serviceName() {
-    return this.config.serviceName || "ioBroker";
+    return this.config.serviceName || import_constants.DEFAULT_SERVICE_NAME;
   }
   /** Resolved listener address once `start()` has completed, or null otherwise. */
   get boundAddress() {
@@ -188,50 +197,54 @@ class WebServer {
       this.adapter.log.debug(`Web server stop error: ${String(err)}`);
     }
     this.dnsInFlight.clear();
+    this.dnsNegativeCache.clear();
   }
   // v1.14.0 (H8): `inject` ist jetzt ein readonly Field (oben deklariert,
   // im Constructor einmalig gebunden). Der frühere Getter allokierte bei
   // jedem Access eine neue Funktion.
+  /**
+   * Deletes every entry of `map` for which `shouldDelete` returns true and
+   * returns the count removed — so the cleanup passes below stay their essence
+   * (a predicate + a count) instead of five copies of the iterate/delete/count
+   * loop. v1.37.0 (I13).
+   *
+   * @param map          Map to prune in place.
+   * @param shouldDelete Predicate `(value, key) => boolean`; true drops the entry.
+   */
+  static pruneWhere(map, shouldDelete) {
+    let removed = 0;
+    for (const [key, value] of map) {
+      if (shouldDelete(value, key)) {
+        map.delete(key);
+        removed++;
+      }
+    }
+    return removed;
+  }
   /** Periodic cleanup of expired in-flight auth sessions and stale redirect-target entries. */
   cleanupSessions() {
     const now = Date.now();
-    let cleanedSessions = 0;
-    for (const [key, session] of this.sessions) {
-      if (now - session.created > import_constants.SESSION_TTL_MS) {
-        this.sessions.delete(key);
-        cleanedSessions++;
-      }
-    }
-    for (const [key, session] of this.codeSessions) {
-      if (now - session.created > import_constants.SESSION_TTL_MS) {
-        this.codeSessions.delete(key);
-        cleanedSessions++;
-      }
-    }
+    const expired = (s) => now - s.created > import_constants.SESSION_TTL_MS;
+    const cleanedSessions = WebServer.pruneWhere(this.sessions, expired) + WebServer.pruneWhere(this.codeSessions, expired);
     if (cleanedSessions > 0) {
       this.adapter.log.debug(`Session cleanup: removed ${cleanedSessions} expired sessions`);
     }
     const activeClients = new Set(this.registry.listAll().map((r) => r.id));
-    let prunedTargets = 0;
-    for (const clientId of this.lastRedirectTargetByClient.keys()) {
-      if (!activeClients.has(clientId)) {
-        this.lastRedirectTargetByClient.delete(clientId);
-        prunedTargets++;
-      }
-    }
+    const prunedTargets = WebServer.pruneWhere(
+      this.lastRedirectTargetByClient,
+      (_target, clientId) => !activeClients.has(clientId)
+    );
     if (prunedTargets > 0) {
       this.adapter.log.debug(`Cleanup: pruned ${prunedTargets} stale redirect-target entries`);
     }
-    let prunedWebhooks = 0;
-    for (const [webhookId, ownerId] of this.webhookRegistrations) {
-      if (ownerId !== "" && !activeClients.has(ownerId)) {
-        this.webhookRegistrations.delete(webhookId);
-        prunedWebhooks++;
-      }
-    }
+    const prunedWebhooks = WebServer.pruneWhere(
+      this.webhookRegistrations,
+      (ownerId) => ownerId !== "" && !activeClients.has(ownerId)
+    );
     if (prunedWebhooks > 0) {
       this.adapter.log.debug(`Cleanup: pruned ${prunedWebhooks} webhook registrations of removed clients`);
     }
+    WebServer.pruneWhere(this.dnsNegativeCache, (ts) => now - ts >= import_constants.DNS_NEGATIVE_CACHE_MS);
   }
   /**
    * Cooldown-Decision für 5xx-Error-Logging. Liefert `true` für die erste
@@ -305,7 +318,7 @@ class WebServer {
     const cookie = (0, import_coerce.coerceUuid)((_a = req.cookies) == null ? void 0 : _a[CLIENT_COOKIE]);
     const ip = WebServer.getClientIp(req);
     const userAgent = (0, import_coerce.coerceString)(req.headers["user-agent"]);
-    const record = await this.registry.identifyOrCreate(cookie, ip, null, userAgent);
+    const record = await this.registry.identifyOrCreate(cookie, ip, { userAgent });
     if (cookie === record.cookie) {
       this.adapter.log.debug(`identify: cookie-hit client=${record.id} ip=${ip != null ? ip : "?"}`);
     } else {
@@ -330,19 +343,28 @@ class WebServer {
     if (record.hostname || this.dnsInFlight.has(ip)) {
       return;
     }
+    const lastNegative = this.dnsNegativeCache.get(ip);
+    if (lastNegative !== void 0 && Date.now() - lastNegative < import_constants.DNS_NEGATIVE_CACHE_MS) {
+      return;
+    }
     this.dnsInFlight.add(ip);
     let timeoutHandle;
     const timeout = new Promise((_, reject) => {
-      timeoutHandle = this.adapter.setTimeout(() => reject(new Error("dns reverse-lookup timeout")), 5e3);
+      timeoutHandle = this.adapter.setTimeout(
+        () => reject(new Error("dns reverse-lookup timeout")),
+        import_constants.DNS_REVERSE_TIMEOUT_MS
+      );
     });
     Promise.race([import_promises.default.reverse(ip), timeout]).then((names) => {
       const name = names[0];
       if (name) {
-        this.adapter.log.debug(`resolveHostname: ip=${ip} \u2192 hostname=${name}`);
-        this.registry.identifyOrCreate(record.cookie, ip, name).catch(() => {
-        });
+        this.adapter.log.debug(`resolveHostname: ip=${ip} \u2192 hostname=${(0, import_coerce.oneLine)(name)}`);
+        this.registry.updateHostname(record.cookie, name).catch((err) => this.adapter.log.debug(`resolveHostname: persist for ${record.id} failed \u2014 ${String(err)}`));
+      } else {
+        this.dnsNegativeCache.set(ip, Date.now());
       }
     }).catch((err) => {
+      this.dnsNegativeCache.set(ip, Date.now());
       this.adapter.log.debug(
         `resolveHostname: ip=${ip} failed \u2014 ${err instanceof Error ? err.message : String(err)}`
       );
@@ -372,24 +394,15 @@ class WebServer {
    */
   setupAuthGuard() {
     this.app.addHook("preHandler", async (req, reply) => {
-      var _a;
+      var _a, _b;
       if (!this.config.authRequired) {
         return;
       }
-      const path = ((_a = req.url) != null ? _a : "/").split("?")[0];
-      if (path === "/" || path === "/api/" || path === "/api/discovery_info" || path === "/manifest.json" || path === "/health" || // C7 (v1.36.0): the display's down-page polls /api/redirect_check with its
-      // cookie (no Bearer) — without this it 401s when authRequired=true and the
-      // auto-reload-on-URL-change silently stops. It returns only the display's
-      // own resolved target URL, so it is safe to serve cookie-authenticated.
-      path === "/api/redirect_check" || path.startsWith("/auth/") || // v1.34.0: the WebSocket does its own auth in the handshake
-      // (`auth_required` → `auth` frame), not via a Bearer header — so the
-      // HTTP upgrade itself must pass the guard.
-      path === "/api/websocket" || // v1.29.1: Mobile-App webhooks carry the secret in the URL
-      // (`webhookId`) — HA core also serves these unauthenticated.
-      // Source: home-assistant/core/.../mobile_app/webhook.py.
-      path.startsWith("/api/webhook/")) {
+      const routeConfig = (_a = req.routeOptions) == null ? void 0 : _a.config;
+      if ((routeConfig == null ? void 0 : routeConfig.public) === true) {
         return;
       }
+      const path = ((_b = req.url) != null ? _b : "/").split("?")[0];
       const token = WebServer.bearerToken(req);
       if (!token) {
         this.adapter.log.debug(`Auth required for ${path} \u2014 missing Bearer token`);
@@ -457,9 +470,9 @@ class WebServer {
     };
   }
   setupApiRoutes() {
-    this.app.get("/api/", () => ({ message: "API running." }));
+    this.app.get("/api/", PUBLIC_ROUTE, () => ({ message: "API running." }));
     this.app.get("/api/config", () => this.buildHaConfig());
-    this.app.get("/api/discovery_info", () => {
+    this.app.get("/api/discovery_info", PUBLIC_ROUTE, () => {
       const host = (0, import_network.resolveAdvertisedHost)(this.config.bindAddress);
       const baseUrl = `http://${host}:${this.config.port}`;
       return {
@@ -487,7 +500,7 @@ class WebServer {
       (0, import_coerce.evictOldest)(this.webhookRegistrations, import_constants.WEBHOOK_REGISTRATIONS_CAP);
       this.webhookRegistrations.set(webhookId, ownerId);
       this.adapter.log.debug(
-        `Mobile-App registration \u2014 client=${ownerId} app_id=${(0, import_coerce.oneLine)((_c = body.app_id) != null ? _c : "?")} device_name=${(0, import_coerce.oneLine)((_d = body.device_name) != null ? _d : "?")} \u2192 webhook=${webhookId}`
+        `Mobile-App registration \u2014 client=${ownerId} app_id=${(0, import_coerce.oneLine)((_c = body.app_id) != null ? _c : "?")} device_name=${(0, import_coerce.oneLine)((_d = body.device_name) != null ? _d : "?")} \u2192 webhook=${webhookId.substring(0, 8)}\u2026`
       );
       reply.status(201);
       return mobileRegResponse(webhookId);
@@ -495,7 +508,9 @@ class WebServer {
     this.app.put("/api/mobile_app/registrations/:webhookId", async (req, reply) => {
       const id = req.params.webhookId;
       if (!this.webhookRegistrations.has(id)) {
-        this.adapter.log.debug(`Mobile-App PUT registration: unknown webhookId=${id.substring(0, 8)}\u2026 \u2014 returning 404`);
+        this.adapter.log.debug(
+          `Mobile-App PUT registration: unknown webhookId=${(0, import_coerce.oneLine)(id).substring(0, 8)}\u2026 \u2014 returning 404`
+        );
         reply.status(404);
         return { error: "unknown_registration" };
       }
@@ -508,24 +523,23 @@ class WebServer {
         const wasPresent = this.webhookRegistrations.has(id);
         this.webhookRegistrations.delete(id);
         this.adapter.log.debug(
-          `Mobile-App DELETE registration: webhookId=${id.substring(0, 8)}\u2026 removed (was-present=${wasPresent})`
+          `Mobile-App DELETE registration: webhookId=${(0, import_coerce.oneLine)(id).substring(0, 8)}\u2026 removed (was-present=${wasPresent})`
         );
-        reply.status(204);
-        return null;
+        return reply.status(204).send();
       }
     );
-    this.app.post("/api/webhook/:webhookId", async (req, reply) => {
+    this.app.post("/api/webhook/:webhookId", PUBLIC_ROUTE, async (req, reply) => {
       var _a;
       const id = req.params.webhookId;
       if (!this.webhookRegistrations.has(id)) {
         this.adapter.log.debug(
-          `Webhook fallthrough: stale id=${id.substring(0, 8)}\u2026 \u2014 App will trigger re-registration`
+          `Webhook fallthrough: stale id=${(0, import_coerce.oneLine)(id).substring(0, 8)}\u2026 \u2014 App will trigger re-registration`
         );
         return reply.status(200).send();
       }
       const body = (_a = req.body) != null ? _a : {};
       const type = typeof body.type === "string" ? body.type : "";
-      this.adapter.log.debug(`Webhook ${id.substring(0, 8)}\u2026 type=${type || "(no type)"}`);
+      this.adapter.log.debug(`Webhook ${(0, import_coerce.oneLine)(id).substring(0, 8)}\u2026 type=${type || "(no type)"}`);
       switch (type) {
         case "get_config":
           return this.buildHaConfig();
@@ -547,13 +561,13 @@ class WebServer {
   /**
    * Issue a fresh authorization code and persist it in the sessions map.
    *
-   * Single source for both the JSON login flow (`/auth/login_flow/<flowId>`
-   * → `create_entry`) and the browser OAuth2 flow (`/auth/authorize` →
-   * 302). The code is exchanged for tokens at `/auth/token` (`grant_type =
-   * authorization_code`); the existing token-view consumes the same map.
+   * Single source for both the JSON login flow (`/auth/login_flow/<flowId>` →
+   * `create_entry`) and the browser OAuth2 flow (`/auth/authorize` →
+   * auto-submit redirect page). The code is exchanged for tokens at `/auth/token`
+   * (`grant_type = authorization_code`); the same codeSessions map is consumed there.
    *
-   * @param clientId Identity cookie value of the requesting display, or
-   *                 undefined for headless OAuth2-only flows.
+   * @param clientId Identity of the requesting display (always known — the flow
+   *                 starts from an identified request). v1.37.0 (L10).
    */
   issueAuthorizationCode(clientId) {
     const code = import_node_crypto.default.randomUUID();
@@ -573,39 +587,27 @@ class WebServer {
    * @param redirectUri  The OAuth2 `redirect_uri` (must be a string + allowlisted).
    */
   validateAuthorizeRequest(reply, method, responseType, clientId, redirectUri) {
-    if (responseType !== "code") {
-      this.adapter.log.debug(`Authorize ${method} rejected: response_type=${String(responseType)} (expected 'code')`);
+    const fail = (reason, detail) => {
       reply.status(400).type("text/html");
-      return {
-        ok: false,
-        html: (0, import_auth_page.renderAuthorizeError)(
-          "unsupported_response_type",
-          "This authorization server supports `response_type=code` only."
-        )
-      };
+      return { ok: false, html: (0, import_auth_page.renderAuthorizeError)(reason, detail) };
+    };
+    if (responseType !== "code") {
+      this.adapter.log.debug(
+        `Authorize ${method} rejected: response_type=${(0, import_coerce.oneLine)(String(responseType))} (expected 'code')`
+      );
+      return fail("unsupported_response_type", "This authorization server supports `response_type=code` only.");
     }
     if (typeof clientId !== "string" || typeof redirectUri !== "string") {
       this.adapter.log.debug(
         `Authorize ${method} rejected: missing client_id or redirect_uri (cid=${typeof clientId}, ru=${typeof redirectUri})`
       );
-      reply.status(400).type("text/html");
-      return {
-        ok: false,
-        html: (0, import_auth_page.renderAuthorizeError)("invalid_request", "Missing or invalid `client_id` or `redirect_uri` parameter.")
-      };
+      return fail("invalid_request", "Missing or invalid `client_id` or `redirect_uri` parameter.");
     }
     if (!(0, import_coerce.isValidRedirectUri)(clientId, redirectUri)) {
       this.adapter.log.debug(
         `Authorize ${method} rejected: redirect_uri "${(0, import_coerce.oneLine)(redirectUri)}" not allowed for client_id "${(0, import_coerce.oneLine)(clientId)}"`
       );
-      reply.status(400).type("text/html");
-      return {
-        ok: false,
-        html: (0, import_auth_page.renderAuthorizeError)(
-          "invalid_redirect_uri",
-          "The `redirect_uri` parameter is not on the allowlist for this client."
-        )
-      };
+      return fail("invalid_redirect_uri", "The `redirect_uri` parameter is not on the allowlist for this client.");
     }
     return { ok: true, clientId, redirectUri };
   }
@@ -613,7 +615,7 @@ class WebServer {
    * Issue an auth code, build the redirect target and render the auto-submit redirect page.
    *
    * @param reply       Fastify reply (content-type set to text/html).
-   * @param clientId    Identity of the requesting display, or null for headless flows.
+   * @param clientId    Identity of the requesting display (always known).
    * @param redirectUri Already-validated `redirect_uri` to append the code to.
    * @param state       Optional OAuth2 `state` round-tripped verbatim.
    */
@@ -663,9 +665,28 @@ class WebServer {
     const passOk = (0, import_coerce.safeStringEqual)(password, this.config.password);
     return userOk && passOk;
   }
+  /**
+   * Log an invalid-credentials attempt, deduplicated per IP via the shared 5xx
+   * cooldown — first attempt per IP within the window at warn, repeats at debug.
+   * An app retrying with stale credentials after a password change would otherwise
+   * flood the log every minute forever. Log-dedup only — NOT a lockout (removed in
+   * v1.31.0, stays removed). v1.37.0 (M3).
+   *
+   * @param ip Client IP, or null.
+   */
+  logInvalidCredentials(ip) {
+    const suffix = ip ? ` (IP ${ip})` : "";
+    if (this.shouldEmitRequestErrorWarn(`invalid-credentials:${ip != null ? ip : "?"}`, Date.now())) {
+      this.adapter.log.warn(`Invalid credentials${suffix}`);
+    } else {
+      this.adapter.log.debug(`Invalid credentials (repeat)${suffix}`);
+    }
+  }
   setupAuthRoutes() {
-    this.app.get("/auth/providers", () => [{ name: "Home Assistant Local", type: "homeassistant", id: null }]);
-    this.app.get("/auth/authorize", async (req, reply) => {
+    this.app.get("/auth/providers", PUBLIC_ROUTE, () => [
+      { name: "Home Assistant Local", type: "homeassistant", id: null }
+    ]);
+    this.app.get("/auth/authorize", PUBLIC_ROUTE, async (req, reply) => {
       var _a;
       const { response_type, client_id, redirect_uri, state } = (_a = req.query) != null ? _a : {};
       const v = this.validateAuthorizeRequest(reply, "GET", response_type, client_id, redirect_uri);
@@ -689,7 +710,7 @@ class WebServer {
       reply.type("text/html");
       return (0, import_auth_page.renderAuthorizeForm)({ clientId: v.clientId, redirectUri: v.redirectUri, state });
     });
-    this.app.post("/auth/authorize", async (req, reply) => {
+    this.app.post("/auth/authorize", PUBLIC_ROUTE, async (req, reply) => {
       var _a;
       const { response_type, client_id, redirect_uri, state, username, password } = (_a = req.body) != null ? _a : {};
       const v = this.validateAuthorizeRequest(reply, "POST", response_type, client_id, redirect_uri);
@@ -702,8 +723,7 @@ class WebServer {
       }
       const ip = WebServer.getClientIp(req);
       if (!this.credentialsValid(username, password)) {
-        const ipSuffix = ip ? ` (IP ${ip})` : "";
-        this.adapter.log.warn(`Invalid credentials${ipSuffix}`);
+        this.logInvalidCredentials(ip);
         reply.status(401).type("text/html");
         return (0, import_auth_page.renderAuthorizeForm)(
           { clientId: v.clientId, redirectUri: v.redirectUri, state },
@@ -713,7 +733,7 @@ class WebServer {
       this.adapter.log.debug(`Authorize grant \u2014 client ${client.id}`);
       return this.issueAuthorizeRedirect(reply, client.id, v.redirectUri, state);
     });
-    this.app.post("/auth/login_flow", async (req, reply) => {
+    this.app.post("/auth/login_flow", PUBLIC_ROUTE, async (req, reply) => {
       const client = await this.identify(req, reply);
       const flowId = import_node_crypto.default.randomUUID();
       this.storeSession(flowId, { created: Date.now(), clientId: client.id });
@@ -731,6 +751,7 @@ class WebServer {
     this.app.post(
       "/auth/login_flow/:flowId",
       {
+        ...PUBLIC_ROUTE,
         schema: {
           params: {
             type: "object",
@@ -744,7 +765,7 @@ class WebServer {
         const flowId = req.params.flowId;
         const session = this.sessions.get(flowId);
         if (!session) {
-          this.adapter.log.debug(`Unknown flow_id: ${flowId}`);
+          this.adapter.log.debug(`Unknown flow_id: ${(0, import_coerce.oneLine)(flowId)}`);
           reply.status(400);
           return { type: "abort", flow_id: flowId, reason: "unknown_flow" };
         }
@@ -752,8 +773,7 @@ class WebServer {
           const ip = WebServer.getClientIp(req);
           const { username, password } = (_a = req.body) != null ? _a : {};
           if (!this.credentialsValid(username, password)) {
-            const ipSuffix = ip ? ` (IP ${ip})` : "";
-            this.adapter.log.warn(`Invalid credentials${ipSuffix}`);
+            this.logInvalidCredentials(ip);
             reply.status(400);
             return {
               type: "form",
@@ -767,8 +787,7 @@ class WebServer {
           }
         }
         this.sessions.delete(flowId);
-        const code = import_node_crypto.default.randomUUID();
-        this.storeCode(code, { created: Date.now(), clientId: session.clientId });
+        const code = this.issueAuthorizationCode(session.clientId);
         this.adapter.log.debug("Auth flow completed \u2014 code issued");
         return {
           version: 1,
@@ -781,57 +800,83 @@ class WebServer {
         };
       }
     );
-    this.app.post("/auth/revoke", async (req) => {
+    this.app.post("/auth/revoke", PUBLIC_ROUTE, async (req) => {
       var _a;
       await this.revokeToken((_a = req.body) == null ? void 0 : _a.token);
       return {};
     });
-    this.app.post("/auth/token", async (req, reply) => {
+    this.app.post("/auth/token", PUBLIC_ROUTE, async (req, reply) => {
       var _a, _b, _c;
       const { code, grant_type, refresh_token, action } = (_a = req.body) != null ? _a : {};
       if (action === "revoke") {
         await this.revokeToken((_c = (_b = req.body) == null ? void 0 : _b.token) != null ? _c : refresh_token);
         return {};
       }
-      if (grant_type === "authorization_code" && code && this.codeSessions.has(code)) {
-        const session = this.codeSessions.get(code);
-        this.codeSessions.delete(code);
-        const token = import_node_crypto.default.randomUUID();
-        const refreshToken = import_node_crypto.default.randomUUID();
-        if (session.clientId) {
-          await this.registry.setToken(session.clientId, token);
-          await this.registry.setRefreshToken(session.clientId, refreshToken);
-          this.adapter.log.debug(`Display authenticated \u2014 client ${session.clientId}`);
-        }
-        return {
-          access_token: token,
-          token_type: "Bearer",
-          refresh_token: refreshToken,
-          expires_in: import_constants.OAUTH_ACCESS_TOKEN_TTL_S
-        };
+      const session = grant_type === "authorization_code" && code ? this.codeSessions.get(code) : void 0;
+      if (session && code) {
+        return this.handleAuthCodeGrant(code, session);
       }
       if (grant_type === "refresh_token") {
-        const incoming = typeof refresh_token === "string" ? refresh_token : "";
-        const ownerRecord = incoming ? this.registry.getByRefreshToken(incoming) : null;
-        if (!ownerRecord) {
-          this.adapter.log.debug("Refresh token rejected \u2014 unknown or missing");
-          reply.status(400);
-          return { error: "invalid_grant", error_description: "Invalid refresh token" };
-        }
-        const newAccess = import_node_crypto.default.randomUUID();
-        await this.registry.setToken(ownerRecord.id, newAccess);
-        this.adapter.log.debug(`Refresh-token-grant \u2014 client=${ownerRecord.id} new access_token issued`);
-        return {
-          access_token: newAccess,
-          token_type: "Bearer",
-          refresh_token: incoming,
-          expires_in: import_constants.OAUTH_ACCESS_TOKEN_TTL_S
-        };
+        return this.handleRefreshGrant(refresh_token, reply);
       }
-      this.adapter.log.debug(`Token exchange failed: grant_type=${String(grant_type)}`);
+      this.adapter.log.debug(`Token exchange failed: grant_type=${(0, import_coerce.oneLine)(String(grant_type))}`);
       reply.status(400);
       return { error: "invalid_request", error_description: "Invalid or expired code" };
     });
+  }
+  /**
+   * `authorization_code` grant: consume the one-time code, mint access + refresh
+   * tokens and persist them to the client BEFORE returning them — a crash between
+   * issue and persist would otherwise hand the client a token the server never
+   * knew, giving `invalid_grant` on the first refresh. `session.clientId` is
+   * always set (L10). v1.37.0 (M7).
+   *
+   * @param code    The consumed authorization code (removed from codeSessions here).
+   * @param session The code's session (holds the owning clientId).
+   */
+  async handleAuthCodeGrant(code, session) {
+    this.codeSessions.delete(code);
+    const token = import_node_crypto.default.randomUUID();
+    const refreshToken = import_node_crypto.default.randomUUID();
+    await this.registry.setToken(session.clientId, token);
+    await this.registry.setRefreshToken(session.clientId, refreshToken);
+    this.adapter.log.debug(`Display authenticated \u2014 client ${session.clientId}`);
+    return {
+      access_token: token,
+      token_type: "Bearer",
+      refresh_token: refreshToken,
+      expires_in: import_constants.OAUTH_ACCESS_TOKEN_TTL_S
+    };
+  }
+  /**
+   * `refresh_token` grant: validate the incoming refresh token against issued
+   * ones (was previously accepting any string, security fix v1.2.0) and mint a
+   * fresh access token. The refresh token is NOT rotated: HA core itself never
+   * returns a new one on refresh, and the HA Android Companion stores the token it
+   * SENT (AuthenticationRepositoryImpl.kt:147), ignoring any rotated response —
+   * v1.28.3's RFC-6819 rotation killed the Companion token on first refresh.
+   * v1.37.0 (M7).
+   *
+   * @param refreshToken The incoming refresh token from the request body.
+   * @param reply        Fastify reply (status set to 400 on an unknown token).
+   */
+  async handleRefreshGrant(refreshToken, reply) {
+    const incoming = typeof refreshToken === "string" ? refreshToken : "";
+    const ownerRecord = incoming ? this.registry.getByRefreshToken(incoming) : null;
+    if (!ownerRecord) {
+      this.adapter.log.debug("Refresh token rejected \u2014 unknown or missing");
+      reply.status(400);
+      return { error: "invalid_grant", error_description: "Invalid refresh token" };
+    }
+    const newAccess = import_node_crypto.default.randomUUID();
+    await this.registry.setToken(ownerRecord.id, newAccess);
+    this.adapter.log.debug(`Refresh-token-grant \u2014 client=${ownerRecord.id} new access_token issued`);
+    return {
+      access_token: newAccess,
+      token_type: "Bearer",
+      refresh_token: incoming,
+      expires_in: import_constants.OAUTH_ACCESS_TOKEN_TTL_S
+    };
   }
   /**
    * Minimal read-only HA WebSocket at `/api/websocket`. The HA Companion App's
@@ -847,52 +892,80 @@ class WebServer {
    * App's call (which previously failed fast against a clean 404).
    */
   setupWebSocket() {
-    this.app.get("/api/websocket", { websocket: true }, (socket) => {
+    this.app.get("/api/websocket", { websocket: true, ...PUBLIC_ROUTE }, (socket) => {
+      var _a;
       let authed = false;
-      let authTimer = this.adapter.setTimeout(() => {
-        if (!authed) {
-          this.adapter.log.debug("WS: no auth frame within timeout \u2014 closing");
-          this.wsSend(socket, { type: "auth_invalid", message: "Authentication timed out" });
-          socket.close();
-        }
-      }, import_constants.WS_AUTH_TIMEOUT_MS);
-      this.wsSend(socket, { type: "auth_required", ha_version: import_constants.HA_VERSION });
-      socket.on("message", (raw) => {
-        const text = Buffer.isBuffer(raw) ? raw.toString("utf8") : Array.isArray(raw) ? Buffer.concat(raw).toString("utf8") : Buffer.from(raw).toString("utf8");
-        let msg;
-        try {
-          msg = JSON.parse(text);
-        } catch {
-          return;
-        }
-        if (!(0, import_coerce.isPlainObject)(msg)) {
-          return;
-        }
-        if (!authed) {
-          const token = typeof msg.access_token === "string" ? msg.access_token : "";
-          if (msg.type === "auth" && token && this.registry.getByToken(token)) {
-            authed = true;
-            if (authTimer) {
-              this.adapter.clearTimeout(authTimer);
-              authTimer = void 0;
-            }
-            this.wsSend(socket, { type: "auth_ok", ha_version: import_constants.HA_VERSION });
-          } else {
-            this.adapter.log.debug("WS: auth_invalid \u2014 unknown or missing access token");
-            this.wsSend(socket, { type: "auth_invalid", message: "Invalid access token" });
-            socket.close();
-          }
-          return;
-        }
-        this.handleWsCommand(socket, msg);
-      });
-      socket.on("error", () => {
-      });
-      socket.on("close", () => {
+      let alive = true;
+      let authTimer;
+      let heartbeatTimer;
+      const clearTimers = () => {
         if (authTimer) {
           this.adapter.clearTimeout(authTimer);
           authTimer = void 0;
         }
+        if (heartbeatTimer) {
+          this.adapter.clearInterval(heartbeatTimer);
+          heartbeatTimer = void 0;
+        }
+      };
+      authTimer = (_a = this.adapter.setTimeout(() => {
+        if (!authed) {
+          this.adapter.log.debug("WS: no auth frame within timeout \u2014 closing");
+          WebServer.wsSend(socket, { type: "auth_invalid", message: "Authentication timed out" });
+          socket.close();
+        }
+      }, import_constants.WS_AUTH_TIMEOUT_MS)) != null ? _a : void 0;
+      WebServer.wsSend(socket, { type: "auth_required", ha_version: import_constants.HA_VERSION });
+      socket.on("message", (raw) => {
+        var _a2;
+        try {
+          const text = Buffer.isBuffer(raw) ? raw.toString("utf8") : Array.isArray(raw) ? Buffer.concat(raw).toString("utf8") : Buffer.from(raw).toString("utf8");
+          let msg;
+          try {
+            msg = JSON.parse(text);
+          } catch {
+            return;
+          }
+          if (!(0, import_coerce.isPlainObject)(msg)) {
+            return;
+          }
+          if (!authed) {
+            const token = typeof msg.access_token === "string" ? msg.access_token : "";
+            if (msg.type === "auth" && token && this.registry.getByToken(token)) {
+              authed = true;
+              if (authTimer) {
+                this.adapter.clearTimeout(authTimer);
+                authTimer = void 0;
+              }
+              WebServer.wsSend(socket, { type: "auth_ok", ha_version: import_constants.HA_VERSION });
+              alive = true;
+              heartbeatTimer = (_a2 = this.adapter.setInterval(() => {
+                if (!alive) {
+                  socket.terminate();
+                  return;
+                }
+                alive = false;
+                socket.ping();
+              }, import_constants.WS_HEARTBEAT_INTERVAL_MS)) != null ? _a2 : void 0;
+            } else {
+              this.adapter.log.debug("WS: auth_invalid \u2014 unknown or missing access token");
+              WebServer.wsSend(socket, { type: "auth_invalid", message: "Invalid access token" });
+              socket.close();
+            }
+            return;
+          }
+          this.handleWsCommand(socket, msg);
+        } catch (err) {
+          this.adapter.log.debug(`WS message handler error: ${String(err)}`);
+        }
+      });
+      socket.on("pong", () => {
+        alive = true;
+      });
+      socket.on("error", () => {
+      });
+      socket.on("close", () => {
+        clearTimers();
       });
     });
   }
@@ -902,7 +975,7 @@ class WebServer {
    * @param socket  The client WebSocket to write to.
    * @param payload Plain object serialized to a JSON text frame.
    */
-  wsSend(socket, payload) {
+  static wsSend(socket, payload) {
     try {
       socket.send(JSON.stringify(payload));
     } catch {
@@ -930,10 +1003,10 @@ class WebServer {
   handleWsCommand(socket, msg) {
     const id = msg.id;
     const type = typeof msg.type === "string" ? msg.type : "";
-    const result = (r) => this.wsSend(socket, { id, type: "result", success: true, result: r });
+    const result = (r) => WebServer.wsSend(socket, { id, type: "result", success: true, result: r });
     switch (type) {
       case "ping":
-        this.wsSend(socket, { id, type: "pong" });
+        WebServer.wsSend(socket, { id, type: "pong" });
         return;
       case "auth/current_user":
         result({
@@ -958,9 +1031,10 @@ class WebServer {
       case "config/entity_registry/list":
         result([]);
         return;
-      // Valid subscriptions on an empty server — they ack but never emit.
-      // mobile_app/* is an advertised component, so both its WS commands ack
-      // consistently (the channel subscribe + the confirm).
+      // Valid subscriptions on an empty server — they ack but never emit. Plus
+      // supported_features, which is a client capability handshake (not a
+      // subscription) that likewise just needs an ack. mobile_app/* is an
+      // advertised component, so both its WS commands ack consistently.
       case "subscribe_events":
       case "subscribe_entities":
       case "supported_features":
@@ -969,7 +1043,7 @@ class WebServer {
         result(null);
         return;
       default:
-        this.wsSend(socket, {
+        WebServer.wsSend(socket, {
           id,
           type: "result",
           success: false,
@@ -979,12 +1053,12 @@ class WebServer {
     }
   }
   setupMiscRoutes() {
-    this.app.get("/health", () => ({
+    this.app.get("/health", PUBLIC_ROUTE, () => ({
       status: "ok",
       adapter: "hassemu",
       version: import_constants.HA_VERSION
     }));
-    this.app.get("/manifest.json", () => ({
+    this.app.get("/manifest.json", PUBLIC_ROUTE, () => ({
       // `name` MUST be "Home Assistant" exactly — the HA Companion App
       // verifies the server identity by parsing this field. Source:
       // home-assistant/android DefaultConnectivityChecker.kt:isHomeAssistant
@@ -998,7 +1072,7 @@ class WebServer {
       background_color: "#ffffff",
       theme_color: "#03a9f4"
     }));
-    this.app.get("/", async (req, reply) => {
+    this.app.get("/", PUBLIC_ROUTE, async (req, reply) => {
       const client = await this.identify(req, reply);
       const { url, chain } = this.globalConfig.resolveUrlForWithChain(client);
       if (!url) {
@@ -1008,7 +1082,7 @@ class WebServer {
       this.adapter.log.debug(`GET / client=${client.id} \u2192 URL (chain=${chain})`);
       return reply.status(200).type("text/html; charset=utf-8").send((0, import_redirect_wrapper.renderRedirectWrapper)(url, client.id, this.systemLanguage, client.ip));
     });
-    this.app.get("/api/redirect_check", async (req, reply) => {
+    this.app.get("/api/redirect_check", PUBLIC_ROUTE, async (req, reply) => {
       const client = await this.identify(req, reply);
       const url = this.globalConfig.resolveUrlFor(client);
       const prev = this.lastRedirectTargetByClient.get(client.id);

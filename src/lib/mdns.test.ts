@@ -15,11 +15,16 @@ interface MockAdapter {
     error: (msg: string) => void;
   };
   _logs: LogEntry[];
+  // Records managed-timer arming without scheduling (I1: assert the shutdown
+  // path skips it). Returns a dummy handle; the callback is never invoked.
+  setTimeout: (cb: () => void, ms: number) => unknown;
+  _timerCalls: number[];
 }
 
 // Mock adapter for testing
 function createMockAdapter(): MockAdapter {
   const logs: LogEntry[] = [];
+  const timerCalls: number[] = [];
   return {
     log: {
       debug: (msg: string): void => {
@@ -36,9 +41,19 @@ function createMockAdapter(): MockAdapter {
       },
     },
     _logs: logs,
+    setTimeout: (_cb: () => void, ms: number): unknown => {
+      timerCalls.push(ms);
+      return undefined;
+    },
+    _timerCalls: timerCalls,
   };
 }
 
+// I23 (v1.37.0): these tests deliberately drive the REAL bonjour-service (an actual
+// UDP announce/stop), not a mock. That verifies the observable mDNS behaviour rather
+// than just "MDNSService called a stub", and has been green since v1.0 across
+// platforms. A bonjour mock would lower fidelity for a flake risk that has not
+// materialised — kept as a real-integration lifecycle test on purpose.
 describe("MDNSService", () => {
   let service: MDNSService;
   let adapter: MockAdapter;
@@ -126,6 +141,24 @@ describe("MDNSService", () => {
       expect(service.isActive()).to.be.false;
       service.start();
       expect(service.isActive()).to.be.true;
+    });
+  });
+
+  describe("stop() fallback-timer semantics (I1)", () => {
+    it("synchronous stop (onUnload) skips the managed fallback timer", () => {
+      service.start();
+      expect(service.isActive()).to.be.true;
+      service.stop(true);
+      expect(service.isActive()).to.be.false;
+      // No managed timer armed → adapter-core cannot warn during shutdown.
+      expect(adapter._timerCalls).to.have.lengthOf(0);
+      expect(adapter._logs.some(l => l.level === "debug" && l.msg.includes("Service stopped"))).to.be.true;
+    });
+
+    it("runtime stop (onReady re-init) arms a single 300 ms fallback timer", () => {
+      service.start();
+      service.stop(false);
+      expect(adapter._timerCalls).to.deep.equal([300]);
     });
   });
 

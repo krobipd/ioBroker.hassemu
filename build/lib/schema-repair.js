@@ -18,7 +18,6 @@ var __copyProps = (to, from, except, desc) => {
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 var schema_repair_exports = {};
 __export(schema_repair_exports, {
-  DEFAULT_REPAIR_TARGETS: () => DEFAULT_REPAIR_TARGETS,
   repairGlobalSchemas: () => repairGlobalSchemas
 });
 module.exports = __toCommonJS(schema_repair_exports);
@@ -47,7 +46,7 @@ async function repairOne(adapter, instanceObjects, id, expectedCommonType) {
     return;
   }
   try {
-    await adapter.extendObjectAsync(
+    await adapter.extendObject(
       id,
       {
         type: schema.type,
@@ -63,7 +62,6 @@ async function repairOne(adapter, instanceObjects, id, expectedCommonType) {
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
-  DEFAULT_REPAIR_TARGETS,
   repairGlobalSchemas
 });
 //# sourceMappingURL=schema-repair.js.map

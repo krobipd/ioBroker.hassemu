@@ -62,4 +62,27 @@ describe("release hygiene guards", () => {
     const main = read("src/main.ts");
     expect(main, "process-level handler re-introduced").to.not.include("process.on(");
   });
+
+  // I25: moved here from webserver.test.ts — a manifest pin, not an HTTP test.
+  it("io-package info.refreshUrls is a button with read:false (W1134)", () => {
+    const iopkg = JSON.parse(read("io-package.json")) as {
+      instanceObjects: Array<{ _id: string; common: { role?: string; read?: boolean; write?: boolean } }>;
+    };
+    const obj = iopkg.instanceObjects.find(o => o._id === "info.refreshUrls");
+    expect(obj, "info.refreshUrls present").to.not.be.undefined;
+    expect(obj!.common.role).to.equal("button");
+    expect(obj!.common.read).to.equal(false);
+    expect(obj!.common.write).to.equal(true);
+  });
+
+  // L51: the jsonConfig password validator (the second half of the v1.36.0 C6
+  // password-required fix) has no runtime assertion — pin it so a later edit
+  // can't silently drop it.
+  it("jsonConfig password field keeps its authRequired validator (C6)", () => {
+    const cfg = JSON.parse(read("admin/jsonConfig.json")) as {
+      items: { password: { validator?: string; validatorErrorText?: string } };
+    };
+    expect(cfg.items.password.validator).to.equal("!data.authRequired || !!data.password");
+    expect(cfg.items.password.validatorErrorText).to.equal("passwordRequiredWhenAuth");
+  });
 });

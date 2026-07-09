@@ -69,6 +69,21 @@ Want to add a URL the adapter doesn't auto-detect? Set `manual` and paste it.
 
 One instance per host. Port 8123 is HA-fixed. With multiple ioBroker hosts on the same LAN, only one of them runs hassemu.
 
+**All traffic is plain HTTP** — HA clients do not support HTTPS on this flow. Treat port 8123 as LAN-only and never forward it to the internet. With authentication on, the username, password and tokens travel unencrypted over your LAN, so Auth guards the HA API against other LAN devices — it is not internet-exposure protection.
+
+---
+
+## First steps
+
+1. Start the hassemu instance in ioBroker.
+2. On the display, add a Home Assistant server. With mDNS on it appears automatically; otherwise enter `http://<ioBroker-IP>:8123` by hand.
+3. Complete the HA onboarding on the display. With Auth off you can click through the login; with Auth on, enter the username and password from the instance settings.
+4. The display now shows the **landing page** with its own device ID — that means it is connected and waiting for a URL.
+5. In ioBroker, open the Object Browser and set `hassemu.0.clients.<id>.mode` for that device: pick a discovered URL from the dropdown, or choose `manual` and put any URL in `clients.<id>.manualUrl`.
+6. The display reloads within ~30 seconds and shows your URL.
+
+Want the same URL on every display? Set `global.mode` (plus `global.manualUrl` for a free URL) and turn on the `global.enabled` master switch instead of configuring each client.
+
 ---
 
 ## Configuration
@@ -78,8 +93,9 @@ One instance per host. Port 8123 is HA-fixed. With multiple ioBroker hosts on th
 | Bind                | Network interface                                                                 | 0.0.0.0   |
 | Service Name        | Name the display sees                                                             | ioBroker  |
 | mDNS                | LAN auto-discovery. Off → set `http://<ioBroker-IP>:8123` on the display by hand. | on        |
-| Auth                | Login required                                                                    | off       |
+| Auth                | Login required (guards the HA API on the LAN; credentials travel in plain HTTP)   | off       |
 | Username / Password | When Auth is on                                                                   | admin / — |
+| Trust Proxy         | Only behind a trusted reverse proxy that terminates TLS and strips X-Forwarded-*  | off       |
 
 ---
 
@@ -90,7 +106,7 @@ hassemu.0.
 ├── info.
 │   ├── connection      — server is running
 │   ├── serverUuid      — server identity (read-only)
-│   └── refresh_urls    — re-scan URL list (button, set to true)
+│   └── refreshUrls     — re-scan URL list (button, set to true)
 ├── global.
 │   ├── enabled         — master switch
 │   ├── mode            — URL choice used by every client whose mode is `global`
@@ -124,7 +140,9 @@ Master switch:
 
 The display reloads itself within ~30 seconds after a URL change.
 
-After adding or renaming a VIS-2 project or view, set `info.refresh_urls` to `true` so it shows up in the dropdown.
+After adding or renaming a VIS-2 project or view, set `info.refreshUrls` to `true` so it shows up in the dropdown.
+
+If hassemu goes offline while a display is running, the display switches to a clear offline page with a reload button after ~1.5 minutes and returns to your dashboard automatically once hassemu is back. Limitation: a display that cold-boots _while_ hassemu is down can't load that page and shows a connection error until the adapter is running again.
 
 ---
 
@@ -138,9 +156,9 @@ Set the instance log level to `debug` first — since v1.31.1 the adapter traces
 
 **Display lost its identity (new id on every visit)** — the display is not persisting the cookie. Common causes: aggressive privacy mode, factory reset, browser cache flush. The old `clients.<id>`-channels can be removed via their `remove` button, but the root cause is on the display side, not in hassemu.
 
-**HA Companion App says „Server is not Home Assistant"** — point the app at `http://<ioBroker-IP>:8123`, not at the ioBroker Admin port. If a reverse proxy is in front of hassemu, make sure `/manifest.json` is passed through unmodified — the App parses `name === "Home Assistant"` to verify the server.
+**HA Companion App says "Server is not Home Assistant"** — point the app at `http://<ioBroker-IP>:8123`, not at the ioBroker Admin port. If a reverse proxy is in front of hassemu, make sure `/manifest.json` is passed through unmodified — the App parses `name === "Home Assistant"` to verify the server.
 
-**Aura entry in the dropdown points at the wrong port** — `native.port` of the Aura instance must match its actually-listening port. Trigger `info.refresh_urls = true` to re-run discovery after fixing the Aura config.
+**Aura entry in the dropdown points at the wrong port** — `native.port` of the Aura instance must match its actually-listening port. Trigger `info.refreshUrls = true` to re-run discovery after fixing the Aura config.
 
 ---
 
@@ -150,7 +168,7 @@ Migration runs automatically when the adapter starts.
 
 Got scripts that still write to `visUrl`? Update them — write to `manualUrl` instead and set `mode` to `manual`.
 
-**Coming from a Shelly Wall Display on firmware 2.6.0 or newer?** Make sure you're on hassemu **≥ 1.29.2**. The on-device HA app introduced in firmware 2.6.0 needs a server-identity probe, a mobile-app registration step and a WebView „connected" signal — all three came in with v1.29.0–v1.29.2. After upgrading, run the display through the on-device HA onboarding once more.
+**Coming from a Shelly Wall Display on firmware 2.6.0 or newer?** Make sure you're on hassemu **≥ 1.29.2**. The on-device HA app introduced in firmware 2.6.0 needs a server-identity probe, a mobile-app registration step and a WebView "connected" signal — all three came in with v1.29.0–v1.29.2. After upgrading, run the display through the on-device HA onboarding once more.
 
 ---
 
@@ -160,13 +178,23 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+### **WORK IN PROGRESS**
+
+- A custom name you give a display now survives even when its network hostname resolves later — the name you set sticks.
+- A display that keeps losing its identity no longer fills ioBroker with unused entries over time.
+- A display connection that simply goes away (a panel powered off) is now cleaned up instead of lingering until the adapter restarts.
+- The manual URL-refresh datapoint is now `info.refreshUrls` (was `info.refresh_urls`); the old one is removed automatically on upgrade — update any script that wrote to the old name.
+- Corrected the configuration help texts and the README to match the current setup, documented the offline behaviour, and added a first-steps guide.
+
 ### 1.36.0 (2026-06-22) — stable
+
 - Fixed a rare adapter crash and restart loop that a malformed connection message could trigger — it briefly took all connected displays offline until the adapter recovered.
 - A custom name you give a display (its channel name) is no longer overwritten with the device's IP address when that IP changes.
 - With authentication enabled, a display again reloads automatically after you change its target URL.
 - With authentication enabled, a password is now required — the settings can no longer be saved with an empty password.
 
 ### 1.35.3 (2026-06-15)
+
 - Fixed Home Assistant discovery pointing the display at the wrong address on multi-interface hosts; it now uses the address the adapter actually listens on.
 
 ### 1.35.2 (2026-06-12)

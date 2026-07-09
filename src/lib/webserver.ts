@@ -18,6 +18,10 @@ import {
   COOKIE_MAX_AGE_S,
   WS_AUTH_TIMEOUT_MS,
   WS_MAX_PAYLOAD_BYTES,
+  WS_HEARTBEAT_INTERVAL_MS,
+  DNS_REVERSE_TIMEOUT_MS,
+  DNS_NEGATIVE_CACHE_MS,
+  DEFAULT_SERVICE_NAME,
 } from "./constants";
 import {
   coerceString,
@@ -54,6 +58,15 @@ export type WebserverInject = FastifyInstance["inject"];
 
 /** Browser cookie name. Client identity lives here — auto-sent on every page navigation. */
 export const CLIENT_COOKIE = "hassemu_client";
+
+/**
+ * Route option marking an endpoint as reachable without authentication. The auth
+ * guard reads `req.routeOptions.config.public` (fastify 5 accessor) instead of a
+ * hand-maintained path whitelist — public/protected is now declared AT the route,
+ * so adding an endpoint can't forget to update a second list (the C7 redirect_check
+ * bug). Default (no config) = protected. v1.37.0 (M6).
+ */
+const PUBLIC_ROUTE = { config: { public: true } } as const;
 
 /**
  * HA mobile_app registration response shape (home-assistant/android
@@ -140,6 +153,14 @@ export class WebServer {
   /** Set of IPs whose reverse DNS lookup is already in-flight — prevents duplicate work. */
   private readonly dnsInFlight = new Set<string>();
   /**
+   * Negative cache: IP → last time a reverse-DNS lookup yielded no hostname. An
+   * IP in here within {@link DNS_NEGATIVE_CACHE_MS} is not re-queried — without
+   * this a DHCP client with no PTR record (the LAN norm) triggers a fresh
+   * `dns.reverse` + timeout timer on every 30s poll. Pruned in {@link cleanupSessions}
+   * and cleared in {@link stop}. v1.37.0 (L6).
+   */
+  private readonly dnsNegativeCache = new Map<string, number>();
+  /**
    * Per-message cooldown timestamps for 5xx error logging. First occurrence
    * of a unique message logs at warn; repeats within {@link REQUEST_ERROR_COOLDOWN_MS}
    * fall to debug to prevent log-spam under attack/probe traffic.
@@ -182,7 +203,7 @@ export class WebServer {
 
   /** Human-readable service name advertised in responses and mDNS. */
   get serviceName(): string {
-    return this.config.serviceName || "ioBroker";
+    return this.config.serviceName || DEFAULT_SERVICE_NAME;
   }
 
   /** Resolved listener address once `start()` has completed, or null otherwise. */
@@ -269,29 +290,40 @@ export class WebServer {
     // would do that eventually, but only after up to 5s — racy if the
     // adapter is restarted during that window.
     this.dnsInFlight.clear();
+    this.dnsNegativeCache.clear();
   }
 
   // v1.14.0 (H8): `inject` ist jetzt ein readonly Field (oben deklariert,
   // im Constructor einmalig gebunden). Der frühere Getter allokierte bei
   // jedem Access eine neue Funktion.
 
+  /**
+   * Deletes every entry of `map` for which `shouldDelete` returns true and
+   * returns the count removed — so the cleanup passes below stay their essence
+   * (a predicate + a count) instead of five copies of the iterate/delete/count
+   * loop. v1.37.0 (I13).
+   *
+   * @param map          Map to prune in place.
+   * @param shouldDelete Predicate `(value, key) => boolean`; true drops the entry.
+   */
+  private static pruneWhere<V>(map: Map<string, V>, shouldDelete: (value: V, key: string) => boolean): number {
+    let removed = 0;
+    for (const [key, value] of map) {
+      if (shouldDelete(value, key)) {
+        map.delete(key);
+        removed++;
+      }
+    }
+    return removed;
+  }
+
   /** Periodic cleanup of expired in-flight auth sessions and stale redirect-target entries. */
   public cleanupSessions(): void {
     const now = Date.now();
-    let cleanedSessions = 0;
-    for (const [key, session] of this.sessions) {
-      if (now - session.created > SESSION_TTL_MS) {
-        this.sessions.delete(key);
-        cleanedSessions++;
-      }
-    }
     // S2 (v1.36.0): auth codes live in the separate codeSessions map — prune it too.
-    for (const [key, session] of this.codeSessions) {
-      if (now - session.created > SESSION_TTL_MS) {
-        this.codeSessions.delete(key);
-        cleanedSessions++;
-      }
-    }
+    const expired = (s: SessionData): boolean => now - s.created > SESSION_TTL_MS;
+    const cleanedSessions =
+      WebServer.pruneWhere(this.sessions, expired) + WebServer.pruneWhere(this.codeSessions, expired);
     if (cleanedSessions > 0) {
       this.adapter.log.debug(`Session cleanup: removed ${cleanedSessions} expired sessions`);
     }
@@ -300,13 +332,10 @@ export class WebServer {
     // clients. A removed client leaves a stale entry that would never get
     // cleared otherwise — bounded growth over months.
     const activeClients = new Set(this.registry.listAll().map(r => r.id));
-    let prunedTargets = 0;
-    for (const clientId of this.lastRedirectTargetByClient.keys()) {
-      if (!activeClients.has(clientId)) {
-        this.lastRedirectTargetByClient.delete(clientId);
-        prunedTargets++;
-      }
-    }
+    const prunedTargets = WebServer.pruneWhere(
+      this.lastRedirectTargetByClient,
+      (_target, clientId) => !activeClients.has(clientId),
+    );
     if (prunedTargets > 0) {
       this.adapter.log.debug(`Cleanup: pruned ${prunedTargets} stale redirect-target entries`);
     }
@@ -316,16 +345,17 @@ export class WebServer {
     // getting 200s on its webhook instead of falling into re-registration.
     // ownerId === "" means "unowned" (authRequired=false registration without
     // a Bearer token) — those have no client to check against and must stay.
-    let prunedWebhooks = 0;
-    for (const [webhookId, ownerId] of this.webhookRegistrations) {
-      if (ownerId !== "" && !activeClients.has(ownerId)) {
-        this.webhookRegistrations.delete(webhookId);
-        prunedWebhooks++;
-      }
-    }
+    const prunedWebhooks = WebServer.pruneWhere(
+      this.webhookRegistrations,
+      ownerId => ownerId !== "" && !activeClients.has(ownerId),
+    );
     if (prunedWebhooks > 0) {
       this.adapter.log.debug(`Cleanup: pruned ${prunedWebhooks} webhook registrations of removed clients`);
     }
+
+    // L6: drop expired negative-DNS-cache entries so the map stays bounded by the
+    // set of recently-seen no-PTR IPs rather than every IP ever seen.
+    WebServer.pruneWhere(this.dnsNegativeCache, ts => now - ts >= DNS_NEGATIVE_CACHE_MS);
   }
 
   /**
@@ -406,7 +436,7 @@ export class WebServer {
     // v1.17.0 (C8): UA durchreichen damit NAT-Co-Located Displays nicht
     // im selben Pending-Lock landen (siehe identifyOrCreate-Kommentar).
     const userAgent = coerceString(req.headers["user-agent"]);
-    const record = await this.registry.identifyOrCreate(cookie, ip, null, userAgent);
+    const record = await this.registry.identifyOrCreate(cookie, ip, { userAgent });
     // v1.32.0 A1: cookie-state explizit traced. Drei Branches:
     //   hit          — cookie matched a known client, no setCookie needed
     //   stale/new    — cookie present but unknown, OR no cookie at all → new client created
@@ -442,34 +472,51 @@ export class WebServer {
     if (record.hostname || this.dnsInFlight.has(ip)) {
       return;
     }
+    // L6: negative cache — skip an IP that recently resolved to no hostname (the
+    // LAN norm for DHCP clients without a PTR record), so we don't fire a fresh
+    // dns.reverse + timeout timer on every 30s poll. A later IP change is a
+    // different key, so a genuinely renamed device is still picked up.
+    const lastNegative = this.dnsNegativeCache.get(ip);
+    if (lastNegative !== undefined && Date.now() - lastNegative < DNS_NEGATIVE_CACHE_MS) {
+      return;
+    }
     this.dnsInFlight.add(ip);
-    // v1.8.1 (D5): DNS-Lookup mit hartem 5s-Timeout. Default-Node-DNS hat
-    // KEIN Timeout — bei broken Resolver (Captive-Portal, Misconfig) blieb
-    // der Promise unendlich pending → IP für Adapter-Lifetime in dnsInFlight
-    // blockiert, hostname auf record.ip gefroren.
-    // v1.34.0: adapter-managed Timer (cancelt automatisch bei onUnload) + clear
-    // sobald `dns.reverse` das Race gewinnt — sonst dangelt der Timer bis 5s
-    // über einen Restart hinaus (W5005).
+    // v1.8.1 (D5): DNS-Lookup mit hartem Timeout. Default-Node-DNS hat KEIN
+    // Timeout — bei broken Resolver (Captive-Portal, Misconfig) blieb der Promise
+    // unendlich pending → IP für Adapter-Lifetime in dnsInFlight blockiert.
+    // v1.34.0: adapter-managed Timer (cancelt bei onUnload) + clear sobald
+    // `dns.reverse` das Race gewinnt — sonst dangelt der Timer über den Restart.
     let timeoutHandle: ioBroker.Timeout | undefined;
     const timeout = new Promise<string[]>((_, reject) => {
-      timeoutHandle = this.adapter.setTimeout(() => reject(new Error("dns reverse-lookup timeout")), 5_000);
+      timeoutHandle = this.adapter.setTimeout(
+        () => reject(new Error("dns reverse-lookup timeout")),
+        DNS_REVERSE_TIMEOUT_MS,
+      );
     });
     Promise.race([dns.reverse(ip), timeout])
       .then(names => {
         const name = names[0];
         if (name) {
-          // v1.32.0 A4: Success-Trace — bei Diagnose „warum hat Display
-          // X den hostname Y?" ist die IP→hostname-Auflösung der Anker.
-          this.adapter.log.debug(`resolveHostname: ip=${ip} → hostname=${name}`);
-          this.registry.identifyOrCreate(record.cookie, ip, name).catch(() => {
-            /* registry itself logs */
-          });
+          // v1.32.0 A4: success trace — the IP→hostname resolution is the anchor
+          // for "why does display X have hostname Y?". L1(a): a PTR label is
+          // attacker-influenceable, flatten it for the log.
+          this.adapter.log.debug(`resolveHostname: ip=${ip} → hostname=${oneLine(name)}`);
+          // M5: update-only — updateHostname is a no-op if the client was removed
+          // during the lookup, so the DNS callback can never mint a ghost client
+          // (the old identifyOrCreate could). L3: log a persist failure instead of
+          // swallowing it (the previous branch's "registry logs" comment was false
+          // for the existing-client update path).
+          this.registry
+            .updateHostname(record.cookie, name)
+            .catch(err => this.adapter.log.debug(`resolveHostname: persist for ${record.id} failed — ${String(err)}`));
+        } else {
+          this.dnsNegativeCache.set(ip, Date.now()); // no PTR — remember (L6)
         }
       })
       .catch(err => {
-        // v1.32.0 A3: vorher silent. Reverse DNS scheitert auf LAN oft
-        // legitim — daher debug-only (kein warn-Spam), aber jetzt mit
-        // Diagnose-Anker für „hostname fehlt"-Reports.
+        // v1.32.0 A3: reverse DNS fails on LAN often legitimately → debug-only, but
+        // with a diagnostic anchor. L6: cache the failure too so we don't retry every poll.
+        this.dnsNegativeCache.set(ip, Date.now());
         this.adapter.log.debug(
           `resolveHostname: ip=${ip} failed — ${err instanceof Error ? err.message : String(err)}`,
         );
@@ -505,32 +552,17 @@ export class WebServer {
       if (!this.config.authRequired) {
         return;
       }
-      const path = (req.url ?? "/").split("?")[0];
-      // Public endpoints — explicitly allowed
-      if (
-        path === "/" ||
-        path === "/api/" ||
-        path === "/api/discovery_info" ||
-        path === "/manifest.json" ||
-        path === "/health" ||
-        // C7 (v1.36.0): the display's down-page polls /api/redirect_check with its
-        // cookie (no Bearer) — without this it 401s when authRequired=true and the
-        // auto-reload-on-URL-change silently stops. It returns only the display's
-        // own resolved target URL, so it is safe to serve cookie-authenticated.
-        path === "/api/redirect_check" ||
-        path.startsWith("/auth/") ||
-        // v1.34.0: the WebSocket does its own auth in the handshake
-        // (`auth_required` → `auth` frame), not via a Bearer header — so the
-        // HTTP upgrade itself must pass the guard.
-        path === "/api/websocket" ||
-        // v1.29.1: Mobile-App webhooks carry the secret in the URL
-        // (`webhookId`) — HA core also serves these unauthenticated.
-        // Source: home-assistant/core/.../mobile_app/webhook.py.
-        path.startsWith("/api/webhook/")
-      ) {
+      // Public/protected is declared per route via `{ config: { public: true } }`
+      // (PUBLIC_ROUTE), read here from the matched route. Default = protected.
+      // A forgotten public marker fails closed (401 = the C7 bug), never open.
+      // The public set is: `/`, `/api/`, `/api/discovery_info`, `/manifest.json`,
+      // `/health`, `/api/redirect_check`, all `/auth/*`, `/api/websocket` (in-band
+      // WS auth) and `/api/webhook/:id` (URL-secret). v1.37.0 (M6).
+      const routeConfig = req.routeOptions?.config as { public?: boolean } | undefined;
+      if (routeConfig?.public === true) {
         return;
       }
-      // From here on: protected (`/api/*` apart from `/api/`)
+      const path = (req.url ?? "/").split("?")[0];
       const token = WebServer.bearerToken(req);
       if (!token) {
         this.adapter.log.debug(`Auth required for ${path} — missing Bearer token`);
@@ -611,11 +643,11 @@ export class WebServer {
 
   private setupApiRoutes(): void {
     // CRITICAL: trailing slash — HA clients check this endpoint for discovery
-    this.app.get("/api/", () => ({ message: "API running." }));
+    this.app.get("/api/", PUBLIC_ROUTE, () => ({ message: "API running." }));
 
     this.app.get("/api/config", () => this.buildHaConfig());
 
-    this.app.get("/api/discovery_info", () => {
+    this.app.get("/api/discovery_info", PUBLIC_ROUTE, () => {
       // v1.17.0 (E11): NICHT mehr `req.hostname` — der Host-Header ist
       // client-controlled und ein Angreifer könnte mit `Host: attacker.lan`
       // andere HA-Clients zur falschen URL umleiten. Stattdessen die
@@ -675,7 +707,7 @@ export class WebServer {
       this.webhookRegistrations.set(webhookId, ownerId);
 
       this.adapter.log.debug(
-        `Mobile-App registration — client=${ownerId} app_id=${oneLine(body.app_id ?? "?")} device_name=${oneLine(body.device_name ?? "?")} → webhook=${webhookId}`,
+        `Mobile-App registration — client=${ownerId} app_id=${oneLine(body.app_id ?? "?")} device_name=${oneLine(body.device_name ?? "?")} → webhook=${webhookId.substring(0, 8)}…`,
       );
 
       reply.status(201);
@@ -693,7 +725,9 @@ export class WebServer {
         // v1.32.0 E1: stale-id signaliert dass Companion einen Token
         // aus Pre-Restart-Era hat — diagnostisch wertvoll für
         // re-registration-loop-Bugs.
-        this.adapter.log.debug(`Mobile-App PUT registration: unknown webhookId=${id.substring(0, 8)}… — returning 404`);
+        this.adapter.log.debug(
+          `Mobile-App PUT registration: unknown webhookId=${oneLine(id).substring(0, 8)}… — returning 404`,
+        );
         reply.status(404);
         return { error: "unknown_registration" };
       }
@@ -708,10 +742,11 @@ export class WebServer {
         this.webhookRegistrations.delete(id);
         // v1.32.0 E2: Companion-Maintenance-Trace.
         this.adapter.log.debug(
-          `Mobile-App DELETE registration: webhookId=${id.substring(0, 8)}… removed (was-present=${wasPresent})`,
+          `Mobile-App DELETE registration: webhookId=${oneLine(id).substring(0, 8)}… removed (was-present=${wasPresent})`,
         );
-        reply.status(204);
-        return null;
+        // Body-less 204: use `.send()`, not `return null` — the `return null`
+        // idiom serialized a 4-byte JSON "null" body once already (v1.35.2). L33.
+        return reply.status(204).send();
       },
     );
 
@@ -726,7 +761,7 @@ export class WebServer {
     this.app.post<{
       Params: { webhookId: string };
       Body: { type?: string; data?: unknown };
-    }>("/api/webhook/:webhookId", async (req, reply) => {
+    }>("/api/webhook/:webhookId", PUBLIC_ROUTE, async (req, reply) => {
       const id = req.params.webhookId;
       if (!this.webhookRegistrations.has(id)) {
         // Unknown webhookId — match HA's 200-empty for stale webhooks so the
@@ -741,13 +776,13 @@ export class WebServer {
         // v1.32.0 E3: stale-id ist DAS Symptom für re-registration-loop —
         // Companion macht webhook-call mit Token aus Pre-Restart-Era.
         this.adapter.log.debug(
-          `Webhook fallthrough: stale id=${id.substring(0, 8)}… — App will trigger re-registration`,
+          `Webhook fallthrough: stale id=${oneLine(id).substring(0, 8)}… — App will trigger re-registration`,
         );
         return reply.status(200).send();
       }
       const body = req.body ?? {};
       const type = typeof body.type === "string" ? body.type : "";
-      this.adapter.log.debug(`Webhook ${id.substring(0, 8)}… type=${type || "(no type)"}`);
+      this.adapter.log.debug(`Webhook ${oneLine(id).substring(0, 8)}… type=${type || "(no type)"}`);
 
       switch (type) {
         case "get_config":
@@ -775,15 +810,15 @@ export class WebServer {
   /**
    * Issue a fresh authorization code and persist it in the sessions map.
    *
-   * Single source for both the JSON login flow (`/auth/login_flow/<flowId>`
-   * → `create_entry`) and the browser OAuth2 flow (`/auth/authorize` →
-   * 302). The code is exchanged for tokens at `/auth/token` (`grant_type =
-   * authorization_code`); the existing token-view consumes the same map.
+   * Single source for both the JSON login flow (`/auth/login_flow/<flowId>` →
+   * `create_entry`) and the browser OAuth2 flow (`/auth/authorize` →
+   * auto-submit redirect page). The code is exchanged for tokens at `/auth/token`
+   * (`grant_type = authorization_code`); the same codeSessions map is consumed there.
    *
-   * @param clientId Identity cookie value of the requesting display, or
-   *                 undefined for headless OAuth2-only flows.
+   * @param clientId Identity of the requesting display (always known — the flow
+   *                 starts from an identified request). v1.37.0 (L10).
    */
-  private issueAuthorizationCode(clientId: string | null): string {
+  private issueAuthorizationCode(clientId: string): string {
     const code = crypto.randomUUID();
     this.storeCode(code, { created: Date.now(), clientId });
     return code;
@@ -808,39 +843,29 @@ export class WebServer {
     clientId: unknown,
     redirectUri: unknown,
   ): { ok: true; clientId: string; redirectUri: string } | { ok: false; html: string } {
-    if (responseType !== "code") {
-      this.adapter.log.debug(`Authorize ${method} rejected: response_type=${String(responseType)} (expected 'code')`);
+    // L46: one place to set the 400/text-html reply + render the error page, so
+    // the three rejection branches show only what varies (reason + detail + log).
+    const fail = (reason: string, detail: string): { ok: false; html: string } => {
       reply.status(400).type("text/html");
-      return {
-        ok: false,
-        html: renderAuthorizeError(
-          "unsupported_response_type",
-          "This authorization server supports `response_type=code` only.",
-        ),
-      };
+      return { ok: false, html: renderAuthorizeError(reason, detail) };
+    };
+    if (responseType !== "code") {
+      this.adapter.log.debug(
+        `Authorize ${method} rejected: response_type=${oneLine(String(responseType))} (expected 'code')`,
+      );
+      return fail("unsupported_response_type", "This authorization server supports `response_type=code` only.");
     }
     if (typeof clientId !== "string" || typeof redirectUri !== "string") {
       this.adapter.log.debug(
         `Authorize ${method} rejected: missing client_id or redirect_uri (cid=${typeof clientId}, ru=${typeof redirectUri})`,
       );
-      reply.status(400).type("text/html");
-      return {
-        ok: false,
-        html: renderAuthorizeError("invalid_request", "Missing or invalid `client_id` or `redirect_uri` parameter."),
-      };
+      return fail("invalid_request", "Missing or invalid `client_id` or `redirect_uri` parameter.");
     }
     if (!isValidRedirectUri(clientId, redirectUri)) {
       this.adapter.log.debug(
         `Authorize ${method} rejected: redirect_uri "${oneLine(redirectUri)}" not allowed for client_id "${oneLine(clientId)}"`,
       );
-      reply.status(400).type("text/html");
-      return {
-        ok: false,
-        html: renderAuthorizeError(
-          "invalid_redirect_uri",
-          "The `redirect_uri` parameter is not on the allowlist for this client.",
-        ),
-      };
+      return fail("invalid_redirect_uri", "The `redirect_uri` parameter is not on the allowlist for this client.");
     }
     return { ok: true, clientId, redirectUri };
   }
@@ -849,13 +874,13 @@ export class WebServer {
    * Issue an auth code, build the redirect target and render the auto-submit redirect page.
    *
    * @param reply       Fastify reply (content-type set to text/html).
-   * @param clientId    Identity of the requesting display, or null for headless flows.
+   * @param clientId    Identity of the requesting display (always known).
    * @param redirectUri Already-validated `redirect_uri` to append the code to.
    * @param state       Optional OAuth2 `state` round-tripped verbatim.
    */
   private issueAuthorizeRedirect(
     reply: FastifyReply,
-    clientId: string | null,
+    clientId: string,
     redirectUri: string,
     state: string | undefined,
   ): string {
@@ -907,8 +932,28 @@ export class WebServer {
     return userOk && passOk;
   }
 
+  /**
+   * Log an invalid-credentials attempt, deduplicated per IP via the shared 5xx
+   * cooldown — first attempt per IP within the window at warn, repeats at debug.
+   * An app retrying with stale credentials after a password change would otherwise
+   * flood the log every minute forever. Log-dedup only — NOT a lockout (removed in
+   * v1.31.0, stays removed). v1.37.0 (M3).
+   *
+   * @param ip Client IP, or null.
+   */
+  private logInvalidCredentials(ip: string | null): void {
+    const suffix = ip ? ` (IP ${ip})` : "";
+    if (this.shouldEmitRequestErrorWarn(`invalid-credentials:${ip ?? "?"}`, Date.now())) {
+      this.adapter.log.warn(`Invalid credentials${suffix}`);
+    } else {
+      this.adapter.log.debug(`Invalid credentials (repeat)${suffix}`);
+    }
+  }
+
   private setupAuthRoutes(): void {
-    this.app.get("/auth/providers", () => [{ name: "Home Assistant Local", type: "homeassistant", id: null }]);
+    this.app.get("/auth/providers", PUBLIC_ROUTE, () => [
+      { name: "Home Assistant Local", type: "homeassistant", id: null },
+    ]);
 
     // Browser-OAuth2 flow at GET/POST /auth/authorize. Needed by the
     // HA Companion Android App (Shelly Wall Display FW 2.6.0+ embeds
@@ -919,7 +964,7 @@ export class WebServer {
     // Detail: Ressourcen/hassemu/oauth2-browser-flow-shelly-fw26.md
     this.app.get<{
       Querystring: { response_type?: string; client_id?: string; redirect_uri?: string; state?: string };
-    }>("/auth/authorize", async (req, reply) => {
+    }>("/auth/authorize", PUBLIC_ROUTE, async (req, reply) => {
       const { response_type, client_id, redirect_uri, state } = req.query ?? {};
 
       // v1.32.0 D2: rejection-Pfade traced — Triage „warum bricht OAuth ab"
@@ -960,7 +1005,7 @@ export class WebServer {
         username?: string;
         password?: string;
       };
-    }>("/auth/authorize", async (req, reply) => {
+    }>("/auth/authorize", PUBLIC_ROUTE, async (req, reply) => {
       const { response_type, client_id, redirect_uri, state, username, password } = req.body ?? {};
 
       const v = this.validateAuthorizeRequest(reply, "POST", response_type, client_id, redirect_uri);
@@ -977,8 +1022,7 @@ export class WebServer {
 
       const ip = WebServer.getClientIp(req);
       if (!this.credentialsValid(username, password)) {
-        const ipSuffix = ip ? ` (IP ${ip})` : "";
-        this.adapter.log.warn(`Invalid credentials${ipSuffix}`);
+        this.logInvalidCredentials(ip);
         reply.status(401).type("text/html");
         return renderAuthorizeForm(
           { clientId: v.clientId, redirectUri: v.redirectUri, state },
@@ -990,7 +1034,7 @@ export class WebServer {
       return this.issueAuthorizeRedirect(reply, client.id, v.redirectUri, state);
     });
 
-    this.app.post("/auth/login_flow", async (req, reply) => {
+    this.app.post("/auth/login_flow", PUBLIC_ROUTE, async (req, reply) => {
       const client = await this.identify(req, reply);
       const flowId = crypto.randomUUID();
       this.storeSession(flowId, { created: Date.now(), clientId: client.id });
@@ -1013,6 +1057,7 @@ export class WebServer {
     }>(
       "/auth/login_flow/:flowId",
       {
+        ...PUBLIC_ROUTE,
         schema: {
           params: {
             type: "object",
@@ -1027,7 +1072,7 @@ export class WebServer {
         if (!session) {
           // v1.8.0: nach Session-TTL (10 min) feuert das bei jedem
           // legit returning user — nicht actionable. debug, nicht warn.
-          this.adapter.log.debug(`Unknown flow_id: ${flowId}`);
+          this.adapter.log.debug(`Unknown flow_id: ${oneLine(flowId)}`);
           reply.status(400);
           return { type: "abort", flow_id: flowId, reason: "unknown_flow" };
         }
@@ -1036,8 +1081,7 @@ export class WebServer {
           const ip = WebServer.getClientIp(req);
           const { username, password } = req.body ?? {};
           if (!this.credentialsValid(username, password)) {
-            const ipSuffix = ip ? ` (IP ${ip})` : "";
-            this.adapter.log.warn(`Invalid credentials${ipSuffix}`);
+            this.logInvalidCredentials(ip);
             reply.status(400);
             return {
               type: "form",
@@ -1052,8 +1096,9 @@ export class WebServer {
         }
 
         this.sessions.delete(flowId);
-        const code = crypto.randomUUID();
-        this.storeCode(code, { created: Date.now(), clientId: session.clientId });
+        // L22: reuse issueAuthorizationCode instead of duplicating its body — one
+        // code-issue site, and its JSDoc's "single source" claim is true again.
+        const code = this.issueAuthorizationCode(session.clientId);
         this.adapter.log.debug("Auth flow completed — code issued");
 
         return {
@@ -1071,14 +1116,14 @@ export class WebServer {
     // HA ≥2022.9 logout: POST /auth/revoke with form field `token` (the refresh
     // token). Always 200 with empty body. Whitelisted by the `/auth/` prefix in
     // the auth guard. Source: AuthenticationRepositoryImpl.revokeSession.
-    this.app.post<{ Body: { token?: string } }>("/auth/revoke", async req => {
+    this.app.post<{ Body: { token?: string } }>("/auth/revoke", PUBLIC_ROUTE, async req => {
       await this.revokeToken(req.body?.token);
       return {};
     });
 
     this.app.post<{
       Body: { code?: string; grant_type?: string; refresh_token?: string; action?: string; token?: string };
-    }>("/auth/token", async (req, reply) => {
+    }>("/auth/token", PUBLIC_ROUTE, async (req, reply) => {
       const { code, grant_type, refresh_token, action } = req.body ?? {};
 
       // Legacy logout (HA <2022.9): POST /auth/token with action=revoke + token.
@@ -1088,64 +1133,85 @@ export class WebServer {
         return {};
       }
 
-      if (grant_type === "authorization_code" && code && this.codeSessions.has(code)) {
-        const session = this.codeSessions.get(code)!;
-        this.codeSessions.delete(code);
-        const token = crypto.randomUUID();
-        const refreshToken = crypto.randomUUID();
-        if (session.clientId) {
-          // Persist VOR Response-Build: ein Crash zwischen Issue + Persist
-          // würde sonst dem Client einen Token in der Hand lassen, den der
-          // Server nicht kennt — beim ersten Refresh dann invalid_grant.
-          await this.registry.setToken(session.clientId, token);
-          await this.registry.setRefreshToken(session.clientId, refreshToken);
-          this.adapter.log.debug(`Display authenticated — client ${session.clientId}`);
-        }
-        return {
-          access_token: token,
-          token_type: "Bearer",
-          refresh_token: refreshToken,
-          expires_in: OAUTH_ACCESS_TOKEN_TTL_S,
-        };
+      // L38: get + null-check instead of has + get + non-null-assertion. M7: each
+      // grant is a named method with its own invariant, the route is the dispatcher.
+      const session = grant_type === "authorization_code" && code ? this.codeSessions.get(code) : undefined;
+      if (session && code) {
+        return this.handleAuthCodeGrant(code, session);
       }
 
       if (grant_type === "refresh_token") {
-        // Validate the refresh token against issued ones — was previously
-        // accepting any string and minting a new access_token (security fix v1.2.0).
-        const incoming = typeof refresh_token === "string" ? refresh_token : "";
-        const ownerRecord = incoming ? this.registry.getByRefreshToken(incoming) : null;
-        if (!ownerRecord) {
-          this.adapter.log.debug("Refresh token rejected — unknown or missing");
-          reply.status(400);
-          return { error: "invalid_grant", error_description: "Invalid refresh token" };
-        }
-        // v1.31.0: refresh_token bleibt valid (NICHT mehr rotated). HA Core
-        // selbst (homeassistant/components/auth/__init__.py:334-348) liefert
-        // beim refresh-grant nie einen neuen refresh_token, nur access_token
-        // + token_type + expires_in. HA Android Companion
-        // (AuthenticationRepositoryImpl.kt:147) speichert beim Refresh den
-        // GESENDETEN refresh_token (Function-Parameter), ignoriert den in der
-        // Response zurückgegebenen — Companion behält daher immer ihren
-        // initialen refresh_token. v1.28.3 (HW5) Rotation war RFC 6819
-        // §5.2.2.3-konform aber inkompatibel mit dem Companion-Datenmodell:
-        // Server-Rotation killte den Companion-Token beim ersten Refresh.
-        const newAccess = crypto.randomUUID();
-        await this.registry.setToken(ownerRecord.id, newAccess);
-        this.adapter.log.debug(`Refresh-token-grant — client=${ownerRecord.id} new access_token issued`);
-        return {
-          access_token: newAccess,
-          token_type: "Bearer",
-          refresh_token: incoming,
-          expires_in: OAUTH_ACCESS_TOKEN_TTL_S,
-        };
+        return this.handleRefreshGrant(refresh_token, reply);
       }
 
       // „wrong grant_type" ist ein Client-Format-Fehler, kein Server-Concern
       // — daher nur debug (legitime Client-Bugs sollen das Log nicht fluten).
-      this.adapter.log.debug(`Token exchange failed: grant_type=${String(grant_type)}`);
+      this.adapter.log.debug(`Token exchange failed: grant_type=${oneLine(String(grant_type))}`);
       reply.status(400);
       return { error: "invalid_request", error_description: "Invalid or expired code" };
     });
+  }
+
+  /**
+   * `authorization_code` grant: consume the one-time code, mint access + refresh
+   * tokens and persist them to the client BEFORE returning them — a crash between
+   * issue and persist would otherwise hand the client a token the server never
+   * knew, giving `invalid_grant` on the first refresh. `session.clientId` is
+   * always set (L10). v1.37.0 (M7).
+   *
+   * @param code    The consumed authorization code (removed from codeSessions here).
+   * @param session The code's session (holds the owning clientId).
+   */
+  private async handleAuthCodeGrant(
+    code: string,
+    session: SessionData,
+  ): Promise<{ access_token: string; token_type: string; refresh_token: string; expires_in: number }> {
+    this.codeSessions.delete(code);
+    const token = crypto.randomUUID();
+    const refreshToken = crypto.randomUUID();
+    await this.registry.setToken(session.clientId, token);
+    await this.registry.setRefreshToken(session.clientId, refreshToken);
+    this.adapter.log.debug(`Display authenticated — client ${session.clientId}`);
+    return {
+      access_token: token,
+      token_type: "Bearer",
+      refresh_token: refreshToken,
+      expires_in: OAUTH_ACCESS_TOKEN_TTL_S,
+    };
+  }
+
+  /**
+   * `refresh_token` grant: validate the incoming refresh token against issued
+   * ones (was previously accepting any string, security fix v1.2.0) and mint a
+   * fresh access token. The refresh token is NOT rotated: HA core itself never
+   * returns a new one on refresh, and the HA Android Companion stores the token it
+   * SENT (AuthenticationRepositoryImpl.kt:147), ignoring any rotated response —
+   * v1.28.3's RFC-6819 rotation killed the Companion token on first refresh.
+   * v1.37.0 (M7).
+   *
+   * @param refreshToken The incoming refresh token from the request body.
+   * @param reply        Fastify reply (status set to 400 on an unknown token).
+   */
+  private async handleRefreshGrant(
+    refreshToken: string | undefined,
+    reply: FastifyReply,
+  ): Promise<Record<string, unknown>> {
+    const incoming = typeof refreshToken === "string" ? refreshToken : "";
+    const ownerRecord = incoming ? this.registry.getByRefreshToken(incoming) : null;
+    if (!ownerRecord) {
+      this.adapter.log.debug("Refresh token rejected — unknown or missing");
+      reply.status(400);
+      return { error: "invalid_grant", error_description: "Invalid refresh token" };
+    }
+    const newAccess = crypto.randomUUID();
+    await this.registry.setToken(ownerRecord.id, newAccess);
+    this.adapter.log.debug(`Refresh-token-grant — client=${ownerRecord.id} new access_token issued`);
+    return {
+      access_token: newAccess,
+      token_type: "Bearer",
+      refresh_token: incoming,
+      expires_in: OAUTH_ACCESS_TOKEN_TTL_S,
+    };
   }
 
   /**
@@ -1162,70 +1228,104 @@ export class WebServer {
    * App's call (which previously failed fast against a clean 404).
    */
   private setupWebSocket(): void {
-    this.app.get("/api/websocket", { websocket: true }, (socket: WebSocket) => {
+    this.app.get("/api/websocket", { websocket: true, ...PUBLIC_ROUTE }, (socket: WebSocket) => {
       let authed = false;
-      let authTimer: ioBroker.Timeout | undefined = this.adapter.setTimeout(() => {
-        if (!authed) {
-          this.adapter.log.debug("WS: no auth frame within timeout — closing");
-          this.wsSend(socket, { type: "auth_invalid", message: "Authentication timed out" });
-          socket.close();
-        }
-      }, WS_AUTH_TIMEOUT_MS);
-
-      this.wsSend(socket, { type: "auth_required", ha_version: HA_VERSION });
-
-      socket.on("message", raw => {
-        // ws delivers text frames as Buffer by default; normalize every RawData
-        // variant to a UTF-8 string (avoids Object's default stringification).
-        const text = Buffer.isBuffer(raw)
-          ? raw.toString("utf8")
-          : Array.isArray(raw)
-            ? Buffer.concat(raw).toString("utf8")
-            : Buffer.from(raw).toString("utf8");
-        let msg: unknown;
-        try {
-          msg = JSON.parse(text);
-        } catch {
-          return; // ignore non-JSON frames
-        }
-        // A valid-JSON frame that is not an object (`null`, a primitive, an
-        // array) would deref to a TypeError below (`null.access_token`); an
-        // uncaught throw in this synchronous ws listener crashes the adapter
-        // (uncaughtException → js-controller terminate → restart-loop). Drop it.
-        if (!isPlainObject(msg)) {
-          return;
-        }
-        if (!authed) {
-          const token = typeof msg.access_token === "string" ? msg.access_token : "";
-          if (msg.type === "auth" && token && this.registry.getByToken(token)) {
-            authed = true;
-            if (authTimer) {
-              this.adapter.clearTimeout(authTimer);
-              authTimer = undefined;
-            }
-            this.wsSend(socket, { type: "auth_ok", ha_version: HA_VERSION });
-          } else {
-            this.adapter.log.debug("WS: auth_invalid — unknown or missing access token");
-            this.wsSend(socket, { type: "auth_invalid", message: "Invalid access token" });
-            socket.close();
-          }
-          return;
-        }
-        this.handleWsCommand(socket, msg);
-      });
-
-      socket.on("error", () => {
-        // Client vanished mid-stream — the socket is gone; the auth timer is
-        // cleared by the close handler below.
-      });
-
-      socket.on("close", () => {
-        // Clear the auth timer if the client disconnects before authenticating,
-        // so it never fires against an already-closed socket.
+      let alive = true;
+      let authTimer: ioBroker.Timeout | undefined;
+      let heartbeatTimer: ioBroker.Interval | undefined;
+      // Both connection timers live in this closure and are torn down together in
+      // the single close handler — no timer can outlive the socket. v1.37.0 (L7).
+      const clearTimers = (): void => {
         if (authTimer) {
           this.adapter.clearTimeout(authTimer);
           authTimer = undefined;
         }
+        if (heartbeatTimer) {
+          this.adapter.clearInterval(heartbeatTimer);
+          heartbeatTimer = undefined;
+        }
+      };
+
+      authTimer =
+        this.adapter.setTimeout(() => {
+          if (!authed) {
+            this.adapter.log.debug("WS: no auth frame within timeout — closing");
+            WebServer.wsSend(socket, { type: "auth_invalid", message: "Authentication timed out" });
+            socket.close();
+          }
+        }, WS_AUTH_TIMEOUT_MS) ?? undefined;
+
+      WebServer.wsSend(socket, { type: "auth_required", ha_version: HA_VERSION });
+
+      socket.on("message", raw => {
+        // L5: top-level try/catch — an uncaught throw in this synchronous ws
+        // listener would crash the adapter (uncaughtException → js-controller
+        // terminate → restart-loop). Defense-in-depth on top of the per-site guards.
+        try {
+          // ws delivers text frames as Buffer by default; normalize every RawData
+          // variant to a UTF-8 string (avoids Object's default stringification).
+          const text = Buffer.isBuffer(raw)
+            ? raw.toString("utf8")
+            : Array.isArray(raw)
+              ? Buffer.concat(raw).toString("utf8")
+              : Buffer.from(raw).toString("utf8");
+          let msg: unknown;
+          try {
+            msg = JSON.parse(text);
+          } catch {
+            return; // ignore non-JSON frames
+          }
+          // A valid-JSON frame that is not an object (`null`, a primitive, an
+          // array) would deref to a TypeError below (`null.access_token`). Drop it.
+          if (!isPlainObject(msg)) {
+            return;
+          }
+          if (!authed) {
+            const token = typeof msg.access_token === "string" ? msg.access_token : "";
+            if (msg.type === "auth" && token && this.registry.getByToken(token)) {
+              authed = true;
+              if (authTimer) {
+                this.adapter.clearTimeout(authTimer);
+                authTimer = undefined;
+              }
+              WebServer.wsSend(socket, { type: "auth_ok", ha_version: HA_VERSION });
+              // L7: keep-alive heartbeat. ws 8.x does not ping server-side on its
+              // own, so a display power-cut without a clean close would otherwise
+              // leave the socket + FD alive until the adapter restarts. Each tick
+              // terminates the peer if the previous ping went unanswered, else pings.
+              alive = true;
+              heartbeatTimer =
+                this.adapter.setInterval(() => {
+                  if (!alive) {
+                    socket.terminate();
+                    return;
+                  }
+                  alive = false;
+                  socket.ping();
+                }, WS_HEARTBEAT_INTERVAL_MS) ?? undefined;
+            } else {
+              this.adapter.log.debug("WS: auth_invalid — unknown or missing access token");
+              WebServer.wsSend(socket, { type: "auth_invalid", message: "Invalid access token" });
+              socket.close();
+            }
+            return;
+          }
+          this.handleWsCommand(socket, msg);
+        } catch (err) {
+          this.adapter.log.debug(`WS message handler error: ${String(err)}`);
+        }
+      });
+
+      socket.on("pong", () => {
+        alive = true;
+      });
+
+      socket.on("error", () => {
+        // Client vanished mid-stream — the socket is gone; timers cleared on close.
+      });
+
+      socket.on("close", () => {
+        clearTimers();
       });
     });
   }
@@ -1236,7 +1336,7 @@ export class WebServer {
    * @param socket  The client WebSocket to write to.
    * @param payload Plain object serialized to a JSON text frame.
    */
-  private wsSend(socket: WebSocket, payload: Record<string, unknown>): void {
+  private static wsSend(socket: WebSocket, payload: Record<string, unknown>): void {
     try {
       socket.send(JSON.stringify(payload));
     } catch {
@@ -1266,10 +1366,10 @@ export class WebServer {
   private handleWsCommand(socket: WebSocket, msg: Record<string, unknown>): void {
     const id = msg.id;
     const type = typeof msg.type === "string" ? msg.type : "";
-    const result = (r: unknown): void => this.wsSend(socket, { id, type: "result", success: true, result: r });
+    const result = (r: unknown): void => WebServer.wsSend(socket, { id, type: "result", success: true, result: r });
     switch (type) {
       case "ping":
-        this.wsSend(socket, { id, type: "pong" });
+        WebServer.wsSend(socket, { id, type: "pong" });
         return;
       case "auth/current_user":
         // CurrentUserResponse.kt @2026.4.4: { id, name, isOwner, isAdmin } —
@@ -1296,9 +1396,10 @@ export class WebServer {
       case "config/entity_registry/list":
         result([]);
         return;
-      // Valid subscriptions on an empty server — they ack but never emit.
-      // mobile_app/* is an advertised component, so both its WS commands ack
-      // consistently (the channel subscribe + the confirm).
+      // Valid subscriptions on an empty server — they ack but never emit. Plus
+      // supported_features, which is a client capability handshake (not a
+      // subscription) that likewise just needs an ack. mobile_app/* is an
+      // advertised component, so both its WS commands ack consistently.
       case "subscribe_events":
       case "subscribe_entities":
       case "supported_features":
@@ -1312,7 +1413,7 @@ export class WebServer {
         // doesn't advertise). Real HA returns ERR_UNKNOWN_COMMAND for an
         // unregistered command type — a reply (no hang), honest (no fake success),
         // and grounded (no guessed response shape).
-        this.wsSend(socket, {
+        WebServer.wsSend(socket, {
           id,
           type: "result",
           success: false,
@@ -1328,13 +1429,13 @@ export class WebServer {
     // v1.5.0: auch der `config: { mdns, auth }`-Block raus — Auth-Status leakte
     // unauthenticated und ließ sich von einem Network-Attacker zur Reconnaissance
     // nutzen (auth-disabled Instances quickly mappen).
-    this.app.get("/health", () => ({
+    this.app.get("/health", PUBLIC_ROUTE, () => ({
       status: "ok",
       adapter: "hassemu",
       version: HA_VERSION,
     }));
 
-    this.app.get("/manifest.json", () => ({
+    this.app.get("/manifest.json", PUBLIC_ROUTE, () => ({
       // `name` MUST be "Home Assistant" exactly — the HA Companion App
       // verifies the server identity by parsing this field. Source:
       // home-assistant/android DefaultConnectivityChecker.kt:isHomeAssistant
@@ -1361,7 +1462,7 @@ export class WebServer {
     // Falls ein User direkten 302-Redirect will (Browser-Test, Bookmarklet
     // etc.), kann er die Target-URL direkt eingeben — der Wrapper läuft nur
     // beim Aufruf von `/`.
-    this.app.get("/", async (req, reply) => {
+    this.app.get("/", PUBLIC_ROUTE, async (req, reply) => {
       const client = await this.identify(req, reply);
       // v1.32.0 B1: Resolver-Chain als Triage-Anker. Ohne Chain musste der
       // Maintainer den Resolver-Code lesen um zu verstehen warum genau
@@ -1385,7 +1486,7 @@ export class WebServer {
     // sich geändert hat (User edit), gibt der Wrapper `location.reload()`
     // ab. Cookie-basiert — Display schickt seinen `hassemu_client`-Cookie
     // automatisch mit.
-    this.app.get("/api/redirect_check", async (req, reply) => {
+    this.app.get("/api/redirect_check", PUBLIC_ROUTE, async (req, reply) => {
       const client = await this.identify(req, reply);
       const url = this.globalConfig.resolveUrlFor(client);
       // v1.32.0 F1: only-on-change-Trace. Jeder Poll (alle 30s × N Displays)

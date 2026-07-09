@@ -30,7 +30,7 @@ function mockAdapter(objects: Record<string, ObjState>): {
       }
       return (v ?? null) as unknown;
     },
-    extendObjectAsync: async (id: string, obj: unknown, options: unknown) => {
+    extendObject: async (id: string, obj: unknown, options: unknown) => {
       extendCalls.push({ id, obj: obj as ExtendCall["obj"], options });
     },
   };
@@ -124,8 +124,8 @@ describe("schema-repair", () => {
 
     it("swallows extendObject errors (best-effort, no throw)", async () => {
       const { adapter } = mockAdapter({ "global.mode": { type: "state", common: {} } });
-      // Override extendObjectAsync to throw — repair must not propagate it.
-      (adapter as unknown as { extendObjectAsync: unknown }).extendObjectAsync = async () => {
+      // Override extendObject to throw — repair must not propagate it.
+      (adapter as unknown as { extendObject: unknown }).extendObject = async () => {
         throw new Error("write failed");
       };
       await repairGlobalSchemas(adapter, INSTANCE_OBJECTS, [["global.mode", "mixed"]]);

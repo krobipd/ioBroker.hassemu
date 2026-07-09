@@ -106,6 +106,17 @@ export function isNoChoice(value: unknown): boolean {
 }
 
 /**
+ * True when a value represents "no value set" — empty string, null or undefined.
+ * The shared predicate behind the manualUrl / legacy-migration / restore blank
+ * checks (was written out inline in four places).
+ *
+ * @param value Untrusted input.
+ */
+export function isEmptyValue(value: unknown): boolean {
+  return value === "" || value === null || value === undefined;
+}
+
+/**
  * Coerce to a finite number, or null. Rejects NaN, Infinity, non-numeric strings.
  *
  * @param value Untrusted input.
@@ -193,8 +204,7 @@ export type ManualUrlWriteResult = { ok: true; safe: string | null } | { ok: fal
  * @param rawValue Value written to the state.
  */
 export function parseManualUrlWrite(rawValue: unknown): ManualUrlWriteResult {
-  const empty = rawValue === "" || rawValue === null || rawValue === undefined;
-  if (empty) {
+  if (isEmptyValue(rawValue)) {
     return { ok: true, safe: null };
   }
   const safe = coerceSafeUrl(rawValue);
@@ -380,7 +390,7 @@ export type LegacyVisMigration = { kind: "empty" } | { kind: "safe-url"; safe: s
  * @param rawValue Untyped value (aus dem legacy `*.visUrl`-State).
  */
 export function decideLegacyVisMigration(rawValue: unknown): LegacyVisMigration {
-  if (rawValue === undefined || rawValue === null || rawValue === "") {
+  if (isEmptyValue(rawValue)) {
     return { kind: "empty" };
   }
   const safe = coerceSafeUrl(rawValue);
@@ -429,41 +439,40 @@ export function evictOldest<V>(map: Map<string, V>, cap: number): void {
 }
 
 /**
- * Escapes the 5 HTML-special characters `<`, `>`, `&`, `"`, `'` for safe
- * interpolation in HTML element bodies AND in attribute values. Defensive
- * default — the apostrophe escape covers `href='...'`-attribute uses even
- * if the calling site uses `"..."`-attributes today.
+ * Order-independent shallow equality for a `common.states` dropdown map (flat
+ * string→string). Used to skip an object rewrite when the discovered dropdown
+ * has not changed. A non-object `a`, or any differing key/value, counts as
+ * unequal — so a malformed or stale existing object is always rewritten (repaired).
  *
- * v1.32.0: konsolidiert aus `landing-page.ts:escapeHtml` (5-Char) und
- * `auth-page.ts:escAttr` (4-Char) zu einem shared helper.
- *
- * @param s Untrusted string to interpolate into HTML.
+ * @param a Existing states value from the broker (untrusted shape).
+ * @param b Freshly built states map.
  */
-export function escapeHtml(s: string): string {
-  return s.replace(/[<>&"']/g, c => {
-    switch (c) {
-      case "<":
-        return "&lt;";
-      case ">":
-        return "&gt;";
-      case "&":
-        return "&amp;";
-      case '"':
-        return "&quot;";
-      default:
-        return "&#39;";
+export function shallowStatesEqual(a: unknown, b: Record<string, string>): boolean {
+  if (!isPlainObject(a)) {
+    return false;
+  }
+  const bKeys = Object.keys(b);
+  if (Object.keys(a).length !== bKeys.length) {
+    return false;
+  }
+  for (const k of bKeys) {
+    if (a[k] !== b[k]) {
+      return false;
     }
-  });
+  }
+  return true;
 }
 
 /**
- * Collapse CR / LF / TAB runs in an untrusted string to a single space before
- * it is interpolated into a log line — prevents log-injection (a forged second
- * log line) from client-controlled values (redirect_uri, client_id, app_id,
- * device_name, reverse-DNS hostname, …). v1.36.0 (S4).
+ * Collapse runs of line-breaking / control whitespace in an untrusted string to
+ * a single space before it is interpolated into a log line — prevents log
+ * injection (a forged second log line) from client-controlled values
+ * (redirect_uri, client_id, app_id, device_name, reverse-DNS hostname, …).
+ * v1.36.0 (S4); v1.37.0 widened to the full parcelapp set (adds NUL, VT, FF and
+ * the Unicode line separators U+2028/U+2029) for fleet parity.
  *
  * @param value Untrusted string to flatten for single-line logging.
  */
 export function oneLine(value: string): string {
-  return value.replace(/[\r\n\t]+/g, " ");
+  return value.replace(/[\r\n\t\0\v\f\u2028\u2029]+/g, " ");
 }

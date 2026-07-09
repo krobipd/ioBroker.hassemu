@@ -7,9 +7,8 @@
  * jumps to the real URL the moment the state is written.
  */
 
-import { escapeHtml } from "./coerce";
 import { CONNECTION_STATUS_SCRIPT } from "./external-bridge";
-import { htmlLangFor, renderIpRow } from "./html-shared";
+import { cardTableCss, escapeHtml, htmlLangFor, renderIdRow, renderIpRow } from "./html-shared";
 import { makePageTranslator } from "./i18n";
 
 /**
@@ -46,7 +45,6 @@ export function renderLandingPage(
   // passed `language` (English fallback) — single i18n source, shared with the
   // admin UI + state names. No private translation table here anymore.
   const t = makePageTranslator(language);
-  const id = escapeHtml(clientId);
   // Build the datapoint path from the RAW values and escape exactly once below —
   // building it from the already-escaped id/ns would double-escape any special char.
   const datapoint = `${namespace}.clients.${clientId}.mode`;
@@ -103,14 +101,16 @@ body {
     justify-content: center;
     padding: 1.5rem;
 }
-main {
-    width: 100%;
-    max-width: 44rem;
-    background: var(--card-bg);
-    border-radius: 12px;
-    box-shadow: var(--shadow);
-    overflow: hidden;
-}
+${cardTableCss(
+  { card: "main", content: ".content", table: ".info", cell: ".info" },
+  {
+    cardBg: "var(--card-bg)",
+    shadow: "var(--shadow)",
+    border: "var(--border)",
+    thColor: "var(--muted)",
+    codeBg: "var(--code-bg)",
+  },
+)}
 .banner {
     background: var(--ok-bg);
     color: #ffffff;
@@ -152,36 +152,6 @@ main {
     margin: 0.15rem 0 0;
     font-size: 0.95rem;
     opacity: 0.95;
-}
-.content {
-    padding: 1.6rem 1.8rem 1.3rem;
-}
-.info {
-    margin: 0 0 1.4rem;
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.95rem;
-}
-.info th, .info td {
-    padding: 0.55rem 0.7rem;
-    text-align: left;
-    border-bottom: 1px solid var(--border);
-}
-.info th {
-    font-weight: 500;
-    color: var(--muted);
-    white-space: nowrap;
-    width: 9rem;
-}
-.info tr:last-child th, .info tr:last-child td {
-    border-bottom: none;
-}
-.info code {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    background: var(--code-bg);
-    padding: 0.15rem 0.45rem;
-    border-radius: 4px;
-    font-size: 0.9em;
 }
 .setup h2 {
     margin: 0 0 0.6rem;
@@ -249,10 +219,7 @@ footer .brand svg { width: 0.95rem; height: 0.95rem; display: block; }
     <div class="content">
         <table class="info">
             <tbody>
-                <tr>
-                    <th scope="row">${escapeHtml(t("pageDeviceId"))}</th>
-                    <td><code>${id}</code></td>
-                </tr>
+                ${renderIdRow(t("pageDeviceId"), clientId)}
                 ${ipLine}
             </tbody>
         </table>

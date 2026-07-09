@@ -40,6 +40,14 @@ describe("landing-page", () => {
       expect(html).to.include("hassemu.0.clients.abc123.mode");
     });
 
+    it("renders the shared card/table CSS with the landing (var-token) theme (L21)", () => {
+      const html = renderLandingPage("abc123", "hassemu.0");
+      expect(html).to.include("max-width: 44rem;");
+      expect(html).to.include(".info th, .info td {");
+      expect(html).to.include("border-bottom: 1px solid var(--border);");
+      expect(html).to.include("background: var(--code-bg);");
+    });
+
     it("includes 15-second meta-refresh tag", () => {
       const html = renderLandingPage("abc123", "hassemu.0");
       expect(html).to.include('<meta http-equiv="refresh" content="15">');

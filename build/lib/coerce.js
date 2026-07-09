@@ -36,8 +36,8 @@ __export(coerce_exports, {
   coerceUuid: () => coerceUuid,
   decideGcAction: () => decideGcAction,
   decideLegacyVisMigration: () => decideLegacyVisMigration,
-  escapeHtml: () => escapeHtml,
   evictOldest: () => evictOldest,
+  isEmptyValue: () => isEmptyValue,
   isNoChoice: () => isNoChoice,
   isPlainObject: () => isPlainObject,
   isValidRedirectUri: () => isValidRedirectUri,
@@ -46,7 +46,8 @@ __export(coerce_exports, {
   parseManualUrlWrite: () => parseManualUrlWrite,
   parseModeWrite: () => parseModeWrite,
   safeGetState: () => safeGetState,
-  safeStringEqual: () => safeStringEqual
+  safeStringEqual: () => safeStringEqual,
+  shallowStatesEqual: () => shallowStatesEqual
 });
 module.exports = __toCommonJS(coerce_exports);
 var import_node_crypto = __toESM(require("node:crypto"));
@@ -86,6 +87,9 @@ function safeStringEqual(a, b) {
 function isNoChoice(value) {
   return value === 0 || value === "0" || value === "";
 }
+function isEmptyValue(value) {
+  return value === "" || value === null || value === void 0;
+}
 const DECIMAL_NUMBER_RE = /^-?\d+(\.\d+)?$/;
 function coerceFiniteNumber(value) {
   if (typeof value === "number") {
@@ -120,8 +124,7 @@ function coerceUuid(value) {
   return UUID_REGEX.test(value) ? value.toLowerCase() : null;
 }
 function parseManualUrlWrite(rawValue) {
-  const empty = rawValue === "" || rawValue === null || rawValue === void 0;
-  if (empty) {
+  if (isEmptyValue(rawValue)) {
     return { ok: true, safe: null };
   }
   const safe = coerceSafeUrl(rawValue);
@@ -198,7 +201,7 @@ function decideGcAction(lastSeen, now, ttlMs) {
   return "keep";
 }
 function decideLegacyVisMigration(rawValue) {
-  if (rawValue === void 0 || rawValue === null || rawValue === "") {
+  if (isEmptyValue(rawValue)) {
     return { kind: "empty" };
   }
   const safe = coerceSafeUrl(rawValue);
@@ -219,24 +222,23 @@ function evictOldest(map, cap) {
     map.delete(oldest);
   }
 }
-function escapeHtml(s) {
-  return s.replace(/[<>&"']/g, (c) => {
-    switch (c) {
-      case "<":
-        return "&lt;";
-      case ">":
-        return "&gt;";
-      case "&":
-        return "&amp;";
-      case '"':
-        return "&quot;";
-      default:
-        return "&#39;";
+function shallowStatesEqual(a, b) {
+  if (!isPlainObject(a)) {
+    return false;
+  }
+  const bKeys = Object.keys(b);
+  if (Object.keys(a).length !== bKeys.length) {
+    return false;
+  }
+  for (const k of bKeys) {
+    if (a[k] !== b[k]) {
+      return false;
     }
-  });
+  }
+  return true;
 }
 function oneLine(value) {
-  return value.replace(/[\r\n\t]+/g, " ");
+  return value.replace(/[\r\n\t\0\v\f\u2028\u2029]+/g, " ");
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
@@ -248,8 +250,8 @@ function oneLine(value) {
   coerceUuid,
   decideGcAction,
   decideLegacyVisMigration,
-  escapeHtml,
   evictOldest,
+  isEmptyValue,
   isNoChoice,
   isPlainObject,
   isValidRedirectUri,
@@ -258,6 +260,7 @@ function oneLine(value) {
   parseManualUrlWrite,
   parseModeWrite,
   safeGetState,
-  safeStringEqual
+  safeStringEqual,
+  shallowStatesEqual
 });
 //# sourceMappingURL=coerce.js.map

@@ -39,6 +39,7 @@ var import_client_registry = require("./lib/client-registry");
 var import_coerce = require("./lib/coerce");
 var import_constants = require("./lib/constants");
 var import_global_config = require("./lib/global-config");
+var import_legacy_migration = require("./lib/legacy-migration");
 var import_mdns = require("./lib/mdns");
 var import_schema_repair = require("./lib/schema-repair");
 var import_url_discovery = require("./lib/url-discovery");
@@ -48,11 +49,10 @@ var _a;
 const instanceObjectsList = (_a = import_io_package.default.instanceObjects) != null ? _a : [];
 class HassEmu extends utils.Adapter {
   /**
-   * ioBroker system language used to render the user-facing landing page
-   * (HTML) in the user's language. Adapter logs themselves stay English by
-   * ioBroker convention. Read in `onReady` from `system.config.language`,
-   * EN-Fallback. Public so library modules can access it via the
-   * `AdapterInterface` they receive.
+   * ioBroker system language used to render the user-facing landing page (HTML)
+   * in the user's language. Adapter logs themselves stay English by ioBroker
+   * convention. Read in `onReady` from `system.config.language` (EN fallback) and
+   * passed to WebServer as a constructor argument — not part of AdapterInterface.
    */
   systemLanguage = "en";
   mdnsService = null;
@@ -77,7 +77,7 @@ class HassEmu extends utils.Adapter {
     this.on("unload", this.onUnload.bind(this));
   }
   async onReady() {
-    var _a2;
+    var _a2, _b;
     try {
       if (this.webServer) {
         await this.webServer.stop().catch(() => {
@@ -97,18 +97,22 @@ class HassEmu extends utils.Adapter {
       await this.globalConfig.restore();
       this.registry = this.makeRegistry();
       await this.registry.restore();
-      await this.migrateLegacyDefaultVisUrl();
-      await this.migrateVisUrlToMode();
+      await (0, import_legacy_migration.migrateLegacyDefaultVisUrl)(this, this.config, this.globalConfig);
+      await (0, import_legacy_migration.migrateVisUrlToMode)(this, this.globalConfig, this.registry);
       await (0, import_schema_repair.repairGlobalSchemas)(this, instanceObjectsList);
+      if (await this.getObjectAsync("info.refresh_urls")) {
+        await this.delObjectAsync("info.refresh_urls").catch(() => {
+        });
+      }
       await this.gcStaleClients();
       const instanceUuid = await this.getOrCreateServerUuid();
       this.log.debug(
         `Config: port=${this.config.port}, auth=${this.config.authRequired}, mdns=${this.config.mdnsEnabled}`
       );
       this.urlDiscovery = this.makeUrlDiscovery(async (states) => {
-        var _a3, _b;
+        var _a3, _b2;
         await ((_a3 = this.globalConfig) == null ? void 0 : _a3.syncUrlDropdown(states));
-        await ((_b = this.registry) == null ? void 0 : _b.syncUrlDropdown(states));
+        await ((_b2 = this.registry) == null ? void 0 : _b2.syncUrlDropdown(states));
       });
       this.registry.setNewClientModeProvider(() => this.computeNewClientMode());
       await this.urlDiscovery.collect();
@@ -123,7 +127,7 @@ class HassEmu extends utils.Adapter {
       await this.subscribeForeignObjectsAsync("system.adapter.*");
       await this.subscribeStatesAsync("clients.*");
       await this.subscribeStatesAsync("global.*");
-      await this.subscribeStatesAsync("info.refresh_urls");
+      await this.subscribeStatesAsync("info.refreshUrls");
       let mdnsActive = false;
       if (this.config.mdnsEnabled) {
         this.mdnsService = this.makeMdnsService(instanceUuid);
@@ -141,6 +145,9 @@ class HassEmu extends utils.Adapter {
       this.log.info(`HA emulation running on ${bindAddr}:${this.config.port}${mdnsSuffix}`);
     } catch (err) {
       this.log.error(`onReady failed: ${String(err)}`);
+      await ((_b = this.webServer) == null ? void 0 : _b.stop().catch(() => {
+      }));
+      this.terminate(11);
     }
   }
   /**
@@ -156,15 +163,15 @@ class HassEmu extends utils.Adapter {
   async getOrCreateServerUuid() {
     try {
       const existing = await this.getStateAsync("info.serverUuid");
-      const val = existing == null ? void 0 : existing.val;
-      if (typeof val === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)) {
-        this.log.debug(`Server UUID reused from info.serverUuid: ${val}`);
-        return val;
+      const reused = (0, import_coerce.coerceUuid)(existing == null ? void 0 : existing.val);
+      if (reused) {
+        this.log.debug(`Server UUID reused from info.serverUuid: ${reused}`);
+        return reused;
       }
     } catch {
     }
     const fresh = import_node_crypto.default.randomUUID();
-    await this.setStateAsync("info.serverUuid", { val: fresh, ack: true }).catch((err) => {
+    await this.setState("info.serverUuid", { val: fresh, ack: true }).catch((err) => {
       this.log.warn(`Could not save server UUID: ${String(err)}`);
     });
     this.log.info(`Server UUID generated and saved: ${fresh}`);
@@ -187,12 +194,12 @@ class HassEmu extends utils.Adapter {
     return "0";
   }
   /**
-   * Read the ioBroker system language (set in Admin → Main Settings).
-   * Used for the landing page so the end-user sees the same language as
-   * their admin UI. Falls back to `en` when `system.config` can't be read
-   * or holds a language we don't translate. Read once on startup — a
-   * language switch at runtime only takes effect after an adapter restart,
-   * which is fine for a setup-hint page that most users see once.
+   * Read the ioBroker system language (set in Admin → Main Settings). Used for the
+   * landing page so the end-user sees the same language as their admin UI. Any
+   * non-empty language is passed through as-is; an unknown one falls back to
+   * English only at render time (htmlLangFor / tPage). An unreadable system.config
+   * falls back to `en` here. Read once on startup — a runtime language switch takes
+   * effect after an adapter restart, fine for a setup-hint page seen once.
    */
   async readSystemLanguage() {
     var _a2;
@@ -202,121 +209,6 @@ class HassEmu extends utils.Adapter {
       return typeof lang === "string" && lang.length > 0 ? lang : "en";
     } catch {
       return "en";
-    }
-  }
-  /**
-   * Drops the legacy `defaultVisUrl`/`visUrl` keys from the instance native
-   * config. Shared by both exits of {@link migrateLegacyDefaultVisUrl} —
-   * the unsafe-rejected path and the successfully-migrated path clean up
-   * identically. Best-effort: failures only warn.
-   */
-  async cleanupLegacyNativeUrl() {
-    try {
-      const id = `system.adapter.${this.namespace}`;
-      const obj = await this.getForeignObjectAsync(id);
-      if (obj == null ? void 0 : obj.native) {
-        delete obj.native.defaultVisUrl;
-        delete obj.native.visUrl;
-        await this.setForeignObjectAsync(id, obj);
-      }
-    } catch (err) {
-      this.log.warn(`Legacy config cleanup failed: ${String(err)}`);
-    }
-  }
-  /**
-   * 1.0.x / 1.1.0 → 1.1.1 migration — move the legacy `defaultVisUrl` from
-   * instance native into `global.visUrl` + `global.enabled=true` and drop it
-   * from native. Subsequent migrations (`migrateVisUrlToMode`) then move
-   * `global.visUrl` into the mode/manualUrl model.
-   */
-  async migrateLegacyDefaultVisUrl() {
-    const legacy = this.config;
-    const url = legacy.defaultVisUrl || legacy.visUrl;
-    if (!url) {
-      return;
-    }
-    const safe = (0, import_coerce.coerceSafeUrl)(url);
-    if (!safe) {
-      this.log.warn(`Migration: legacy global URL rejected as unsafe \u2014 please set global.manualUrl manually`);
-      await this.cleanupLegacyNativeUrl();
-      return;
-    }
-    this.log.info(`Migrating legacy URL configuration to the new model`);
-    let stateWritten = false;
-    try {
-      await this.setStateAsync("global.visUrl", { val: safe, ack: true });
-      stateWritten = true;
-    } catch {
-      try {
-        if (this.globalConfig) {
-          await this.globalConfig.migrationSet(import_constants.MODE_MANUAL, safe);
-          this.log.debug(`Migration shortcut: global.visUrl-state missing \u2014 wrote directly to manualUrl=${safe}`);
-          stateWritten = true;
-        }
-      } catch (err) {
-        this.log.debug(`Legacy URL migration fallback failed: ${String(err)}`);
-      }
-    }
-    if (!stateWritten) {
-      this.log.warn(`Legacy URL preserved in instance config \u2014 neither global URL write succeeded`);
-      return;
-    }
-    await this.cleanupLegacyNativeUrl();
-  }
-  /**
-   * 1.x → 1.2.0 migration — move legacy per-client `visUrl`-states to the
-   * `mode`/`manualUrl` model, plus the global `visUrl` to `global.mode` +
-   * `global.manualUrl`. Old datapoints are removed, type of mode-states
-   * upgraded to 'mixed'. Idempotent — does nothing on subsequent starts.
-   */
-  async migrateVisUrlToMode() {
-    var _a2, _b;
-    let globalMigrated = true;
-    try {
-      const legacyGlobal = await this.getStateAsync("global.visUrl");
-      const decision = (0, import_coerce.decideLegacyVisMigration)(legacyGlobal == null ? void 0 : legacyGlobal.val);
-      if (decision.kind === "safe-url") {
-        await this.globalConfig.migrationSet(import_constants.MODE_MANUAL, decision.safe);
-        this.log.info(`Migration: global URL "${decision.safe}" moved to global.manualUrl`);
-      } else if (decision.kind === "unsafe-rejected") {
-        await this.globalConfig.migrationSet(import_constants.MODE_MANUAL, null);
-        this.log.warn(`Migration: legacy global URL rejected as unsafe \u2014 please set global.manualUrl manually`);
-      }
-    } catch (err) {
-      globalMigrated = false;
-      this.log.warn(`Migration: global URL move failed \u2014 legacy global.visUrl preserved (${String(err)})`);
-    }
-    if (globalMigrated) {
-      try {
-        await this.delObjectAsync("global.visUrl");
-      } catch {
-      }
-    }
-    const records = (_b = (_a2 = this.registry) == null ? void 0 : _a2.listAll()) != null ? _b : [];
-    for (const record of records) {
-      let clientMigrated = true;
-      try {
-        const legacy = await this.getStateAsync(`clients.${record.id}.visUrl`);
-        const decision = (0, import_coerce.decideLegacyVisMigration)(legacy == null ? void 0 : legacy.val);
-        if (decision.kind === "safe-url") {
-          record.mode = import_constants.MODE_MANUAL;
-          record.manualUrl = decision.safe;
-          await this.setStateAsync(`clients.${record.id}.mode`, { val: import_constants.MODE_MANUAL, ack: true });
-          await this.setStateAsync(`clients.${record.id}.manualUrl`, { val: decision.safe, ack: true });
-          this.log.info(`Migration: client ${record.id} URL "${decision.safe}" moved to manualUrl`);
-        } else if (decision.kind === "unsafe-rejected") {
-          this.log.warn(`Migration: client ${record.id} legacy URL rejected as unsafe \u2014 please set the URL manually`);
-        }
-      } catch (err) {
-        clientMigrated = false;
-        this.log.warn(`Migration: client ${record.id} URL move failed \u2014 legacy visUrl preserved (${String(err)})`);
-      }
-      if (clientMigrated) {
-        try {
-          await this.delObjectAsync(`clients.${record.id}.visUrl`);
-        } catch {
-        }
-      }
     }
   }
   /**
@@ -393,34 +285,38 @@ class HassEmu extends utils.Adapter {
       if (!state || state.ack) {
         return;
       }
-      const clientParsed = this.registry ? (0, import_client_registry.parseClientStateId)(id, this.namespace) : null;
-      if (clientParsed) {
+      const registry = this.registry;
+      const globalConfig = this.globalConfig;
+      const clientParsed = registry ? (0, import_client_registry.parseClientStateId)(id, this.namespace) : null;
+      if (clientParsed && registry) {
         if (clientParsed.kind === "mode") {
-          await this.registry.handleModeWrite(clientParsed.id, state.val);
-          const record = this.registry.getById(clientParsed.id);
-          if ((record == null ? void 0 : record.mode) === import_constants.MODE_GLOBAL && this.globalConfig.resolveUrlFor(record) === null) {
+          await registry.handleModeWrite(clientParsed.id, state.val);
+          const record = registry.getById(clientParsed.id);
+          if ((record == null ? void 0 : record.mode) === import_constants.MODE_GLOBAL && (globalConfig == null ? void 0 : globalConfig.resolveUrlFor(record)) === null) {
             this.log.warn(
               `Client ${record.id}: mode is "global" but global has no resolvable URL \u2014 fill global.mode/manualUrl, or pick a different mode`
             );
           }
         } else if (clientParsed.kind === "manualUrl") {
-          await this.registry.handleManualUrlWrite(clientParsed.id, state.val);
+          await registry.handleManualUrlWrite(clientParsed.id, state.val);
         } else if (clientParsed.kind === "remove" && state.val === true) {
-          await this.registry.remove(clientParsed.id);
+          await registry.remove(clientParsed.id);
         }
         return;
       }
-      const globalParsed = this.globalConfig ? (0, import_global_config.parseGlobalStateId)(id, this.namespace) : null;
-      if (globalParsed === "mode") {
-        await this.globalConfig.handleModeWrite(state.val);
-      } else if (globalParsed === "manualUrl") {
-        await this.globalConfig.handleManualUrlWrite(state.val);
-      } else if (globalParsed === "enabled") {
-        await this.globalConfig.handleEnabledWrite(state.val);
-        await this.applyMasterSwitch(this.globalConfig.isEnabled());
-        return;
+      const globalParsed = globalConfig ? (0, import_global_config.parseGlobalStateId)(id, this.namespace) : null;
+      if (globalParsed && globalConfig) {
+        if (globalParsed === "mode") {
+          await globalConfig.handleModeWrite(state.val);
+        } else if (globalParsed === "manualUrl") {
+          await globalConfig.handleManualUrlWrite(state.val);
+        } else if (globalParsed === "enabled") {
+          await globalConfig.handleEnabledWrite(state.val);
+          await this.applyMasterSwitch(globalConfig.isEnabled());
+          return;
+        }
       }
-      if (id === `${this.namespace}.info.refresh_urls` && state.val === true) {
+      if (id === `${this.namespace}.info.refreshUrls` && state.val === true) {
         await this.handleRefreshUrlsWrite();
       }
     } catch (err) {
@@ -428,7 +324,7 @@ class HassEmu extends utils.Adapter {
     }
   }
   /**
-   * Handler for the `info.refresh_urls` button.
+   * Handler for the `info.refreshUrls` button.
    * Triggert eine sofortige `urlDiscovery.collect()` (statt Debounce-Schedule),
    * damit der User nicht 2s warten muss. Schreibt anschließend `false ack` damit
    * der Button in der Admin-UI wieder „klickbar" wird.
@@ -439,12 +335,13 @@ class HassEmu extends utils.Adapter {
     }
     try {
       await this.urlDiscovery.collect();
-      this.log.info(`URL list refreshed on user request`);
+      this.log.debug(`URL list refreshed on user request`);
     } catch (err) {
       this.log.warn(`URL refresh failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
-      await this.setStateAsync("info.refresh_urls", { val: false, ack: true }).catch(() => {
-      });
+      await this.setState("info.refreshUrls", { val: false, ack: true }).catch(
+        (err) => this.log.debug(`refreshUrls re-arm failed: ${String(err)}`)
+      );
     }
   }
   onObjectChange(id, obj) {
@@ -465,15 +362,20 @@ class HassEmu extends utils.Adapter {
   onUnload(callback) {
     var _a2;
     try {
-      void this.setState("info.connection", { val: false, ack: true });
-      void this.unsubscribeStatesAsync("clients.*");
-      void this.unsubscribeStatesAsync("global.*");
-      void this.unsubscribeStatesAsync("info.refresh_urls");
-      void this.unsubscribeForeignObjectsAsync("system.adapter.*");
+      void this.setState("info.connection", { val: false, ack: true }).catch(() => {
+      });
+      void this.unsubscribeStatesAsync("clients.*").catch(() => {
+      });
+      void this.unsubscribeStatesAsync("global.*").catch(() => {
+      });
+      void this.unsubscribeStatesAsync("info.refreshUrls").catch(() => {
+      });
+      void this.unsubscribeForeignObjectsAsync("system.adapter.*").catch(() => {
+      });
       (_a2 = this.urlDiscovery) == null ? void 0 : _a2.cancelRefresh();
       this.urlDiscovery = null;
       if (this.mdnsService) {
-        this.mdnsService.stop();
+        this.mdnsService.stop(true);
         this.mdnsService = null;
       }
       if (this.webServer) {

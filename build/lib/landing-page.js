@@ -21,23 +21,21 @@ __export(landing_page_exports, {
   renderLandingPage: () => renderLandingPage
 });
 module.exports = __toCommonJS(landing_page_exports);
-var import_coerce = require("./coerce");
 var import_external_bridge = require("./external-bridge");
 var import_html_shared = require("./html-shared");
 var import_i18n = require("./i18n");
 const LOGO_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="ioBroker"><circle cx="50" cy="50" r="42" fill="none" stroke="#1F537E" stroke-width="10"/><rect x="44" y="20" width="12" height="60" rx="2" fill="#2B95C6"/><rect x="44" y="26" width="12" height="6" fill="#ffffff"/></svg>';
 function renderLandingPage(clientId, namespace, language = "en", ip = null) {
   const t = (0, import_i18n.makePageTranslator)(language);
-  const id = (0, import_coerce.escapeHtml)(clientId);
   const datapoint = `${namespace}.clients.${clientId}.mode`;
   const ipLine = (0, import_html_shared.renderIpRow)(t("pageIpAddress"), ip);
   return `<!DOCTYPE html>
-<html lang="${(0, import_coerce.escapeHtml)((0, import_html_shared.htmlLangFor)(language))}">
+<html lang="${(0, import_html_shared.escapeHtml)((0, import_html_shared.htmlLangFor)(language))}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="refresh" content="15">
-<title>${(0, import_coerce.escapeHtml)(t("pageConnectedTitle"))}</title>
+<title>${(0, import_html_shared.escapeHtml)(t("pageConnectedTitle"))}</title>
 <style>
 :root {
     --bg: #f5f7fa;
@@ -78,14 +76,16 @@ body {
     justify-content: center;
     padding: 1.5rem;
 }
-main {
-    width: 100%;
-    max-width: 44rem;
-    background: var(--card-bg);
-    border-radius: 12px;
-    box-shadow: var(--shadow);
-    overflow: hidden;
-}
+${(0, import_html_shared.cardTableCss)(
+    { card: "main", content: ".content", table: ".info", cell: ".info" },
+    {
+      cardBg: "var(--card-bg)",
+      shadow: "var(--shadow)",
+      border: "var(--border)",
+      thColor: "var(--muted)",
+      codeBg: "var(--code-bg)"
+    }
+  )}
 .banner {
     background: var(--ok-bg);
     color: #ffffff;
@@ -127,36 +127,6 @@ main {
     margin: 0.15rem 0 0;
     font-size: 0.95rem;
     opacity: 0.95;
-}
-.content {
-    padding: 1.6rem 1.8rem 1.3rem;
-}
-.info {
-    margin: 0 0 1.4rem;
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.95rem;
-}
-.info th, .info td {
-    padding: 0.55rem 0.7rem;
-    text-align: left;
-    border-bottom: 1px solid var(--border);
-}
-.info th {
-    font-weight: 500;
-    color: var(--muted);
-    white-space: nowrap;
-    width: 9rem;
-}
-.info tr:last-child th, .info tr:last-child td {
-    border-bottom: none;
-}
-.info code {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    background: var(--code-bg);
-    padding: 0.15rem 0.45rem;
-    border-radius: 4px;
-    font-size: 0.9em;
 }
 .setup h2 {
     margin: 0 0 0.6rem;
@@ -217,32 +187,29 @@ footer .brand svg { width: 0.95rem; height: 0.95rem; display: block; }
         <div class="logo" aria-hidden="true">${LOGO_SVG}</div>
         <div class="check" aria-hidden="true">\u2713</div>
         <div>
-            <h1>${(0, import_coerce.escapeHtml)(t("pageConnectedHeading"))}</h1>
-            <p>${(0, import_coerce.escapeHtml)(t("pageConnectedSubhead"))}</p>
+            <h1>${(0, import_html_shared.escapeHtml)(t("pageConnectedHeading"))}</h1>
+            <p>${(0, import_html_shared.escapeHtml)(t("pageConnectedSubhead"))}</p>
         </div>
     </div>
     <div class="content">
         <table class="info">
             <tbody>
-                <tr>
-                    <th scope="row">${(0, import_coerce.escapeHtml)(t("pageDeviceId"))}</th>
-                    <td><code>${id}</code></td>
-                </tr>
+                ${(0, import_html_shared.renderIdRow)(t("pageDeviceId"), clientId)}
                 ${ipLine}
             </tbody>
         </table>
         <section class="setup">
-            <h2>${(0, import_coerce.escapeHtml)(t("pageSetupTitle"))}</h2>
-            <p>${(0, import_coerce.escapeHtml)(t("pageSetupIntro"))}</p>
+            <h2>${(0, import_html_shared.escapeHtml)(t("pageSetupTitle"))}</h2>
+            <p>${(0, import_html_shared.escapeHtml)(t("pageSetupIntro"))}</p>
             <ol class="steps">
-                <li>${(0, import_coerce.escapeHtml)(t("pageStep1"))}</li>
-                <li>${(0, import_coerce.escapeHtml)(t("pageStep2"))} <code>${(0, import_coerce.escapeHtml)(datapoint)}</code></li>
-                <li>${(0, import_coerce.escapeHtml)(t("pageStep3"))}</li>
+                <li>${(0, import_html_shared.escapeHtml)(t("pageStep1"))}</li>
+                <li>${(0, import_html_shared.escapeHtml)(t("pageStep2"))} <code>${(0, import_html_shared.escapeHtml)(datapoint)}</code></li>
+                <li>${(0, import_html_shared.escapeHtml)(t("pageStep3"))}</li>
             </ol>
         </section>
     </div>
     <footer>
-        ${(0, import_coerce.escapeHtml)(t("pageAutoRefresh"))}
+        ${(0, import_html_shared.escapeHtml)(t("pageAutoRefresh"))}
         <span class="brand" aria-hidden="true">${LOGO_SVG} ioBroker</span>
     </footer>
 </main>
