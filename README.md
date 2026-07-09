@@ -178,7 +178,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
-### **WORK IN PROGRESS**
+### 1.37.0 (2026-07-09)
 
 - A custom name you give a display now survives even when its network hostname resolves later — the name you set sticks.
 - A display that keeps losing its identity no longer fills ioBroker with unused entries over time.
@@ -205,10 +205,6 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 ### 1.35.1 (2026-06-09)
 
 - Internal cleanup. No user-facing changes.
-
-### 1.35.0 (2026-06-07)
-
-- Added optional Sentry error reporting: crashes are sent to the developer so issues get fixed faster. Active only with ioBroker diagnostics enabled; anonymous.
 
 [Older changelogs can be found there](CHANGELOG_OLD.md)
 
