@@ -37,6 +37,7 @@ var import_coerce = require("./coerce");
 var import_constants = require("./constants");
 var import_i18n = require("./i18n");
 var import_network = require("./network");
+var import_object_repair = require("./object-repair");
 const CLIENTS_PREFIX = "clients.";
 class ClientRegistry {
   adapter;
@@ -476,7 +477,7 @@ class ClientRegistry {
           return;
         }
         existing.common.states = merged;
-        await this.adapter.setObject(stateId, existing);
+        await (0, import_object_repair.replaceObjectPreservingValue)(this.adapter, stateId, existing);
       })
     );
   }
@@ -692,9 +693,9 @@ class ClientRegistry {
           existing.common.name = preservedName;
         }
         existing.type = "state";
-        await this.adapter.setObject(`clients.${id}.mode`, existing);
+        await (0, import_object_repair.replaceObjectPreservingValue)(this.adapter, `clients.${id}.mode`, existing);
       } else {
-        await this.adapter.setObject(`clients.${id}.mode`, {
+        await this.adapter.setObjectNotExistsAsync(`clients.${id}.mode`, {
           type: "state",
           common: modeFullCommon,
           native: {}

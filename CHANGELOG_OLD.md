@@ -1,4 +1,8 @@
 # Older Changes
+## 1.35.1 (2026-06-09)
+
+- Internal cleanup. No user-facing changes.
+
 ## 1.35.0 (2026-06-07)
 
 - Added optional Sentry error reporting: crashes are sent to the developer so issues get fixed faster. Active only with ioBroker diagnostics enabled; anonymous.
