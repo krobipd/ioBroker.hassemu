@@ -36,6 +36,7 @@ import {
 } from "./constants";
 import { resolveLabel, tName } from "./i18n";
 import { generateClientId } from "./network";
+import { replaceObjectPreservingValue } from "./object-repair";
 import type { AdapterInterface, ClientRecord, UrlStates } from "./types";
 
 /** Extended adapter interface for registry — needs object and state operations. */
@@ -47,7 +48,6 @@ export type RegistryAdapter = AdapterInterface &
     | "getStateAsync"
     | "getObjectAsync"
     | "setObjectNotExistsAsync"
-    | "setObject"
     | "extendObject"
     | "setState"
     | "delObjectAsync"
@@ -613,7 +613,7 @@ export class ClientRegistry {
           return;
         }
         existing.common.states = merged;
-        await this.adapter.setObject(stateId, existing);
+        await replaceObjectPreservingValue(this.adapter, stateId, existing);
       }),
     );
   }
@@ -888,9 +888,9 @@ export class ClientRegistry {
           existing.common.name = preservedName;
         }
         existing.type = "state";
-        await this.adapter.setObject(`clients.${id}.mode`, existing);
+        await replaceObjectPreservingValue(this.adapter, `clients.${id}.mode`, existing);
       } else {
-        await this.adapter.setObject(`clients.${id}.mode`, {
+        await this.adapter.setObjectNotExistsAsync(`clients.${id}.mode`, {
           type: "state",
           common: modeFullCommon,
           native: {},

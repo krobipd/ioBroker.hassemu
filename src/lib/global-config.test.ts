@@ -64,6 +64,8 @@ function createMockAdapter(namespace = "hassemu.0"): {
     getObjectAsync: (id: string) => Promise<ObjEntry | null>;
     setObject: (id: string, obj: ObjEntry) => Promise<void>;
     extendObject: (id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>) => Promise<void>;
+    setObjectNotExistsAsync: (id: string, obj: ObjEntry) => Promise<void>;
+    delObjectAsync: (id: string, options?: { recursive?: boolean }) => Promise<void>;
   } {
     return {
       namespace,
@@ -105,6 +107,17 @@ function createMockAdapter(namespace = "hassemu.0"): {
       setObject: async (id: string, obj: ObjEntry) => {
         const fullId = id.includes(".") && id.startsWith(`${namespace}.`) ? id : `${namespace}.${id}`;
         store.objects.set(fullId, obj);
+      },
+      setObjectNotExistsAsync: async (id: string, obj: ObjEntry) => {
+        const fullId = id.includes(".") && id.startsWith(`${namespace}.`) ? id : `${namespace}.${id}`;
+        if (!store.objects.has(fullId)) {
+          store.objects.set(fullId, obj);
+        }
+      },
+      delObjectAsync: async (id: string) => {
+        const fullId = id.includes(".") && id.startsWith(`${namespace}.`) ? id : `${namespace}.${id}`;
+        store.objects.delete(fullId);
+        store.states.delete(fullId);
       },
     };
   }
