@@ -178,6 +178,10 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+### 1.37.1 (2026-07-11)
+
+- Internal cleanup. No user-facing changes.
+
 ### 1.37.0 (2026-07-09)
 
 - A custom name you give a display now survives even when its network hostname resolves later — the name you set sticks.
@@ -201,10 +205,6 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 
 - Displays whose registration became stale after an adapter restart now re-register automatically — the server previously answered in a way the companion app did not recognize as "please register again"
 - Removing a display now also clears its leftover app registration, so a re-added display starts with a fresh one
-
-### 1.35.1 (2026-06-09)
-
-- Internal cleanup. No user-facing changes.
 
 [Older changelogs can be found there](CHANGELOG_OLD.md)
 

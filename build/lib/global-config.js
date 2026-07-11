@@ -25,6 +25,7 @@ module.exports = __toCommonJS(global_config_exports);
 var import_coerce = require("./coerce");
 var import_constants = require("./constants");
 var import_i18n = require("./i18n");
+var import_object_repair = require("./object-repair");
 class GlobalConfig {
   adapter;
   mode = "";
@@ -208,7 +209,7 @@ class GlobalConfig {
       return;
     }
     existing.common.states = merged;
-    await this.adapter.setObject("global.mode", existing);
+    await (0, import_object_repair.replaceObjectPreservingValue)(this.adapter, "global.mode", existing);
   }
   /**
    * Convenience for migration: set mode + manualUrl together. Skips the
