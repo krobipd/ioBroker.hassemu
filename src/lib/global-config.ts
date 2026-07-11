@@ -25,11 +25,15 @@ import {
 } from "./coerce";
 import { MODE_GLOBAL, MODE_MANUAL } from "./constants";
 import { resolveLabel } from "./i18n";
+import { replaceObjectPreservingValue } from "./object-repair";
 import type { AdapterInterface, ClientRecord, UrlStates } from "./types";
 
 /** Extended adapter interface — needs state I/O and object extend. */
 export type GlobalConfigAdapter = AdapterInterface &
-  Pick<ioBroker.Adapter, "getStateAsync" | "setState" | "getObjectAsync" | "setObject" | "extendObject">;
+  Pick<
+    ioBroker.Adapter,
+    "getStateAsync" | "setState" | "getObjectAsync" | "setObjectNotExistsAsync" | "delObjectAsync" | "extendObject"
+  >;
 
 /** Kinds of state IDs the GlobalConfig reacts to. */
 export type GlobalStateKind = "mode" | "manualUrl" | "enabled";
@@ -262,7 +266,7 @@ export class GlobalConfig {
       return;
     }
     existing.common.states = merged;
-    await this.adapter.setObject("global.mode", existing);
+    await replaceObjectPreservingValue(this.adapter, "global.mode", existing);
   }
 
   /**
