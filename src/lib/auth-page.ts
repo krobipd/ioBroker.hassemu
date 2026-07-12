@@ -23,7 +23,8 @@
 // v1.32.0: local `escAttr` (4-char) replaced by the shared 5-char escapeHtml
 // (defense-in-depth, `'` also hardened). v1.37.0 (L34/L39): imported from
 // html-shared under its real name (no alias) alongside jsStringLiteral.
-import { escapeHtml, jsStringLiteral } from "./html-shared";
+import { escapeHtml, htmlLangFor, jsStringLiteral } from "./html-shared";
+import { makePageTranslator } from "./i18n";
 
 /**
  * Build the final redirect URL with the auth code appended.
@@ -72,14 +73,21 @@ button:hover{background:#039be5;}
  * body markup (the redirect `<script>`).
  *
  * @param opts            Page parts to assemble into the shared shell.
+ * @param opts.lang      System language for the `<html lang>` attribute (`en` fallback).
  * @param opts.title     `<title>` text (already escaped by the caller if dynamic).
  * @param opts.headExtra One extra `<head>` line (viewport meta / refresh meta).
  * @param opts.cardInner Inner HTML of the `.card` container.
  * @param opts.bodyExtra Optional markup appended after the card (e.g. the redirect script).
  */
-function htmlShell(opts: { title: string; headExtra: string; cardInner: string; bodyExtra?: string }): string {
+function htmlShell(opts: {
+  lang: string;
+  title: string;
+  headExtra: string;
+  cardInner: string;
+  bodyExtra?: string;
+}): string {
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${escapeHtml(htmlLangFor(opts.lang))}">
 <head>
 <meta charset="utf-8">
 ${opts.headExtra}
@@ -111,6 +119,9 @@ export function renderAuthorizeRedirect(target: string): string {
   // tokenizer level before JS parses the string literal).
   const j = jsStringLiteral(target);
   return htmlShell({
+    // Momentary auto-redirect page (sub-second) — kept in English on purpose; only the
+    // login form + error page (which a user actually reads) are localized. L7.
+    lang: "en",
     title: "Home Assistant",
     headExtra: `<meta http-equiv="refresh" content="0; URL=${a}">`,
     cardInner: `<h1>Home Assistant</h1>
@@ -130,30 +141,37 @@ export function renderAuthorizeRedirect(target: string): string {
  * @param params.clientId     The OAuth2 `client_id` to round-trip in a hidden input.
  * @param params.redirectUri  Already-validated `redirect_uri` to round-trip in a hidden input.
  * @param params.state        Optional OAuth2 `state` (CSRF token) to round-trip.
- * @param errorMessage        Optional error banner text (i.e. "Invalid username or password.").
+ * @param errorMessage        Optional error banner text (already localized by the caller).
+ * @param language            System language for the visible strings (`en` fallback). L7.
  */
 export function renderAuthorizeForm(
   params: { clientId: string; redirectUri: string; state?: string },
   errorMessage?: string,
+  language = "en",
 ): string {
+  const t = makePageTranslator(language);
   const cid = escapeHtml(params.clientId);
   const ru = escapeHtml(params.redirectUri);
   const st = params.state ? escapeHtml(params.state) : "";
   const errBlock = errorMessage ? `<div class="err">${escapeHtml(errorMessage)}</div>` : "";
   return htmlShell({
+    lang: language,
+    // `<h1>Home Assistant</h1>` + the brand title stay hardcoded — the HA Companion app
+    // verifies the server identity by the "Home Assistant" name; only the human-readable
+    // copy below is localized. L7 (v1.38.0).
     title: "Home Assistant — Sign In",
     headExtra: `<meta name="viewport" content="width=device-width, initial-scale=1">`,
     cardInner: `<h1>Home Assistant</h1>
-<p class="subtitle">Sign in to authorize this device.</p>
+<p class="subtitle">${escapeHtml(t("authSubtitle"))}</p>
 ${errBlock}
 <form method="POST" action="/auth/authorize" autocomplete="off">
 <input type="hidden" name="response_type" value="code">
 <input type="hidden" name="client_id" value="${cid}">
 <input type="hidden" name="redirect_uri" value="${ru}">
 <input type="hidden" name="state" value="${st}">
-<input type="text" name="username" placeholder="Username" autofocus required>
-<input type="password" name="password" placeholder="Password" required>
-<button type="submit">Sign in</button>
+<input type="text" name="username" placeholder="${escapeHtml(t("username"))}" autofocus required>
+<input type="password" name="password" placeholder="${escapeHtml(t("password"))}" required>
+<button type="submit">${escapeHtml(t("authSignIn"))}</button>
 </form>`,
   });
 }
@@ -163,14 +181,20 @@ ${errBlock}
  * or when `redirect_uri` fails validation. NEVER auto-redirects — we don't
  * want to leak codes to attacker-controlled URIs by accident.
  *
- * @param reason  Short OAuth2 error code (e.g. `invalid_request`).
- * @param detail  Human-readable explanation.
+ * @param reason   Short OAuth2 error code (e.g. `invalid_request`).
+ * @param detail   Human-readable explanation.
+ * @param language System language for the visible strings (`en` fallback). L7.
  */
-export function renderAuthorizeError(reason: string, detail: string): string {
+export function renderAuthorizeError(reason: string, detail: string, language = "en"): string {
+  const t = makePageTranslator(language);
   return htmlShell({
+    lang: language,
     title: `Home Assistant — ${escapeHtml(reason)}`,
     headExtra: `<meta name="viewport" content="width=device-width, initial-scale=1">`,
-    cardInner: `<h1>Authorization failed</h1>
+    // Localized title + a user-readable hint; the technical `detail`/`reason` stay for
+    // support diagnostics. L7 (v1.38.0).
+    cardInner: `<h1>${escapeHtml(t("authErrorTitle"))}</h1>
+<p class="subtitle">${escapeHtml(t("authErrorHint"))}</p>
 <div class="err">${escapeHtml(detail)}</div>
 <p class="subtitle">${escapeHtml(reason)}</p>`,
   });

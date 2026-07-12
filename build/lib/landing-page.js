@@ -27,7 +27,7 @@ var import_i18n = require("./i18n");
 const LOGO_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="ioBroker"><circle cx="50" cy="50" r="42" fill="none" stroke="#1F537E" stroke-width="10"/><rect x="44" y="20" width="12" height="60" rx="2" fill="#2B95C6"/><rect x="44" y="26" width="12" height="6" fill="#ffffff"/></svg>';
 function renderLandingPage(clientId, namespace, language = "en", ip = null) {
   const t = (0, import_i18n.makePageTranslator)(language);
-  const datapoint = `${namespace}.clients.${clientId}.mode`;
+  const datapoint = `${namespace}.clients.${clientId}`;
   const ipLine = (0, import_html_shared.renderIpRow)(t("pageIpAddress"), ip);
   return `<!DOCTYPE html>
 <html lang="${(0, import_html_shared.escapeHtml)((0, import_html_shared.htmlLangFor)(language))}">

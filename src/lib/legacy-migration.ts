@@ -129,7 +129,7 @@ export async function migrateLegacyDefaultVisUrl(
  */
 export async function migrateVisUrlToMode(
   adapter: MigrationAdapter,
-  globalConfig: GlobalConfig | null,
+  globalConfig: GlobalConfig,
   registry: ClientRegistry | null,
 ): Promise<void> {
   // 1) Global visUrl → mode + manualUrl
@@ -140,10 +140,10 @@ export async function migrateVisUrlToMode(
     const decision = decideLegacyVisMigration(legacyGlobal?.val);
     globalHadLegacy = decision.kind !== "empty";
     if (decision.kind === "safe-url") {
-      await globalConfig!.migrationSet(MODE_MANUAL, decision.safe);
+      await globalConfig.migrationSet(MODE_MANUAL, decision.safe);
       adapter.log.info(`Migration: global URL "${decision.safe}" moved to global.manualUrl`);
     } else if (decision.kind === "unsafe-rejected") {
-      await globalConfig!.migrationSet(MODE_MANUAL, null);
+      await globalConfig.migrationSet(MODE_MANUAL, null);
       adapter.log.warn(`Migration: legacy global URL rejected as unsafe — please set global.manualUrl manually`);
     }
   } catch (err) {

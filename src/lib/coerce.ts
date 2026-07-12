@@ -476,3 +476,33 @@ export function shallowStatesEqual(a: unknown, b: Record<string, string>): boole
 export function oneLine(value: string): string {
   return value.replace(/[\r\n\t\0\v\f\u2028\u2029]+/g, " ");
 }
+
+/**
+ * Decides whether a reverse-DNS lookup should be attempted for a client IP. Skips when
+ * the client already has a hostname, a lookup for that IP is already in flight, or the
+ * IP resolved to no hostname within the negative-cache window (the LAN norm for DHCP
+ * clients without a PTR record \u2014 L6). Pure so the negative-cache decision is unit-testable
+ * without driving real DNS or timers. v1.38.0 (I8).
+ *
+ * @param opts                 Reverse-DNS decision inputs.
+ * @param opts.hasHostname     True if the client already has a resolved hostname.
+ * @param opts.inFlight        True if a lookup for this IP is already running.
+ * @param opts.lastNegative    Timestamp (ms) of the last no-hostname result, or undefined.
+ * @param opts.now             Current time in ms.
+ * @param opts.negativeCacheMs Negative-cache window in ms.
+ */
+export function shouldAttemptReverseDns(opts: {
+  hasHostname: boolean;
+  inFlight: boolean;
+  lastNegative: number | undefined;
+  now: number;
+  negativeCacheMs: number;
+}): boolean {
+  if (opts.hasHostname || opts.inFlight) {
+    return false;
+  }
+  if (opts.lastNegative !== undefined && opts.now - opts.lastNegative < opts.negativeCacheMs) {
+    return false;
+  }
+  return true;
+}

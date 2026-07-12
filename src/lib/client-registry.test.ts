@@ -73,7 +73,7 @@ function createMockAdapter(namespace = "hassemu.0"): {
     clearInterval: () => undefined;
     setTimeout: () => undefined;
     clearTimeout: () => undefined;
-    getForeignObjectsAsync: (pattern: string, type: "channel") => Promise<Record<string, ObjEntry>>;
+    getForeignObjectsAsync: (pattern: string, type?: string) => Promise<Record<string, ObjEntry>>;
     getStateAsync: (id: string) => Promise<{ val: unknown; ack: boolean } | null>;
     getObjectAsync: (id: string) => Promise<ObjEntry | null>;
     setObject: (id: string, obj: ObjEntry) => Promise<void>;
@@ -94,11 +94,17 @@ function createMockAdapter(namespace = "hassemu.0"): {
       clearInterval: () => undefined,
       setTimeout: () => undefined,
       clearTimeout: () => undefined,
-      getForeignObjectsAsync: async (pattern: string) => {
+      getForeignObjectsAsync: async (pattern: string, type?: string) => {
         const prefix = pattern.replace("*", "");
         const out: Record<string, ObjEntry> = {};
+        // Type-faithful to js-controller: a string pattern with no type argument
+        // resolves to the 'state' object view (getObjectView('system', type||'state')),
+        // so ONLY state objects come back — never the channel/device containers. The
+        // earlier permissive mock (channel||device regardless of type) hid the H1
+        // restore regression. See reference_getforeignobjects_state_default.
+        const wanted = type ?? "state";
         for (const [id, obj] of store.objects) {
-          if (id.startsWith(prefix) && (obj.type === "channel" || obj.type === "device")) {
+          if (id.startsWith(prefix) && obj.type === wanted) {
             out[id] = obj;
           }
         }
@@ -809,6 +815,54 @@ describe("ClientRegistry", () => {
       expect(rec!.manualUrl).to.equal("http://saved/");
       expect(rec!.ip).to.equal("192.168.1.20");
       expect(rec!.hostname).to.equal("tablet.local");
+    });
+
+    it("restores BOTH a device and a channel container in one pass (H1 — typed device+channel queries, not the state-default view)", async () => {
+      // A pattern with no type argument resolves to js-controller's `state` view and
+      // returns NEITHER container type — which silently loaded zero clients in v1.37.0.
+      // restore() must query `device` AND `channel` explicitly and merge, because the
+      // channel→device migration is still in flight. reference_getforeignobjects_state_default.
+      const deviceId = "dev01";
+      const channelId = "chan01";
+      const devCookie = crypto.randomUUID();
+      const chanCookie = crypto.randomUUID();
+      store.objects.set(`hassemu.0.clients.${deviceId}`, { type: "device", native: { cookie: devCookie } });
+      store.objects.set(`hassemu.0.clients.${channelId}`, { type: "channel", native: { cookie: chanCookie } });
+
+      await registry.restore();
+
+      expect(registry.getById(deviceId), "device container restored").to.not.be.null;
+      expect(registry.getById(channelId), "channel container restored").to.not.be.null;
+      // the legacy channel is migrated to device in place (I22)
+      expect(store.objects.get(`hassemu.0.clients.${channelId}`)?.type).to.equal("device");
+    });
+
+    it("does NOT strip persisted dropdown URLs from a valid mode object on restore (L1)", async () => {
+      // Restore runs before URL discovery (currentUrlStates empty), so the rebuilt
+      // dropdown lacks the URL keys the persisted object already carries. ensureObjects
+      // must not rewrite the mode object here — that stripped the URLs and forced a
+      // second full replace once syncUrlDropdown ran. syncUrlDropdown owns common.states.
+      const id = "keepurls";
+      const cookie = crypto.randomUUID();
+      store.objects.set(`hassemu.0.clients.${id}`, { type: "device", native: { cookie } });
+      store.objects.set(`hassemu.0.clients.${id}.mode`, {
+        type: "state",
+        common: {
+          name: "Redirect mode",
+          type: "mixed",
+          role: "state",
+          read: true,
+          write: true,
+          states: { "0": "---", global: "Global URL", manual: "Manual URL", "http://vis/": "VIS" },
+        },
+        native: {},
+      });
+      store.states.set(`hassemu.0.clients.${id}.mode`, { val: "http://vis/", ack: true });
+
+      await registry.restore();
+
+      const modeObj = store.objects.get(`hassemu.0.clients.${id}.mode`);
+      expect(Object.keys(modeObj?.common?.states ?? {}), "persisted URL survives restore").to.include("http://vis/");
     });
 
     it("loads URL-mode (direct URL value)", async () => {

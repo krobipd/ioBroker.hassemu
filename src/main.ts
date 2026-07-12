@@ -101,6 +101,9 @@ export class HassEmu extends utils.Adapter {
       // future major once pre-1.2.0 upgrades are no longer plausible — until then
       // dropping them would silently break those upgrade paths.
       await migrateLegacyDefaultVisUrl(this, this.config, this.globalConfig);
+      // globalConfig was constructed + restored above (control-flow keeps it non-null
+      // here), so it satisfies migrateVisUrlToMode's non-null contract — its writes
+      // have no null-safe fallback, unlike the nullable registry. L5.
       await migrateVisUrlToMode(this, this.globalConfig, this.registry);
       await repairGlobalSchemas(this, instanceObjectsList as InstanceObjectSchema[]);
 
@@ -143,7 +146,10 @@ export class HassEmu extends utils.Adapter {
         this.webServer = this.makeWebServer(instanceUuid);
         await this.webServer.start();
       } catch (err) {
-        this.log.error(`Web server failed to start: ${String(err)}`);
+        // webServer.start() already logged a friendly, actionable error (EADDRINUSE /
+        // generic startup) at error level, so keep only a debug echo of the raw error
+        // here — otherwise the same failure prints two error lines. I5 (v1.38.0).
+        this.log.debug(`Web server failed to start: ${String(err)}`);
         // v1.10.0 (B4): nicht stumm zurückkehren — der Adapter wäre sonst
         // zombie (info.connection=false, kein Server, keine Subscriptions,
         // kein Restart-Signal an js-controller). terminate() signalisiert
@@ -187,7 +193,10 @@ export class HassEmu extends utils.Adapter {
 
       await this.setState("info.connection", { val: true, ack: true });
       const bindAddr = this.config.bindAddress || "0.0.0.0";
-      const mdnsSuffix = this.config.mdnsEnabled ? (mdnsActive ? ", mDNS active" : ", mDNS FAILED") : "";
+      // "started" (not "active"): isActive() is read synchronously right after start(),
+      // before an asynchronous bonjour publish error could fire — so the headline must
+      // not over-claim; a later publish failure surfaces as its own mDNS warn. I6 (v1.38.0).
+      const mdnsSuffix = this.config.mdnsEnabled ? (mdnsActive ? ", mDNS started" : ", mDNS FAILED") : "";
       this.log.info(`HA emulation running on ${bindAddr}:${this.config.port}${mdnsSuffix}`);
     } catch (err: unknown) {
       // M2: don't sit idle as a zombie (info.connection=false, server maybe up but
@@ -384,11 +393,14 @@ export class HassEmu extends utils.Adapter {
           await globalConfig.handleManualUrlWrite(state.val);
         } else if (globalParsed === "enabled") {
           await globalConfig.handleEnabledWrite(state.val);
-          // L9-Interaktion: a non-boolean write reverts (no change), so bulkSetMode
-          // sees an unchanged value and no-ops — harmless. A real toggle propagates.
+          // A non-boolean write reverts (no change), so bulkSetMode sees an unchanged
+          // value and no-ops — harmless. A real toggle propagates.
           await this.applyMasterSwitch(globalConfig.isEnabled());
-          return;
         }
+        // I7 (v1.38.0): every global.* write is fully handled here — return so it
+        // can't fall through to the info.refreshUrls check (symmetry with the client
+        // block above; the ids never collide, so this is clarity, not a bug fix).
+        return;
       }
 
       // info.refreshUrls — User-Trigger für manuelles Dropdown-Refresh ohne
@@ -412,6 +424,9 @@ export class HassEmu extends utils.Adapter {
     if (!this.urlDiscovery) {
       return;
     }
+    // Cancel any pending debounced refresh first — otherwise an objectChange-scheduled
+    // scan fires a second full broker scan ~2s after this immediate one. L3 (v1.38.0).
+    this.urlDiscovery.cancelRefresh();
     try {
       await this.urlDiscovery.collect();
       // I3: success on debug — the visible feedback is the refreshed dropdown +

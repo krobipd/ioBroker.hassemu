@@ -24,9 +24,15 @@ module.exports = __toCommonJS(object_repair_exports);
 async function replaceObjectPreservingValue(adapter, id, prepared) {
   const prev = await adapter.getStateAsync(id);
   await adapter.delObjectAsync(id);
-  await adapter.setObjectNotExistsAsync(id, prepared);
-  if (prev && prev.val !== null && prev.val !== void 0) {
-    await adapter.setState(id, { val: prev.val, ack: true });
+  try {
+    await adapter.setObjectNotExistsAsync(id, prepared);
+    if (prev && prev.val !== null && prev.val !== void 0) {
+      await adapter.setState(id, { val: prev.val, ack: true });
+    }
+  } catch (err) {
+    adapter.log.warn(
+      `Object repair for ${id} failed after delete \u2014 the datapoint may be missing until the next restart: ${String(err)}`
+    );
   }
 }
 // Annotate the CommonJS export names for ESM import in node:

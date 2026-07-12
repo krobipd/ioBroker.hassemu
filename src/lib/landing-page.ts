@@ -45,9 +45,11 @@ export function renderLandingPage(
   // passed `language` (English fallback) — single i18n source, shared with the
   // admin UI + state names. No private translation table here anymore.
   const t = makePageTranslator(language);
-  // Build the datapoint path from the RAW values and escape exactly once below —
-  // building it from the already-escaped id/ns would double-escape any special char.
-  const datapoint = `${namespace}.clients.${clientId}.mode`;
+  // Build the folder path from the RAW values and escape exactly once below — building
+  // it from the already-escaped id/ns would double-escape any special char. Points at
+  // the client FOLDER (not `.mode`) so the setup steps can reference both `mode` and
+  // `manualUrl` inside it. M2 (v1.38.0).
+  const datapoint = `${namespace}.clients.${clientId}`;
   // v1.16.0 (E3): Loopback-IPs nicht anzeigen — der End-User sieht sonst
   // „localhost" / „127.0.0.1" / „::1" als sein Display-IP, was bei Proxy-
   // Setups verwirrt (Display sitzt am Reverse-Proxy, nicht am Adapter).

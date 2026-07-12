@@ -13,8 +13,9 @@ import os from "node:os";
  * v1.21.0 (E6): Docker-Bridge-IPs (172.17.x.x default + ähnliche Container-
  * Bridges) werden gegenüber „echten" LAN-IPs deprioritisiert — `bind: 0.0.0.0`
  * + Docker führte sonst dazu, dass mDNS die Container-Bridge advertised, die
- * vom LAN aus nicht erreichbar ist. Echte LAN-IPs (192.168.x.x, 10.x.x.x,
- * 172.16-31.x.x außer 172.17) haben Vorrang.
+ * vom LAN aus nicht erreichbar ist. Deprioritisiert werden die Docker-Default-
+ * Bridges 172.17.x.x (docker0) UND 172.18.x.x (erste user-defined/compose-Bridge);
+ * echte LAN-IPs (192.168.x.x, 10.x.x.x, restliches 172.16-31.x.x) haben Vorrang.
  */
 export function getLocalIp(): string {
   const interfaces = os.networkInterfaces();

@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.37.1",
+    "version": "1.38.0",
     "news": {
+      "1.38.0": {
+        "en": "Known displays are no longer re-created as new clients after an adapter restart — saved redirects and logins are kept, and no duplicate entries pile up.",
+        "de": "Bekannte Displays werden nach einem Adapter-Neustart nicht mehr als neue Clients neu angelegt — Weiterleitungen und Logins bleiben erhalten, keine Duplikate mehr.",
+        "ru": "Известные дисплеи больше не создаются заново как новые клиенты после перезапуска адаптера — перенаправления и входы сохраняются, дубликаты не накапливаются.",
+        "pt": "Os displays conhecidos deixam de ser recriados como novos clientes após reiniciar o adaptador — redirecionamentos e sessões são mantidos, sem duplicados.",
+        "nl": "Bekende displays worden na een herstart van de adapter niet meer opnieuw als nieuwe clients aangemaakt — doorverwijzingen en logins blijven behouden, geen duplicaten.",
+        "fr": "Les écrans connus ne sont plus recréés comme nouveaux clients après un redémarrage — redirections et connexions sont conservées, sans doublons.",
+        "it": "I display conosciuti non vengono più ricreati come nuovi client dopo il riavvio dell'adattatore — reindirizzamenti e accessi mantenuti, niente duplicati.",
+        "es": "Las pantallas conocidas ya no se recrean como nuevos clientes tras reiniciar el adaptador — se conservan redirecciones e inicios de sesión, sin duplicados.",
+        "pl": "Znane wyświetlacze nie są już tworzone na nowo jako nowi klienci po restarcie adaptera — przekierowania i logowania są zachowane, bez duplikatów.",
+        "uk": "Відомі дисплеї більше не створюються заново як нові клієнти після перезапуску адаптера — перенаправлення та входи зберігаються, без дублікатів.",
+        "zh-cn": "适配器重启后，已知显示器不再被重新创建为新客户端——重定向和登录得以保留，不再产生重复条目。"
+      },
       "1.37.1": {
         "en": "Internal cleanup. No user-facing changes.",
         "de": "Interne Aufräumarbeiten. Keine für Nutzer sichtbaren Änderungen.",
@@ -80,19 +93,6 @@
         "pl": "Wewnętrzne porządki. Brak zmian widocznych dla użytkownika.",
         "uk": "Внутрішнє прибирання. Жодних змін для користувачів.",
         "zh-cn": "内部清理。对用户无可见变化。"
-      },
-      "1.35.0": {
-        "en": "Added optional Sentry error reporting: crashes are sent to the developer so issues get fixed faster. Active only with ioBroker diagnostics enabled; anonymous.",
-        "de": "Optionale Fehlermeldung über Sentry hinzugefügt: Abstürze werden an den Entwickler gesendet, damit Probleme schneller behoben werden. Nur aktiv bei eingeschalteter ioBroker-Diagnose; anonym.",
-        "ru": "Добавлена необязательная отправка ошибок через Sentry: сбои отправляются разработчику, чтобы быстрее их устранять. Работает только при включённой диагностике ioBroker; анонимно.",
-        "pt": "Adicionado relatório de erros opcional via Sentry: as falhas são enviadas ao programador para corrigir problemas mais rápido. Ativo apenas com o diagnóstico do ioBroker ligado; anónimo.",
-        "nl": "Optionele foutrapportage via Sentry toegevoegd: crashes worden naar de ontwikkelaar gestuurd om problemen sneller op te lossen. Alleen actief met ioBroker-diagnostiek ingeschakeld; anoniem.",
-        "fr": "Rapport d'erreurs optionnel via Sentry ajouté : les plantages sont envoyés au développeur pour corriger plus vite. Actif seulement si le diagnostic ioBroker est activé ; anonyme.",
-        "it": "Aggiunta segnalazione errori opzionale via Sentry: gli arresti vengono inviati allo sviluppatore per risolvere prima i problemi. Attivo solo con la diagnostica ioBroker attiva; anonimo.",
-        "es": "Añadido informe de errores opcional mediante Sentry: los fallos se envían al desarrollador para solucionar problemas más rápido. Activo solo con el diagnóstico de ioBroker activado; anónimo.",
-        "pl": "Dodano opcjonalne raportowanie błędów przez Sentry: awarie są wysyłane do dewelopera, aby szybciej rozwiązywać problemy. Aktywne tylko przy włączonej diagnostyce ioBroker; anonimowo.",
-        "uk": "Додано необов'язкову відправку помилок через Sentry: збої надсилаються розробнику, щоб швидше їх виправляти. Працює лише з увімкненою діагностикою ioBroker; анонімно.",
-        "zh-cn": "新增可选的 Sentry 错误上报：崩溃信息会发送给开发者以更快修复问题。仅在启用 ioBroker 诊断时生效；匿名。"
       }
     },
     "plugins": {
@@ -238,17 +238,17 @@
       "type": "folder",
       "common": {
         "name": {
-          "en": "Known display clients",
-          "de": "Bekannte Display-Clients",
-          "ru": "Известные display-клиенты",
-          "pt": "Clientes de ecrã conhecidos",
-          "nl": "Bekende display-clients",
-          "fr": "Clients d’affichage connus",
-          "it": "Client di display noti",
-          "es": "Clientes de pantalla conocidos",
-          "pl": "Znani klienci wyświetlaczy",
-          "uk": "Відомі клієнти дисплеїв",
-          "zh-cn": "已知显示客户端"
+          "en": "Known displays",
+          "de": "Bekannte Displays",
+          "ru": "Известные дисплеи",
+          "pt": "Displays conhecidos",
+          "nl": "Bekende displays",
+          "fr": "Écrans connus",
+          "it": "Display conosciuti",
+          "es": "Pantallas conocidas",
+          "pl": "Znane wyświetlacze",
+          "uk": "Відомі дисплеї",
+          "zh-cn": "已知显示器"
         }
       },
       "native": {}
@@ -294,7 +294,20 @@
         "role": "switch.enable",
         "read": true,
         "write": true,
-        "def": false
+        "def": false,
+        "desc": {
+          "en": "Master switch. On: every display follows the global URL. Off: every display shows its landing page until you pick a mode.",
+          "de": "Hauptschalter. An: alle Displays folgen der globalen URL. Aus: alle Displays zeigen ihre Startseite, bis du einen Modus wählst.",
+          "ru": "Главный переключатель. Вкл: все дисплеи следуют глобальному URL. Выкл: все дисплеи показывают стартовую страницу, пока вы не выберете режим.",
+          "pt": "Interruptor principal. Ligado: todos os displays seguem a URL global. Desligado: todos os displays mostram a sua página inicial até você escolher um modo.",
+          "nl": "Hoofdschakelaar. Aan: alle displays volgen de globale URL. Uit: alle displays tonen hun startpagina tot je een modus kiest.",
+          "fr": "Interrupteur principal. Activé : tous les écrans suivent l'URL globale. Désactivé : tous les écrans affichent leur page d'accueil jusqu'à ce que vous choisissiez un mode.",
+          "it": "Interruttore principale. Acceso: tutti i display seguono l'URL globale. Spento: tutti i display mostrano la pagina iniziale finché non scegli un modo.",
+          "es": "Interruptor principal. Encendido: todas las pantallas siguen la URL global. Apagado: todas las pantallas muestran su página de inicio hasta que elijas un modo.",
+          "pl": "Główny przełącznik. Wł.: wszystkie wyświetlacze podążają za globalnym URL. Wył.: wszystkie wyświetlacze pokazują stronę startową, dopóki nie wybierzesz trybu.",
+          "uk": "Головний перемикач. Увімк.: усі дисплеї слідують глобальному URL. Вимк.: усі дисплеї показують стартову сторінку, доки ви не виберете режим.",
+          "zh-cn": "主开关。开启：所有显示器跟随全局 URL。关闭：所有显示器显示落地页，直到你选择模式。"
+        }
       },
       "native": {}
     },
@@ -395,7 +408,20 @@
         "role": "state",
         "read": true,
         "write": true,
-        "def": 0
+        "def": "0",
+        "desc": {
+          "en": "Only affects displays whose mode is set to Global URL. Use the master switch to apply the global URL to every display at once.",
+          "de": "Wirkt nur für Displays, deren Modus auf Globale URL steht. Über den Hauptschalter lässt sich die globale URL für alle Displays auf einmal anwenden.",
+          "ru": "Действует только для дисплеев, у которых режим установлен на Глобальный URL. Главным переключателем можно применить глобальный URL сразу ко всем дисплеям.",
+          "pt": "Só afeta os displays cujo modo está definido como URL global. Use o interruptor principal para aplicar a URL global a todos os displays de uma vez.",
+          "nl": "Werkt alleen voor displays waarvan de modus op Globale URL staat. Met de hoofdschakelaar pas je de globale URL in één keer op alle displays toe.",
+          "fr": "N'affecte que les écrans dont le mode est réglé sur URL globale. Utilisez l'interrupteur principal pour appliquer l'URL globale à tous les écrans d'un coup.",
+          "it": "Interessa solo i display il cui modo è impostato su URL globale. Usa l'interruttore principale per applicare l'URL globale a tutti i display in una volta.",
+          "es": "Solo afecta a las pantallas cuyo modo está en URL global. Usa el interruptor principal para aplicar la URL global a todas las pantallas a la vez.",
+          "pl": "Działa tylko dla wyświetlaczy, których tryb ustawiono na Globalny URL. Głównym przełącznikiem można zastosować globalny URL do wszystkich wyświetlaczy naraz.",
+          "uk": "Діє лише для дисплеїв, режим яких встановлено на Глобальний URL. Головним перемикачем можна застосувати глобальний URL одразу до всіх дисплеїв.",
+          "zh-cn": "仅对模式设为“全局 URL”的显示器生效。使用主开关可一次性将全局 URL 应用到所有显示器。"
+        }
       },
       "native": {}
     },
@@ -404,23 +430,36 @@
       "type": "state",
       "common": {
         "name": {
-          "en": "Global manual URL (used when mode='manual')",
-          "de": "Globale manuelle URL (genutzt wenn mode='manual')",
-          "ru": "Глобальный ручной URL (используется при mode='manual')",
-          "pt": "URL manual global (usado quando mode='manual')",
-          "nl": "Globale handmatige URL (gebruikt als mode='manual')",
-          "fr": "URL manuelle globale (utilisée quand mode='manual')",
-          "it": "URL manuale globale (usato quando mode='manual')",
-          "es": "URL manual global (se usa cuando mode='manual')",
-          "pl": "Globalny ręczny URL (gdy mode='manual')",
-          "uk": "Глобальний ручний URL (коли mode='manual')",
-          "zh-cn": "全局手动 URL（当 mode='manual' 时使用）"
+          "en": "Global manual URL",
+          "de": "Globale manuelle URL",
+          "ru": "Глобальный ручной URL",
+          "pt": "URL manual global",
+          "nl": "Globale handmatige URL",
+          "fr": "URL manuelle globale",
+          "it": "URL manuale globale",
+          "es": "URL manual global",
+          "pl": "Globalny ręczny URL",
+          "uk": "Глобальний ручний URL",
+          "zh-cn": "全局手动 URL"
         },
         "type": "string",
         "role": "url",
         "read": true,
         "write": true,
-        "def": ""
+        "def": "",
+        "desc": {
+          "en": "The URL used when the global redirect mode is set to Manual URL.",
+          "de": "Die URL, die genutzt wird, wenn der globale Weiterleitungs-Modus auf Manuelle URL steht.",
+          "ru": "URL, который используется, когда глобальный режим перенаправления установлен на Ручной URL.",
+          "pt": "A URL usada quando o modo de redirecionamento global está definido como URL manual.",
+          "nl": "De URL die wordt gebruikt wanneer de globale doorstuurmodus op Handmatige URL staat.",
+          "fr": "L'URL utilisée lorsque le mode de redirection global est réglé sur URL manuelle.",
+          "it": "L'URL usato quando il modo di reindirizzamento globale è impostato su URL manuale.",
+          "es": "La URL que se usa cuando el modo de redirección global está en URL manual.",
+          "pl": "URL używany, gdy globalny tryb przekierowania jest ustawiony na Ręczny URL.",
+          "uk": "URL, що використовується, коли глобальний режим перенаправлення встановлено на Ручний URL.",
+          "zh-cn": "当全局重定向模式设为“手动 URL”时使用的 URL。"
+        }
       },
       "native": {}
     }

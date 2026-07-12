@@ -31,8 +31,10 @@ import {
   isValidRedirectUri,
   oneLine,
   safeStringEqual,
+  shouldAttemptReverseDns,
 } from "./coerce";
 import { buildRedirectUrl, renderAuthorizeError, renderAuthorizeForm, renderAuthorizeRedirect } from "./auth-page";
+import { tPage } from "./i18n";
 import type { ClientRegistry } from "./client-registry";
 import type { GlobalConfig } from "./global-config";
 import { renderLandingPage } from "./landing-page";
@@ -166,6 +168,10 @@ export class WebServer {
    * fall to debug to prevent log-spam under attack/probe traffic.
    */
   private readonly errorLogCooldown: Map<string, number> = new Map();
+  // I1 (v1.38.0): invalid-credentials dedup gets its OWN FIFO map so a burst of
+  // distinct-message 5xx errors can't evict the per-IP credential-warn entries (and
+  // vice-versa) — the two dedup classes must not share one eviction budget.
+  private readonly invalidCredsCooldown: Map<string, number> = new Map();
 
   /**
    * @param adapter        Adapter instance used for logging, timers and namespace.
@@ -368,14 +374,29 @@ export class WebServer {
    * @param now Aktuelle Zeit in ms (testbar).
    */
   public shouldEmitRequestErrorWarn(key: string, now: number): boolean {
-    const lastSeen = this.errorLogCooldown.get(key) ?? 0;
+    return this.emitOncePerWindow(this.errorLogCooldown, key, now);
+  }
+
+  /**
+   * First-observation-per-window decision shared by the 5xx-error and the invalid-
+   * credentials dedup. Returns `true` for the first `key` within
+   * {@link REQUEST_ERROR_COOLDOWN_MS}, then `false` until the window lapses; the map is
+   * FIFO-capped at {@link REQUEST_ERROR_COOLDOWN_CAP}. Each caller passes its OWN map
+   * (I1) so the two dedup classes can't evict each other under load.
+   *
+   * @param map The caller's dedup map (mutated in place).
+   * @param key Unique identifier for the event being deduplicated.
+   * @param now Current time in ms.
+   */
+  private emitOncePerWindow(map: Map<string, number>, key: string, now: number): boolean {
+    const lastSeen = map.get(key) ?? 0;
     if (lastSeen !== 0 && now - lastSeen <= REQUEST_ERROR_COOLDOWN_MS) {
       return false;
     }
-    if (!this.errorLogCooldown.has(key)) {
-      evictOldest(this.errorLogCooldown, REQUEST_ERROR_COOLDOWN_CAP);
+    if (!map.has(key)) {
+      evictOldest(map, REQUEST_ERROR_COOLDOWN_CAP);
     }
-    this.errorLogCooldown.set(key, now);
+    map.set(key, now);
     return true;
   }
 
@@ -469,15 +490,20 @@ export class WebServer {
   }
 
   private resolveHostnameAsync(record: ClientRecord, ip: string): void {
-    if (record.hostname || this.dnsInFlight.has(ip)) {
-      return;
-    }
-    // L6: negative cache — skip an IP that recently resolved to no hostname (the
-    // LAN norm for DHCP clients without a PTR record), so we don't fire a fresh
-    // dns.reverse + timeout timer on every 30s poll. A later IP change is a
-    // different key, so a genuinely renamed device is still picked up.
-    const lastNegative = this.dnsNegativeCache.get(ip);
-    if (lastNegative !== undefined && Date.now() - lastNegative < DNS_NEGATIVE_CACHE_MS) {
+    // I8: the skip decision (already-resolved / in-flight / L6 negative-cache) lives in
+    // the pure `shouldAttemptReverseDns` so the negative-cache window is unit-testable
+    // without driving real DNS. L6: a recently no-PTR IP (the LAN norm for DHCP clients)
+    // is skipped so we don't fire a fresh dns.reverse + timeout timer on every 30s poll;
+    // a later IP change is a different key, so a genuinely renamed device is still found.
+    if (
+      !shouldAttemptReverseDns({
+        hasHostname: !!record.hostname,
+        inFlight: this.dnsInFlight.has(ip),
+        lastNegative: this.dnsNegativeCache.get(ip),
+        now: Date.now(),
+        negativeCacheMs: DNS_NEGATIVE_CACHE_MS,
+      })
+    ) {
       return;
     }
     this.dnsInFlight.add(ip);
@@ -847,7 +873,7 @@ export class WebServer {
     // the three rejection branches show only what varies (reason + detail + log).
     const fail = (reason: string, detail: string): { ok: false; html: string } => {
       reply.status(400).type("text/html");
-      return { ok: false, html: renderAuthorizeError(reason, detail) };
+      return { ok: false, html: renderAuthorizeError(reason, detail, this.systemLanguage) };
     };
     if (responseType !== "code") {
       this.adapter.log.debug(
@@ -933,17 +959,17 @@ export class WebServer {
   }
 
   /**
-   * Log an invalid-credentials attempt, deduplicated per IP via the shared 5xx
-   * cooldown — first attempt per IP within the window at warn, repeats at debug.
-   * An app retrying with stale credentials after a password change would otherwise
-   * flood the log every minute forever. Log-dedup only — NOT a lockout (removed in
-   * v1.31.0, stays removed). v1.37.0 (M3).
+   * Log an invalid-credentials attempt, deduplicated per IP via its OWN cooldown map
+   * (I1) — first attempt per IP within the window at warn, repeats at debug. An app
+   * retrying with stale credentials after a password change would otherwise flood the
+   * log every minute forever. Log-dedup only — NOT a lockout (removed in v1.31.0, stays
+   * removed). v1.37.0 (M3).
    *
    * @param ip Client IP, or null.
    */
   private logInvalidCredentials(ip: string | null): void {
     const suffix = ip ? ` (IP ${ip})` : "";
-    if (this.shouldEmitRequestErrorWarn(`invalid-credentials:${ip ?? "?"}`, Date.now())) {
+    if (this.emitOncePerWindow(this.invalidCredsCooldown, `invalid-credentials:${ip ?? "?"}`, Date.now())) {
       this.adapter.log.warn(`Invalid credentials${suffix}`);
     } else {
       this.adapter.log.debug(`Invalid credentials (repeat)${suffix}`);
@@ -993,7 +1019,11 @@ export class WebServer {
         `Authorize form rendered — client_id=${oneLine(v.clientId)} redirect_uri-host=${redirectHost}`,
       );
       reply.type("text/html");
-      return renderAuthorizeForm({ clientId: v.clientId, redirectUri: v.redirectUri, state });
+      return renderAuthorizeForm(
+        { clientId: v.clientId, redirectUri: v.redirectUri, state },
+        undefined,
+        this.systemLanguage,
+      );
     });
 
     this.app.post<{
@@ -1026,7 +1056,8 @@ export class WebServer {
         reply.status(401).type("text/html");
         return renderAuthorizeForm(
           { clientId: v.clientId, redirectUri: v.redirectUri, state },
-          "Invalid username or password.",
+          tPage("authInvalidCredentials", this.systemLanguage),
+          this.systemLanguage,
         );
       }
 
