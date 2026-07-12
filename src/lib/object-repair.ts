@@ -4,7 +4,7 @@
  */
 type RepairAdapter = Pick<
   ioBroker.Adapter,
-  "getStateAsync" | "delObjectAsync" | "setObjectNotExistsAsync" | "setState"
+  "getStateAsync" | "delObjectAsync" | "setObjectNotExistsAsync" | "setState" | "log"
 >;
 
 /**
@@ -22,7 +22,15 @@ type RepairAdapter = Pick<
  * never triggers command logic. The id MUST be a leaf state (delObject on a
  * parent would recurse into children).
  *
- * @param adapter Object/state operations.
+ * The delObject→setObjectNotExists pair is not atomic: if the recreate (or the
+ * value-restore) fails after delObject already succeeded, the datapoint would vanish
+ * — and its value with it — silently, resetting a client's redirect selection on the
+ * next restart. There is no atomic alternative (setObject is the banned S5054 path,
+ * extendObject re-introduces the React-#31 stale-key bug), so a failure in that window
+ * is surfaced as a `warn` (not swallowed, not thrown — callers batch these under
+ * Promise.all and one broken datapoint must not abort the rest). v1.38.0 (L2).
+ *
+ * @param adapter Object/state operations + log.
  * @param id Full leaf-state path.
  * @param prepared The read-back object with its desired `common` already set.
  */
@@ -33,8 +41,14 @@ export async function replaceObjectPreservingValue(
 ): Promise<void> {
   const prev = await adapter.getStateAsync(id);
   await adapter.delObjectAsync(id);
-  await adapter.setObjectNotExistsAsync(id, prepared);
-  if (prev && prev.val !== null && prev.val !== undefined) {
-    await adapter.setState(id, { val: prev.val, ack: true });
+  try {
+    await adapter.setObjectNotExistsAsync(id, prepared);
+    if (prev && prev.val !== null && prev.val !== undefined) {
+      await adapter.setState(id, { val: prev.val, ack: true });
+    }
+  } catch (err) {
+    adapter.log.warn(
+      `Object repair for ${id} failed after delete — the datapoint may be missing until the next restart: ${String(err)}`,
+    );
   }
 }

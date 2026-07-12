@@ -47,7 +47,8 @@ __export(coerce_exports, {
   parseModeWrite: () => parseModeWrite,
   safeGetState: () => safeGetState,
   safeStringEqual: () => safeStringEqual,
-  shallowStatesEqual: () => shallowStatesEqual
+  shallowStatesEqual: () => shallowStatesEqual,
+  shouldAttemptReverseDns: () => shouldAttemptReverseDns
 });
 module.exports = __toCommonJS(coerce_exports);
 var import_node_crypto = __toESM(require("node:crypto"));
@@ -240,6 +241,15 @@ function shallowStatesEqual(a, b) {
 function oneLine(value) {
   return value.replace(/[\r\n\t\0\v\f\u2028\u2029]+/g, " ");
 }
+function shouldAttemptReverseDns(opts) {
+  if (opts.hasHostname || opts.inFlight) {
+    return false;
+  }
+  if (opts.lastNegative !== void 0 && opts.now - opts.lastNegative < opts.negativeCacheMs) {
+    return false;
+  }
+  return true;
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   buildDropdownStates,
@@ -261,6 +271,7 @@ function oneLine(value) {
   parseModeWrite,
   safeGetState,
   safeStringEqual,
-  shallowStatesEqual
+  shallowStatesEqual,
+  shouldAttemptReverseDns
 });
 //# sourceMappingURL=coerce.js.map

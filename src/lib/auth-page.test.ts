@@ -1,3 +1,30 @@
+// The form/error pages now pull their copy from admin/i18n via adapter-core I18n
+// (L7) — mock it to serve the real translations from the JSON files (same pattern as
+// landing-page.test / webserver.test).
+vi.mock("@iobroker/adapter-core", async () => {
+  const { readdirSync, readFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const i18nDir = join(__dirname, "../../admin/i18n");
+  const i18nData: Record<string, Record<string, string>> = {};
+  for (const f of readdirSync(i18nDir).filter(f => f.endsWith(".json"))) {
+    i18nData[f.replace(".json", "")] = JSON.parse(readFileSync(join(i18nDir, f), "utf8"));
+  }
+  return {
+    I18n: {
+      getTranslatedObject: vi.fn((key: string) => {
+        const result: Record<string, string> = {};
+        for (const [lang, data] of Object.entries(i18nData)) {
+          if (data[key]) {
+            result[lang] = data[key];
+          }
+        }
+        return Object.keys(result).length > 0 ? result : { en: key };
+      }),
+      translate: vi.fn((key: string) => i18nData.en?.[key] ?? key),
+    },
+  };
+});
+
 import { buildRedirectUrl, renderAuthorizeError, renderAuthorizeForm, renderAuthorizeRedirect } from "./auth-page";
 
 describe("auth-page", () => {
@@ -43,6 +70,23 @@ describe("auth-page", () => {
       const html = renderAuthorizeError("inv<script>", "bad <b>thing</b>");
       expect(html).to.not.include("<script>");
       expect(html).to.include("&lt;script&gt;");
+    });
+  });
+
+  describe("localizes the visible copy (L7)", () => {
+    it("renders the login form in the requested language but keeps the Home Assistant brand", () => {
+      const html = renderAuthorizeForm({ clientId: "c", redirectUri: "https://x/cb" }, undefined, "de");
+      expect(html).to.include("Melde dich an, um dieses Display zu autorisieren."); // authSubtitle
+      expect(html).to.include(">Anmelden</button>"); // authSignIn
+      expect(html).to.include("<h1>Home Assistant</h1>"); // brand stays hardcoded
+      expect(html).to.include('lang="de"');
+    });
+
+    it("renders a localized error title + user hint but keeps the technical reason", () => {
+      const html = renderAuthorizeError("invalid_request", "malformed redirect_uri", "de");
+      expect(html).to.include("Autorisierung fehlgeschlagen"); // authErrorTitle
+      expect(html).to.include("Bitte prüfe die Server-Adresse"); // authErrorHint
+      expect(html).to.include("invalid_request"); // technical reason retained for support
     });
   });
 });

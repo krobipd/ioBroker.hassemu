@@ -120,7 +120,7 @@ class HassEmu extends utils.Adapter {
         this.webServer = this.makeWebServer(instanceUuid);
         await this.webServer.start();
       } catch (err) {
-        this.log.error(`Web server failed to start: ${String(err)}`);
+        this.log.debug(`Web server failed to start: ${String(err)}`);
         this.terminate(11);
         return;
       }
@@ -141,7 +141,7 @@ class HassEmu extends utils.Adapter {
       }
       await this.setState("info.connection", { val: true, ack: true });
       const bindAddr = this.config.bindAddress || "0.0.0.0";
-      const mdnsSuffix = this.config.mdnsEnabled ? mdnsActive ? ", mDNS active" : ", mDNS FAILED" : "";
+      const mdnsSuffix = this.config.mdnsEnabled ? mdnsActive ? ", mDNS started" : ", mDNS FAILED" : "";
       this.log.info(`HA emulation running on ${bindAddr}:${this.config.port}${mdnsSuffix}`);
     } catch (err) {
       this.log.error(`onReady failed: ${String(err)}`);
@@ -313,8 +313,8 @@ class HassEmu extends utils.Adapter {
         } else if (globalParsed === "enabled") {
           await globalConfig.handleEnabledWrite(state.val);
           await this.applyMasterSwitch(globalConfig.isEnabled());
-          return;
         }
+        return;
       }
       if (id === `${this.namespace}.info.refreshUrls` && state.val === true) {
         await this.handleRefreshUrlsWrite();
@@ -333,6 +333,7 @@ class HassEmu extends utils.Adapter {
     if (!this.urlDiscovery) {
       return;
     }
+    this.urlDiscovery.cancelRefresh();
     try {
       await this.urlDiscovery.collect();
       this.log.debug(`URL list refreshed on user request`);

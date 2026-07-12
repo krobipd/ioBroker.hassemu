@@ -10,6 +10,7 @@ import { replaceObjectPreservingValue } from "./object-repair";
 function makeAdapter() {
   const objects = new Map<string, ioBroker.SettableObject>();
   const states = new Map<string, { val: unknown; ack: boolean }>();
+  const logs: { level: string; msg: string }[] = [];
   const adapter = {
     getStateAsync: async (id: string) => states.get(id) ?? null,
     delObjectAsync: async (id: string) => {
@@ -24,8 +25,14 @@ function makeAdapter() {
     setState: async (id: string, value: { val: unknown; ack?: boolean }) => {
       states.set(id, { val: value.val, ack: value.ack ?? false });
     },
+    log: {
+      debug: (m: string) => void logs.push({ level: "debug", msg: m }),
+      info: (m: string) => void logs.push({ level: "info", msg: m }),
+      warn: (m: string) => void logs.push({ level: "warn", msg: m }),
+      error: (m: string) => void logs.push({ level: "error", msg: m }),
+    },
   };
-  return { objects, states, adapter };
+  return { objects, states, logs, adapter };
 }
 
 describe("replaceObjectPreservingValue", () => {
@@ -60,5 +67,20 @@ describe("replaceObjectPreservingValue", () => {
       { type: "state", common: { states: {} }, native: {} } as unknown as ioBroker.SettableObject,
     );
     expect(states.has("clients.new.mode")).toBe(false);
+  });
+
+  it("warns (does not throw) when the recreate fails after delObject (L2)", async () => {
+    const { logs, adapter } = makeAdapter();
+    // delObject has already dropped the datapoint; make the recreate fail.
+    adapter.setObjectNotExistsAsync = async () => {
+      throw new Error("broker down");
+    };
+    await replaceObjectPreservingValue(
+      adapter as never,
+      "clients.abc.mode",
+      { type: "state", common: { states: {} }, native: {} } as unknown as ioBroker.SettableObject,
+    );
+    const warned = logs.some(l => l.level === "warn" && l.msg.includes("clients.abc.mode") && l.msg.includes("missing"));
+    expect(warned, "a warn surfaces the object-loss window").toBe(true);
   });
 });

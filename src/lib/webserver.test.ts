@@ -83,11 +83,14 @@ function createMockAdapter(namespace = "hassemu.0"): {
       },
       setTimeout: () => undefined,
       clearTimeout: () => undefined,
-      getForeignObjectsAsync: async (pattern: string) => {
+      getForeignObjectsAsync: async (pattern: string, type?: string) => {
         const prefix = pattern.replace("*", "");
         const out: Record<string, ObjEntry> = {};
+        // Type-faithful to js-controller: no type argument → 'state' view only
+        // (never channel/device containers). A permissive mock hid the H1 regression.
+        const wanted = type ?? "state";
         for (const [id, obj] of store.objects) {
-          if (id.startsWith(prefix) && (obj.type === "channel" || obj.type === "device")) {
+          if (id.startsWith(prefix) && obj.type === wanted) {
             out[id] = obj;
           }
         }
@@ -490,6 +493,30 @@ describe("WebServer", () => {
       });
       expect(r2.statusCode).to.equal(400);
       expect((r2.json() as { errors: { base: string } }).errors.base).to.equal("invalid_auth");
+
+      await s["app"].close();
+    });
+
+    it("dedups the invalid-credentials warning per IP — first warn, repeat debug (M3/I1)", async () => {
+      const { s, store } = await buildServer({ config: { authRequired: true } });
+      const attempt = async (): Promise<void> => {
+        const r1 = await s.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
+        const flowId = (r1.json() as { flow_id: string }).flow_id;
+        await s.inject({
+          method: "POST",
+          url: `/auth/login_flow/${flowId}`,
+          payload: { username: "wrong", password: "wrong" },
+        });
+      };
+      await attempt();
+      await attempt();
+
+      const warns = store.logs.filter(l => l.level === "warn" && l.msg.includes("Invalid credentials"));
+      const repeatDebugs = store.logs.filter(
+        l => l.level === "debug" && l.msg.includes("Invalid credentials") && l.msg.includes("repeat"),
+      );
+      expect(warns.length, "first attempt warns once").to.equal(1);
+      expect(repeatDebugs.length, "the repeat from the same IP drops to debug").to.equal(1);
 
       await s["app"].close();
     });

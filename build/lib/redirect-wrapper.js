@@ -42,7 +42,6 @@ function renderRedirectWrapper(target, clientId, language = "en", ip = null) {
 html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden;}
 iframe{display:block;border:0;margin:0;padding:0;position:fixed;top:0;left:0;width:100vw;height:100vh;background:#000;z-index:1;}
 #hassemu-down{display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:#0f172a;color:#f1f5f9;font:16px/1.5 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;align-items:center;justify-content:center;padding:1.5rem;box-sizing:border-box;z-index:10;}
-#hassemu-down[hidden]{display:none;}
 #hassemu-down.visible{display:flex;}
 ${(0, import_html_shared.cardTableCss)(
     {

@@ -110,11 +110,22 @@ export class ClientRegistry {
   async restore(): Promise<void> {
     let objects: Record<string, ioBroker.Object> = {};
     try {
-      // I22 (v1.37.0): query WITHOUT a type filter so both legacy `channel` client
-      // objects and current `device` ones are found (during/after the channel→device
-      // migration). Sub-states (clients.<id>.mode …) come back too, but restoreChannel
-      // skips them (their id contains a dot).
-      objects = (await this.adapter.getForeignObjectsAsync(`${this.adapter.namespace}.${CLIENTS_PREFIX}*`)) ?? {};
+      // Query each client-container type EXPLICITLY and merge. A string pattern with
+      // NO type argument resolves to js-controller's `state` object view
+      // (`getObjectView('system', type || 'state')`, verified in js-controller v7.2.2),
+      // so it returns ONLY sub-states — NEVER the `device`/`channel` client containers.
+      // restoreChannel then skips every state (its id contains a dot) → restore()
+      // silently loaded ZERO clients (regression from v1.37.0/I22, which dropped the
+      // previous `"channel"` type filter). Both types are required because the
+      // channel→device migration (I22) is still in flight: legacy installs carry
+      // `channel` containers, migrated/new ones carry `device`. Fleet gotcha:
+      // reference_getforeignobjects_state_default (hueemu v1.12.0 hit the same class).
+      const pattern = `${this.adapter.namespace}.${CLIENTS_PREFIX}*`;
+      const [devices, channels] = await Promise.all([
+        this.adapter.getForeignObjectsAsync(pattern, "device"),
+        this.adapter.getForeignObjectsAsync(pattern, "channel"),
+      ]);
+      objects = { ...(channels ?? {}), ...(devices ?? {}) };
     } catch (err) {
       // A total restore failure is user-visible: every known display is re-created
       // as a fresh client (duplicate objects, "lost" config). Warn, not debug —
@@ -218,7 +229,7 @@ export class ClientRegistry {
       // ensure the v1.2.0+ objects (`mode`, `manualUrl`) exist before any
       // state writes from migration land — otherwise js-controller logs
       // "State has no existing object" warnings.
-      await this.ensureObjects(record);
+      await this.ensureObjects(record, false);
       // Promote a blank mode value to the string "0" so the dropdown renders the
       // `0='---'` option as selected. v1.2.0 installs left the value as `''`
       // which matches no common.states entry. Reuses `mode` from the parallel
@@ -824,9 +835,12 @@ export class ClientRegistry {
    * both `restore()` (so legacy v1.1.x clients gain the new mode/manualUrl
    * objects before migration writes states) and `createClient()`.
    *
-   * @param record Client to create or ensure objects for.
+   * @param record        Client to create or ensure objects for.
+   * @param refreshStates  When true (runtime) the mode dropdown states are compared and
+   *                       refreshed; when false (restore, before URL discovery) only a
+   *                       broken schema is repaired and states are left untouched (L1).
    */
-  private async ensureObjects(record: ClientRecord): Promise<void> {
+  private async ensureObjects(record: ClientRecord, refreshStates = true): Promise<void> {
     const { id, cookie, ip, hostname } = record;
     const mergedStates = this.buildModeStates();
 
@@ -854,51 +868,57 @@ export class ClientRegistry {
     //   - `clients.<id>.manualUrl` bleibt extendObject — kein states-Feld,
     //     daher kein i18n-Object-Risiko.
     const modeFullCommon: ioBroker.StateCommon = {
-      // tName returns StringOrTranslated, which common.name accepts directly.
+      // tName returns StringOrTranslated, which common.name/desc accept directly.
       name: tName("clientMode"),
+      // M3 (v1.38.0): explain the mode dropdown (incl. the "---" landing-page option)
+      // right on the datapoint. New/repaired objects carry it; existing valid objects
+      // are intentionally not rewritten just to add a doc field (would defeat L1).
+      desc: tName("clientModeDesc"),
       // 'mixed' future-proofs against the upcoming js-controller
       // strict-type cast (see govee-smart v1.11.0 pattern).
       type: "mixed",
       role: "state",
       read: true,
       write: true,
-      def: 0,
+      // I19: no-choice sentinel is the STRING "0" everywhere (matches the dropdown key
+      // built by buildDropdownStates); a numeric default would be a lone drift from
+      // that convention. v1.38.0 (I2).
+      def: "0",
       states: mergedStates,
     };
-    const ensureModeObject = async (): Promise<void> => {
-      const existing = await this.adapter.getObjectAsync(`clients.${id}.mode`);
-      if (existing) {
-        // ensureObjects runs on every restart for every client. Skip the rewrite
-        // when the object already matches the desired schema (dropdown states
-        // included) — an unconditional setObject was 1 write/client/start plus an
-        // objectChange fan-out for no change. Any mismatch falls through to a full
-        // repair below. v1.37.0 (I6).
-        const c = existing.common;
-        if (
-          existing.type === "state" &&
-          c?.type === "mixed" &&
-          c.role === "state" &&
-          shallowStatesEqual(c.states, mergedStates)
-        ) {
-          return;
-        }
-        const preservedName = existing.common?.name;
-        existing.common = { ...existing.common, ...modeFullCommon };
-        if (preservedName !== undefined) {
-          existing.common.name = preservedName;
-        }
-        existing.type = "state";
-        await replaceObjectPreservingValue(this.adapter, `clients.${id}.mode`, existing);
-      } else {
-        await this.adapter.setObjectNotExistsAsync(`clients.${id}.mode`, {
-          type: "state",
-          common: modeFullCommon,
-          native: {},
-        });
+    const ensureModeObject = async (refreshStates: boolean): Promise<void> => {
+      const path = `clients.${id}.mode`;
+      const existing = await this.adapter.getObjectAsync(path);
+      if (!existing) {
+        await this.adapter.setObjectNotExistsAsync(path, { type: "state", common: modeFullCommon, native: {} });
+        return;
       }
+      // ensureObjects runs on every restart for every client. Skip the rewrite when the
+      // object already matches the desired schema — an unconditional replace was 1
+      // write/client/start plus an objectChange fan-out for no change (I6). On the
+      // RESTORE pass (refreshStates=false) currentUrlStates is still empty (discovery
+      // runs later), so mergedStates carries no URL keys; comparing/writing states here
+      // would STRIP the persisted URLs only for syncUrlDropdown to write them straight
+      // back — 2× object replace per client per restart (L1 v1.38.0). syncUrlDropdown
+      // is the single states authority, so on restore we repair only a broken schema
+      // and never touch states.
+      const c = existing.common;
+      const schemaOk = existing.type === "state" && c?.type === "mixed" && c.role === "state";
+      const statesOk = refreshStates ? shallowStatesEqual(c?.states, mergedStates) : true;
+      if (schemaOk && statesOk) {
+        return;
+      }
+      const preservedName = c?.name;
+      const preservedStates = refreshStates ? mergedStates : (c?.states ?? mergedStates);
+      existing.common = { ...c, ...modeFullCommon, states: preservedStates };
+      if (preservedName !== undefined) {
+        existing.common.name = preservedName;
+      }
+      existing.type = "state";
+      await replaceObjectPreservingValue(this.adapter, path, existing);
     };
     await Promise.all([
-      ensureModeObject(),
+      ensureModeObject(refreshStates),
       this.adapter.extendObject(
         `clients.${id}.manualUrl`,
         {
@@ -964,11 +984,10 @@ export class ClientRegistry {
       // so record.hostname stays null and this read-before-overwrite is the only
       // guard protecting a user rename across an IP change. v1.36.0 (C4).
       if (!record.hostname) {
-        const obj = await this.adapter.getObjectAsync(`clients.${record.id}`);
-        const currentName = obj?.common?.name;
-        if (currentName === undefined || (typeof currentName === "string" && currentName === previousIp)) {
-          await this.adapter.extendObject(`clients.${record.id}`, { common: { name: ip } });
-        }
+        // Only the previous auto-IP counts as "auto" here — deliberately NOT record.id:
+        // a web request always carries an IP, so a client is never id-named in practice,
+        // and keeping the set minimal preserves the exact pre-v1.38.0 behavior. L4.
+        await this.applyAutoName(record.id, ip, [previousIp]);
       }
     }
     if (hostname && hostname !== record.hostname) {
@@ -1011,14 +1030,28 @@ export class ClientRegistry {
   private async applyHostname(record: ClientRecord, hostname: string): Promise<void> {
     const previousHostname = record.hostname;
     record.hostname = hostname;
-    const obj = await this.adapter.getObjectAsync(`clients.${record.id}`);
+    await this.applyAutoName(record.id, hostname, [previousHostname, record.ip, record.id]);
+  }
+
+  /**
+   * Write `newName` to the client channel's `common.name`, but ONLY when the current
+   * name is still an auto-assigned value (one of `autoValues`, or unset) — never clobber
+   * a name the user set in the admin UI. onObjectChange does not observe clients.* renames,
+   * so record.hostname can't be relied on; this read-before-overwrite is the guard. The IP
+   * branch and the reverse-DNS branch shared this logic verbatim before it was consolidated
+   * here. v1.36.0 (C4) / v1.37.0 (M1) / v1.38.0 (L4).
+   *
+   * @param recordId   Client id (channel is `clients.<recordId>`).
+   * @param newName    Name to write when the current one is still auto.
+   * @param autoValues Values considered auto-assigned (a null entry never matches a string name).
+   */
+  private async applyAutoName(recordId: string, newName: string, autoValues: (string | null)[]): Promise<void> {
+    const obj = await this.adapter.getObjectAsync(`clients.${recordId}`);
     const currentName = obj?.common?.name;
     const isAutoName =
-      currentName === undefined ||
-      (typeof currentName === "string" &&
-        (currentName === previousHostname || currentName === record.ip || currentName === record.id));
+      currentName === undefined || (typeof currentName === "string" && autoValues.includes(currentName));
     if (isAutoName) {
-      await this.adapter.extendObject(`clients.${record.id}`, { common: { name: hostname } });
+      await this.adapter.extendObject(`clients.${recordId}`, { common: { name: newName } });
     }
   }
 

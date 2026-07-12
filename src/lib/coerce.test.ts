@@ -12,6 +12,7 @@ import {
   isValidRedirectUri,
   oneLine,
   safeStringEqual,
+  shouldAttemptReverseDns,
 } from "./coerce";
 
 describe("coerce", () => {
@@ -170,42 +171,6 @@ describe("coerce", () => {
       expect(coerceSafeUrl(null)).to.be.null;
       expect(coerceSafeUrl(42)).to.be.null;
       expect(coerceSafeUrl({})).to.be.null;
-    });
-  });
-
-  describe("coerceSafeUrl (rejection branches)", () => {
-    // Every rejection branch (bad scheme, credentials, unparseable, length)
-    // is exercised through the public coerceSafeUrl boundary validator.
-    it("returns the URL for OK URLs", () => {
-      expect(coerceSafeUrl("http://example.com/")).to.equal("http://example.com/");
-    });
-
-    it("rejects javascript: scheme", () => {
-      expect(coerceSafeUrl("javascript:alert(1)")).to.be.null;
-    });
-
-    it("rejects data: scheme", () => {
-      expect(coerceSafeUrl("data:text/html,<script>x</script>")).to.be.null;
-    });
-
-    it("rejects credentials-in-url (user:pass)", () => {
-      expect(coerceSafeUrl("https://user:pass@example.com/")).to.be.null;
-    });
-
-    it("rejects unparseable strings", () => {
-      expect(coerceSafeUrl("not a url")).to.be.null;
-    });
-
-    it("rejects empty string", () => {
-      expect(coerceSafeUrl("")).to.be.null;
-    });
-
-    it("rejects >2048 chars", () => {
-      expect(coerceSafeUrl("http://x.com/" + "a".repeat(2050))).to.be.null;
-    });
-
-    it("rejects non-strings", () => {
-      expect(coerceSafeUrl(42)).to.be.null;
     });
   });
 
@@ -476,6 +441,26 @@ describe("coerce", () => {
       for (const v of [0, "0", " ", "x", false, {}]) {
         expect(isEmptyValue(v), `v=${JSON.stringify(v)}`).to.be.false;
       }
+    });
+  });
+
+  describe("shouldAttemptReverseDns (I8 v1.38.0)", () => {
+    const TTL = 30_000;
+    const base = { hasHostname: false, inFlight: false, lastNegative: undefined, now: 100_000, negativeCacheMs: TTL };
+    it("attempts when nothing blocks it", () => {
+      expect(shouldAttemptReverseDns(base)).to.be.true;
+    });
+    it("skips when the client already has a hostname", () => {
+      expect(shouldAttemptReverseDns({ ...base, hasHostname: true })).to.be.false;
+    });
+    it("skips when a lookup is already in flight", () => {
+      expect(shouldAttemptReverseDns({ ...base, inFlight: true })).to.be.false;
+    });
+    it("skips within the negative-cache window (recent no-PTR result)", () => {
+      expect(shouldAttemptReverseDns({ ...base, lastNegative: base.now - (TTL - 1) })).to.be.false;
+    });
+    it("attempts again once the negative-cache window has lapsed", () => {
+      expect(shouldAttemptReverseDns({ ...base, lastNegative: base.now - TTL })).to.be.true;
     });
   });
 });

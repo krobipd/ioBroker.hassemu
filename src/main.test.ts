@@ -112,8 +112,11 @@ vi.mock("@iobroker/adapter-core", () => {
     async getForeignObjectsAsync(pattern: string, type?: string): Promise<Record<string, ObjEntry>> {
       const prefix = pattern.replace("*", "");
       const out: Record<string, ObjEntry> = {};
+      // Type-faithful to js-controller: no type argument → 'state' view only
+      // (never channel/device containers). A permissive mock hid the H1 regression.
+      const wanted = type ?? "state";
       for (const [id, obj] of this.objects) {
-        if (id.startsWith(prefix) && (!type || obj.type === type)) {
+        if (id.startsWith(prefix) && obj.type === wanted) {
           out[id] = obj;
         }
       }
@@ -337,14 +340,17 @@ describe("HassEmu onReady", () => {
     expect(stub.terminations).toEqual([11]);
     expect(stub.stateSubscriptions).toEqual([]);
     expect(stub.states.get("hassemu.0.info.connection")).toEqual({ val: false, ack: true });
-    expect(logsOf(stub, "error").some(m => m.includes("Web server failed to start"))).toBe(true);
+    // I5 (v1.38.0): the raw error echo moved to debug — webServer.start() already logged
+    // a friendly error, so main.ts must not print a second error line for the same failure.
+    expect(logsOf(stub, "error").some(m => m.includes("Web server failed to start"))).toBe(false);
+    expect(logsOf(stub, "debug").some(m => m.includes("Web server failed to start"))).toBe(true);
   });
 
-  it("mdnsEnabled=true + active mDNS → 'mDNS active' suffix in the running log", async () => {
+  it("mdnsEnabled=true + active mDNS → 'mDNS started' suffix in the running log", async () => {
     const { internal, stub, mdns } = setup({ mdnsEnabled: true });
     await internal.onReady();
     expect(mdns.start).toHaveBeenCalledTimes(1);
-    expect(logsOf(stub, "info").some(m => m.endsWith(", mDNS active"))).toBe(true);
+    expect(logsOf(stub, "info").some(m => m.endsWith(", mDNS started"))).toBe(true);
   });
 
   it("mdnsEnabled=true + failed mDNS → warn + 'mDNS FAILED' suffix", async () => {
@@ -840,6 +846,12 @@ describe("onStateChange routing", () => {
     const s = await readySetup();
     await s.internal.onStateChange("hassemu.0.info.refreshUrls", { val: true, ack: false });
     expect(s.discovery.collect).toHaveBeenCalledTimes(1);
+    // L3 (v1.38.0): a pending debounced refresh is cancelled first so the button click
+    // can't cause a second full broker scan ~2s later.
+    expect(s.discovery.cancelRefresh).toHaveBeenCalledTimes(1);
+    expect(s.discovery.cancelRefresh.mock.invocationCallOrder[0]).toBeLessThan(
+      s.discovery.collect.mock.invocationCallOrder[0],
+    );
     expect(s.stub.states.get("hassemu.0.info.refreshUrls")).toEqual({ val: false, ack: true });
     // I3: the success line is on debug now (no "success" on info) — the visible
     // feedback is the refreshed dropdown + the re-armed button.

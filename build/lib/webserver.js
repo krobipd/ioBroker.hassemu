@@ -41,6 +41,7 @@ var import_fastify = __toESM(require("fastify"));
 var import_constants = require("./constants");
 var import_coerce = require("./coerce");
 var import_auth_page = require("./auth-page");
+var import_i18n = require("./i18n");
 var import_landing_page = require("./landing-page");
 var import_network = require("./network");
 var import_redirect_wrapper = require("./redirect-wrapper");
@@ -123,6 +124,10 @@ class WebServer {
    * fall to debug to prevent log-spam under attack/probe traffic.
    */
   errorLogCooldown = /* @__PURE__ */ new Map();
+  // I1 (v1.38.0): invalid-credentials dedup gets its OWN FIFO map so a burst of
+  // distinct-message 5xx errors can't evict the per-IP credential-warn entries (and
+  // vice-versa) — the two dedup classes must not share one eviction budget.
+  invalidCredsCooldown = /* @__PURE__ */ new Map();
   /**
    * @param adapter        Adapter instance used for logging, timers and namespace.
    * @param config         Resolved runtime config.
@@ -256,15 +261,29 @@ class WebServer {
    * @param now Aktuelle Zeit in ms (testbar).
    */
   shouldEmitRequestErrorWarn(key, now) {
+    return this.emitOncePerWindow(this.errorLogCooldown, key, now);
+  }
+  /**
+   * First-observation-per-window decision shared by the 5xx-error and the invalid-
+   * credentials dedup. Returns `true` for the first `key` within
+   * {@link REQUEST_ERROR_COOLDOWN_MS}, then `false` until the window lapses; the map is
+   * FIFO-capped at {@link REQUEST_ERROR_COOLDOWN_CAP}. Each caller passes its OWN map
+   * (I1) so the two dedup classes can't evict each other under load.
+   *
+   * @param map The caller's dedup map (mutated in place).
+   * @param key Unique identifier for the event being deduplicated.
+   * @param now Current time in ms.
+   */
+  emitOncePerWindow(map, key, now) {
     var _a;
-    const lastSeen = (_a = this.errorLogCooldown.get(key)) != null ? _a : 0;
+    const lastSeen = (_a = map.get(key)) != null ? _a : 0;
     if (lastSeen !== 0 && now - lastSeen <= import_constants.REQUEST_ERROR_COOLDOWN_MS) {
       return false;
     }
-    if (!this.errorLogCooldown.has(key)) {
-      (0, import_coerce.evictOldest)(this.errorLogCooldown, import_constants.REQUEST_ERROR_COOLDOWN_CAP);
+    if (!map.has(key)) {
+      (0, import_coerce.evictOldest)(map, import_constants.REQUEST_ERROR_COOLDOWN_CAP);
     }
-    this.errorLogCooldown.set(key, now);
+    map.set(key, now);
     return true;
   }
   /**
@@ -340,11 +359,13 @@ class WebServer {
     return record;
   }
   resolveHostnameAsync(record, ip) {
-    if (record.hostname || this.dnsInFlight.has(ip)) {
-      return;
-    }
-    const lastNegative = this.dnsNegativeCache.get(ip);
-    if (lastNegative !== void 0 && Date.now() - lastNegative < import_constants.DNS_NEGATIVE_CACHE_MS) {
+    if (!(0, import_coerce.shouldAttemptReverseDns)({
+      hasHostname: !!record.hostname,
+      inFlight: this.dnsInFlight.has(ip),
+      lastNegative: this.dnsNegativeCache.get(ip),
+      now: Date.now(),
+      negativeCacheMs: import_constants.DNS_NEGATIVE_CACHE_MS
+    })) {
       return;
     }
     this.dnsInFlight.add(ip);
@@ -589,7 +610,7 @@ class WebServer {
   validateAuthorizeRequest(reply, method, responseType, clientId, redirectUri) {
     const fail = (reason, detail) => {
       reply.status(400).type("text/html");
-      return { ok: false, html: (0, import_auth_page.renderAuthorizeError)(reason, detail) };
+      return { ok: false, html: (0, import_auth_page.renderAuthorizeError)(reason, detail, this.systemLanguage) };
     };
     if (responseType !== "code") {
       this.adapter.log.debug(
@@ -666,17 +687,17 @@ class WebServer {
     return userOk && passOk;
   }
   /**
-   * Log an invalid-credentials attempt, deduplicated per IP via the shared 5xx
-   * cooldown — first attempt per IP within the window at warn, repeats at debug.
-   * An app retrying with stale credentials after a password change would otherwise
-   * flood the log every minute forever. Log-dedup only — NOT a lockout (removed in
-   * v1.31.0, stays removed). v1.37.0 (M3).
+   * Log an invalid-credentials attempt, deduplicated per IP via its OWN cooldown map
+   * (I1) — first attempt per IP within the window at warn, repeats at debug. An app
+   * retrying with stale credentials after a password change would otherwise flood the
+   * log every minute forever. Log-dedup only — NOT a lockout (removed in v1.31.0, stays
+   * removed). v1.37.0 (M3).
    *
    * @param ip Client IP, or null.
    */
   logInvalidCredentials(ip) {
     const suffix = ip ? ` (IP ${ip})` : "";
-    if (this.shouldEmitRequestErrorWarn(`invalid-credentials:${ip != null ? ip : "?"}`, Date.now())) {
+    if (this.emitOncePerWindow(this.invalidCredsCooldown, `invalid-credentials:${ip != null ? ip : "?"}`, Date.now())) {
       this.adapter.log.warn(`Invalid credentials${suffix}`);
     } else {
       this.adapter.log.debug(`Invalid credentials (repeat)${suffix}`);
@@ -708,7 +729,11 @@ class WebServer {
         `Authorize form rendered \u2014 client_id=${(0, import_coerce.oneLine)(v.clientId)} redirect_uri-host=${redirectHost}`
       );
       reply.type("text/html");
-      return (0, import_auth_page.renderAuthorizeForm)({ clientId: v.clientId, redirectUri: v.redirectUri, state });
+      return (0, import_auth_page.renderAuthorizeForm)(
+        { clientId: v.clientId, redirectUri: v.redirectUri, state },
+        void 0,
+        this.systemLanguage
+      );
     });
     this.app.post("/auth/authorize", PUBLIC_ROUTE, async (req, reply) => {
       var _a;
@@ -727,7 +752,8 @@ class WebServer {
         reply.status(401).type("text/html");
         return (0, import_auth_page.renderAuthorizeForm)(
           { clientId: v.clientId, redirectUri: v.redirectUri, state },
-          "Invalid username or password."
+          (0, import_i18n.tPage)("authInvalidCredentials", this.systemLanguage),
+          this.systemLanguage
         );
       }
       this.adapter.log.debug(`Authorize grant \u2014 client ${client.id}`);

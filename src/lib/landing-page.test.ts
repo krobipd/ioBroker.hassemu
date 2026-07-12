@@ -35,9 +35,10 @@ describe("landing-page", () => {
       expect(html).to.include("viewport");
     });
 
-    it("embeds the resolved datapoint path", () => {
+    it("embeds the resolved client folder path (M2: folder, not .mode)", () => {
       const html = renderLandingPage("abc123", "hassemu.0");
-      expect(html).to.include("hassemu.0.clients.abc123.mode");
+      expect(html).to.include("hassemu.0.clients.abc123");
+      expect(html).to.not.include("hassemu.0.clients.abc123.mode");
     });
 
     it("renders the shared card/table CSS with the landing (var-token) theme (L21)", () => {
@@ -158,8 +159,8 @@ describe("landing-page", () => {
         // id/ns and then escaped a second time → `a&amp;amp;b`. It must now be
         // built from the raw values and escaped exactly once.
         const html = renderLandingPage("a&b", "hassemu.0");
-        expect(html).to.include("hassemu.0.clients.a&amp;b.mode");
-        expect(html).to.not.include("a&amp;amp;b.mode");
+        expect(html).to.include("hassemu.0.clients.a&amp;b");
+        expect(html).to.not.include("a&amp;amp;b");
       });
     });
 
