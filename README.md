@@ -178,7 +178,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
-### 1.38.0 (2026-07-12)
+### 1.38.0 (2026-07-12) — stable
 
 - Known displays were re-created as new clients after every adapter restart — losing their saved redirect and login, and leaving duplicates. The display list is now restored correctly.
 - The setup screen on the display now explains how to pick a dashboard from the dropdown, or choose Manual URL and enter your own address next to it.
