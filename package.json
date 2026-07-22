@@ -37,7 +37,7 @@
     "@fastify/cookie": "^11.1.1",
     "@fastify/formbody": "^8.0.2",
     "@fastify/websocket": "^11.3.0",
-    "@iobroker/adapter-core": "^3.4.1",
+    "@iobroker/adapter-core": "^3.4.2",
     "bonjour-service": "^1.4.3",
     "fastify": "^5.10.0"
   },
