@@ -705,7 +705,7 @@ export class WebServer {
     // calls POST /api/mobile_app/registrations after the OAuth2 sign-in.
     // A 404 here surfaces as „Mobile-App-Integration nicht verfügbar" in
     // the App's onboarding screen and blocks the display from finishing
-    // setup. Detail in Ressourcen/hassemu/oauth2-browser-flow-shelly-fw26.md.
+    // setup.
     //
     // The Bearer-token check is already done by the existing auth
     // pre-handler — `/api/mobile_app/registrations` is protected by
@@ -987,7 +987,6 @@ export class WebServer {
     //   home-assistant/android UrlUtil.kt:buildAuthenticationUrl
     //   home-assistant/core indieauth.py:verify_redirect_uri
     //   home-assistant/frontend src/data/auth.ts:redirectWithAuthCode
-    // Detail: Ressourcen/hassemu/oauth2-browser-flow-shelly-fw26.md
     this.app.get<{
       Querystring: { response_type?: string; client_id?: string; redirect_uri?: string; state?: string };
     }>("/auth/authorize", PUBLIC_ROUTE, async (req, reply) => {
@@ -1472,7 +1471,7 @@ export class WebServer {
       // home-assistant/android DefaultConnectivityChecker.kt:isHomeAssistant
       // checks `name === "Home Assistant"`. Anything else (e.g. `serviceName`
       // = "ioBroker") fails the onboarding probe with "Server ist nicht
-      // Home Assistant". Detail in Ressourcen/hassemu/oauth2-browser-flow-shelly-fw26.md.
+      // Home Assistant".
       name: "Home Assistant",
       short_name: "Home Assistant",
       start_url: "/",

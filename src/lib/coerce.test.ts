@@ -260,7 +260,6 @@ describe("coerce", () => {
 
   describe("isValidRedirectUri (OAuth2, v1.29.0)", () => {
     // Source: home-assistant/core indieauth.py:verify_redirect_uri.
-    // Detail in Ressourcen/hassemu/oauth2-browser-flow-shelly-fw26.md.
 
     it("accepts HA Companion iOS callback", () => {
       expect(isValidRedirectUri("https://home-assistant.io/iOS", "homeassistant://auth-callback")).to.be.true;
