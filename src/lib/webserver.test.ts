@@ -572,7 +572,6 @@ describe("WebServer", () => {
     //   home-assistant/android UrlUtil.kt:buildAuthenticationUrl
     //   home-assistant/core indieauth.py:verify_redirect_uri
     //   home-assistant/frontend src/data/auth.ts:redirectWithAuthCode
-    // Detail in Ressourcen/hassemu/oauth2-browser-flow-shelly-fw26.md.
 
     const SHELLY_QUERY =
       "response_type=code" +

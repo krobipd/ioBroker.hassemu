@@ -1090,7 +1090,7 @@ class WebServer {
       // home-assistant/android DefaultConnectivityChecker.kt:isHomeAssistant
       // checks `name === "Home Assistant"`. Anything else (e.g. `serviceName`
       // = "ioBroker") fails the onboarding probe with "Server ist nicht
-      // Home Assistant". Detail in Ressourcen/hassemu/oauth2-browser-flow-shelly-fw26.md.
+      // Home Assistant".
       name: "Home Assistant",
       short_name: "Home Assistant",
       start_url: "/",
