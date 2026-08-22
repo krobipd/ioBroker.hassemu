@@ -28,7 +28,7 @@ vi.mock("@iobroker/adapter-core", async () => {
 import { CLIENT_COOKIE, WebServer } from "./webserver";
 import { ClientRegistry } from "./client-registry";
 import { GlobalConfig } from "./global-config";
-import { MODE_GLOBAL, MODE_MANUAL } from "./constants";
+import { COOKIE_MAX_AGE_S, MODE_GLOBAL, MODE_MANUAL } from "./constants";
 import { HA_VERSION } from "./constants";
 import type { AdapterConfig, ClientRecord } from "./types";
 
@@ -1102,6 +1102,26 @@ describe("WebServer", () => {
       expect(extractCookie(res.headers["set-cookie"])).to.match(/^[0-9a-f-]{36}$/);
     });
 
+    it("GET / sets the cookie with the attributes the display needs", async () => {
+      const res = await server.inject({ method: "GET", url: "/" });
+      const raw = String(res.headers["set-cookie"]);
+      // HttpOnly: the cookie IS the client identity — script access would let
+      // an embedded page read (and reuse) another display's identity.
+      expect(raw).to.match(/HttpOnly/i);
+      // SameSite=Lax: sent on top-level navigation (what a display does), not
+      // on a third-party embed.
+      expect(raw).to.match(/SameSite=Lax/i);
+      // NOT Secure over plain HTTP — the adapter serves HTTP on 8123, and a
+      // Secure cookie would never be sent back: every request would look like
+      // a new client and mint a fresh one.
+      expect(raw).to.not.match(/;\s*Secure/i);
+      // The exact value matters: the cookie IS the client identity, so it has
+      // to outlive reboots and firmware updates. Max-Age=0 would make it a
+      // session cookie — every display restart would mint a brand-new client
+      // and lose its configured URL.
+      expect(raw).to.include(`Max-Age=${COOKIE_MAX_AGE_S}`);
+    });
+
     it("GET / reuses existing cookie for returning clients", async () => {
       const r1 = await server.inject({ method: "GET", url: "/" });
       const cookie = extractCookie(r1.headers["set-cookie"])!;
@@ -1298,6 +1318,34 @@ describe("WebServer", () => {
       server.sessions.set("a", { created: Date.now(), clientId: "c1" });
       server.cleanupSessions();
       expect(server.sessions.size).to.equal(1);
+    });
+
+    it("keeps a session that is old but still inside the TTL", () => {
+      // A display that started the login flow a minute ago and is now typing
+      // the password. A cleanup that measures "older than zero" would drop the
+      // flow mid-login and the display would restart the whole OAuth dance.
+      server.sessions.set("in-flight", { created: Date.now() - 60_000, clientId: "c1" });
+      server.codeSessions.set("code-in-flight", { created: Date.now() - 60_000, clientId: "c1" });
+      server.cleanupSessions();
+      expect(server.sessions.has("in-flight")).to.be.true;
+      expect(server.codeSessions.has("code-in-flight")).to.be.true;
+    });
+
+    it("prunes redirect-target entries of removed clients, keeps active ones", async () => {
+      const active = await registry.identifyOrCreate(null, "10.0.0.11");
+      const removed = await registry.identifyOrCreate(null, "10.0.0.12");
+      const targets = (server as unknown as { lastRedirectTargetByClient: Map<string, string | null> })
+        .lastRedirectTargetByClient;
+      targets.set(active.id, "http://a/");
+      targets.set(removed.id, "http://b/");
+      await registry.remove(removed.id);
+
+      server.cleanupSessions();
+
+      // The map is keyed by client id and nothing else ever clears it — an
+      // entry per removed display would accumulate for the adapter's lifetime.
+      expect(targets.has(active.id)).to.be.true;
+      expect(targets.has(removed.id)).to.be.false;
     });
 
     it("prunes webhook registrations of removed clients, keeps active + unowned ones (v1.35.2)", async () => {

@@ -332,6 +332,18 @@ describe("GlobalConfig", () => {
       expect(manualUrlVal()).to.equal("");
     });
 
+    it("keeps the PREVIOUS url on an unsafe write and says why", async () => {
+      await g.handleManualUrlWrite("http://safe.example/");
+      store.logs.length = 0;
+      await g.handleManualUrlWrite("javascript:alert(1)");
+      // Reverting to "" would also look like a rejection while silently wiping
+      // a working configuration — every display delegating to global would drop
+      // to the landing page.
+      expect(manualUrlVal()).to.equal("http://safe.example/");
+      const warn = store.logs.find(l => l.level === "warn" && l.msg.includes("unsafe"));
+      expect(warn, "the rejection must be visible in the log").to.not.be.undefined;
+    });
+
     it("warns when manualUrl cleared while mode='manual'", async () => {
       await g.handleManualUrlWrite("http://x/");
       await g.handleModeWrite(MODE_MANUAL);

@@ -125,6 +125,11 @@ export class GlobalConfig {
    * @param manualUrl The `manualUrl` paired with `mode === 'manual'`.
    */
   private resolveOne(mode: unknown, manualUrl: string | null): { url: string | null; chain: string } {
+    // Deliberately without its own test: removing this shortcut changes
+    // nothing observable — a no-choice value is not a safe URL either, so the
+    // tail below returns the same `{ url: null, chain: "landing" }` (measured
+    // as an equivalent mutant in the 2026-08-22 test audit). It stays because
+    // it names the case a reader is looking for.
     if (isNoChoice(mode)) {
       return { url: null, chain: "landing" };
     }

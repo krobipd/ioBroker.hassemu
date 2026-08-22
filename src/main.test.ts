@@ -233,6 +233,8 @@ interface Internal {
   makeRegistry: () => ClientRegistry;
   makeGlobalConfig: () => GlobalConfig;
   systemLanguage: string;
+  /** Inherited adapter surface the migration tests instrument. */
+  delObjectAsync: (id: string, options?: unknown) => Promise<void>;
 }
 
 const BASE_CONFIG = {
@@ -569,6 +571,27 @@ describe("migrateVisUrlToMode", () => {
     expect(logsOf(stub, "warn").some(m => m.includes("rejected as unsafe"))).toBe(true);
   });
 
+  it("an already-migrated install performs no delete round-trips (I5)", async () => {
+    const { internal, stub } = setup();
+    internal.globalConfig = internal.makeGlobalConfig();
+    internal.registry = internal.makeRegistry();
+    await internal.registry!.identifyOrCreate(null, "10.0.0.9");
+    // No legacy visUrl anywhere — this is the state of EVERY start after the
+    // first one, so a blind delObject here is a wasted broker round-trip per
+    // client on every single adapter start.
+    const deleted: string[] = [];
+    const origDel = internal.delObjectAsync;
+    internal.delObjectAsync = async (id: string, opts?: unknown) => {
+      deleted.push(id);
+      return origDel(id, opts);
+    };
+
+    await migrateVisUrlToMode(internal as unknown as MigrationAdapter, internal.globalConfig, internal.registry);
+
+    expect(deleted.filter(id => id.includes("visUrl"))).toEqual([]);
+    internal.delObjectAsync = origDel;
+  });
+
   it("per-client legacy visUrl (safe) → mode='manual' + manualUrl + visUrl object dropped", async () => {
     const { internal, stub } = setup();
     internal.globalConfig = internal.makeGlobalConfig();
@@ -856,6 +879,16 @@ describe("onStateChange routing", () => {
     // I3: the success line is on debug now (no "success" on info) — the visible
     // feedback is the refreshed dropdown + the re-armed button.
     expect(logsOf(s.stub, "debug").some(m => m.includes("URL list refreshed"))).toBe(true);
+  });
+
+  it("info.refreshUrls=false does NOT trigger a scan", async () => {
+    const s = await readySetup();
+    // The button re-arms itself by writing false with ack — but a user (or a
+    // script) can also write false directly, ack=false. Treating that as a
+    // press means every re-arm-by-hand costs a full broker scan.
+    await s.internal.onStateChange("hassemu.0.info.refreshUrls", { val: false, ack: false });
+    expect(s.discovery.collect).not.toHaveBeenCalled();
+    expect(s.discovery.cancelRefresh).not.toHaveBeenCalled();
   });
 
   it("refresh button: collect failure warns but still re-arms the button", async () => {

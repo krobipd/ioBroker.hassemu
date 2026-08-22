@@ -255,6 +255,58 @@ describe("ClientRegistry", () => {
       expect(store.objects.get(`hassemu.0.clients.${rec.id}`)?.common?.name).to.equal("Kitchen Display");
     });
 
+    it("a known hostname wins over the IP even when the object carries no name", async () => {
+      const rec = await registry.identifyOrCreate(null, "1.1.1.1", { hostname: "tablet.local" });
+      const key = `hassemu.0.clients.${rec.id}`;
+      // An object without common.name (older layout / after an object repair)
+      // counts as "auto-named" — so the IP-change path would happily stamp the
+      // IP over a display that has a perfectly good hostname.
+      const ch = store.objects.get(key)!;
+      delete (ch.common as Record<string, unknown>).name;
+
+      await registry.identifyOrCreate(rec.cookie, "2.2.2.2");
+      expect(store.objects.get(key)?.common?.name).to.not.equal("2.2.2.2");
+    });
+
+    it("writes ip and hostname only when they actually change", async () => {
+      const rec = await registry.identifyOrCreate(null, "1.1.1.1", { hostname: "tablet.local" });
+      const ipKey = `hassemu.0.clients.${rec.id}.ip`;
+      store.states.delete(ipKey);
+      const namesBefore = store.objects.get(`hassemu.0.clients.${rec.id}`)?.common?.name;
+
+      // Every page load repeats the same ip + hostname. Re-writing them turns
+      // each request into two broker writes per display.
+      // Mark the name so ANY re-write of the hostname is visible (writing the
+      // same value back is invisible in a store-backed mock otherwise).
+      const chKey = `hassemu.0.clients.${rec.id}`;
+      const marked = store.objects.get(chKey)!;
+      marked.common = { ...marked.common, name: "MARKER" };
+
+      await registry.identifyOrCreate(rec.cookie, "1.1.1.1", { hostname: "tablet.local" });
+      await registry.identifyOrCreate(rec.cookie, "1.1.1.1", { hostname: "tablet.local" });
+      expect(store.states.has(ipKey), "no ip write for an unchanged ip").to.be.false;
+      expect(store.objects.get(chKey)?.common?.name, "no name write for an unchanged hostname").to.equal("MARKER");
+      expect(namesBefore).to.equal("tablet.local");
+
+      // The name itself is protected by a read-before-overwrite inside
+      // applyAutoName — but that read is a broker round-trip. An unchanged
+      // hostname must not even reach it: one extra read per request per
+      // display adds up on a wall of tablets.
+      let reads = 0;
+      const origGetObject = adapter.getObjectAsync;
+      adapter.getObjectAsync = async (id: string) => {
+        reads++;
+        return origGetObject(id);
+      };
+      await registry.identifyOrCreate(rec.cookie, "1.1.1.1", { hostname: "tablet.local" });
+      expect(reads, "unchanged hostname must not trigger a name read").to.equal(0);
+      adapter.getObjectAsync = origGetObject;
+
+      // A real change still lands.
+      await registry.identifyOrCreate(rec.cookie, "3.3.3.3", { hostname: "tablet.local" });
+      expect(store.states.get(ipKey)?.val).to.equal("3.3.3.3");
+    });
+
     it("keeps common.name fixed to hostname when only ip changes", async () => {
       const rec = await registry.identifyOrCreate(null, "1.1.1.1", { hostname: "tablet.local" });
       await registry.identifyOrCreate(rec.cookie, "2.2.2.2");
@@ -1101,6 +1153,40 @@ describe("ClientRegistry", () => {
       expect(flushed.has("foo")).to.be.false;
       await reg.seedLastSeen("foo", 9999);
       expect(flushed.get("foo")).to.equal(9999);
+    });
+  });
+
+  describe("touchLastSeen (throttle + resurrection guard)", () => {
+    it("writes at most once per flush interval, not on every request", async () => {
+      const built = createMockAdapter();
+      const reg = new ClientRegistry(built.adapter as never);
+      const rec = await reg.identifyOrCreate(null, "10.0.0.7");
+      const key = `hassemu.0.clients.${rec.id}`;
+      // Mark the stored value so a second write is visible.
+      built.store.objects.set(key, { ...built.store.objects.get(key)!, native: { ...(built.store.objects.get(key)!.native ?? {}), lastSeen: 1 } });
+
+      // A display polls the page every few seconds; an unthrottled upsert would
+      // be one object write per request, per display, forever.
+      await reg.identifyOrCreate(rec.cookie, "10.0.0.7");
+      await reg.identifyOrCreate(rec.cookie, "10.0.0.7");
+      expect((built.store.objects.get(key)!.native as { lastSeen: number }).lastSeen).to.equal(1);
+    });
+
+    it("never re-creates the object of a client removed mid-request", async () => {
+      const built = createMockAdapter();
+      const reg = new ClientRegistry(built.adapter as never);
+      const rec = await reg.identifyOrCreate(null, "10.0.0.8");
+      const key = `hassemu.0.clients.${rec.id}`;
+      await reg.remove(rec.id);
+      expect(built.store.objects.has(key)).to.be.false;
+
+      // The web request that was still in flight holds the record object. The
+      // fire-and-forget upsert is called directly here because the real race is
+      // not reproducible in a test; extendObject would resurrect the channel as
+      // a cookie-less orphan that nothing ever reaps.
+      (reg as unknown as { touchLastSeen(r: unknown): void }).touchLastSeen(rec);
+      await new Promise(r => setImmediate(r));
+      expect(built.store.objects.has(key), "removed client must stay removed").to.be.false;
     });
   });
 

@@ -160,6 +160,41 @@ describe("MDNSService", () => {
       service.stop(false);
       expect(adapter._timerCalls).to.deep.equal([300]);
     });
+
+    it("stop on a service that was never started does nothing at all", () => {
+      // Not even a log line: "Service stopped" for a service that never ran is
+      // a false trail when someone reads the log after an mDNS problem.
+      expect(service.isActive()).to.be.false;
+      service.stop(false);
+      expect(adapter._timerCalls).to.have.lengthOf(0);
+      expect(adapter._logs.some(l => l.msg.includes("Service stopped"))).to.be.false;
+    });
+
+    it("releases the mDNS sockets exactly once", async () => {
+      service.start();
+      let destroys = 0;
+      // Both the stop-callback and the 300 ms fallback call destroy(); a second
+      // destroy() on an already-closed bonjour instance throws inside the
+      // library (it walks closed sockets).
+      (service as unknown as { bonjour: { destroy(): void } | null }).bonjour = {
+        destroy: () => {
+          destroys++;
+        },
+      };
+      const captured: Array<() => void> = [];
+      adapter.setTimeout = (cb: () => void, ms: number): unknown => {
+        adapter._timerCalls.push(ms);
+        captured.push(cb);
+        return undefined;
+      };
+
+      service.stop(false);
+      // The library calls the stop-callback asynchronously — let it land first,
+      // then fire the fallback the way the runtime timer would.
+      await new Promise(r => setTimeout(r, 50));
+      captured.forEach(cb => cb());
+      expect(destroys).to.equal(1);
+    });
   });
 
   describe("service name", () => {
