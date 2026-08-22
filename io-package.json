@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.38.0",
+    "version": "1.38.1",
     "news": {
+      "1.38.1": {
+        "en": "Internal cleanup. No user-facing changes.",
+        "de": "Interne Aufräumarbeiten. Keine Änderungen für Nutzer.",
+        "ru": "Внутренняя очистка. Изменений для пользователей нет.",
+        "pt": "Limpeza interna. Sem alterações para o utilizador.",
+        "nl": "Interne opschoning. Geen wijzigingen voor gebruikers.",
+        "fr": "Nettoyage interne. Aucun changement pour l'utilisateur.",
+        "it": "Pulizia interna. Nessuna modifica per gli utenti.",
+        "es": "Limpieza interna. Sin cambios para el usuario.",
+        "pl": "Porządki wewnętrzne. Bez zmian dla użytkownika.",
+        "uk": "Внутрішнє прибирання. Без змін для користувачів.",
+        "zh-cn": "内部清理。用户无可见变化。"
+      },
       "1.38.0": {
         "en": "Known displays are no longer re-created as new clients after an adapter restart — saved redirects and logins are kept, and no duplicate entries pile up.",
         "de": "Bekannte Displays werden nach einem Adapter-Neustart nicht mehr als neue Clients neu angelegt — Weiterleitungen und Logins bleiben erhalten, keine Duplikate mehr.",
@@ -80,19 +93,6 @@
         "pl": "Wyświetlacze z nieaktualną rejestracją po restarcie adaptera rejestrują się teraz automatycznie ponownie; usunięcie wyświetlacza czyści też jego pozostałą rejestrację aplikacji",
         "uk": "Дисплеї із застарілою реєстрацією тепер автоматично перереєструються після перезапуску адаптера; видалення дисплея також очищає його залишкову реєстрацію застосунку",
         "zh-cn": "注册信息过期的显示设备在适配器重启后现在会自动重新注册；移除显示设备时也会清理其遗留的应用注册"
-      },
-      "1.35.1": {
-        "en": "Internal cleanup. No user-facing changes.",
-        "de": "Interne Bereinigung. Keine für Nutzer sichtbaren Änderungen.",
-        "ru": "Внутренняя очистка. Никаких изменений для пользователей.",
-        "pt": "Limpeza interna. Sem alterações visíveis para o utilizador.",
-        "nl": "Interne opruiming. Geen zichtbare wijzigingen voor gebruikers.",
-        "fr": "Nettoyage interne. Aucun changement visible pour l'utilisateur.",
-        "it": "Pulizia interna. Nessuna modifica visibile per l'utente.",
-        "es": "Limpieza interna. Sin cambios visibles para el usuario.",
-        "pl": "Wewnętrzne porządki. Brak zmian widocznych dla użytkownika.",
-        "uk": "Внутрішнє прибирання. Жодних змін для користувачів.",
-        "zh-cn": "内部清理。对用户无可见变化。"
       }
     },
     "plugins": {

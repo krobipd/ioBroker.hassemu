@@ -1,4 +1,8 @@
 # Older Changes
+## 1.35.3 (2026-06-15)
+
+- Fixed Home Assistant discovery pointing the display at the wrong address on multi-interface hosts; it now uses the address the adapter actually listens on.
+
 ## 1.35.2 (2026-06-12)
 
 - Displays whose registration became stale after an adapter restart now re-register automatically — the server previously answered in a way the companion app did not recognize as "please register again"
