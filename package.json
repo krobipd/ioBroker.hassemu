@@ -84,5 +84,12 @@
     "format:check": "prettier --check .",
     "translate": "translate-adapter",
     "release": "release-script"
+  },
+  "overrides": {
+    "mocha": {
+      "diff": "^8.0.3",
+      "serialize-javascript": "^7.0.5"
+    },
+    "esbuild": ">=0.25.0"
   }
 }
