@@ -69,6 +69,22 @@ describe("replaceObjectPreservingValue", () => {
     expect(states.has("clients.new.mode")).toBe(false);
   });
 
+  it("writes no value when the previous state carried null/undefined", async () => {
+    // The datapoint existed but never held a value. Restoring `null` would
+    // write an explicit null into a state whose type is `mixed` — the dropdown
+    // then shows an empty selection instead of falling back to its default.
+    for (const empty of [null, undefined]) {
+      const { states, adapter } = makeAdapter();
+      states.set("clients.abc.mode", { val: empty, ack: true });
+      await replaceObjectPreservingValue(
+        adapter as never,
+        "clients.abc.mode",
+        { type: "state", common: { states: {} }, native: {} } as unknown as ioBroker.SettableObject,
+      );
+      expect(states.has("clients.abc.mode"), String(empty)).toBe(false);
+    }
+  });
+
   it("warns (does not throw) when the recreate fails after delObject (L2)", async () => {
     const { logs, adapter } = makeAdapter();
     // delObject has already dropped the datapoint; make the recreate fail.

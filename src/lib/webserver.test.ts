@@ -612,6 +612,17 @@ describe("WebServer", () => {
       expect(res.headers.location).to.equal(undefined);
     });
 
+    it("GET /auth/authorize: names a MISSING parameter as invalid_request, not invalid_redirect_uri", async () => {
+      // The OAuth2 error code is contract: a client that gets
+      // "invalid_redirect_uri" goes looking at its callback allowlist, while
+      // the real problem is that it sent no client_id at all.
+      const res = await server.inject({ method: "GET", url: "/auth/authorize?response_type=code" });
+      expect(res.statusCode).to.equal(400);
+      expect(res.body).to.include("invalid_request");
+      expect(res.body).to.not.include("invalid_redirect_uri");
+      expect(res.headers.location).to.equal(undefined);
+    });
+
     it("GET /auth/authorize: rejects mismatched http(s) host (open-redirect guard)", async () => {
       const res = await server.inject({
         method: "GET",
@@ -1339,6 +1350,18 @@ describe("WebServer", () => {
       }
       expect(server.sessions.size).to.be.at.most(100);
       expect(server.sessions.has(firstFlowId), "oldest session was evicted first").to.be.false;
+    });
+
+    it("caps the auth-code map too — a code flood cannot grow it without bound", async () => {
+      // Every /auth/login_flow/:flowId mints a code that lives until it is
+      // exchanged or the cleanup timer expires it. Without its own cap a client
+      // looping the login step holds the adapter's memory hostage.
+      for (let i = 0; i < 110; i++) {
+        const r1 = await server.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
+        const flowId = (r1.json() as { flow_id: string }).flow_id;
+        await server.inject({ method: "POST", url: `/auth/login_flow/${flowId}`, payload: {} });
+      }
+      expect(server.codeSessions.size).to.be.at.most(100);
     });
 
     it("a login_flow flood does not evict an in-flight auth code (v1.36.0 S2)", async () => {

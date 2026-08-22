@@ -1,4 +1,21 @@
+import { vi } from "vitest";
+
+/** os.networkInterfaces is swappable so the interface-priority rules are testable. */
+const osMock = vi.hoisted(() => ({ interfaces: null as NodeJS.Dict<os.NetworkInterfaceInfo[]> | null }));
+vi.mock("node:os", async importOriginal => {
+  const actual = await importOriginal<typeof import("node:os")>();
+  const networkInterfaces = (): NodeJS.Dict<os.NetworkInterfaceInfo[]> =>
+    osMock.interfaces ?? actual.networkInterfaces();
+  return { ...actual, default: { ...actual, networkInterfaces }, networkInterfaces };
+});
+
+import type * as os from "node:os";
 import { generateClientId, getLocalIp, isWildcardBind, resolveAdvertisedHost } from "./network";
+
+/** Build one interface entry with only the fields getLocalIp reads. */
+function iface(address: string, family: "IPv4" | "IPv6", internal = false): os.NetworkInterfaceInfo {
+  return { address, family, internal, netmask: "", mac: "", cidr: null } as os.NetworkInterfaceInfo;
+}
 
 describe("network", () => {
   describe("getLocalIp", () => {
@@ -12,6 +29,48 @@ describe("network", () => {
       const isIPv4 = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip);
       const isIPv6 = ip.includes(":");
       expect(isIPv4 || isIPv6).to.be.true;
+    });
+  });
+
+  describe("getLocalIp — interface priority (mutation audit)", () => {
+    afterEach(() => {
+      osMock.interfaces = null;
+    });
+
+    it("never advertises a loopback address when a real one exists", () => {
+      // Order matters: the loopback comes first, so a missing internal-check
+      // would hand out 127.0.0.1 and no display on the LAN could reach us.
+      osMock.interfaces = {
+        lo: [iface("127.0.0.1", "IPv4", true)],
+        eth0: [iface("192.168.1.5", "IPv4")],
+      };
+      expect(getLocalIp()).to.equal("192.168.1.5");
+    });
+
+    it("prefers a LAN address over the Docker bridge, but falls back to it", () => {
+      // docker0 first — advertising it via mDNS gives every display an address
+      // that is unreachable from the LAN.
+      osMock.interfaces = {
+        docker0: [iface("172.17.0.1", "IPv4")],
+        br1: [iface("172.18.0.1", "IPv4")],
+        eth0: [iface("192.168.1.5", "IPv4")],
+      };
+      expect(getLocalIp()).to.equal("192.168.1.5");
+
+      // Docker-only host: the bridge is better than nothing.
+      osMock.interfaces = { docker0: [iface("172.17.0.1", "IPv4")] };
+      expect(getLocalIp()).to.equal("172.17.0.1");
+
+      // 172.16.x is a normal LAN range, NOT a Docker default bridge.
+      osMock.interfaces = { eth0: [iface("172.16.4.7", "IPv4")] };
+      expect(getLocalIp()).to.equal("172.16.4.7");
+    });
+
+    it("falls back to IPv6, then to loopback", () => {
+      osMock.interfaces = { eth0: [iface("fe80::1", "IPv6")] };
+      expect(getLocalIp()).to.equal("fe80::1");
+      osMock.interfaces = { lo: [iface("127.0.0.1", "IPv4", true)] };
+      expect(getLocalIp()).to.equal("127.0.0.1");
     });
   });
 

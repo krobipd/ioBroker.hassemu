@@ -912,6 +912,12 @@ describe("onObjectChange filter (H4 v1.13.0 / R2 v1.30.0)", () => {
     internal.urlDiscovery = discovery;
     internal.onObjectChange("system.host.pi", { type: "host" });
     internal.onObjectChange("hassemu.0.clients.abc", { type: "channel" });
+    // A DELETED object outside system.adapter.* is the case where the prefix
+    // check is the only thing standing between us and a full broker scan: the
+    // "instance add/remove" branch below fires on every obj=null. Deleting our
+    // own client states (or anything else in the system) must not trigger one.
+    internal.onObjectChange("hassemu.0.clients.abc.mode", null);
+    internal.onObjectChange("javascript.0.scriptEnabled.common", null);
     expect(discovery.scheduleRefresh).not.toHaveBeenCalled();
   });
 });

@@ -551,6 +551,23 @@ describe("ClientRegistry", () => {
       expect(restored?.refreshToken).to.be.null;
     });
 
+    it("restore() ignores a nested object below a client container", async () => {
+      const rec = await registry.identifyOrCreate(null, null);
+      // A leftover sub-container from an older layout (or a hand-created node):
+      // its id tail carries a dot, so it is NOT a client id. Restoring it would
+      // mint a phantom client named "<id>.legacy" that no display ever reaches
+      // and that the GC keeps alive because it has no lastSeen.
+      store.objects.set(`hassemu.0.clients.${rec.id}.legacy`, {
+        type: "device",
+        common: { name: "legacy" },
+        native: { cookie: crypto.randomUUID() },
+      });
+
+      const reg2 = new ClientRegistry(adapter as never);
+      await reg2.restore();
+      expect(reg2.listAll().map(r => r.id)).to.deep.equal([rec.id]);
+    });
+
     it("remove(id) clears byRefreshToken lookup", async () => {
       const rec = await registry.identifyOrCreate(null, null);
       const token = crypto.randomUUID();
@@ -684,7 +701,13 @@ describe("ClientRegistry", () => {
       const r1 = await registry.identifyOrCreate(null, "1.1.1.1");
       r1.mode = "same";
       store.logs.length = 0;
+      // Delete the persisted value: a skipped client must not have it written
+      // back. Asserting only on the absence of a log line let a full rewrite of
+      // every client's mode pass unnoticed (the master switch runs this on
+      // every toggle, so that is one broker write per display for nothing).
+      store.states.delete(`hassemu.0.clients.${r1.id}.mode`);
       await registry.bulkSetMode("same");
+      expect(store.states.has(`hassemu.0.clients.${r1.id}.mode`), "no write for an unchanged client").to.be.false;
       const info = store.logs.find(l => l.level === "info" && l.msg.includes("bulk-set"));
       expect(info).to.be.undefined;
     });

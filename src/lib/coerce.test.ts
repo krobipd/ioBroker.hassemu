@@ -1,3 +1,20 @@
+import { vi } from "vitest";
+
+/**
+ * node:crypto passes through unchanged except for a timingSafeEqual counter —
+ * the constant-time credential comparison is a security guarantee that is
+ * invisible in the return value, so the test has to see the call itself.
+ */
+const cryptoCounters = vi.hoisted(() => ({ timingSafe: 0 }));
+vi.mock("node:crypto", async importOriginal => {
+  const actual = await importOriginal<typeof import("node:crypto")>();
+  const timingSafeEqual = (a: NodeJS.ArrayBufferView, b: NodeJS.ArrayBufferView): boolean => {
+    cryptoCounters.timingSafe++;
+    return actual.timingSafeEqual(a, b);
+  };
+  return { ...actual, default: { ...actual, timingSafeEqual }, timingSafeEqual };
+});
+
 import {
   coerceFiniteNumber,
   coerceString,
@@ -11,7 +28,9 @@ import {
   isPlainObject,
   isValidRedirectUri,
   oneLine,
+  parseAdapterStateId,
   safeStringEqual,
+  shallowStatesEqual,
   shouldAttemptReverseDns,
 } from "./coerce";
 
@@ -460,6 +479,71 @@ describe("coerce", () => {
     });
     it("attempts again once the negative-cache window has lapsed", () => {
       expect(shouldAttemptReverseDns({ ...base, lastNegative: base.now - TTL })).to.be.true;
+    });
+  });
+  describe("length caps + shapes without a test (mutation audit)", () => {
+    it("rejects an over-long client_id / redirect_uri (2048-char cap)", () => {
+      const long = `https://example.com/${"a".repeat(2100)}`;
+      // Same host and scheme, so the IndieAuth rule itself would say yes —
+      // only the cap stands between the log/state layer and a 2 kB payload.
+      expect(isValidRedirectUri("https://example.com/app", long)).to.be.false;
+      expect(isValidRedirectUri(long, "https://example.com/cb")).to.be.false;
+      // Just under the cap is still accepted.
+      const ok = `https://example.com/${"a".repeat(2000)}`;
+      expect(isValidRedirectUri("https://example.com/app", ok)).to.be.true;
+    });
+
+    it("compares credentials in constant time, not with ===", () => {
+      const before = cryptoCounters.timingSafe;
+      expect(safeStringEqual("admin", "admin")).to.be.true;
+      expect(safeStringEqual("admin", "wrong")).to.be.false;
+      // A plain === would answer the same but leak the answer through timing —
+      // the guarantee only exists if the comparison really goes through
+      // crypto.timingSafeEqual.
+      expect(cryptoCounters.timingSafe).to.equal(before + 2);
+    });
+  });
+
+  describe("parseAdapterStateId", () => {
+    const NS = "hassemu.0";
+
+    it("splits a well-formed id into its parts", () => {
+      expect(parseAdapterStateId(`${NS}.clients.abc.mode`, NS, "clients.", 2)).to.deep.equal(["abc", "mode"]);
+    });
+
+    it("rejects an id from a different namespace or prefix", () => {
+      // Without this guard a write to another adapter's state would be parsed
+      // and acted on as if it were ours.
+      expect(parseAdapterStateId("other.0.clients.abc.mode", NS, "clients.", 2)).to.equal(null);
+      expect(parseAdapterStateId(`${NS}.global.mode`, NS, "clients.", 2)).to.equal(null);
+    });
+
+    it("rejects an id with the wrong number of segments", () => {
+      // Too few and too many both mean "not the state we think it is" — the
+      // caller indexes the parts positionally.
+      expect(parseAdapterStateId(`${NS}.clients.abc`, NS, "clients.", 2)).to.equal(null);
+      expect(parseAdapterStateId(`${NS}.clients.abc.mode.extra`, NS, "clients.", 2)).to.equal(null);
+    });
+  });
+
+  describe("shallowStatesEqual", () => {
+    it("treats an equal map as unchanged regardless of key order", () => {
+      expect(shallowStatesEqual({ b: "2", a: "1" }, { a: "1", b: "2" })).to.be.true;
+    });
+
+    it("reports a difference in value, key set or size", () => {
+      expect(shallowStatesEqual({ a: "1" }, { a: "2" })).to.be.false;
+      expect(shallowStatesEqual({ a: "1" }, { b: "1" })).to.be.false;
+      // Fewer AND more keys — a size-blind comparison would call the first pair
+      // equal and skip the dropdown rewrite, leaving a stale entry in the UI.
+      expect(shallowStatesEqual({ a: "1" }, { a: "1", b: "2" })).to.be.false;
+      expect(shallowStatesEqual({ a: "1", b: "2" }, { a: "1" })).to.be.false;
+    });
+
+    it("counts a malformed existing value as unequal so it gets repaired", () => {
+      for (const broken of [null, undefined, "states", 42, ["a"]]) {
+        expect(shallowStatesEqual(broken, { a: "1" }), String(broken)).to.be.false;
+      }
     });
   });
 });

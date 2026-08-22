@@ -410,6 +410,30 @@ describe("UrlDiscovery", () => {
       expect(debugs.some(l => l.includes("getForeignObjectsAsync failed"))).to.be.true;
     });
 
+    it("keeps the last good list on a broker error — listeners never see an empty map", async () => {
+      const seen: Record<string, string>[] = [];
+      const d = new UrlDiscovery(adapter, states => {
+        seen.push({ ...states });
+      });
+      adapter._instances = {
+        "system.adapter.aura.0": enabledInstance({ native: { port: 8095, secure: false, customUrl: "" } }),
+      };
+      const good = await d.collect();
+      expect(Object.keys(good).length, "precondition: something was discovered").to.be.greaterThan(0);
+      expect(seen).to.have.lengthOf(1);
+
+      // Broker hiccup on the next pass. Handing listeners `{}` would rewrite
+      // every mode dropdown to an empty option list, and a client on
+      // mode='<url>' would resolve to nothing → landing page instead of its
+      // dashboard, until the next refresh.
+      adapter.getForeignObjectsAsync = async () => {
+        throw new Error("boom");
+      };
+      const afterError = await d.collect();
+      expect(afterError).to.deep.equal(good);
+      expect(seen, "no listener call with an empty map").to.have.lengthOf(1);
+    });
+
     it("finds VIS-2 multi-project with ?<project> query (Runtime.tsx:920-923 parses window.location.search)", async () => {
       adapter._instances = {
         "system.adapter.web.0": enabledInstance({
@@ -639,6 +663,20 @@ describe("UrlDiscovery", () => {
         const result = await discovery.collect();
         const entry = Object.entries(result).find(([, label]) => label === "Aura");
         expect(entry![0]).to.match(/^http:\/\/[\d.]+:8083\/$/);
+      });
+
+      it("falls back to the default port when native.port is 0 or missing", async () => {
+        // A half-configured instance reports port 0 — building
+        // "http://host:0/" yields an address no browser can open.
+        for (const port of [0, undefined, -1]) {
+          adapter._instances = {
+            "system.adapter.aura.0": enabledInstance({ native: { port, secure: false, customUrl: "" } }),
+          };
+          const result = await discovery.collect();
+          const entry = Object.entries(result).find(([, label]) => label === "Aura");
+          expect(entry, `port=${String(port)}`).to.exist;
+          expect(entry![0], `port=${String(port)}`).to.match(/^http:\/\/[\d.]+:8095\/$/);
+        }
       });
 
       it("uses https when native.secure is true", async () => {
