@@ -109,6 +109,16 @@ vi.mock("@iobroker/adapter-core", () => {
       this.objects.set(id, obj);
     }
 
+    async extendForeignObjectAsync(id: string, obj: Partial<ObjEntry>): Promise<void> {
+      const existing = this.objects.get(id) ?? { type: "instance" };
+      this.objects.set(id, {
+        ...existing,
+        ...obj,
+        common: { ...(existing.common ?? {}), ...(obj.common ?? {}) },
+        native: { ...(existing.native ?? {}), ...(obj.native ?? {}) },
+      });
+    }
+
     async getForeignObjectsAsync(pattern: string, type?: string): Promise<Record<string, ObjEntry>> {
       const prefix = pattern.replace("*", "");
       const out: Record<string, ObjEntry> = {};
@@ -252,7 +262,7 @@ function makeFakeWebServer(): FakeWebServer {
 }
 
 function makeFakeMdns(active = true): FakeMdns {
-  return { start: vi.fn(), stop: vi.fn(), isActive: () => active };
+  return { start: vi.fn(), stop: vi.fn(async () => {}), isActive: () => active };
 }
 
 function makeFakeDiscovery(): FakeDiscovery {
@@ -956,7 +966,7 @@ describe("onObjectChange filter (H4 v1.13.0 / R2 v1.30.0)", () => {
 });
 
 describe("onUnload", () => {
-  it("tears everything down and always calls the callback", () => {
+  it("tears everything down and always calls the callback", async () => {
     const { internal, stub, webServer, mdns, discovery } = setup();
     internal.webServer = webServer;
     internal.mdnsService = mdns;
@@ -967,7 +977,7 @@ describe("onUnload", () => {
 
     internal.onUnload(callback);
 
-    expect(callback).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(callback).toHaveBeenCalledTimes(1));
     expect(stub.states.get("hassemu.0.info.connection")).toEqual({ val: false, ack: true });
     expect(webServer.stop).toHaveBeenCalledTimes(1);
     expect(mdns.stop).toHaveBeenCalledTimes(1);
@@ -991,10 +1001,59 @@ describe("onUnload", () => {
     expect(callback).toHaveBeenCalledTimes(1);
   });
 
-  it("is safe on a half-initialized adapter (everything null)", () => {
+  it("is safe on a half-initialized adapter (everything null)", async () => {
     const { internal } = setup();
     const callback = vi.fn();
     internal.onUnload(callback);
-    expect(callback).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(callback).toHaveBeenCalledTimes(1));
+  });
+
+  it("reports done only after the shutdown writes and the mDNS goodbye finished", async () => {
+    const { internal, webServer, mdns } = setup();
+    internal.webServer = webServer;
+    internal.mdnsService = mdns;
+    let releaseServer = (): void => {};
+    let releaseGoodbye = (): void => {};
+    webServer.stop.mockImplementation(() => new Promise<void>(resolve => (releaseServer = resolve)));
+    mdns.stop.mockImplementation(() => new Promise<void>(resolve => (releaseGoodbye = resolve)));
+    const callback = vi.fn();
+
+    internal.onUnload(callback);
+    await new Promise(r => setImmediate(r));
+    expect(callback).not.toHaveBeenCalled();
+
+    releaseGoodbye();
+    await new Promise(r => setImmediate(r));
+    expect(callback).not.toHaveBeenCalled();
+
+    releaseServer();
+    await vi.waitFor(() => expect(callback).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe("stopInstance self-correction", () => {
+  const INSTANCE_ID = "system.adapter.hassemu.0";
+
+  it("switches the leftover flag off and aborts the start (the host restarts us)", async () => {
+    const { internal, stub, webServer } = setup();
+    stub.objects.set(INSTANCE_ID, { type: "instance", common: { supportedMessages: { stopInstance: true } } });
+
+    await internal.onReady();
+
+    expect(stub.objects.get(INSTANCE_ID)?.common?.supportedMessages).toEqual({ stopInstance: false });
+    expect(webServer.start).not.toHaveBeenCalled();
+    expect(stub.stateSubscriptions).toEqual([]);
+    expect(logsOf(stub, "info").some(m => m.includes("restarts once"))).toBe(true);
+  });
+
+  it("leaves a healthy instance object alone and starts normally", async () => {
+    const { internal, stub, webServer } = setup();
+    stub.objects.set(INSTANCE_ID, { type: "instance", common: { name: "hassemu" } });
+
+    await internal.onReady();
+
+    expect(stub.objects.get(INSTANCE_ID)?.common).toEqual({ name: "hassemu" });
+    expect(webServer.start).toHaveBeenCalledTimes(1);
+    expect(stub.states.get("hassemu.0.info.connection")).toEqual({ val: true, ack: true });
   });
 });

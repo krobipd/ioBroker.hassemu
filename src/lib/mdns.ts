@@ -102,17 +102,18 @@ export class MDNSService {
   }
 
   /**
-   * Stop mDNS broadcasting.
+   * Stop mDNS broadcasting. Resolves once the goodbye announcement has left the
+   * socket and the sockets are released — `onUnload` awaits this before reporting
+   * done, so the process is not torn down mid-goodbye.
    *
-   * @param synchronous pass `true` from the synchronous onUnload path — there the
-   *   process is tearing down, so we skip the managed fallback timer (adapter-core
-   *   warns when a managed timer is armed during shutdown, and process exit
-   *   releases the sockets regardless). Defaults to `false` for the runtime
+   * @param shuttingDown pass `true` from the onUnload path — there we skip the
+   *   managed fallback timer (adapter-core refuses managed timers during shutdown;
+   *   the awaited promise takes its place). Defaults to `false` for the runtime
    *   re-init path, where the adapter keeps running and the fallback matters.
    */
-  stop(synchronous = false): void {
+  stop(shuttingDown = false): Promise<void> {
     if (!this.active) {
-      return;
+      return Promise.resolve();
     }
     this.active = false;
     const published = this.published;
@@ -129,36 +130,39 @@ export class MDNSService {
     // guaranteed goodbye isn't achievable — this only improves the odds without
     // blocking unload. (Verified against bonjour-service 1.4.2: registry.stop takes
     // a callback and teardown announces before invoking it.) v1.37.0 (I1).
-    let destroyed = false;
-    const destroy = (): void => {
-      if (destroyed) {
-        return;
-      }
-      destroyed = true;
-      try {
-        bonjour?.destroy();
-      } catch {
-        /* best effort — we just want the socket released */
-      }
-    };
-    try {
-      if (published?.stop) {
-        published.stop(destroy);
-        if (!synchronous) {
-          // Runtime re-init (onReady H7): the adapter keeps running, so arm a
-          // short fallback to release the sockets if stop's callback never fires.
-          // Skipped on shutdown — process exit releases them and the managed
-          // timer would only warn.
-          this.adapter.setTimeout(destroy, 300);
+    return new Promise<void>(resolve => {
+      let destroyed = false;
+      const destroy = (): void => {
+        if (destroyed) {
+          return;
         }
-      } else {
+        destroyed = true;
+        try {
+          bonjour?.destroy();
+        } catch {
+          /* best effort — we just want the socket released */
+        }
+        resolve();
+      };
+      try {
+        if (published?.stop) {
+          published.stop(destroy);
+          if (!shuttingDown) {
+            // Runtime re-init (onReady H7): the adapter keeps running, so arm a
+            // short fallback to release the sockets if stop's callback never fires.
+            // Skipped on shutdown — a managed timer would only warn there, and the
+            // host's own stop timeout is the backstop for a callback that never comes.
+            this.adapter.setTimeout(destroy, 300);
+          }
+        } else {
+          destroy();
+        }
+        this.adapter.log.debug("mDNS: Service stopped");
+      } catch (error) {
+        const err = error as Error;
+        this.adapter.log.warn(`mDNS could not stop cleanly: ${err.message}`);
         destroy();
       }
-      this.adapter.log.debug("mDNS: Service stopped");
-    } catch (error) {
-      const err = error as Error;
-      this.adapter.log.warn(`mDNS could not stop cleanly: ${err.message}`);
-      destroy();
-    }
+    });
   }
 }

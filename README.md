@@ -178,6 +178,10 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+### 1.38.2 (2026-08-27)
+
+- Fixed: Stopping or restarting the adapter was cut short — the instance stayed marked as connected and displays kept looking for a server that was already gone.
+
 ### 1.38.1 (2026-08-22)
 
 - Changed: Internal cleanup. No user-facing changes.
@@ -200,13 +204,6 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 - A display connection that simply goes away (a panel powered off) is now cleaned up instead of lingering until the adapter restarts.
 - The manual URL-refresh datapoint is now `info.refreshUrls` (was `info.refresh_urls`); the old one is removed automatically on upgrade — update any script that wrote to the old name.
 - Corrected the configuration help texts and the README to match the current setup, documented the offline behaviour, and added a first-steps guide.
-
-### 1.36.0 (2026-06-22) — stable
-
-- Fixed a rare adapter crash and restart loop that a malformed connection message could trigger — it briefly took all connected displays offline until the adapter recovered.
-- A custom name you give a display (its channel name) is no longer overwritten with the device's IP address when that IP changes.
-- With authentication enabled, a display again reloads automatically after you change its target URL.
-- With authentication enabled, a password is now required — the settings can no longer be saved with an empty password.
 
 [Older changelogs can be found there](CHANGELOG_OLD.md)
 

@@ -195,6 +195,43 @@ describe("MDNSService", () => {
       captured.forEach(cb => cb());
       expect(destroys).to.equal(1);
     });
+
+    it("shutdown stop resolves only once the goodbye left and the sockets are released", async () => {
+      // This promise is what keeps onUnload from reporting "done" while the goodbye
+      // announcement is still in the socket — resolve too early and the host tears
+      // the process down mid-farewell, which is the bug this release fixes.
+      service.start();
+      const internals = service as unknown as {
+        bonjour: { destroy(): void } | null;
+        published: { stop(cb: () => void): void } | null;
+      };
+      let destroyed = false;
+      internals.bonjour = {
+        destroy: () => {
+          destroyed = true;
+        },
+      };
+      let releaseGoodbye: () => void = () => {};
+      internals.published = {
+        stop: (cb: () => void) => {
+          releaseGoodbye = cb;
+        },
+      };
+
+      let resolved = false;
+      const pending = service.stop(true).then(() => {
+        resolved = true;
+      });
+      await new Promise(r => setImmediate(r));
+      expect(resolved).to.be.false;
+      expect(destroyed).to.be.false;
+      // No fallback timer on this path — the awaited promise replaces it.
+      expect(adapter._timerCalls).to.have.lengthOf(0);
+
+      releaseGoodbye();
+      await pending;
+      expect(destroyed).to.be.true;
+    });
   });
 
   describe("service name", () => {

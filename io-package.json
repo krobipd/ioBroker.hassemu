@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.38.1",
+    "version": "1.38.2",
     "news": {
+      "1.38.2": {
+        "en": "Stopping or restarting the adapter was cut short — the instance stayed marked as connected and displays kept looking for a server that was already gone.",
+        "de": "Beenden oder Neustart des Adapters brach vorzeitig ab — die Instanz blieb als verbunden markiert und Displays suchten weiter einen Server, den es nicht mehr gab.",
+        "ru": "Остановка или перезапуск адаптера обрывались — экземпляр оставался помеченным как подключённый, а дисплеи продолжали искать уже отсутствующий сервер.",
+        "pt": "Parar ou reiniciar o adaptador era interrompido — a instância continuava marcada como ligada e os ecrãs continuavam à procura de um servidor que já não existia.",
+        "nl": "Stoppen of herstarten van de adapter werd afgebroken — de instantie bleef als verbonden gemarkeerd en displays bleven zoeken naar een server die er niet meer was.",
+        "fr": "L'arrêt ou le redémarrage de l'adaptateur était interrompu — l'instance restait marquée comme connectée et les écrans cherchaient un serveur qui n'existait plus.",
+        "it": "L'arresto o il riavvio dell'adattatore veniva interrotto — l'istanza restava segnata come connessa e i display continuavano a cercare un server non più presente.",
+        "es": "Detener o reiniciar el adaptador se interrumpía — la instancia seguía marcada como conectada y las pantallas seguían buscando un servidor que ya no existía.",
+        "pl": "Zatrzymanie lub restart adaptera był przerywany — instancja pozostawała oznaczona jako połączona, a wyświetlacze wciąż szukały serwera, którego już nie było.",
+        "uk": "Зупинка або перезапуск адаптера обривалися — екземпляр залишався позначеним як під'єднаний, а дисплеї далі шукали сервер, якого вже не було.",
+        "zh-cn": "停止或重启适配器时过程被中断——实例仍显示为已连接，显示设备继续寻找一台已经不存在的服务器。"
+      },
       "1.38.1": {
         "en": "Internal cleanup. No user-facing changes.",
         "de": "Interne Aufräumarbeiten. Keine Änderungen für Nutzer.",
@@ -80,19 +93,6 @@
         "pl": "Naprawiono: wykrywanie Home Assistant kierowało wyświetlacz na zły adres na hostach z wieloma interfejsami; teraz używa adresu, na którym adapter faktycznie nasłuchuje.",
         "uk": "Виправлено: виявлення Home Assistant спрямовувало дисплей на неправильну адресу на хостах із кількома інтерфейсами; тепер використовується адреса, яку адаптер дійсно слухає.",
         "zh-cn": "修复了在多网络接口主机上 Home Assistant 发现将显示设备指向错误地址的问题；现在使用适配器实际监听的地址。"
-      },
-      "1.35.2": {
-        "en": "Displays with a stale registration now re-register automatically after an adapter restart; removing a display also clears its leftover app registration",
-        "de": "Displays mit veralteter Registrierung registrieren sich nach einem Adapter-Neustart jetzt automatisch neu; beim Entfernen eines Displays wird auch seine App-Registrierung aufgeräumt",
-        "ru": "Дисплеи с устаревшей регистрацией теперь автоматически перерегистрируются после перезапуска адаптера; при удалении дисплея также очищается его регистрация приложения",
-        "pt": "Displays com registo desatualizado voltam a registar-se automaticamente após o reinício do adaptador; remover um display também limpa o seu registo de app restante",
-        "nl": "Displays met een verouderde registratie registreren zich nu automatisch opnieuw na een herstart van de adapter; bij het verwijderen van een display wordt ook de app-registratie opgeruimd",
-        "fr": "Les écrans avec un enregistrement obsolète se réenregistrent automatiquement après un redémarrage de l'adaptateur ; la suppression d'un écran nettoie aussi son enregistrement d'app restant",
-        "it": "I display con una registrazione obsoleta ora si ri-registrano automaticamente dopo un riavvio dell'adattatore; la rimozione di un display elimina anche la registrazione app residua",
-        "es": "Las pantallas con un registro obsoleto ahora se vuelven a registrar automáticamente tras reiniciar el adaptador; al eliminar una pantalla también se limpia su registro de app restante",
-        "pl": "Wyświetlacze z nieaktualną rejestracją po restarcie adaptera rejestrują się teraz automatycznie ponownie; usunięcie wyświetlacza czyści też jego pozostałą rejestrację aplikacji",
-        "uk": "Дисплеї із застарілою реєстрацією тепер автоматично перереєструються після перезапуску адаптера; видалення дисплея також очищає його залишкову реєстрацію застосунку",
-        "zh-cn": "注册信息过期的显示设备在适配器重启后现在会自动重新注册；移除显示设备时也会清理其遗留的应用注册"
       }
     },
     "plugins": {
@@ -155,9 +155,6 @@
     "dataSource": "push",
     "adminUI": {
       "config": "json"
-    },
-    "supportedMessages": {
-      "stopInstance": true
     },
     "dependencies": [
       {

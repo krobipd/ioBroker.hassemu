@@ -33,7 +33,7 @@ src/lib/types.ts             → AdapterConfig, ClientRecord, SessionData, Adapt
 src/lib/constants.ts         → HA_VERSION, TTLs/Caps, DEFAULT_SERVICE_NAME, DNS/WS-Windows, LOGIN_SCHEMA, MODE_-Sentinels
 src/lib/coerce.ts            → Boundary-Validator (UUID/URL/Number/String/Boolean) + shared helpers (evictOldest, oneLine, shallowStatesEqual, isValidRedirectUri, isEmptyValue)
 src/lib/network.ts           → getLocalIp, generateClientId (crypto.randomBytes), Bind-Helpers, resolveAdvertisedHost
-src/lib/mdns.ts              → mDNS Broadcasting via bonjour-service
+src/lib/mdns.ts              → mDNS Broadcasting via bonjour-service (stop() liefert ein Promise — das Goodbye muss RAUS bevor der Prozess endet)
 src/lib/client-registry.ts   → Multi-Client-Store (Cookie → Record), bulkSetMode, updateHostname, NewClientModeProvider, lastSeen-Tracking, per-IP-Throttle
 src/lib/global-config.ts     → global.mode + global.manualUrl + global.enabled, MODE_GLOBAL/MODE_MANUAL Sentinels, Resolver-Delegate
 src/lib/schema-repair.ts     → repairGlobalSchemas (partial-formed global.*-Objekte aus io-package.json:instanceObjects heilen)
@@ -66,6 +66,7 @@ src/lib/i18n.ts              → tName, resolveLabel, tPage, makePageTranslator:
 13. **Sicherheits-Härtung Auth-Flow** — refresh_token wird gegen `registry.byRefreshToken` validiert (vorher: jeder String akzeptiert) und in `clients.<id>.native.refreshToken` persistiert (langlebig, Companion bleibt über Restart authentifiziert; die frühere `webserver.refreshTokens`-Map ist seit v1.31.0 weg). Access-Token laufen nach 30 min ab (`tokenExpiresAt`, persistiert + in `getByToken`/`restore` erzwungen, v1.36.0 S5). `sessions`/`codeSessions`-Maps FIFO-capped (S2-Split). Credential-Vergleich via `crypto.timingSafeEqual` (gegen Timing-Attacks); leeres Passwort wird abgelehnt.
 14. **Stale-Client-GC** (seit v1.2.0) — bei jedem `identifyOrCreate`-Hit wird `native.lastSeen` throttled (1×/h) aktualisiert. Beim Adapter-Start: clients ohne Token + `lastSeen` älter als 30 Tagen werden auto-removed.
 15. **Migration 1.x → 1.2.0** — `migrateLegacyDefaultVisUrl` (1.0.x → 1.1.1) bleibt; neu `migrateVisUrlToMode` mappt `clients.<id>.visUrl` → `mode='manual'` + `manualUrl`, plus `global.visUrl` analog. Alte Datapunkte per `delObjectAsync` weg, mode-Type-Upgrade auf `'mixed'` via `extendObjectAsync`.
+16. **Abschalt-Kette (v1.38.2)** — `common.supportedMessages.stopInstance` ist RAUS und darf nie zurück: mit dem Eintrag killt der Host den Prozess 1 s nach der Stopp-Nachricht, `onUnload` läuft nie (`info.connection` bleibt `true`, das mDNS-Goodbye geht nie raus). Weil ein Update den Eintrag im Instanz-Objekt NICHT entfernt, korrigiert `clearStopInstanceFlag()` ihn beim Start einmalig und bricht danach ab (jede Instanz-Objekt-Änderung = Neustart). `onUnload` meldet erst nach `Promise.all` über State-Write, Unsubscribes, mDNS-Goodbye und Webserver-Stopp „fertig" — kein eigener Timer (der Host hat `common.stopTimeout`, `this.setTimeout` verweigert im Shutdown).
 
 ## Auth-Flow
 
@@ -80,7 +81,7 @@ src/lib/i18n.ts              → tName, resolveLabel, tPage, makePageTranslator:
    3. `clients.<id>.mode = <URL>` → diese URL
    4. sonst → 200 HTML mit der Landing-Seite
 
-## Tests (592 unit + 57 package + 1 integration = 650)
+## Tests (639 unit + 57 package + 1 integration = 697)
 
 Tests leben seit v1.1.6 neben dem Source als `src/lib/*.test.ts` und laufen direkt via **vitest** (seit v1.32.0; vorher mocha+ts-node, vitest löst den ESM-Loader-Bug strukturell und ist ~10× schneller). Seit v1.35.2 mit ehrlicher Coverage (`coverage.include: src/**` — main.ts inkludiert).
 

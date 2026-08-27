@@ -112,49 +112,53 @@ class MDNSService {
     }
   }
   /**
-   * Stop mDNS broadcasting.
+   * Stop mDNS broadcasting. Resolves once the goodbye announcement has left the
+   * socket and the sockets are released — `onUnload` awaits this before reporting
+   * done, so the process is not torn down mid-goodbye.
    *
-   * @param synchronous pass `true` from the synchronous onUnload path — there the
-   *   process is tearing down, so we skip the managed fallback timer (adapter-core
-   *   warns when a managed timer is armed during shutdown, and process exit
-   *   releases the sockets regardless). Defaults to `false` for the runtime
+   * @param shuttingDown pass `true` from the onUnload path — there we skip the
+   *   managed fallback timer (adapter-core refuses managed timers during shutdown;
+   *   the awaited promise takes its place). Defaults to `false` for the runtime
    *   re-init path, where the adapter keeps running and the fallback matters.
    */
-  stop(synchronous = false) {
+  stop(shuttingDown = false) {
     if (!this.active) {
-      return;
+      return Promise.resolve();
     }
     this.active = false;
     const published = this.published;
     const bonjour = this.bonjour;
     this.published = null;
     this.bonjour = null;
-    let destroyed = false;
-    const destroy = () => {
-      if (destroyed) {
-        return;
-      }
-      destroyed = true;
-      try {
-        bonjour == null ? void 0 : bonjour.destroy();
-      } catch {
-      }
-    };
-    try {
-      if (published == null ? void 0 : published.stop) {
-        published.stop(destroy);
-        if (!synchronous) {
-          this.adapter.setTimeout(destroy, 300);
+    return new Promise((resolve) => {
+      let destroyed = false;
+      const destroy = () => {
+        if (destroyed) {
+          return;
         }
-      } else {
+        destroyed = true;
+        try {
+          bonjour == null ? void 0 : bonjour.destroy();
+        } catch {
+        }
+        resolve();
+      };
+      try {
+        if (published == null ? void 0 : published.stop) {
+          published.stop(destroy);
+          if (!shuttingDown) {
+            this.adapter.setTimeout(destroy, 300);
+          }
+        } else {
+          destroy();
+        }
+        this.adapter.log.debug("mDNS: Service stopped");
+      } catch (error) {
+        const err = error;
+        this.adapter.log.warn(`mDNS could not stop cleanly: ${err.message}`);
         destroy();
       }
-      this.adapter.log.debug("mDNS: Service stopped");
-    } catch (error) {
-      const err = error;
-      this.adapter.log.warn(`mDNS could not stop cleanly: ${err.message}`);
-      destroy();
-    }
+    });
   }
 }
 // Annotate the CommonJS export names for ESM import in node:

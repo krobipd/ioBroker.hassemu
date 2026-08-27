@@ -61,8 +61,47 @@ export class HassEmu extends utils.Adapter {
     this.on("unload", this.onUnload.bind(this));
   }
 
+  /**
+   * Switch off `supportedMessages.stopInstance` on this instance's own object.
+   *
+   * The entry was dropped from the manifest, which only helps a FRESH install: an upgrade
+   * merges the manifest into the existing instance object and never removes a key, so the old
+   * `true` survives in the database — and that is what the host reads. With it the host kills
+   * the process one second after asking it to stop, `onUnload` never runs, `info.connection`
+   * stays `true` and the mDNS goodbye that tells the displays the server is gone never leaves.
+   *
+   * Only written when it is actually still on: every instance-object change restarts the
+   * instance, so doing it unconditionally would be a restart loop.
+   *
+   * @returns true when the correction was written and the restart is coming — the caller has
+   *   to stop right there instead of binding a port in a process that is going down.
+   */
+  private async clearStopInstanceFlag(): Promise<boolean> {
+    const id = `system.adapter.${this.namespace}`;
+    try {
+      const obj = await this.getForeignObjectAsync(id);
+      const supported = obj?.common?.supportedMessages as { stopInstance?: unknown } | undefined;
+      if (!supported?.stopInstance) {
+        return false;
+      }
+      this.log.info("Correcting a leftover setting from an earlier version — this instance restarts once");
+      await this.extendForeignObjectAsync(id, { common: { supportedMessages: { stopInstance: false } } });
+      return true;
+    } catch (err: unknown) {
+      // Objects DB unreachable — not worth failing the start over; the next start retries.
+      this.log.debug(`Could not check the instance object ${id}: ${String(err)}`);
+      return false;
+    }
+  }
+
   private async onReady(): Promise<void> {
     try {
+      // First: without this the whole shutdown path stays dead on an updated install.
+      // A correction means the host is restarting us — no point starting anything.
+      if (await this.clearStopInstanceFlag()) {
+        return;
+      }
+
       // v1.14.0 (H7): defensive bei onReady-Re-Run ohne unload (sollte nicht
       // passieren, aber js-controller-Edge-Cases). Vorhandene Refs sauber
       // entsorgen, sonst orphaned Server + Listeners.
@@ -71,7 +110,7 @@ export class HassEmu extends utils.Adapter {
         this.webServer = null;
       }
       if (this.mdnsService) {
-        this.mdnsService.stop();
+        await this.mdnsService.stop();
         this.mdnsService = null;
       }
       this.urlDiscovery?.cancelRefresh();
@@ -473,46 +512,54 @@ export class HassEmu extends utils.Adapter {
       // v1.13.0 (H10): info.connection=false zuerst, vor jedem cleanup —
       // wenn ein cleanup-Step throws, bleibt der State mindestens als
       // false ack'd statt als true hängen.
-      // L8: `void` marks the promise as intentionally not awaited (onUnload MUST
-      // stay synchronous, or SIGKILL), but it does NOT handle a rejection — a
-      // broker write that rejects during shutdown would be an unhandledRejection.
-      // `.catch(() => {})` makes each fire-and-forget explicit and safe (webServer
-      // .stop() below already does this).
-      void this.setState("info.connection", { val: false, ack: true }).catch(() => {});
+      const pending: Promise<unknown>[] = [this.setState("info.connection", { val: false, ack: true })];
 
       // v1.10.0 (H2): subscriptions explizit lösen bevor Refs nullen.
       // js-controller cleant das normalerweise — aber im compact-mode mit
       // hot-remove + re-add kann Residual entstehen, das dann auf eine
       // bereits genullte Adapter-Instance feuert.
-      void this.unsubscribeStatesAsync("clients.*").catch(() => {});
-      void this.unsubscribeStatesAsync("global.*").catch(() => {});
-      void this.unsubscribeStatesAsync("info.refreshUrls").catch(() => {});
-      void this.unsubscribeForeignObjectsAsync("system.adapter.*").catch(() => {});
+      pending.push(
+        this.unsubscribeStatesAsync("clients.*"),
+        this.unsubscribeStatesAsync("global.*"),
+        this.unsubscribeStatesAsync("info.refreshUrls"),
+        this.unsubscribeForeignObjectsAsync("system.adapter.*"),
+      );
 
       this.urlDiscovery?.cancelRefresh();
       this.urlDiscovery = null;
 
       if (this.mdnsService) {
-        // synchronous: onUnload must not arm a managed fallback timer (I1).
-        this.mdnsService.stop(true);
+        // shuttingDown: no managed fallback timer — adapter-core refuses those during
+        // shutdown. The goodbye is awaited below instead.
+        pending.push(this.mdnsService.stop(true));
         this.mdnsService = null;
       }
 
       if (this.webServer) {
-        // v1.18.0 (G6): kein doppeltes log — webServer.stop() loggt
-        // intern bereits auf debug. Hier nur silent-catch.
-        this.webServer.stop().catch(() => {});
+        // v1.18.0 (G6): kein doppeltes log — webServer.stop() loggt intern bereits auf debug.
+        pending.push(this.webServer.stop());
         this.webServer = null;
       }
 
       this.registry = null;
       this.globalConfig = null;
+
+      // Report done only once the writes landed and the mDNS goodbye left the socket.
+      // Calling back first means the host tears the process down while `info.connection`
+      // is still `true` and the displays keep looking for a server that is gone. No own
+      // deadline needed — the host already has one (`common.stopTimeout`), and
+      // `this.setTimeout` refuses during shutdown anyway.
+      void Promise.all(pending)
+        .catch((err: unknown) => {
+          this.log.error(`Shutdown error: ${String(err)}`);
+        })
+        .finally(callback);
+      return;
     } catch (error) {
       const err = error as Error;
       this.log.error(`Shutdown error: ${err.message}`);
-    } finally {
-      callback();
     }
+    callback();
   }
 }
 

@@ -76,16 +76,51 @@ class HassEmu extends utils.Adapter {
     this.on("objectChange", this.onObjectChange.bind(this));
     this.on("unload", this.onUnload.bind(this));
   }
+  /**
+   * Switch off `supportedMessages.stopInstance` on this instance's own object.
+   *
+   * The entry was dropped from the manifest, which only helps a FRESH install: an upgrade
+   * merges the manifest into the existing instance object and never removes a key, so the old
+   * `true` survives in the database — and that is what the host reads. With it the host kills
+   * the process one second after asking it to stop, `onUnload` never runs, `info.connection`
+   * stays `true` and the mDNS goodbye that tells the displays the server is gone never leaves.
+   *
+   * Only written when it is actually still on: every instance-object change restarts the
+   * instance, so doing it unconditionally would be a restart loop.
+   *
+   * @returns true when the correction was written and the restart is coming — the caller has
+   *   to stop right there instead of binding a port in a process that is going down.
+   */
+  async clearStopInstanceFlag() {
+    var _a2;
+    const id = `system.adapter.${this.namespace}`;
+    try {
+      const obj = await this.getForeignObjectAsync(id);
+      const supported = (_a2 = obj == null ? void 0 : obj.common) == null ? void 0 : _a2.supportedMessages;
+      if (!(supported == null ? void 0 : supported.stopInstance)) {
+        return false;
+      }
+      this.log.info("Correcting a leftover setting from an earlier version \u2014 this instance restarts once");
+      await this.extendForeignObjectAsync(id, { common: { supportedMessages: { stopInstance: false } } });
+      return true;
+    } catch (err) {
+      this.log.debug(`Could not check the instance object ${id}: ${String(err)}`);
+      return false;
+    }
+  }
   async onReady() {
     var _a2, _b;
     try {
+      if (await this.clearStopInstanceFlag()) {
+        return;
+      }
       if (this.webServer) {
         await this.webServer.stop().catch(() => {
         });
         this.webServer = null;
       }
       if (this.mdnsService) {
-        this.mdnsService.stop();
+        await this.mdnsService.stop();
         this.mdnsService = null;
       }
       (_a2 = this.urlDiscovery) == null ? void 0 : _a2.cancelRefresh();
@@ -363,35 +398,34 @@ class HassEmu extends utils.Adapter {
   onUnload(callback) {
     var _a2;
     try {
-      void this.setState("info.connection", { val: false, ack: true }).catch(() => {
-      });
-      void this.unsubscribeStatesAsync("clients.*").catch(() => {
-      });
-      void this.unsubscribeStatesAsync("global.*").catch(() => {
-      });
-      void this.unsubscribeStatesAsync("info.refreshUrls").catch(() => {
-      });
-      void this.unsubscribeForeignObjectsAsync("system.adapter.*").catch(() => {
-      });
+      const pending = [this.setState("info.connection", { val: false, ack: true })];
+      pending.push(
+        this.unsubscribeStatesAsync("clients.*"),
+        this.unsubscribeStatesAsync("global.*"),
+        this.unsubscribeStatesAsync("info.refreshUrls"),
+        this.unsubscribeForeignObjectsAsync("system.adapter.*")
+      );
       (_a2 = this.urlDiscovery) == null ? void 0 : _a2.cancelRefresh();
       this.urlDiscovery = null;
       if (this.mdnsService) {
-        this.mdnsService.stop(true);
+        pending.push(this.mdnsService.stop(true));
         this.mdnsService = null;
       }
       if (this.webServer) {
-        this.webServer.stop().catch(() => {
-        });
+        pending.push(this.webServer.stop());
         this.webServer = null;
       }
       this.registry = null;
       this.globalConfig = null;
+      void Promise.all(pending).catch((err) => {
+        this.log.error(`Shutdown error: ${String(err)}`);
+      }).finally(callback);
+      return;
     } catch (error) {
       const err = error;
       this.log.error(`Shutdown error: ${err.message}`);
-    } finally {
-      callback();
     }
+    callback();
   }
 }
 if (require.main !== module) {
