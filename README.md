@@ -144,6 +144,8 @@ After adding or renaming a VIS-2 project or view, set `info.refreshUrls` to `tru
 
 If hassemu goes offline while a display is running, the display switches to a clear offline page with a reload button after ~1.5 minutes and returns to your dashboard automatically once hassemu is back. Limitation: a display that cold-boots _while_ hassemu is down can't load that page and shows a connection error until the adapter is running again.
 
+If the redirect **target** (your VIS/Aura/manual URL) stops answering while hassemu keeps running, the display shows a "Redirect target not reachable" card with the target URL instead of a black screen — after about a minute, or immediately when the display opens while the target is already down. Any HTTP answer counts as reachable (a login page or an error page is still a running server); only connection failures and timeouts trigger the card. Once the target answers again, the display reloads its dashboard automatically.
+
 ---
 
 ## Troubleshooting
