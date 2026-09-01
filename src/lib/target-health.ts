@@ -92,6 +92,13 @@ export class TargetHealth {
   private readonly cacheMs: number;
   private readonly cache = new Map<string, HealthEntry>();
   private readonly inflight = new Map<string, Promise<boolean>>();
+  /**
+   * Terminal flag set by {@link dispose} (webserver stop). A probe that settles
+   * AFTERWARDS must neither repopulate the cache nor log — the adapter is
+   * shutting down and a late "target not reachable" line would land after the
+   * teardown messages.
+   */
+  private disposed = false;
 
   /**
    * @param adapter Adapter surface (logging).
@@ -124,8 +131,15 @@ export class TargetHealth {
       .catch(() => true)
       .then(alive => {
         this.inflight.delete(url);
+        if (this.disposed) {
+          return alive;
+        }
         const prev = this.cache.get(url)?.alive;
-        evictOldest(this.cache, TARGET_HEALTH_CACHE_CAP);
+        // Evict only when INSERTING a new key (emitOncePerWindow pattern) — a
+        // refresh of a known target must not push out an unrelated entry.
+        if (prev === undefined) {
+          evictOldest(this.cache, TARGET_HEALTH_CACHE_CAP);
+        }
         this.cache.set(url, { alive, checkedAt: Date.now() });
         if (!alive && prev !== false) {
           this.adapter.log.info(`Redirect target not reachable: ${url}`);
@@ -138,8 +152,9 @@ export class TargetHealth {
     return run;
   }
 
-  /** Drops cache and in-flight bookkeeping (webserver stop). */
+  /** Drops cache and in-flight bookkeeping (webserver stop). Terminal — the instance is not reused. */
   dispose(): void {
+    this.disposed = true;
     this.cache.clear();
     this.inflight.clear();
   }

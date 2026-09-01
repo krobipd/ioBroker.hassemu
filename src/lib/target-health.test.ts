@@ -154,6 +154,26 @@ describe("target-health", () => {
       expect(adapter._logs).to.deep.equal([]);
     });
 
+    it("a probe settling AFTER dispose() neither repopulates the cache nor logs (late shutdown probe)", async () => {
+      const adapter = createMockAdapter();
+      let release: (alive: boolean) => void = () => undefined;
+      let calls = 0;
+      const health = new TargetHealth(adapter as never, () => {
+        calls++;
+        return new Promise<boolean>(resolve => {
+          release = resolve;
+        });
+      });
+      const pending = health.isReachable("http://a.test/");
+      health.dispose();
+      release(false);
+      expect(await pending).to.equal(false);
+      expect(adapter._logs).to.deep.equal([]);
+      // Cache stayed empty — the next ask starts a fresh probe.
+      void health.isReachable("http://a.test/");
+      expect(calls).to.equal(2);
+    });
+
     it("dispose() drops the cache so the next ask probes fresh", async () => {
       const adapter = createMockAdapter();
       let calls = 0;

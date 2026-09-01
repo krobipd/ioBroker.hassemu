@@ -21,6 +21,19 @@ const DOWN_THRESHOLD = 3;
 const TARGET_DOWN_THRESHOLD = 2;
 
 /**
+ * v1.39.0: shared color tokens for BOTH overlay cards (hassemu-down + target-down).
+ * One source — the cards must not drift apart visually; only the banner color
+ * differs (red vs. amber) and stays at the respective `.banner` rule.
+ */
+const OVERLAY_CARD_THEME = {
+  cardBg: "#1e293b",
+  shadow: "0 4px 18px rgba(0,0,0,.35)",
+  border: "#334155",
+  thColor: "#94a3b8",
+  codeBg: "#0f172a",
+} as const;
+
+/**
  * HTML-Wrapper statt 302-Redirect (A3 / v1.7.0). Display lädt das HTML einmal,
  * sieht den Target im iframe, polled `/api/redirect_check` alle 30s. Bei
  * Target-Wechsel (User edit) macht es `location.reload()`.
@@ -101,7 +114,7 @@ ${cardTableCss(
     table: "#hassemu-down table",
     cell: "#hassemu-down",
   },
-  { cardBg: "#1e293b", shadow: "0 4px 18px rgba(0,0,0,.35)", border: "#334155", thColor: "#94a3b8", codeBg: "#0f172a" },
+  OVERLAY_CARD_THEME,
 )}
 ${cardTableCss(
   {
@@ -110,7 +123,7 @@ ${cardTableCss(
     table: "#hassemu-target-down table",
     cell: "#hassemu-target-down",
   },
-  { cardBg: "#1e293b", shadow: "0 4px 18px rgba(0,0,0,.35)", border: "#334155", thColor: "#94a3b8", codeBg: "#0f172a" },
+  OVERLAY_CARD_THEME,
 )}
 #hassemu-down .banner{background:#dc2626;color:#fff;padding:1.4rem 1.8rem;}
 #hassemu-target-down .banner{background:#d97706;color:#fff;padding:1.4rem 1.8rem;}

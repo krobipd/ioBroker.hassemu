@@ -27,6 +27,13 @@ var import_i18n = require("./i18n");
 const REDIRECT_POLL_INTERVAL_MS = 3e4;
 const DOWN_THRESHOLD = 3;
 const TARGET_DOWN_THRESHOLD = 2;
+const OVERLAY_CARD_THEME = {
+  cardBg: "#1e293b",
+  shadow: "0 4px 18px rgba(0,0,0,.35)",
+  border: "#334155",
+  thColor: "#94a3b8",
+  codeBg: "#0f172a"
+};
 function renderRedirectWrapper(target, clientId, language = "en", ip = null, targetReachable = true) {
   const escTarget = (0, import_html_shared.escapeHtml)(target);
   const escJs = (0, import_html_shared.jsStringLiteral)(target);
@@ -53,7 +60,7 @@ ${(0, import_html_shared.cardTableCss)(
       table: "#hassemu-down table",
       cell: "#hassemu-down"
     },
-    { cardBg: "#1e293b", shadow: "0 4px 18px rgba(0,0,0,.35)", border: "#334155", thColor: "#94a3b8", codeBg: "#0f172a" }
+    OVERLAY_CARD_THEME
   )}
 ${(0, import_html_shared.cardTableCss)(
     {
@@ -62,7 +69,7 @@ ${(0, import_html_shared.cardTableCss)(
       table: "#hassemu-target-down table",
       cell: "#hassemu-target-down"
     },
-    { cardBg: "#1e293b", shadow: "0 4px 18px rgba(0,0,0,.35)", border: "#334155", thColor: "#94a3b8", codeBg: "#0f172a" }
+    OVERLAY_CARD_THEME
   )}
 #hassemu-down .banner{background:#dc2626;color:#fff;padding:1.4rem 1.8rem;}
 #hassemu-target-down .banner{background:#d97706;color:#fff;padding:1.4rem 1.8rem;}

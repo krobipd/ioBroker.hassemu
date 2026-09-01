@@ -65,6 +65,13 @@ class TargetHealth {
   cache = /* @__PURE__ */ new Map();
   inflight = /* @__PURE__ */ new Map();
   /**
+   * Terminal flag set by {@link dispose} (webserver stop). A probe that settles
+   * AFTERWARDS must neither repopulate the cache nor log — the adapter is
+   * shutting down and a late "target not reachable" line would land after the
+   * teardown messages.
+   */
+  disposed = false;
+  /**
    * @param adapter Adapter surface (logging).
    * @param probe   Probe implementation ({@link probeTarget} in production).
    * @param cacheMs Result validity window (test seam; default {@link TARGET_PROBE_CACHE_MS}).
@@ -91,8 +98,13 @@ class TargetHealth {
     const run = this.probe(url, import_constants.TARGET_PROBE_TIMEOUT_MS).catch(() => true).then((alive) => {
       var _a;
       this.inflight.delete(url);
+      if (this.disposed) {
+        return alive;
+      }
       const prev = (_a = this.cache.get(url)) == null ? void 0 : _a.alive;
-      (0, import_coerce.evictOldest)(this.cache, import_constants.TARGET_HEALTH_CACHE_CAP);
+      if (prev === void 0) {
+        (0, import_coerce.evictOldest)(this.cache, import_constants.TARGET_HEALTH_CACHE_CAP);
+      }
       this.cache.set(url, { alive, checkedAt: Date.now() });
       if (!alive && prev !== false) {
         this.adapter.log.info(`Redirect target not reachable: ${url}`);
@@ -104,8 +116,9 @@ class TargetHealth {
     this.inflight.set(url, run);
     return run;
   }
-  /** Drops cache and in-flight bookkeeping (webserver stop). */
+  /** Drops cache and in-flight bookkeeping (webserver stop). Terminal — the instance is not reused. */
   dispose() {
+    this.disposed = true;
     this.cache.clear();
     this.inflight.clear();
   }
