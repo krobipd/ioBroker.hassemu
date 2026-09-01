@@ -78,6 +78,11 @@ describe("target-health", () => {
       expect(await probeTarget("not a url", 200)).to.equal(true);
       expect(await probeTarget("ftp://example.test/file", 200)).to.equal(true);
     });
+
+    it("treats a non-resolvable hostname as unreachable (DNS failure path)", async () => {
+      // .invalid is reserved (RFC 2606) and guaranteed to never resolve.
+      expect(await probeTarget("http://this-host.invalid/", 2000)).to.equal(false);
+    });
   });
 
   describe("TargetHealth", () => {

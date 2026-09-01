@@ -27,6 +27,11 @@ export type TargetProbe = (url: string, timeoutMs: number) => Promise<boolean>;
  * URLs the probe cannot assess (unparseable, non-http/https) resolve to `true`:
  * a probe limitation must never put a down-card over a display.
  *
+ * Two limits guard the attempt: the request `timeout` (socket inactivity) and a
+ * hard `AbortSignal.timeout` wall-clock cap — the latter also covers the phase
+ * BEFORE a socket exists (a hanging DNS lookup), so the probe can never outlive
+ * `timeoutMs` regardless of where it stalls.
+ *
  * @param url       Target URL as resolved for the display.
  * @param timeoutMs Abort the attempt after this many milliseconds.
  */
@@ -50,8 +55,8 @@ export function probeTarget(url: string, timeoutMs: number): Promise<boolean> {
     };
     const isHttps = parsed.protocol === "https:";
     const options = isHttps
-      ? { method: "GET", timeout: timeoutMs, rejectUnauthorized: false }
-      : { method: "GET", timeout: timeoutMs };
+      ? { method: "GET", timeout: timeoutMs, signal: AbortSignal.timeout(timeoutMs), rejectUnauthorized: false }
+      : { method: "GET", timeout: timeoutMs, signal: AbortSignal.timeout(timeoutMs) };
     const req = (isHttps ? httpsRequest : httpRequest)(parsed, options, res => {
       // Response headers arrived — that is the whole question. Drop the body.
       res.destroy();
