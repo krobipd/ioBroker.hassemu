@@ -45,14 +45,16 @@ function probeTarget(url, timeoutMs) {
       }
     };
     const isHttps = parsed.protocol === "https:";
-    const options = isHttps ? { method: "GET", timeout: timeoutMs, signal: AbortSignal.timeout(timeoutMs), rejectUnauthorized: false } : { method: "GET", timeout: timeoutMs, signal: AbortSignal.timeout(timeoutMs) };
+    const options = {
+      method: "GET",
+      signal: AbortSignal.timeout(timeoutMs)
+    };
+    if (isHttps) {
+      options.rejectUnauthorized = false;
+    }
     const req = (isHttps ? import_node_https.request : import_node_http.request)(parsed, options, (res) => {
       res.destroy();
       settle(true);
-    });
-    req.on("timeout", () => {
-      req.destroy();
-      settle(false);
     });
     req.on("error", () => settle(false));
     req.end();

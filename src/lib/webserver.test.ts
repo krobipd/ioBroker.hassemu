@@ -1226,6 +1226,12 @@ describe("WebServer", () => {
       expect(res.body).not.to.include('<div id="hassemu-target-down" class="visible"');
     });
 
+    it("stop() disposes the target-health tracker (v1.39.0 wiring)", async () => {
+      const { s } = await buildServer();
+      await s.stop();
+      expect(s["targetHealth"]["disposed"]).to.equal(true);
+    });
+
     it("GET /api/redirect_check with no target does NOT probe and reports reachable", async () => {
       let probeCalls = 0;
       const { s, reg } = await buildServer({

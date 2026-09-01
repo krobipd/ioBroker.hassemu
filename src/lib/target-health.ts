@@ -27,10 +27,11 @@ export type TargetProbe = (url: string, timeoutMs: number) => Promise<boolean>;
  * URLs the probe cannot assess (unparseable, non-http/https) resolve to `true`:
  * a probe limitation must never put a down-card over a display.
  *
- * Two limits guard the attempt: the request `timeout` (socket inactivity) and a
- * hard `AbortSignal.timeout` wall-clock cap — the latter also covers the phase
- * BEFORE a socket exists (a hanging DNS lookup), so the probe can never outlive
- * `timeoutMs` regardless of where it stalls.
+ * ONE limit guards the attempt: a hard `AbortSignal.timeout` wall-clock cap.
+ * It covers every phase — DNS lookup, connect, and a socket that never answers —
+ * so the probe can never outlive `timeoutMs` regardless of where it stalls.
+ * (A socket-inactivity `timeout` option existed briefly alongside it; the
+ * mutation audit proved the signal always fires first, making it dead code.)
  *
  * @param url       Target URL as resolved for the display.
  * @param timeoutMs Abort the attempt after this many milliseconds.
@@ -54,19 +55,20 @@ export function probeTarget(url: string, timeoutMs: number): Promise<boolean> {
       }
     };
     const isHttps = parsed.protocol === "https:";
-    const options = isHttps
-      ? { method: "GET", timeout: timeoutMs, signal: AbortSignal.timeout(timeoutMs), rejectUnauthorized: false }
-      : { method: "GET", timeout: timeoutMs, signal: AbortSignal.timeout(timeoutMs) };
+    const options: { method: string; signal: AbortSignal; rejectUnauthorized?: boolean } = {
+      method: "GET",
+      signal: AbortSignal.timeout(timeoutMs),
+    };
+    if (isHttps) {
+      options.rejectUnauthorized = false;
+    }
     const req = (isHttps ? httpsRequest : httpRequest)(parsed, options, res => {
       // Response headers arrived — that is the whole question. Drop the body.
       res.destroy();
       settle(true);
     });
-    // `destroy()` after timeout also emits 'error' — the settle guard absorbs it.
-    req.on("timeout", () => {
-      req.destroy();
-      settle(false);
-    });
+    // The signal abort surfaces as an 'error' event; the settle guard absorbs
+    // any second emission (e.g. the socket teardown after res.destroy()).
     req.on("error", () => settle(false));
     req.end();
   });
