@@ -56,7 +56,7 @@ Want to add a URL the adapter doesn't auto-detect? Set `manual` and paste it.
 
 - Node.js ≥ 22
 - ioBroker js-controller ≥ 7.2.2
-- ioBroker Admin ≥ 7.8.23
+- ioBroker Admin ≥ 8.0.11
 
 ---
 
