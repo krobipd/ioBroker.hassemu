@@ -178,9 +178,9 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
-### **WORK IN PROGRESS**
+### 1.39.0 (2026-09-01)
 
-- New: Displays show a "Redirect target not reachable" card (target URL, device ID, reload button) instead of a black screen when the configured dashboard is down — checked server-side, also right after a display start
+- New: Displays show a "Redirect target not reachable" card with the target URL instead of a black screen when the configured dashboard is down — also right when the display starts
 - New: Once the target answers again, the display reloads its dashboard automatically — no manual reload or display restart needed
 
 ### 1.38.2 (2026-08-27) — stable
@@ -201,14 +201,6 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 ### 1.37.1 (2026-07-11)
 
 - Internal cleanup. No user-facing changes.
-
-### 1.37.0 (2026-07-09)
-
-- A custom name you give a display now survives even when its network hostname resolves later — the name you set sticks.
-- A display that keeps losing its identity no longer fills ioBroker with unused entries over time.
-- A display connection that simply goes away (a panel powered off) is now cleaned up instead of lingering until the adapter restarts.
-- The manual URL-refresh datapoint is now `info.refreshUrls` (was `info.refresh_urls`); the old one is removed automatically on upgrade — update any script that wrote to the old name.
-- Corrected the configuration help texts and the README to match the current setup, documented the offline behaviour, and added a first-steps guide.
 
 [Older changelogs can be found there](CHANGELOG_OLD.md)
 

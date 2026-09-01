@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.38.2",
+    "version": "1.39.0",
     "news": {
+      "1.39.0": {
+        "en": "Displays now show a \"Redirect target not reachable\" card instead of a black screen when the configured dashboard is down, and reload automatically once it answers again",
+        "de": "Displays zeigen jetzt eine Karte \"Weiterleitungsziel nicht erreichbar\" statt eines schwarzen Bildschirms, wenn das Dashboard nicht antwortet, und laden neu, sobald es wieder erreichbar ist",
+        "ru": "Дисплеи теперь показывают карточку «Цель перенаправления недоступна» вместо чёрного экрана, когда настроенная панель недоступна, и автоматически перезагружаются, как только она снова отвечает",
+        "pt": "Os ecrãs mostram um cartão \"Destino do redirecionamento inacessível\" em vez de um ecrã preto quando o painel não responde e recarregam automaticamente assim que ele volta a responder",
+        "nl": "Displays tonen nu een kaart \"Doorstuurdoel niet bereikbaar\" in plaats van een zwart scherm wanneer het geconfigureerde dashboard niet reageert, en laden automatisch opnieuw zodra het weer antwoordt",
+        "fr": "Les écrans affichent une carte « Cible de redirection injoignable » au lieu d'un écran noir quand le tableau de bord ne répond pas, et se rechargent dès qu'il répond à nouveau",
+        "it": "I display mostrano una scheda \"Destinazione del reindirizzamento non raggiungibile\" invece di uno schermo nero quando la dashboard non risponde e si ricaricano appena torna a rispondere",
+        "es": "Las pantallas muestran una tarjeta \"Destino de redirección no accesible\" en lugar de una pantalla negra cuando el panel no responde, y se recargan en cuanto vuelve a responder",
+        "pl": "Wyświetlacze pokazują teraz kartę \"Cel przekierowania nieosiągalny\" zamiast czarnego ekranu, gdy skonfigurowany panel nie odpowiada, i automatycznie przeładowują się, gdy tylko znów odpowie",
+        "uk": "Дисплеї тепер показують картку «Ціль переспрямування недоступна» замість чорного екрана, коли налаштована панель недоступна, і автоматично перезавантажуються, щойно вона знову відповідає",
+        "zh-cn": "当配置的仪表板不可用时，显示屏现在会显示\"转发目标无法访问\"卡片而不是黑屏，并在目标恢复响应后自动重新加载"
+      },
       "1.38.2": {
         "en": "Stopping or restarting the adapter was cut short — the instance stayed marked as connected and displays kept looking for a server that was already gone.",
         "de": "Beenden oder Neustart des Adapters brach vorzeitig ab — die Instanz blieb als verbunden markiert und Displays suchten weiter einen Server, den es nicht mehr gab.",
@@ -80,19 +93,6 @@
         "pl": "Naprawiono: rzadką awarię (wyświetlacze na chwilę offline) i nadpisanie nazwy wyświetlacza adresem IP urządzenia, plus poprawki uwierzytelniania i niezawodności.",
         "uk": "Виправлено: рідкісний збій (дисплеї ненадовго вимикалися) і перезапис імені дисплея IP-адресою пристрою, а також виправлення автентифікації та надійності.",
         "zh-cn": "修复了一个会导致显示器短暂离线的罕见崩溃，以及显示器名称被设备 IP 覆盖的问题，并改进了身份验证和可靠性。"
-      },
-      "1.35.3": {
-        "en": "Fixed Home Assistant discovery pointing the display at the wrong address on multi-interface hosts; it now uses the address the adapter actually listens on.",
-        "de": "Behoben: Home-Assistant-Discovery verwies das Display auf Multi-Interface-Hosts auf die falsche Adresse; jetzt wird die Adresse genutzt, auf der der Adapter wirklich lauscht.",
-        "ru": "Исправлено: обнаружение Home Assistant на хостах с несколькими интерфейсами направляло дисплей на неверный адрес; теперь используется адрес, который адаптер действительно слушает.",
-        "pt": "Corrigido: a deteção do Home Assistant apontava o ecrã para o endereço errado em hosts com várias interfaces; agora usa o endereço em que o adaptador realmente escuta.",
-        "nl": "Opgelost: Home Assistant-detectie wees het display op multi-interface hosts naar het verkeerde adres; nu wordt het adres gebruikt waarop de adapter echt luistert.",
-        "fr": "Corrigé : la découverte Home Assistant dirigeait l'écran vers la mauvaise adresse sur les hôtes multi-interfaces ; elle utilise maintenant l'adresse réelle d'écoute de l'adaptateur.",
-        "it": "Corretto: il rilevamento di Home Assistant indirizzava il display all'indirizzo sbagliato su host multi-interfaccia; ora usa l'indirizzo su cui l'adattatore è davvero in ascolto.",
-        "es": "Corregido: la detección de Home Assistant dirigía la pantalla a la dirección equivocada en hosts con varias interfaces; ahora usa la dirección en la que el adaptador realmente escucha.",
-        "pl": "Naprawiono: wykrywanie Home Assistant kierowało wyświetlacz na zły adres na hostach z wieloma interfejsami; teraz używa adresu, na którym adapter faktycznie nasłuchuje.",
-        "uk": "Виправлено: виявлення Home Assistant спрямовувало дисплей на неправильну адресу на хостах із кількома інтерфейсами; тепер використовується адреса, яку адаптер дійсно слухає.",
-        "zh-cn": "修复了在多网络接口主机上 Home Assistant 发现将显示设备指向错误地址的问题；现在使用适配器实际监听的地址。"
       }
     },
     "plugins": {

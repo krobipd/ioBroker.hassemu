@@ -1,4 +1,12 @@
 # Older Changes
+## 1.37.0 (2026-07-09)
+
+- A custom name you give a display now survives even when its network hostname resolves later — the name you set sticks.
+- A display that keeps losing its identity no longer fills ioBroker with unused entries over time.
+- A display connection that simply goes away (a panel powered off) is now cleaned up instead of lingering until the adapter restarts.
+- The manual URL-refresh datapoint is now `info.refreshUrls` (was `info.refresh_urls`); the old one is removed automatically on upgrade — update any script that wrote to the old name.
+- Corrected the configuration help texts and the README to match the current setup, documented the offline behaviour, and added a first-steps guide.
+
 ## 1.36.0 (2026-06-22) — stable
 
 - Fixed a rare adapter crash and restart loop that a malformed connection message could trigger — it briefly took all connected displays offline until the adapter recovered.
