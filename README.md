@@ -178,7 +178,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
-### 1.38.2 (2026-08-27)
+### 1.38.2 (2026-08-27) — stable
 
 - Fixed: Stopping or restarting the adapter was cut short — the instance stayed marked as connected and displays kept looking for a server that was already gone.
 
