@@ -119,5 +119,65 @@ describe("redirect-wrapper", () => {
       expect(html).not.to.include("<script>alert(1)</script>");
       expect(html).to.include("&lt;script&gt;alert(1)&lt;/script&gt;");
     });
+
+    // v1.39.0: target-down card ("hassemu läuft, Ziel antwortet nicht").
+    describe("target-down card", () => {
+      it("renders the card hidden by default when the target is reachable", () => {
+        const html = renderRedirectWrapper("https://x.test/", "a1b2c3", "en");
+        expect(html).to.include('id="hassemu-target-down"');
+        expect(html).to.match(/#hassemu-target-down\{display:none;/);
+        expect(html).not.to.include('<div id="hassemu-target-down" class="visible"');
+        // iframe stays visible.
+        expect(html).not.to.include('<iframe id="hassemu-iframe" src="https://x.test/" style="display:none"');
+        // Counter starts clean.
+        expect(html).to.include("var targetFails=0");
+      });
+
+      it("renders the card VISIBLE and the iframe hidden when the target is down at render time (cold boot)", () => {
+        const html = renderRedirectWrapper("https://x.test/", "a1b2c3", "en", null, false);
+        expect(html).to.include('<div id="hassemu-target-down" class="visible"');
+        expect(html).to.include('<iframe id="hassemu-iframe" src="https://x.test/" style="display:none"');
+        // Counter starts AT the threshold so the card stays until recovery.
+        expect(html).to.include("var targetFails=2");
+      });
+
+      it("shows the target URL, device id and localized copy on the card", () => {
+        const html = renderRedirectWrapper("https://vis.example.test/dash", "a1b2c3", "de", "10.0.0.50", false);
+        expect(html).to.include("Weiterleitungsziel nicht erreichbar");
+        expect(html).to.include("Ziel-URL");
+        expect(html).to.match(/<td class="target-url"><code>https:\/\/vis\.example\.test\/dash<\/code><\/td>/);
+        expect(html).to.include("Geräte-ID");
+      });
+
+      it("polling JS reacts to targetReachable: threshold 2 to show, reload on recovery", () => {
+        const html = renderRedirectWrapper("https://x.test/", "a1b2c3", "en");
+        expect(html).to.include("var TARGET_THRESHOLD=2");
+        expect(html).to.include("j.targetReachable===false");
+        expect(html).to.include("targetFails++");
+        expect(html).to.include("showTargetDown");
+        // Recovery path is a FULL reload (a dead-loaded iframe never retries itself).
+        expect(html).to.include("if(targetDownVisible()){");
+      });
+
+      it("hassemu-down recovery does NOT unhide the iframe while the target card is visible", () => {
+        const html = renderRedirectWrapper("https://x.test/", "a1b2c3", "en");
+        expect(html).to.include("if(iframeEl && !targetDownVisible()){iframeEl.style.display='block';}");
+      });
+
+      it("card uses the shared card CSS scoped to its own id (design consistency)", () => {
+        const html = renderRedirectWrapper("https://x.test/", "a1b2c3", "en");
+        expect(html).to.include("#hassemu-target-down .card {");
+        expect(html).to.include("#hassemu-target-down th, #hassemu-target-down td {");
+        // Amber banner — distinct from the red hassemu-down banner.
+        expect(html).to.include("#hassemu-target-down .banner{background:#d97706;");
+        expect(html).to.include("#hassemu-down .banner{background:#dc2626;");
+      });
+
+      it("escapes a hostile target URL in the card's URL row", () => {
+        const html = renderRedirectWrapper('https://x.test/"><img src=x onerror=alert(1)>', "a1b2c3", "en", null, false);
+        expect(html).not.to.include('"><img src=x');
+        expect(html).to.include("&quot;&gt;&lt;img");
+      });
+    });
   });
 });

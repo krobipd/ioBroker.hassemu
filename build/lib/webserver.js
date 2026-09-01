@@ -45,6 +45,7 @@ var import_i18n = require("./i18n");
 var import_landing_page = require("./landing-page");
 var import_network = require("./network");
 var import_redirect_wrapper = require("./redirect-wrapper");
+var import_target_health = require("./target-health");
 const CLIENT_COOKIE = "hassemu_client";
 const PUBLIC_ROUTE = { config: { public: true } };
 function mobileRegResponse(webhookId) {
@@ -98,6 +99,12 @@ class WebServer {
    * removed clients are dropped within max 5 min.
    */
   lastRedirectTargetByClient = /* @__PURE__ */ new Map();
+  /**
+   * v1.39.0: reachability tracker for redirect targets. Feeds the wrapper's
+   * target-down card via `/api/redirect_check` (`targetReachable`) and the
+   * initial render — probes on demand with a shared cache, no own timer.
+   */
+  targetHealth;
   cleanupTimer = null;
   /**
    * Test-only injection surface ({@link WebserverInject}). v1.14.0 (H8): bound
@@ -135,14 +142,16 @@ class WebServer {
    * @param globalConfig   Global redirect override.
    * @param instanceUuid   Stable UUID shared with the mDNS advert.
    * @param systemLanguage ioBroker system language (`en`, `de`, …) used for the setup page.
+   * @param targetProbe    Reachability probe for redirect targets (test seam; default {@link probeTarget}).
    */
-  constructor(adapter, config, registry, globalConfig, instanceUuid, systemLanguage = "en") {
+  constructor(adapter, config, registry, globalConfig, instanceUuid, systemLanguage = "en", targetProbe = import_target_health.probeTarget) {
     this.adapter = adapter;
     this.config = config;
     this.registry = registry;
     this.globalConfig = globalConfig;
     this.instanceUuid = instanceUuid;
     this.systemLanguage = systemLanguage;
+    this.targetHealth = new import_target_health.TargetHealth(adapter, targetProbe);
     this.app = (0, import_fastify.default)({ logger: false, trustProxy: this.config.trustProxy === true });
     this.inject = this.app.inject.bind(this.app);
   }
@@ -203,6 +212,7 @@ class WebServer {
     }
     this.dnsInFlight.clear();
     this.dnsNegativeCache.clear();
+    this.targetHealth.dispose();
   }
   // v1.14.0 (H8): `inject` ist jetzt ein readonly Field (oben deklariert,
   // im Constructor einmalig gebunden). Der frühere Getter allokierte bei
@@ -1106,7 +1116,8 @@ class WebServer {
         return reply.status(200).type("text/html; charset=utf-8").send((0, import_landing_page.renderLandingPage)(client.id, this.adapter.namespace, this.systemLanguage, client.ip));
       }
       this.adapter.log.debug(`GET / client=${client.id} \u2192 URL (chain=${chain})`);
-      return reply.status(200).type("text/html; charset=utf-8").send((0, import_redirect_wrapper.renderRedirectWrapper)(url, client.id, this.systemLanguage, client.ip));
+      const targetReachable = await this.targetHealth.isReachable(url);
+      return reply.status(200).type("text/html; charset=utf-8").send((0, import_redirect_wrapper.renderRedirectWrapper)(url, client.id, this.systemLanguage, client.ip, targetReachable));
     });
     this.app.get("/api/redirect_check", PUBLIC_ROUTE, async (req, reply) => {
       const client = await this.identify(req, reply);
@@ -1119,7 +1130,8 @@ class WebServer {
         );
         this.lastRedirectTargetByClient.set(client.id, next);
       }
-      return { target: next };
+      const targetReachable = next === null ? true : await this.targetHealth.isReachable(next);
+      return { target: next, targetReachable };
     });
   }
   setupNotFound() {

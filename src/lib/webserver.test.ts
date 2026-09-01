@@ -30,6 +30,7 @@ import { ClientRegistry } from "./client-registry";
 import { GlobalConfig } from "./global-config";
 import { COOKIE_MAX_AGE_S, MODE_GLOBAL, MODE_MANUAL } from "./constants";
 import { HA_VERSION } from "./constants";
+import type { TargetProbe } from "./target-health";
 import type { AdapterConfig, ClientRecord } from "./types";
 
 interface ObjEntry {
@@ -187,6 +188,12 @@ interface ServerOpts {
   authGuard?: boolean;
   /** ioBroker system language passed to the WebServer (landing-page rendering). */
   systemLanguage?: string;
+  /**
+   * v1.39.0: target reachability probe. Defaults to an always-reachable FAKE —
+   * unit tests must never run the real probe (it opens outbound sockets to the
+   * configured target URL).
+   */
+  targetProbe?: TargetProbe;
 }
 
 /**
@@ -218,6 +225,7 @@ async function buildServer(opts: ServerOpts = {}): Promise<{
     g,
     crypto.randomUUID(),
     opts.systemLanguage ?? "en",
+    opts.targetProbe ?? (async (): Promise<boolean> => true),
   );
   await s["app"].register((await import("@fastify/cookie")).default);
   await s["app"].register((await import("@fastify/formbody")).default);
@@ -1172,7 +1180,7 @@ describe("WebServer", () => {
         headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
       });
       expect(r2.statusCode).to.equal(200);
-      expect(r2.json()).to.deep.equal({ target: "http://example.com/vis" });
+      expect(r2.json()).to.deep.equal({ target: "http://example.com/vis", targetReachable: true });
     });
 
     it("GET /api/redirect_check reflects mode-changes for the same client", async () => {
@@ -1186,7 +1194,59 @@ describe("WebServer", () => {
         url: "/api/redirect_check",
         headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
       });
-      expect(r2.json()).to.deep.equal({ target: "http://newurl.local/dashboard" });
+      expect(r2.json()).to.deep.equal({ target: "http://newurl.local/dashboard", targetReachable: true });
+    });
+
+    // v1.39.0: target-down verdict on the poll endpoint + cold-boot render.
+    it("GET /api/redirect_check reports targetReachable=false when the probe says down", async () => {
+      const { s } = await buildServer({ targetProbe: async () => false });
+      const r1 = await s.inject({ method: "GET", url: "/" });
+      const cookie = extractCookie(r1.headers["set-cookie"])!;
+      const r2 = await s.inject({
+        method: "GET",
+        url: "/api/redirect_check",
+        headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
+      });
+      expect(r2.json()).to.deep.equal({ target: "http://example.com/vis", targetReachable: false });
+      await s["app"].close();
+    });
+
+    it("GET / renders the target-down card VISIBLE when the target is down at render time (cold boot)", async () => {
+      const { s } = await buildServer({ targetProbe: async () => false });
+      const res = await s.inject({ method: "GET", url: "/" });
+      expect(res.statusCode).to.equal(200);
+      expect(res.body).to.include('<div id="hassemu-target-down" class="visible"');
+      expect(res.body).to.include('style="display:none"');
+      await s["app"].close();
+    });
+
+    it("GET / renders the target-down card HIDDEN when the target is reachable", async () => {
+      const res = await server.inject({ method: "GET", url: "/" });
+      expect(res.body).to.include('id="hassemu-target-down"');
+      expect(res.body).not.to.include('<div id="hassemu-target-down" class="visible"');
+    });
+
+    it("GET /api/redirect_check with no target does NOT probe and reports reachable", async () => {
+      let probeCalls = 0;
+      const { s, reg } = await buildServer({
+        globalMode: null,
+        globalEnabled: false,
+        targetProbe: async () => {
+          probeCalls++;
+          return false;
+        },
+      });
+      const r0 = await s.inject({ method: "GET", url: "/" });
+      const cookie = extractCookie(r0.headers["set-cookie"])!;
+      reg.getByCookie(cookie)!.mode = ""; // landing-page client — resolver yields null
+      const r1 = await s.inject({
+        method: "GET",
+        url: "/api/redirect_check",
+        headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
+      });
+      expect(r1.json()).to.deep.equal({ target: null, targetReachable: true });
+      expect(probeCalls).to.equal(0);
+      await s["app"].close();
     });
 
     it("GET / serves the landing page when nothing is configured", async () => {

@@ -40,6 +40,7 @@ import type { GlobalConfig } from "./global-config";
 import { renderLandingPage } from "./landing-page";
 import { resolveAdvertisedHost } from "./network";
 import { renderRedirectWrapper } from "./redirect-wrapper";
+import { TargetHealth, probeTarget, type TargetProbe } from "./target-health";
 import type { AdapterConfig, AdapterInterface, ClientRecord, SessionData } from "./types";
 
 // v1.22.0 (F5): `safeStringEqual` ist nach `coerce.ts` verschoben — generischer
@@ -142,6 +143,12 @@ export class WebServer {
    * removed clients are dropped within max 5 min.
    */
   private readonly lastRedirectTargetByClient: Map<string, string | null> = new Map();
+  /**
+   * v1.39.0: reachability tracker for redirect targets. Feeds the wrapper's
+   * target-down card via `/api/redirect_check` (`targetReachable`) and the
+   * initial render — probes on demand with a shared cache, no own timer.
+   */
+  private readonly targetHealth: TargetHealth;
   private cleanupTimer: ioBroker.Interval | null = null;
   /**
    * Test-only injection surface ({@link WebserverInject}). v1.14.0 (H8): bound
@@ -180,6 +187,7 @@ export class WebServer {
    * @param globalConfig   Global redirect override.
    * @param instanceUuid   Stable UUID shared with the mDNS advert.
    * @param systemLanguage ioBroker system language (`en`, `de`, …) used for the setup page.
+   * @param targetProbe    Reachability probe for redirect targets (test seam; default {@link probeTarget}).
    */
   constructor(
     adapter: WebServerAdapter,
@@ -188,6 +196,7 @@ export class WebServer {
     globalConfig: GlobalConfig,
     instanceUuid: string,
     systemLanguage: string = "en",
+    targetProbe: TargetProbe = probeTarget,
   ) {
     this.adapter = adapter;
     this.config = config;
@@ -195,6 +204,7 @@ export class WebServer {
     this.globalConfig = globalConfig;
     this.instanceUuid = instanceUuid;
     this.systemLanguage = systemLanguage;
+    this.targetHealth = new TargetHealth(adapter, targetProbe);
     // v1.25.0 (C11): trustProxy ist Opt-In über config — nur aktivieren
     // wenn der Adapter HINTER einem trusted Reverse-Proxy mit TLS-
     // Termination läuft. Mit trustProxy=true holt Fastify `req.ip` aus
@@ -297,6 +307,9 @@ export class WebServer {
     // adapter is restarted during that window.
     this.dnsInFlight.clear();
     this.dnsNegativeCache.clear();
+    // v1.39.0: drop target-health bookkeeping; an in-flight probe self-destroys
+    // on its own timeout and writes nowhere after dispose.
+    this.targetHealth.dispose();
   }
 
   // v1.14.0 (H8): `inject` ist jetzt ein readonly Field (oben deklariert,
@@ -1506,10 +1519,14 @@ export class WebServer {
           .send(renderLandingPage(client.id, this.adapter.namespace, this.systemLanguage, client.ip));
       }
       this.adapter.log.debug(`GET / client=${client.id} → URL (chain=${chain})`);
+      // v1.39.0: probe the target (cached) so a display that COLD-boots while the
+      // target is down gets the target-down card with its very first page instead
+      // of a black iframe until the poll rounds catch up.
+      const targetReachable = await this.targetHealth.isReachable(url);
       return reply
         .status(200)
         .type("text/html; charset=utf-8")
-        .send(renderRedirectWrapper(url, client.id, this.systemLanguage, client.ip));
+        .send(renderRedirectWrapper(url, client.id, this.systemLanguage, client.ip, targetReachable));
     });
 
     // /api/redirect_check — Display polled das alle 30s; wenn der target
@@ -1530,7 +1547,11 @@ export class WebServer {
         );
         this.lastRedirectTargetByClient.set(client.id, next);
       }
-      return { target: next };
+      // v1.39.0: verdict for the wrapper's target-down card. `null` target means
+      // the wrapper is about to reload to the landing page anyway — report
+      // reachable so no card flashes in between.
+      const targetReachable = next === null ? true : await this.targetHealth.isReachable(next);
+      return { target: next, targetReachable };
     });
   }
 

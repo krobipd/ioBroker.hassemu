@@ -26,7 +26,8 @@ var import_html_shared = require("./html-shared");
 var import_i18n = require("./i18n");
 const REDIRECT_POLL_INTERVAL_MS = 3e4;
 const DOWN_THRESHOLD = 3;
-function renderRedirectWrapper(target, clientId, language = "en", ip = null) {
+const TARGET_DOWN_THRESHOLD = 2;
+function renderRedirectWrapper(target, clientId, language = "en", ip = null, targetReachable = true) {
   const escTarget = (0, import_html_shared.escapeHtml)(target);
   const escJs = (0, import_html_shared.jsStringLiteral)(target);
   const t = (0, import_i18n.makePageTranslator)(language);
@@ -43,6 +44,8 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hid
 iframe{display:block;border:0;margin:0;padding:0;position:fixed;top:0;left:0;width:100vw;height:100vh;background:#000;z-index:1;}
 #hassemu-down{display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:#0f172a;color:#f1f5f9;font:16px/1.5 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;align-items:center;justify-content:center;padding:1.5rem;box-sizing:border-box;z-index:10;}
 #hassemu-down.visible{display:flex;}
+#hassemu-target-down{display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:#0f172a;color:#f1f5f9;font:16px/1.5 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;align-items:center;justify-content:center;padding:1.5rem;box-sizing:border-box;z-index:9;}
+#hassemu-target-down.visible{display:flex;}
 ${(0, import_html_shared.cardTableCss)(
     {
       card: "#hassemu-down .card",
@@ -52,16 +55,27 @@ ${(0, import_html_shared.cardTableCss)(
     },
     { cardBg: "#1e293b", shadow: "0 4px 18px rgba(0,0,0,.35)", border: "#334155", thColor: "#94a3b8", codeBg: "#0f172a" }
   )}
+${(0, import_html_shared.cardTableCss)(
+    {
+      card: "#hassemu-target-down .card",
+      content: "#hassemu-target-down .content",
+      table: "#hassemu-target-down table",
+      cell: "#hassemu-target-down"
+    },
+    { cardBg: "#1e293b", shadow: "0 4px 18px rgba(0,0,0,.35)", border: "#334155", thColor: "#94a3b8", codeBg: "#0f172a" }
+  )}
 #hassemu-down .banner{background:#dc2626;color:#fff;padding:1.4rem 1.8rem;}
-#hassemu-down .banner h1{margin:0;font-size:1.4rem;font-weight:600;}
-#hassemu-down .banner p{margin:.4rem 0 0;font-size:.95rem;opacity:.95;}
-#hassemu-down button{display:block;width:100%;padding:.9rem 1.2rem;background:#38bdf8;color:#0f172a;border:none;border-radius:6px;font-size:1rem;font-weight:600;cursor:pointer;}
-#hassemu-down button:hover{background:#0ea5e9;}
-@media (max-width:30rem){#hassemu-down{padding:0;}#hassemu-down .card{border-radius:0;}#hassemu-down th{width:auto;}}
+#hassemu-target-down .banner{background:#d97706;color:#fff;padding:1.4rem 1.8rem;}
+#hassemu-down .banner h1,#hassemu-target-down .banner h1{margin:0;font-size:1.4rem;font-weight:600;}
+#hassemu-down .banner p,#hassemu-target-down .banner p{margin:.4rem 0 0;font-size:.95rem;opacity:.95;}
+#hassemu-down button,#hassemu-target-down button{display:block;width:100%;padding:.9rem 1.2rem;background:#38bdf8;color:#0f172a;border:none;border-radius:6px;font-size:1rem;font-weight:600;cursor:pointer;}
+#hassemu-down button:hover,#hassemu-target-down button:hover{background:#0ea5e9;}
+#hassemu-target-down td.target-url{word-break:break-all;}
+@media (max-width:30rem){#hassemu-down,#hassemu-target-down{padding:0;}#hassemu-down .card,#hassemu-target-down .card{border-radius:0;}#hassemu-down th,#hassemu-target-down th{width:auto;}}
 </style>
 </head>
 <body>
-<iframe id="hassemu-iframe" src="${escTarget}" allow="autoplay; fullscreen; geolocation; microphone; camera"></iframe>
+<iframe id="hassemu-iframe" src="${escTarget}"${targetReachable ? "" : ' style="display:none"'} allow="autoplay; fullscreen; geolocation; microphone; camera"></iframe>
 <div id="hassemu-down" role="status" aria-live="polite">
   <div class="card">
     <div class="banner">
@@ -79,14 +93,38 @@ ${(0, import_html_shared.cardTableCss)(
     </div>
   </div>
 </div>
+<div id="hassemu-target-down"${targetReachable ? "" : ' class="visible"'} role="status" aria-live="polite">
+  <div class="card">
+    <div class="banner">
+      <h1>${(0, import_html_shared.escapeHtml)(t("pageTargetOfflineHeading"))}</h1>
+      <p>${(0, import_html_shared.escapeHtml)(t("pageTargetOfflineSubhead"))}</p>
+    </div>
+    <div class="content">
+      <table>
+        <tbody>
+          <tr><th scope="row">${(0, import_html_shared.escapeHtml)(t("pageTargetUrl"))}</th><td class="target-url"><code>${escTarget}</code></td></tr>
+          ${(0, import_html_shared.renderIdRow)(t("pageDeviceId"), clientId)}
+          ${ipRow}
+        </tbody>
+      </table>
+      <button type="button" onclick="location.reload()">${(0, import_html_shared.escapeHtml)(t("pageReload"))}</button>
+    </div>
+  </div>
+</div>
 ${import_external_bridge.CONNECTION_STATUS_SCRIPT}
 <script>
 (function(){
   var current=${escJs};
   var fails=0;
   var THRESHOLD=${DOWN_THRESHOLD};
+  var targetFails=${targetReachable ? 0 : TARGET_DOWN_THRESHOLD};
+  var TARGET_THRESHOLD=${TARGET_DOWN_THRESHOLD};
   var iframeEl=document.getElementById('hassemu-iframe');
   var downEl=document.getElementById('hassemu-down');
+  var targetDownEl=document.getElementById('hassemu-target-down');
+  function targetDownVisible(){
+    return !!(targetDownEl && targetDownEl.classList.contains('visible'));
+  }
   function showDown(){
     if(downEl && !downEl.classList.contains('visible')){
       downEl.classList.add('visible');
@@ -96,7 +134,13 @@ ${import_external_bridge.CONNECTION_STATUS_SCRIPT}
   function hideDown(){
     if(downEl && downEl.classList.contains('visible')){
       downEl.classList.remove('visible');
-      if(iframeEl){iframeEl.style.display='block';}
+      if(iframeEl && !targetDownVisible()){iframeEl.style.display='block';}
+    }
+  }
+  function showTargetDown(){
+    if(targetDownEl && !targetDownEl.classList.contains('visible')){
+      targetDownEl.classList.add('visible');
+      if(iframeEl){iframeEl.style.display='none';}
     }
   }
   window.setInterval(function(){
@@ -107,6 +151,19 @@ ${import_external_bridge.CONNECTION_STATUS_SCRIPT}
         hideDown();
         if(j&&typeof j.target==='string'&&j.target&&j.target!==current){
           location.reload();
+          return;
+        }
+        if(j&&j.targetReachable===false){
+          targetFails++;
+          if(targetFails>=TARGET_THRESHOLD){
+            showTargetDown();
+          }
+        }else{
+          if(targetDownVisible()){
+            location.reload();
+            return;
+          }
+          targetFails=0;
         }
       })
       .catch(function(){

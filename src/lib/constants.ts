@@ -135,6 +135,28 @@ export const NEW_CLIENT_BURST_WARN_THRESHOLD = 3;
 export const MODE_GLOBAL = "global";
 export const MODE_MANUAL = "manual";
 
+/**
+ * Timeout for one reachability probe of the redirect target (v1.39.0). Short on
+ * purpose: the probe answers "does anything answer on that address", not "is the
+ * dashboard healthy" — a LAN target that needs longer than this is down for the
+ * display's practical purposes too.
+ */
+export const TARGET_PROBE_TIMEOUT_MS = 4_000;
+
+/**
+ * How long one probe result stays valid (v1.39.0). Slightly below the wrapper's
+ * 30s poll interval so every poll round triggers at most ONE fresh probe per
+ * target, no matter how many displays share it.
+ */
+export const TARGET_PROBE_CACHE_MS = 25_000;
+
+/**
+ * FIFO cap for the target-health cache (v1.39.0). Targets come from config
+ * (discovered dashboards + manual URLs), so a handful is the norm — the cap only
+ * guards against unbounded growth if targets churn over months.
+ */
+export const TARGET_HEALTH_CACHE_CAP = 50;
+
 /** Login form schema for Home Assistant auth flow */
 export const LOGIN_SCHEMA = [
   { name: "username", required: true, type: "string" },

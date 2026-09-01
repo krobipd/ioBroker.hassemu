@@ -178,6 +178,11 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+### **WORK IN PROGRESS**
+
+- New: Displays show a "Redirect target not reachable" card (target URL, device ID, reload button) instead of a black screen when the configured dashboard is down — checked server-side, also right after a display start
+- New: Once the target answers again, the display reloads its dashboard automatically — no manual reload or display restart needed
+
 ### 1.38.2 (2026-08-27) — stable
 
 - Fixed: Stopping or restarting the adapter was cut short — the instance stayed marked as connected and displays kept looking for a server that was already gone.
