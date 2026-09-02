@@ -11,6 +11,8 @@ const read = (p: string): string => readFileSync(join(root, p), "utf8");
 /**
  * Lowest version a `^x.y.z` / `~x.y.z` / `>=x.y.z` style range allows, as a
  * comparable [major, minor, patch] tuple.
+ *
+ * @param range Semver range such as ^1.2.3
  */
 function rangeFloor(range: string): [number, number, number] {
   const m = range.match(/(\d+)\.(\d+)\.(\d+)/);
@@ -20,7 +22,12 @@ function rangeFloor(range: string): [number, number, number] {
   return [Number(m[1]), Number(m[2]), Number(m[3])];
 }
 
-/** True when `range`'s lowest allowed version is at or above the compatibility floor. */
+/**
+ * True when `range`'s lowest allowed version is at or above the compatibility floor.
+ *
+ * @param range Semver range declared in package.json
+ * @param floor Lowest acceptable version as [major, minor, patch]
+ */
 function meetsFloor(range: string, floor: [number, number, number]): boolean {
   const v = rangeFloor(range);
   for (let i = 0; i < 3; i++) {

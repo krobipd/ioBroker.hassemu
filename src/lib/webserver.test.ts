@@ -1,6 +1,5 @@
 import crypto from "node:crypto";
 import { once } from "node:events";
-import { join } from "node:path";
 import WebSocket from "ws";
 
 vi.mock("@iobroker/adapter-core", async () => {
@@ -16,7 +15,9 @@ vi.mock("@iobroker/adapter-core", async () => {
       getTranslatedObject: vi.fn((key: string) => {
         const result: Record<string, string> = {};
         for (const [lang, data] of Object.entries(i18nData)) {
-          if (data[key]) result[lang] = data[key];
+          if (data[key]) {
+            result[lang] = data[key];
+          }
         }
         return Object.keys(result).length > 0 ? result : { en: key };
       }),
@@ -28,10 +29,9 @@ vi.mock("@iobroker/adapter-core", async () => {
 import { CLIENT_COOKIE, WebServer } from "./webserver";
 import { ClientRegistry } from "./client-registry";
 import { GlobalConfig } from "./global-config";
-import { COOKIE_MAX_AGE_S, MODE_GLOBAL, MODE_MANUAL } from "./constants";
-import { HA_VERSION } from "./constants";
+import { COOKIE_MAX_AGE_S, MODE_MANUAL, HA_VERSION } from "./constants";
 import type { TargetProbe } from "./target-health";
-import type { AdapterConfig, ClientRecord } from "./types";
+import type { AdapterConfig } from "./types";
 
 interface ObjEntry {
   type: string;
@@ -48,9 +48,26 @@ interface MockStore {
   activeIntervals: Set<object>;
 }
 
+interface MockAdapterApi {
+  namespace: string;
+  log: { debug(m: string): void; info(m: string): void; warn(m: string): void; error(m: string): void };
+  setInterval(cb: () => void, ms: number): ioBroker.Interval;
+  clearInterval(h?: unknown): void;
+  setTimeout(): undefined;
+  clearTimeout(): undefined;
+  getForeignObjectsAsync(pattern: string, type?: string): Promise<Record<string, ObjEntry>>;
+  getStateAsync(id: string): Promise<{ val: unknown; ack: boolean } | null>;
+  setObjectNotExistsAsync(id: string, obj: ObjEntry): Promise<void>;
+  extendObject(id: string, obj: Partial<ObjEntry>): Promise<void>;
+  getObjectAsync(id: string): Promise<ObjEntry | null>;
+  setObject(id: string, obj: ObjEntry): Promise<void>;
+  setState(id: string, val: { val: unknown; ack?: boolean }): Promise<void>;
+  delObjectAsync(id: string): Promise<void>;
+}
+
 function createMockAdapter(namespace = "hassemu.0"): {
   store: MockStore;
-  adapter: ReturnType<typeof build>;
+  adapter: MockAdapterApi;
 } {
   const store: MockStore = {
     namespace,
@@ -60,7 +77,7 @@ function createMockAdapter(namespace = "hassemu.0"): {
     activeIntervals: new Set(),
   };
 
-  function build() {
+  function build(): MockAdapterApi {
     return {
       namespace,
       log: {
@@ -79,12 +96,12 @@ function createMockAdapter(namespace = "hassemu.0"): {
       },
       clearInterval: (h?: unknown) => {
         if (h) {
-          store.activeIntervals.delete(h as object);
+          store.activeIntervals.delete(h);
         }
       },
       setTimeout: () => undefined,
       clearTimeout: () => undefined,
-      getForeignObjectsAsync: async (pattern: string, type?: string) => {
+      getForeignObjectsAsync: (pattern: string, type?: string) => {
         const prefix = pattern.replace("*", "");
         const out: Record<string, ObjEntry> = {};
         // Type-faithful to js-controller: no type argument → 'state' view only
@@ -95,16 +112,17 @@ function createMockAdapter(namespace = "hassemu.0"): {
             out[id] = obj;
           }
         }
-        return out;
+        return Promise.resolve(out);
       },
-      getStateAsync: async (id: string) => store.states.get(`${namespace}.${id}`) ?? null,
-      setObjectNotExistsAsync: async (id: string, obj: ObjEntry) => {
+      getStateAsync: (id: string) => Promise.resolve(store.states.get(`${namespace}.${id}`) ?? null),
+      setObjectNotExistsAsync: (id: string, obj: ObjEntry) => {
         const full = `${namespace}.${id}`;
         if (!store.objects.has(full)) {
           store.objects.set(full, obj);
         }
+        return Promise.resolve();
       },
-      extendObject: async (id: string, obj: Partial<ObjEntry>) => {
+      extendObject: (id: string, obj: Partial<ObjEntry>) => {
         const full = `${namespace}.${id}`;
         const ex = store.objects.get(full) ?? { type: "state" };
         store.objects.set(full, {
@@ -113,25 +131,33 @@ function createMockAdapter(namespace = "hassemu.0"): {
           common: { ...(ex.common ?? {}), ...(obj.common ?? {}) },
           native: { ...(ex.native ?? {}), ...(obj.native ?? {}) },
         });
+        return Promise.resolve();
       },
-      getObjectAsync: async (id: string): Promise<ObjEntry | null> => {
-        return store.objects.get(`${namespace}.${id}`) ?? null;
+      getObjectAsync: (id: string): Promise<ObjEntry | null> => {
+        return Promise.resolve(store.objects.get(`${namespace}.${id}`) ?? null);
       },
-      setObject: async (id: string, obj: ObjEntry) => {
+      setObject: (id: string, obj: ObjEntry) => {
         store.objects.set(`${namespace}.${id}`, obj);
+        return Promise.resolve();
       },
-      setState: async (id: string, val: { val: unknown; ack?: boolean }) => {
+      setState: (id: string, val: { val: unknown; ack?: boolean }) => {
         store.states.set(`${namespace}.${id}`, { val: val.val, ack: val.ack ?? false });
+        return Promise.resolve();
       },
-      delObjectAsync: async (id: string) => {
+      delObjectAsync: (id: string) => {
         const full = `${namespace}.${id}`;
         store.objects.delete(full);
         for (const k of [...store.objects.keys()]) {
-          if (k.startsWith(`${full}.`)) store.objects.delete(k);
+          if (k.startsWith(`${full}.`)) {
+            store.objects.delete(k);
+          }
         }
         for (const k of [...store.states.keys()]) {
-          if (k === full || k.startsWith(`${full}.`)) store.states.delete(k);
+          if (k === full || k.startsWith(`${full}.`)) {
+            store.states.delete(k);
+          }
         }
+        return Promise.resolve();
       },
     };
   }
@@ -153,6 +179,11 @@ const baseConfig: AdapterConfig = {
  * Build a GlobalConfig with optional `global.mode` (sentinel or URL) and
  * `global.manualUrl` set up via the migration helper. `enabled` flag is
  * persisted but does NOT bulk-sync clients here — that lives in main.ts.
+ *
+ * @param adapter Mock adapter that owns the object store
+ * @param mode Value for global.mode (sentinel or URL), null keeps the default
+ * @param manualUrl Value for global.manualUrl, null keeps it empty
+ * @param enabled Master switch value to persist
  */
 async function buildGlobalConfig(
   adapter: ReturnType<typeof createMockAdapter>["adapter"],
@@ -171,7 +202,9 @@ async function buildGlobalConfig(
 }
 
 function extractCookie(setCookieHeader: string | string[] | undefined): string | null {
-  if (!setCookieHeader) return null;
+  if (!setCookieHeader) {
+    return null;
+  }
   const header = Array.isArray(setCookieHeader) ? setCookieHeader[0] : setCookieHeader;
   const match = header.match(new RegExp(`${CLIENT_COOKIE}=([^;]+)`));
   return match ? match[1] : null;
@@ -203,6 +236,8 @@ interface ServerOpts {
  * test now goes through this single helper. Tests that exercise the real
  * listener (`start()`/`stop()`, WebSocket, restart-simulation) stay manual
  * because `start()` registers the plugins itself.
+ *
+ * @param opts Overrides for the adapter config, global mode and manual URL
  */
 async function buildServer(opts: ServerOpts = {}): Promise<{
   s: WebServer;
@@ -225,7 +260,7 @@ async function buildServer(opts: ServerOpts = {}): Promise<{
     g,
     crypto.randomUUID(),
     opts.systemLanguage ?? "en",
-    opts.targetProbe ?? (async (): Promise<boolean> => true),
+    opts.targetProbe ?? ((): Promise<boolean> => Promise.resolve(true)),
   );
   await s["app"].register((await import("@fastify/cookie")).default);
   await s["app"].register((await import("@fastify/formbody")).default);
@@ -241,12 +276,11 @@ async function buildServer(opts: ServerOpts = {}): Promise<{
 describe("WebServer", () => {
   let server: WebServer;
   let registry: ClientRegistry;
-  let globalConfig: GlobalConfig;
   let store: MockStore;
 
   beforeEach(async () => {
     // global.mode = direct URL; new client default mode='global' delegates here
-    ({ s: server, reg: registry, g: globalConfig, store } = await buildServer());
+    ({ s: server, reg: registry, store } = await buildServer());
   });
 
   afterEach(async () => {
@@ -277,7 +311,7 @@ describe("WebServer", () => {
 
     it("GET /api/config returns HA config with version + service name", async () => {
       const res = await server.inject({ method: "GET", url: "/api/config" });
-      const body = res.json() as Record<string, unknown>;
+      const body = res.json();
       expect(body.version).to.equal(HA_VERSION);
       expect(body.location_name).to.equal("TestServer");
       expect(body.components).to.include("homeassistant");
@@ -285,7 +319,7 @@ describe("WebServer", () => {
 
     it("GET /api/discovery_info returns discovery info with uuid", async () => {
       const res = await server.inject({ method: "GET", url: "/api/discovery_info" });
-      const body = res.json() as Record<string, unknown>;
+      const body = res.json();
       expect(body.uuid).to.equal(server.instanceUuid);
       expect(body.location_name).to.equal("TestServer");
       expect(body.version).to.equal(HA_VERSION);
@@ -315,14 +349,14 @@ describe("WebServer", () => {
   describe("auth flow", () => {
     it("GET /auth/providers returns homeassistant provider", async () => {
       const res = await server.inject({ method: "GET", url: "/auth/providers" });
-      const body = res.json() as Array<Record<string, unknown>>;
+      const body = res.json();
       expect(body).to.have.lengthOf(1);
       expect(body[0].type).to.equal("homeassistant");
     });
 
     it("POST /auth/login_flow creates a flow and sets cookie on first visit", async () => {
       const res = await server.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
-      const body = res.json() as Record<string, unknown>;
+      const body = res.json();
       expect(body.type).to.equal("form");
       expect(body.flow_id).to.match(/^[0-9a-f-]{36}$/);
       expect(extractCookie(res.headers["set-cookie"])).to.match(/^[0-9a-f-]{36}$/);
@@ -343,13 +377,13 @@ describe("WebServer", () => {
         payload: { username: "admin", password: "secret" },
       });
       expect(res.statusCode).to.equal(400);
-      expect((res.json() as { reason: string }).reason).to.equal("unknown_flow");
+      expect(res.json().reason).to.equal("unknown_flow");
     });
 
     it("completes full auth flow end-to-end and stores refresh token", async () => {
       const r1 = await server.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
       const cookie = extractCookie(r1.headers["set-cookie"])!;
-      const flowId = (r1.json() as { flow_id: string }).flow_id;
+      const flowId = r1.json().flow_id;
 
       const r2 = await server.inject({
         method: "POST",
@@ -357,7 +391,7 @@ describe("WebServer", () => {
         headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
         payload: { username: "admin", password: "secret" },
       });
-      const code = (r2.json() as { result: string }).result;
+      const code = r2.json().result;
       expect(code).to.match(/^[0-9a-f-]{36}$/);
 
       const r3 = await server.inject({
@@ -366,7 +400,7 @@ describe("WebServer", () => {
         headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
         payload: { grant_type: "authorization_code", code },
       });
-      const tokens = r3.json() as { access_token: string; refresh_token: string };
+      const tokens = r3.json();
       expect(tokens.access_token).to.match(/^[0-9a-f-]{36}$/);
       expect(tokens.refresh_token).to.match(/^[0-9a-f-]{36}$/);
 
@@ -382,20 +416,20 @@ describe("WebServer", () => {
       // First do a real login to get a valid refresh token
       const r1 = await server.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
       const cookie = extractCookie(r1.headers["set-cookie"])!;
-      const flowId = (r1.json() as { flow_id: string }).flow_id;
+      const flowId = r1.json().flow_id;
       const r2 = await server.inject({
         method: "POST",
         url: `/auth/login_flow/${flowId}`,
         headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
         payload: { username: "admin", password: "secret" },
       });
-      const code = (r2.json() as { result: string }).result;
+      const code = r2.json().result;
       const r3 = await server.inject({
         method: "POST",
         url: "/auth/token",
         payload: { grant_type: "authorization_code", code },
       });
-      const refreshToken = (r3.json() as { refresh_token: string }).refresh_token;
+      const refreshToken = r3.json().refresh_token;
 
       // Use the valid refresh token to mint a new access token
       const r4 = await server.inject({
@@ -404,7 +438,7 @@ describe("WebServer", () => {
         payload: { grant_type: "refresh_token", refresh_token: refreshToken },
       });
       expect(r4.statusCode).to.equal(200);
-      expect((r4.json() as { access_token: string }).access_token).to.match(/^[0-9a-f-]{36}$/);
+      expect(r4.json().access_token).to.match(/^[0-9a-f-]{36}$/);
     });
 
     it("POST /auth/token with UNKNOWN refresh_token returns 400 (security fix v1.2.0)", async () => {
@@ -414,7 +448,7 @@ describe("WebServer", () => {
         payload: { grant_type: "refresh_token", refresh_token: crypto.randomUUID() },
       });
       expect(res.statusCode).to.equal(400);
-      expect((res.json() as { error: string }).error).to.equal("invalid_grant");
+      expect(res.json().error).to.equal("invalid_grant");
     });
 
     it("POST /auth/token with missing refresh_token returns 400", async () => {
@@ -441,14 +475,14 @@ describe("WebServer", () => {
       // Tests via inject({payload:{}}) serialisieren zu JSON und maskieren das.
       const r1 = await server.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
       const cookie = extractCookie(r1.headers["set-cookie"])!;
-      const flowId = (r1.json() as { flow_id: string }).flow_id;
+      const flowId = r1.json().flow_id;
       const r2 = await server.inject({
         method: "POST",
         url: `/auth/login_flow/${flowId}`,
         headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
         payload: { username: "admin", password: "secret" },
       });
-      const code = (r2.json() as { result: string }).result;
+      const code = r2.json().result;
 
       const r3 = await server.inject({
         method: "POST",
@@ -457,7 +491,7 @@ describe("WebServer", () => {
         payload: `grant_type=authorization_code&code=${encodeURIComponent(code)}`,
       });
       expect(r3.statusCode).to.equal(200);
-      const body = r3.json() as { access_token: string; refresh_token: string };
+      const body = r3.json();
       expect(body.access_token).to.match(/^[0-9a-f-]{36}$/);
       expect(body.refresh_token).to.match(/^[0-9a-f-]{36}$/);
     });
@@ -465,20 +499,20 @@ describe("WebServer", () => {
     it("POST /auth/token with form-urlencoded refresh_token also works", async () => {
       const r1 = await server.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
       const cookie = extractCookie(r1.headers["set-cookie"])!;
-      const flowId = (r1.json() as { flow_id: string }).flow_id;
+      const flowId = r1.json().flow_id;
       const r2 = await server.inject({
         method: "POST",
         url: `/auth/login_flow/${flowId}`,
         headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
         payload: { username: "admin", password: "secret" },
       });
-      const code = (r2.json() as { result: string }).result;
+      const code = r2.json().result;
       const r3 = await server.inject({
         method: "POST",
         url: "/auth/token",
         payload: { grant_type: "authorization_code", code },
       });
-      const refreshToken = (r3.json() as { refresh_token: string }).refresh_token;
+      const refreshToken = r3.json().refresh_token;
 
       const r4 = await server.inject({
         method: "POST",
@@ -493,14 +527,14 @@ describe("WebServer", () => {
       const { s } = await buildServer({ config: { authRequired: true } });
 
       const r1 = await s.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
-      const flowId = (r1.json() as { flow_id: string }).flow_id;
+      const flowId = r1.json().flow_id;
       const r2 = await s.inject({
         method: "POST",
         url: `/auth/login_flow/${flowId}`,
         payload: { username: "wrong", password: "wrong" },
       });
       expect(r2.statusCode).to.equal(400);
-      expect((r2.json() as { errors: { base: string } }).errors.base).to.equal("invalid_auth");
+      expect(r2.json().errors.base).to.equal("invalid_auth");
 
       await s["app"].close();
     });
@@ -509,7 +543,7 @@ describe("WebServer", () => {
       const { s, store } = await buildServer({ config: { authRequired: true } });
       const attempt = async (): Promise<void> => {
         const r1 = await s.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
-        const flowId = (r1.json() as { flow_id: string }).flow_id;
+        const flowId = r1.json().flow_id;
         await s.inject({
           method: "POST",
           url: `/auth/login_flow/${flowId}`,
@@ -533,13 +567,13 @@ describe("WebServer", () => {
       const { s } = await buildServer({ config: { authRequired: true } });
 
       const r1 = await s.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
-      const flowId = (r1.json() as { flow_id: string }).flow_id;
+      const flowId = r1.json().flow_id;
       const r2 = await s.inject({
         method: "POST",
         url: `/auth/login_flow/${flowId}`,
         payload: { username: "admin", password: "secret" },
       });
-      expect((r2.json() as { result?: string }).result).to.match(/^[0-9a-f-]{36}$/);
+      expect(r2.json().result).to.match(/^[0-9a-f-]{36}$/);
       await s["app"].close();
     });
 
@@ -547,13 +581,13 @@ describe("WebServer", () => {
       const { s } = await buildServer({ config: { authRequired: true } });
 
       const r1 = await s.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
-      const flowId = (r1.json() as { flow_id: string }).flow_id;
+      const flowId = r1.json().flow_id;
       const r2 = await s.inject({
         method: "POST",
         url: `/auth/login_flow/${flowId}`,
         payload: { username: "short", password: "doesnotmatter" },
       });
-      expect((r2.json() as { errors: { base: string } }).errors.base).to.equal("invalid_auth");
+      expect(r2.json().errors.base).to.equal("invalid_auth");
       await s["app"].close();
     });
 
@@ -563,14 +597,14 @@ describe("WebServer", () => {
       const { s } = await buildServer({ config: { authRequired: true, password: "" } });
 
       const r1 = await s.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
-      const flowId = (r1.json() as { flow_id: string }).flow_id;
+      const flowId = r1.json().flow_id;
       const r2 = await s.inject({
         method: "POST",
         url: `/auth/login_flow/${flowId}`,
         payload: { username: "admin", password: "" },
       });
       expect(r2.statusCode).to.equal(400);
-      expect((r2.json() as { errors: { base: string } }).errors.base).to.equal("invalid_auth");
+      expect(r2.json().errors.base).to.equal("invalid_auth");
       await s["app"].close();
     });
   });
@@ -582,12 +616,10 @@ describe("WebServer", () => {
     //   home-assistant/frontend src/data/auth.ts:redirectWithAuthCode
 
     const SHELLY_QUERY =
-      "response_type=code" +
-      "&client_id=" +
-      encodeURIComponent("https://home-assistant.io/android") +
-      "&redirect_uri=" +
-      encodeURIComponent("homeassistant://auth-callback") +
-      "&state=xyz123";
+      `response_type=code` +
+      `&client_id=${encodeURIComponent("https://home-assistant.io/android")}&redirect_uri=${encodeURIComponent(
+        "homeassistant://auth-callback",
+      )}&state=xyz123`;
 
     it("GET /auth/authorize: rejects missing response_type", async () => {
       const res = await server.inject({ method: "GET", url: "/auth/authorize" });
@@ -608,11 +640,9 @@ describe("WebServer", () => {
     it("GET /auth/authorize: rejects javascript: redirect_uri (open-redirect guard)", async () => {
       const res = await server.inject({
         method: "GET",
-        url:
-          "/auth/authorize?response_type=code&client_id=" +
-          encodeURIComponent("https://home-assistant.io/android") +
-          "&redirect_uri=" +
-          encodeURIComponent("javascript:alert(1)"),
+        url: `/auth/authorize?response_type=code&client_id=${encodeURIComponent(
+          "https://home-assistant.io/android",
+        )}&redirect_uri=${encodeURIComponent("javascript:alert(1)")}`,
       });
       expect(res.statusCode).to.equal(400);
       expect(res.body).to.include("invalid_redirect_uri");
@@ -634,18 +664,16 @@ describe("WebServer", () => {
     it("GET /auth/authorize: rejects mismatched http(s) host (open-redirect guard)", async () => {
       const res = await server.inject({
         method: "GET",
-        url:
-          "/auth/authorize?response_type=code&client_id=" +
-          encodeURIComponent("http://10.0.0.1:8123/") +
-          "&redirect_uri=" +
-          encodeURIComponent("http://attacker.example.com/cb"),
+        url: `/auth/authorize?response_type=code&client_id=${encodeURIComponent(
+          "http://10.0.0.1:8123/",
+        )}&redirect_uri=${encodeURIComponent("http://attacker.example.com/cb")}`,
       });
       expect(res.statusCode).to.equal(400);
       expect(res.body).to.include("invalid_redirect_uri");
     });
 
     it("GET /auth/authorize (authRequired=false): renders auto-redirect HTML with code + state", async () => {
-      const res = await server.inject({ method: "GET", url: "/auth/authorize?" + SHELLY_QUERY });
+      const res = await server.inject({ method: "GET", url: `/auth/authorize?${SHELLY_QUERY}` });
       expect(res.statusCode).to.equal(200);
       expect(res.headers["content-type"]).to.include("text/html");
       // The auto-submit page contains the target URL twice:
@@ -663,7 +691,7 @@ describe("WebServer", () => {
 
     it("GET /auth/authorize (authRequired=true): renders login form with hidden OAuth2 params", async () => {
       const { s } = await buildServer({ config: { authRequired: true } });
-      const res = await s.inject({ method: "GET", url: "/auth/authorize?" + SHELLY_QUERY });
+      const res = await s.inject({ method: "GET", url: `/auth/authorize?${SHELLY_QUERY}` });
       expect(res.statusCode).to.equal(200);
       expect(res.headers["content-type"]).to.include("text/html");
       expect(res.body).to.include('<form method="POST" action="/auth/authorize"');
@@ -683,13 +711,11 @@ describe("WebServer", () => {
         url: "/auth/authorize",
         headers: { "content-type": "application/x-www-form-urlencoded" },
         payload:
-          "response_type=code" +
-          "&client_id=" +
-          encodeURIComponent("https://home-assistant.io/android") +
-          "&redirect_uri=" +
-          encodeURIComponent("homeassistant://auth-callback") +
-          "&state=abc" +
-          "&username=admin&password=secret",
+          `response_type=code` +
+          `&client_id=${encodeURIComponent("https://home-assistant.io/android")}&redirect_uri=${encodeURIComponent(
+            "homeassistant://auth-callback",
+          )}&state=abc` +
+          `&username=admin&password=secret`,
       });
       expect(res.statusCode).to.equal(200);
       expect(res.body).to.match(/document\.location\.assign/);
@@ -705,13 +731,11 @@ describe("WebServer", () => {
         url: "/auth/authorize",
         headers: { "content-type": "application/x-www-form-urlencoded" },
         payload:
-          "response_type=code" +
-          "&client_id=" +
-          encodeURIComponent("https://home-assistant.io/android") +
-          "&redirect_uri=" +
-          encodeURIComponent("homeassistant://auth-callback") +
-          "&state=abc" +
-          "&username=admin&password=wrong",
+          `response_type=code` +
+          `&client_id=${encodeURIComponent("https://home-assistant.io/android")}&redirect_uri=${encodeURIComponent(
+            "homeassistant://auth-callback",
+          )}&state=abc` +
+          `&username=admin&password=wrong`,
       });
       expect(res.statusCode).to.equal(401);
       expect(res.body).to.include("Invalid username or password");
@@ -722,7 +746,7 @@ describe("WebServer", () => {
     });
 
     it("GET /auth/authorize → POST /auth/token: full end-to-end flow yields access_token (authRequired=false)", async () => {
-      const r1 = await server.inject({ method: "GET", url: "/auth/authorize?" + SHELLY_QUERY });
+      const r1 = await server.inject({ method: "GET", url: `/auth/authorize?${SHELLY_QUERY}` });
       const codeMatch = r1.body.match(/code=([a-f0-9-]+)/);
       expect(codeMatch).to.not.be.null;
       const r2 = await server.inject({
@@ -732,7 +756,7 @@ describe("WebServer", () => {
         payload: `grant_type=authorization_code&code=${codeMatch![1]}&client_id=${encodeURIComponent("https://home-assistant.io/android")}`,
       });
       expect(r2.statusCode).to.equal(200);
-      const body = r2.json() as { access_token: string; refresh_token: string; token_type: string };
+      const body = r2.json();
       expect(body.token_type).to.equal("Bearer");
       expect(body.access_token).to.be.a("string").and.have.lengthOf.at.least(16);
       expect(body.refresh_token).to.be.a("string").and.have.lengthOf.at.least(16);
@@ -745,7 +769,7 @@ describe("WebServer", () => {
       // as „Mobile-App-Integration nicht verfügbar" and blocks onboarding.
 
       // 1. OAuth2: GET /auth/authorize → auth_code
-      const r1 = await server.inject({ method: "GET", url: "/auth/authorize?" + SHELLY_QUERY });
+      const r1 = await server.inject({ method: "GET", url: `/auth/authorize?${SHELLY_QUERY}` });
       const codeMatch = r1.body.match(/code=([a-f0-9-]+)/);
       expect(codeMatch, "auth code not in body").to.not.be.null;
 
@@ -756,7 +780,7 @@ describe("WebServer", () => {
         headers: { "content-type": "application/x-www-form-urlencoded" },
         payload: `grant_type=authorization_code&code=${codeMatch![1]}`,
       });
-      const tok = (r2.json() as { access_token: string }).access_token;
+      const tok = r2.json().access_token;
       expect(tok).to.be.a("string");
 
       // 3. POST /api/mobile_app/registrations → webhook_id
@@ -775,12 +799,7 @@ describe("WebServer", () => {
         },
       });
       expect(r3.statusCode).to.equal(201);
-      const reg = r3.json() as {
-        webhook_id: string;
-        cloudhook_url: string | null;
-        remote_ui_url: string | null;
-        secret: string | null;
-      };
+      const reg = r3.json();
       expect(reg.webhook_id).to.be.a("string").and.have.lengthOf.at.least(16);
       expect(reg.cloudhook_url).to.equal(null);
       expect(reg.remote_ui_url).to.equal(null);
@@ -815,7 +834,7 @@ describe("WebServer", () => {
         payload: { type: "get_config" },
       });
       expect(r1.statusCode).to.equal(200);
-      const cfg = r1.json() as { components: string[] };
+      const cfg = r1.json();
       expect(cfg.components).to.include("mobile_app");
 
       // get_zones returns []
@@ -843,7 +862,7 @@ describe("WebServer", () => {
       const { s } = await buildServer();
 
       // OAuth2 → access_token to satisfy the pre-handler
-      const r1 = await s.inject({ method: "GET", url: "/auth/authorize?" + SHELLY_QUERY });
+      const r1 = await s.inject({ method: "GET", url: `/auth/authorize?${SHELLY_QUERY}` });
       const codeMatch = r1.body.match(/code=([a-f0-9-]+)/);
       const r2 = await s.inject({
         method: "POST",
@@ -851,7 +870,7 @@ describe("WebServer", () => {
         headers: { "content-type": "application/x-www-form-urlencoded" },
         payload: `grant_type=authorization_code&code=${codeMatch![1]}`,
       });
-      const tok = (r2.json() as { access_token: string }).access_token;
+      const tok = r2.json().access_token;
 
       // Register → known webhook_id
       const r3 = await s.inject({
@@ -860,7 +879,7 @@ describe("WebServer", () => {
         headers: { "content-type": "application/json", authorization: `Bearer ${tok}` },
         payload: { app_id: "x", device_id: "y" },
       });
-      const id = (r3.json() as { webhook_id: string }).webhook_id;
+      const id = r3.json().webhook_id;
 
       // Known id → 200, echoes the registration
       const rKnown = await s.inject({
@@ -870,7 +889,7 @@ describe("WebServer", () => {
         payload: {},
       });
       expect(rKnown.statusCode).to.equal(200);
-      expect((rKnown.json() as { webhook_id: string }).webhook_id).to.equal(id);
+      expect(rKnown.json().webhook_id).to.equal(id);
 
       // Unknown id → 404 so a stale pre-restart token re-registers
       const rUnknown = await s.inject({
@@ -880,7 +899,7 @@ describe("WebServer", () => {
         payload: {},
       });
       expect(rUnknown.statusCode).to.equal(404);
-      expect((rUnknown.json() as { error: string }).error).to.equal("unknown_registration");
+      expect(rUnknown.json().error).to.equal("unknown_registration");
       await s["app"].close();
     });
 
@@ -888,7 +907,7 @@ describe("WebServer", () => {
       const { s } = await buildServer();
 
       // OAuth2 → access_token to satisfy pre-handler
-      const r1 = await s.inject({ method: "GET", url: "/auth/authorize?" + SHELLY_QUERY });
+      const r1 = await s.inject({ method: "GET", url: `/auth/authorize?${SHELLY_QUERY}` });
       const codeMatch = r1.body.match(/code=([a-f0-9-]+)/);
       const r2 = await s.inject({
         method: "POST",
@@ -896,7 +915,7 @@ describe("WebServer", () => {
         headers: { "content-type": "application/x-www-form-urlencoded" },
         payload: `grant_type=authorization_code&code=${codeMatch![1]}`,
       });
-      const tok = (r2.json() as { access_token: string }).access_token;
+      const tok = r2.json().access_token;
 
       // Register, then delete
       const r3 = await s.inject({
@@ -905,7 +924,7 @@ describe("WebServer", () => {
         headers: { "content-type": "application/json", authorization: `Bearer ${tok}` },
         payload: { app_id: "x", device_id: "y" },
       });
-      const id = (r3.json() as { webhook_id: string }).webhook_id;
+      const id = r3.json().webhook_id;
       expect(s.webhookRegistrations.has(id)).to.be.true;
 
       const r4 = await s.inject({
@@ -922,7 +941,7 @@ describe("WebServer", () => {
       const { s } = await buildServer();
 
       // Auth flow to get a bearer
-      const r1 = await s.inject({ method: "GET", url: "/auth/authorize?" + SHELLY_QUERY });
+      const r1 = await s.inject({ method: "GET", url: `/auth/authorize?${SHELLY_QUERY}` });
       const codeMatch = r1.body.match(/code=([a-f0-9-]+)/);
       const r2 = await s.inject({
         method: "POST",
@@ -930,14 +949,14 @@ describe("WebServer", () => {
         headers: { "content-type": "application/x-www-form-urlencoded" },
         payload: `grant_type=authorization_code&code=${codeMatch![1]}`,
       });
-      const tok = (r2.json() as { access_token: string }).access_token;
+      const tok = r2.json().access_token;
 
       const r3 = await s.inject({
         method: "GET",
         url: "/api/config",
         headers: { authorization: `Bearer ${tok}` },
       });
-      const body = r3.json() as { components: string[] };
+      const body = r3.json();
       expect(body.components).to.include("mobile_app");
       await s["app"].close();
     });
@@ -948,13 +967,10 @@ describe("WebServer", () => {
       const res = await server.inject({
         method: "GET",
         url:
-          "/auth/authorize?response_type=code" +
-          "&client_id=" +
-          encodeURIComponent("https://home-assistant.io/android") +
-          "&redirect_uri=" +
-          encodeURIComponent("homeassistant://auth-callback") +
-          "&state=" +
-          exoticState,
+          `/auth/authorize?response_type=code` +
+          `&client_id=${encodeURIComponent("https://home-assistant.io/android")}&redirect_uri=${encodeURIComponent(
+            "homeassistant://auth-callback",
+          )}&state=${exoticState}`,
       });
       expect(res.statusCode).to.equal(200);
       // Fastify URL-decodes the query, so the raw state on server is `a&b=c`,
@@ -968,21 +984,21 @@ describe("WebServer", () => {
     async function loginAndGetTokens(): Promise<{ cookie: string; access_token: string; refresh_token: string }> {
       const r1 = await server.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
       const cookie = extractCookie(r1.headers["set-cookie"])!;
-      const flowId = (r1.json() as { flow_id: string }).flow_id;
+      const flowId = r1.json().flow_id;
       const r2 = await server.inject({
         method: "POST",
         url: `/auth/login_flow/${flowId}`,
         headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
         payload: { username: "admin", password: "secret" },
       });
-      const code = (r2.json() as { result: string }).result;
+      const code = r2.json().result;
       const r3 = await server.inject({
         method: "POST",
         url: "/auth/token",
         headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
         payload: { grant_type: "authorization_code", code },
       });
-      const tokens = r3.json() as { access_token: string; refresh_token: string };
+      const tokens = r3.json();
       return { cookie, ...tokens };
     }
 
@@ -1028,7 +1044,7 @@ describe("WebServer", () => {
 
     it("webhook get_config returns the same object as /api/config (shared buildHaConfig)", async () => {
       const reg1 = await server.inject({ method: "POST", url: "/api/mobile_app/registrations", payload: {} });
-      const webhookId = (reg1.json() as { webhook_id: string }).webhook_id;
+      const webhookId = reg1.json().webhook_id;
       const apiConfig = (await server.inject({ method: "GET", url: "/api/config" })).json();
       const whConfig = (
         await server.inject({ method: "POST", url: `/api/webhook/${webhookId}`, payload: { type: "get_config" } })
@@ -1046,7 +1062,7 @@ describe("WebServer", () => {
         payload: { device_name: "Shelly Wall Display", app_id: "io.homeassistant.companion.android" },
       });
       expect(reg1.statusCode).to.equal(201);
-      expect((reg1.json() as { webhook_id: string }).webhook_id).to.match(/^[0-9a-f]{32}$/);
+      expect(reg1.json().webhook_id).to.match(/^[0-9a-f]{32}$/);
       // The display page (iframe wrapper, since global.mode is a direct URL) is served 200.
       const display = await server.inject({ method: "GET", url: "/" });
       expect(display.statusCode).to.equal(200);
@@ -1057,7 +1073,7 @@ describe("WebServer", () => {
   describe("misc endpoints", () => {
     it("GET /health returns liveness without any config leak (security fix v1.5.0)", async () => {
       const res = await server.inject({ method: "GET", url: "/health" });
-      const body = res.json() as Record<string, unknown>;
+      const body = res.json();
       expect(body.status).to.equal("ok");
       expect(body.version).to.equal(HA_VERSION);
       // v1.5.0: complete config-block removed (was previously exposing `mdns` + `auth` flags
@@ -1070,7 +1086,7 @@ describe("WebServer", () => {
       // checks `manifest.name === "Home Assistant"` exactly. Any other
       // value (e.g. the user-configured serviceName) fails onboarding.
       const res = await server.inject({ method: "GET", url: "/manifest.json" });
-      const body = res.json() as { name: string; short_name: string };
+      const body = res.json();
       expect(body.name).to.equal("Home Assistant");
       expect(body.short_name).to.equal("Home Assistant");
     });
@@ -1199,7 +1215,7 @@ describe("WebServer", () => {
 
     // v1.39.0: target-down verdict on the poll endpoint + cold-boot render.
     it("GET /api/redirect_check reports targetReachable=false when the probe says down", async () => {
-      const { s } = await buildServer({ targetProbe: async () => false });
+      const { s } = await buildServer({ targetProbe: () => Promise.resolve(false) });
       const r1 = await s.inject({ method: "GET", url: "/" });
       const cookie = extractCookie(r1.headers["set-cookie"])!;
       const r2 = await s.inject({
@@ -1212,7 +1228,7 @@ describe("WebServer", () => {
     });
 
     it("GET / renders the target-down card VISIBLE when the target is down at render time (cold boot)", async () => {
-      const { s } = await buildServer({ targetProbe: async () => false });
+      const { s } = await buildServer({ targetProbe: () => Promise.resolve(false) });
       const res = await s.inject({ method: "GET", url: "/" });
       expect(res.statusCode).to.equal(200);
       expect(res.body).to.include('<div id="hassemu-target-down" class="visible"');
@@ -1237,9 +1253,9 @@ describe("WebServer", () => {
       const { s, reg } = await buildServer({
         globalMode: null,
         globalEnabled: false,
-        targetProbe: async () => {
+        targetProbe: () => {
           probeCalls++;
-          return false;
+          return Promise.resolve(false);
         },
       });
       const r0 = await s.inject({ method: "GET", url: "/" });
@@ -1313,7 +1329,7 @@ describe("WebServer", () => {
     it("GET /unknown returns 404", async () => {
       const res = await server.inject({ method: "GET", url: "/unknown" });
       expect(res.statusCode).to.equal(404);
-      expect((res.json() as { error: string }).error).to.equal("Not Found");
+      expect(res.json().error).to.equal("Not Found");
     });
   });
 
@@ -1456,7 +1472,7 @@ describe("WebServer", () => {
       // The first flow_id is the oldest entry; after flooding past the cap it
       // must be the one gone — proves FIFO order, not just the size cap.
       const first = await server.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
-      const firstFlowId = (first.json() as { flow_id: string }).flow_id;
+      const firstFlowId = first.json().flow_id;
       expect(server.sessions.has(firstFlowId)).to.be.true;
       // Fire enough more login_flow calls to push well past the cap (100).
       for (let i = 0; i < 105; i++) {
@@ -1472,7 +1488,7 @@ describe("WebServer", () => {
       // looping the login step holds the adapter's memory hostage.
       for (let i = 0; i < 110; i++) {
         const r1 = await server.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
-        const flowId = (r1.json() as { flow_id: string }).flow_id;
+        const flowId = r1.json().flow_id;
         await server.inject({ method: "POST", url: `/auth/login_flow/${flowId}`, payload: {} });
       }
       expect(server.codeSessions.size).to.be.at.most(100);
@@ -1480,9 +1496,9 @@ describe("WebServer", () => {
 
     it("a login_flow flood does not evict an in-flight auth code (v1.36.0 S2)", async () => {
       const r1 = await server.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
-      const flowId = (r1.json() as { flow_id: string }).flow_id;
+      const flowId = r1.json().flow_id;
       const r2 = await server.inject({ method: "POST", url: `/auth/login_flow/${flowId}`, payload: {} });
-      const code = (r2.json() as { result: string }).result;
+      const code = r2.json().result;
       expect(server.codeSessions.has(code)).to.be.true;
       // Flood the flow-id map well past its cap — the auth code lives in a separate map.
       for (let i = 0; i < 150; i++) {
@@ -1521,14 +1537,14 @@ describe("WebServer", () => {
         // Real login first to obtain a valid refresh_token
         const r1 = await s.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
         const cookie = extractCookie(r1.headers["set-cookie"])!;
-        const flowId = (r1.json() as { flow_id: string }).flow_id;
+        const flowId = r1.json().flow_id;
         const r2 = await s.inject({
           method: "POST",
           url: `/auth/login_flow/${flowId}`,
           headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
           payload: { username: "admin", password: "secret" },
         });
-        const code = (r2.json() as { result: string }).result;
+        const code = r2.json().result;
         const r3 = await s.inject({
           method: "POST",
           url: "/auth/token",
@@ -1536,7 +1552,7 @@ describe("WebServer", () => {
         });
         // v1.31.0: refresh_token stays valid across grants — same token can
         // be used repeatedly until the client logs out / is removed.
-        const refreshToken = (r3.json() as { refresh_token: string }).refresh_token;
+        const refreshToken = r3.json().refresh_token;
         for (let i = 0; i < 10; i++) {
           const res = await s.inject({
             method: "POST",
@@ -1544,7 +1560,7 @@ describe("WebServer", () => {
             payload: { grant_type: "refresh_token", refresh_token: refreshToken },
           });
           expect(res.statusCode).to.equal(200);
-          const body = res.json() as { access_token: string; refresh_token: string };
+          const body = res.json();
           expect(body.access_token).to.match(/^[0-9a-f-]{36}$/);
           expect(body.refresh_token).to.equal(refreshToken);
         }
@@ -1563,21 +1579,21 @@ describe("WebServer", () => {
       try {
         const r1 = await s.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
         const cookie = extractCookie(r1.headers["set-cookie"])!;
-        const flowId = (r1.json() as { flow_id: string }).flow_id;
+        const flowId = r1.json().flow_id;
         const r2 = await s.inject({
           method: "POST",
           url: `/auth/login_flow/${flowId}`,
           headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
           payload: { username: "admin", password: "secret" },
         });
-        const code = (r2.json() as { result: string }).result;
+        const code = r2.json().result;
         const r3 = await s.inject({
           method: "POST",
           url: "/auth/token",
           payload: { grant_type: "authorization_code", code },
         });
-        const initialRefresh = (r3.json() as { refresh_token: string }).refresh_token;
-        const initialAccess = (r3.json() as { access_token: string }).access_token;
+        const initialRefresh = r3.json().refresh_token;
+        const initialAccess = r3.json().access_token;
 
         // First refresh: same refresh_token is returned, new access_token is issued
         const r4 = await s.inject({
@@ -1586,7 +1602,7 @@ describe("WebServer", () => {
           payload: { grant_type: "refresh_token", refresh_token: initialRefresh },
         });
         expect(r4.statusCode).to.equal(200);
-        const tokens4 = r4.json() as { access_token: string; refresh_token: string };
+        const tokens4 = r4.json();
         expect(tokens4.access_token).to.match(/^[0-9a-f-]{36}$/);
         expect(tokens4.access_token).to.not.equal(initialAccess);
         expect(tokens4.refresh_token).to.equal(initialRefresh);
@@ -1598,7 +1614,7 @@ describe("WebServer", () => {
           payload: { grant_type: "refresh_token", refresh_token: initialRefresh },
         });
         expect(r5.statusCode).to.equal(200);
-        const tokens5 = r5.json() as { access_token: string; refresh_token: string };
+        const tokens5 = r5.json();
         expect(tokens5.access_token).to.not.equal(tokens4.access_token);
         expect(tokens5.refresh_token).to.equal(initialRefresh);
       } finally {
@@ -1630,20 +1646,20 @@ describe("WebServer", () => {
         // Initial OAuth → obtain refresh_token persisted to native.refreshToken
         const r1 = await s1.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
         const cookie = extractCookie(r1.headers["set-cookie"])!;
-        const flowId = (r1.json() as { flow_id: string }).flow_id;
+        const flowId = r1.json().flow_id;
         const r2 = await s1.inject({
           method: "POST",
           url: `/auth/login_flow/${flowId}`,
           headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
           payload: { username: "admin", password: "secret" },
         });
-        const code = (r2.json() as { result: string }).result;
+        const code = r2.json().result;
         const r3 = await s1.inject({
           method: "POST",
           url: "/auth/token",
           payload: { grant_type: "authorization_code", code },
         });
-        const refreshToken = (r3.json() as { refresh_token: string }).refresh_token;
+        const refreshToken = r3.json().refresh_token;
         await s1["app"].close();
 
         // Simulate adapter restart: new WebServer + new Registry on same mock store
@@ -1670,7 +1686,7 @@ describe("WebServer", () => {
             payload: { grant_type: "refresh_token", refresh_token: refreshToken },
           });
           expect(r4.statusCode).to.equal(200);
-          const body = r4.json() as { access_token: string; refresh_token: string };
+          const body = r4.json();
           expect(body.access_token).to.match(/^[0-9a-f-]{36}$/);
           expect(body.refresh_token).to.equal(refreshToken);
         } finally {
@@ -1688,7 +1704,7 @@ describe("WebServer", () => {
       try {
         const res = await s.inject({ method: "GET", url: "/health" });
         expect(res.statusCode).to.equal(200);
-        const body = res.json() as Record<string, unknown>;
+        const body = res.json();
         expect(body).to.have.keys(["status", "adapter", "version"]);
         expect(body).to.not.have.property("config");
       } finally {
@@ -1701,7 +1717,7 @@ describe("WebServer", () => {
       try {
         const res = await s.inject({ method: "GET", url: "/api/discovery_info" });
         expect(res.statusCode).to.equal(200);
-        const body = res.json() as { requires_api_password: boolean };
+        const body = res.json();
         // buildAuthServer sets authRequired=true, so discovery_info must mirror that
         expect(body.requires_api_password).to.equal(true);
       } finally {
@@ -1716,7 +1732,7 @@ describe("WebServer", () => {
       try {
         const res = await s.inject({ method: "GET", url: "/api/states" });
         expect(res.statusCode).to.equal(401);
-        const body = res.json() as { error: string };
+        const body = res.json();
         expect(body.error).to.equal("unauthorized");
       } finally {
         await s["app"].close();
@@ -1732,7 +1748,7 @@ describe("WebServer", () => {
           headers: { authorization: "Bearer invalid-token-12345" },
         });
         expect(res.statusCode).to.equal(401);
-        const body = res.json() as { error: string };
+        const body = res.json();
         expect(body.error).to.equal("invalid_token");
       } finally {
         await s["app"].close();
@@ -1800,20 +1816,20 @@ describe("WebServer", () => {
         // Run a real login to get a valid access token
         const r1 = await s.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
         const cookie = extractCookie(r1.headers["set-cookie"])!;
-        const flowId = (r1.json() as { flow_id: string }).flow_id;
+        const flowId = r1.json().flow_id;
         const r2 = await s.inject({
           method: "POST",
           url: `/auth/login_flow/${flowId}`,
           headers: { cookie: `${CLIENT_COOKIE}=${cookie}` },
           payload: { username: "admin", password: "secret" },
         });
-        const code = (r2.json() as { result: string }).result;
+        const code = r2.json().result;
         const r3 = await s.inject({
           method: "POST",
           url: "/auth/token",
           payload: { grant_type: "authorization_code", code },
         });
-        const accessToken = (r3.json() as { access_token: string }).access_token;
+        const accessToken = r3.json().access_token;
 
         // Now access protected endpoint with the bearer
         const res = await s.inject({
@@ -2014,12 +2030,17 @@ describe("WebServer /api/websocket (v1.34.0)", () => {
   let wsUrl: string;
   let store: MockStore;
 
-  /** Buffer all incoming JSON frames; `next()` resolves the oldest unread frame. */
+  /**
+   * Buffer all incoming JSON frames; `next()` resolves the oldest unread frame.
+   *
+   * @param ws Open client socket whose frames are buffered
+   */
   function wsCollector(ws: WebSocket): { next: () => Promise<Record<string, unknown>> } {
     const queue: Record<string, unknown>[] = [];
     const waiters: ((m: Record<string, unknown>) => void)[] = [];
     ws.on("message", data => {
-      const msg = JSON.parse(data.toString()) as Record<string, unknown>;
+      const raw = Buffer.isBuffer(data) ? data : Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data);
+      const msg = JSON.parse(raw.toString("utf8")) as Record<string, unknown>;
       const w = waiters.shift();
       if (w) {
         w(msg);

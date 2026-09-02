@@ -11,7 +11,9 @@ vi.mock("@iobroker/adapter-core", async () => {
       getTranslatedObject: vi.fn((key: string) => {
         const result: Record<string, string> = {};
         for (const [lang, data] of Object.entries(i18nData)) {
-          if (data[key]) result[lang] = data[key];
+          if (data[key]) {
+            result[lang] = data[key];
+          }
         }
         return Object.keys(result).length > 0 ? result : { en: key };
       }),
@@ -79,11 +81,12 @@ function createMockAdapter(namespace = "hassemu.0"): {
       clearInterval: () => undefined,
       setTimeout: () => undefined,
       clearTimeout: () => undefined,
-      getStateAsync: async (id: string) => store.states.get(`${namespace}.${id}`) ?? null,
-      setState: async (id: string, value: { val: unknown; ack?: boolean }) => {
+      getStateAsync: (id: string) => Promise.resolve(store.states.get(`${namespace}.${id}`) ?? null),
+      setState: (id: string, value: { val: unknown; ack?: boolean }) => {
         store.states.set(`${namespace}.${id}`, { val: value.val, ack: value.ack ?? false });
+        return Promise.resolve();
       },
-      extendObject: async (id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>) => {
+      extendObject: (id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>) => {
         const fullId = `${namespace}.${id}`;
         const existing = store.objects.get(fullId) ?? { type: "state" };
         const preserve = (options?.preserve as { common?: string[] })?.common ?? [];
@@ -99,25 +102,29 @@ function createMockAdapter(namespace = "hassemu.0"): {
           common: mergedCommon,
           native: { ...(existing.native ?? {}), ...(obj.native ?? {}) },
         });
+        return Promise.resolve();
       },
-      getObjectAsync: async (id: string) => {
+      getObjectAsync: (id: string) => {
         const fullId = id.includes(".") && id.startsWith(`${namespace}.`) ? id : `${namespace}.${id}`;
-        return store.objects.get(fullId) ?? null;
+        return Promise.resolve(store.objects.get(fullId) ?? null);
       },
-      setObject: async (id: string, obj: ObjEntry) => {
+      setObject: (id: string, obj: ObjEntry) => {
         const fullId = id.includes(".") && id.startsWith(`${namespace}.`) ? id : `${namespace}.${id}`;
         store.objects.set(fullId, obj);
+        return Promise.resolve();
       },
-      setObjectNotExistsAsync: async (id: string, obj: ObjEntry) => {
+      setObjectNotExistsAsync: (id: string, obj: ObjEntry) => {
         const fullId = id.includes(".") && id.startsWith(`${namespace}.`) ? id : `${namespace}.${id}`;
         if (!store.objects.has(fullId)) {
           store.objects.set(fullId, obj);
         }
+        return Promise.resolve();
       },
-      delObjectAsync: async (id: string) => {
+      delObjectAsync: (id: string) => {
         const fullId = id.includes(".") && id.startsWith(`${namespace}.`) ? id : `${namespace}.${id}`;
         store.objects.delete(fullId);
         store.states.delete(fullId);
+        return Promise.resolve();
       },
     };
   }
@@ -304,7 +311,7 @@ describe("GlobalConfig", () => {
     });
 
     it("rejects non-string non-zero numbers", async () => {
-      await g.handleModeWrite(42 as unknown);
+      await g.handleModeWrite(42);
       // mode stays unchanged → state is reverted to current value (0 by default)
       expect(modeVal()).to.equal("0");
       const warn = store.logs.find(l => l.level === "warn" && l.msg.includes("non-string"));

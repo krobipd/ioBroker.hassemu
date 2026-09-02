@@ -174,7 +174,13 @@ describe("redirect-wrapper", () => {
       });
 
       it("escapes a hostile target URL in the card's URL row", () => {
-        const html = renderRedirectWrapper('https://x.test/"><img src=x onerror=alert(1)>', "a1b2c3", "en", null, false);
+        const html = renderRedirectWrapper(
+          'https://x.test/"><img src=x onerror=alert(1)>',
+          "a1b2c3",
+          "en",
+          null,
+          false,
+        );
         expect(html).not.to.include('"><img src=x');
         expect(html).to.include("&quot;&gt;&lt;img");
       });
