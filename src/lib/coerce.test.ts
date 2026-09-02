@@ -1,5 +1,4 @@
 import { vi } from "vitest";
-import type * as CryptoModule from "node:crypto";
 
 /**
  * node:crypto passes through unchanged except for a timingSafeEqual counter —
@@ -8,7 +7,7 @@ import type * as CryptoModule from "node:crypto";
  */
 const cryptoCounters = vi.hoisted(() => ({ timingSafe: 0 }));
 vi.mock("node:crypto", async importOriginal => {
-  const actual = await importOriginal<typeof CryptoModule>();
+  const actual = await importOriginal<typeof import("node:crypto")>();
   const timingSafeEqual = (a: NodeJS.ArrayBufferView, b: NodeJS.ArrayBufferView): boolean => {
     cryptoCounters.timingSafe++;
     return actual.timingSafeEqual(a, b);
@@ -351,7 +350,7 @@ describe("coerce", () => {
       expect(isValidRedirectUri("https://home-assistant.io/android", "")).to.be.false;
       expect(isValidRedirectUri(null as unknown as string, "x")).to.be.false;
       expect(isValidRedirectUri("x", undefined as unknown as string)).to.be.false;
-      expect(isValidRedirectUri("https://home-assistant.io/android", `homeassistant://${"a".repeat(3000)}`)).to.be
+      expect(isValidRedirectUri("https://home-assistant.io/android", "homeassistant://" + "a".repeat(3000))).to.be
         .false;
     });
 
@@ -428,6 +427,7 @@ describe("coerce", () => {
       expect([...m.keys()]).to.deep.equal(["a"]);
     });
   });
+
 
   describe("oneLine (S4 v1.36.0)", () => {
     it("collapses CR / LF / TAB runs to single spaces (log-injection guard)", () => {

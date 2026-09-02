@@ -23,16 +23,15 @@ function mockAdapter(objects: Record<string, ObjState>): {
     clearInterval: () => undefined,
     setTimeout: () => undefined,
     clearTimeout: () => undefined,
-    getObjectAsync: (id: string) => {
+    getObjectAsync: async (id: string) => {
       const v = objects[id];
       if (v === THROWS) {
-        return Promise.reject(new Error("broker offline"));
+        throw new Error("broker offline");
       }
-      return Promise.resolve((v ?? null) as unknown);
+      return (v ?? null) as unknown;
     },
-    extendObject: (id: string, obj: unknown, options: unknown) => {
+    extendObject: async (id: string, obj: unknown, options: unknown) => {
       extendCalls.push({ id, obj: obj as ExtendCall["obj"], options });
-      return Promise.resolve();
     },
   };
   return { adapter: adapter as unknown as SchemaRepairAdapter, extendCalls, logs };
@@ -126,8 +125,8 @@ describe("schema-repair", () => {
     it("swallows extendObject errors (best-effort, no throw)", async () => {
       const { adapter } = mockAdapter({ "global.mode": { type: "state", common: {} } });
       // Override extendObject to throw — repair must not propagate it.
-      (adapter as unknown as { extendObject: unknown }).extendObject = () => {
-        return Promise.reject(new Error("write failed"));
+      (adapter as unknown as { extendObject: unknown }).extendObject = async () => {
+        throw new Error("write failed");
       };
       await repairGlobalSchemas(adapter, INSTANCE_OBJECTS, [["global.mode", "mixed"]]);
       // no throw = pass

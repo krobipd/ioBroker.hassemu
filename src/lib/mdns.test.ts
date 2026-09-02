@@ -72,8 +72,8 @@ describe("MDNSService", () => {
     service = new MDNSService(adapter as never, config, crypto.randomUUID());
   });
 
-  afterEach(async () => {
-    await service.stop();
+  afterEach(() => {
+    service.stop();
   });
 
   describe("constructor", () => {
@@ -116,10 +116,10 @@ describe("MDNSService", () => {
       expect(broadcastLog!.msg).to.include("8123");
     });
 
-    it("should not be active after stop", async () => {
+    it("should not be active after stop", () => {
       service.start();
       expect(service.isActive()).to.be.true;
-      await service.stop();
+      service.stop();
       expect(service.isActive()).to.be.false;
     });
 
@@ -128,16 +128,16 @@ describe("MDNSService", () => {
       expect(() => service.stop()).to.not.throw();
     });
 
-    it("should handle multiple stop calls", async () => {
+    it("should handle multiple stop calls", () => {
       service.start();
-      await service.stop();
-      await expect(service.stop()).resolves.toBeUndefined();
+      service.stop();
+      expect(() => service.stop()).to.not.throw();
     });
 
-    it("should handle start-stop-start cycle", async () => {
+    it("should handle start-stop-start cycle", () => {
       service.start();
       expect(service.isActive()).to.be.true;
-      await service.stop();
+      service.stop();
       expect(service.isActive()).to.be.false;
       service.start();
       expect(service.isActive()).to.be.true;
@@ -145,27 +145,27 @@ describe("MDNSService", () => {
   });
 
   describe("stop() fallback-timer semantics (I1)", () => {
-    it("synchronous stop (onUnload) skips the managed fallback timer", async () => {
+    it("synchronous stop (onUnload) skips the managed fallback timer", () => {
       service.start();
       expect(service.isActive()).to.be.true;
-      await service.stop(true);
+      service.stop(true);
       expect(service.isActive()).to.be.false;
       // No managed timer armed → adapter-core cannot warn during shutdown.
       expect(adapter._timerCalls).to.have.lengthOf(0);
       expect(adapter._logs.some(l => l.level === "debug" && l.msg.includes("Service stopped"))).to.be.true;
     });
 
-    it("runtime stop (onReady re-init) arms a single 300 ms fallback timer", async () => {
+    it("runtime stop (onReady re-init) arms a single 300 ms fallback timer", () => {
       service.start();
-      await service.stop(false);
+      service.stop(false);
       expect(adapter._timerCalls).to.deep.equal([300]);
     });
 
-    it("stop on a service that was never started does nothing at all", async () => {
+    it("stop on a service that was never started does nothing at all", () => {
       // Not even a log line: "Service stopped" for a service that never ran is
       // a false trail when someone reads the log after an mDNS problem.
       expect(service.isActive()).to.be.false;
-      await service.stop(false);
+      service.stop(false);
       expect(adapter._timerCalls).to.have.lengthOf(0);
       expect(adapter._logs.some(l => l.msg.includes("Service stopped"))).to.be.false;
     });
@@ -188,12 +188,11 @@ describe("MDNSService", () => {
         return undefined;
       };
 
-      const stopped = service.stop(false);
+      service.stop(false);
       // The library calls the stop-callback asynchronously — let it land first,
       // then fire the fallback the way the runtime timer would.
       await new Promise(r => setTimeout(r, 50));
       captured.forEach(cb => cb());
-      await stopped;
       expect(destroys).to.equal(1);
     });
 
@@ -243,7 +242,7 @@ describe("MDNSService", () => {
       expect(broadcastLog!.msg).to.include("TestService._home-assistant._tcp");
     });
 
-    it("should use ioBroker as default service name", async () => {
+    it("should use ioBroker as default service name", () => {
       const defaultConfig: AdapterConfig = {
         ...config,
         serviceName: "",
@@ -253,24 +252,24 @@ describe("MDNSService", () => {
       const debugLogs = adapter._logs.filter(l => l.level === "debug");
       const broadcastLog = debugLogs.find(l => l.msg.includes("mDNS: Broadcasting"));
       expect(broadcastLog!.msg).to.include("ioBroker._home-assistant._tcp");
-      await defaultService.stop();
+      defaultService.stop();
     });
   });
 
   describe("advertised host (bind-aware base_url)", () => {
-    it("advertises the configured concrete bind address (matches /api/discovery_info)", async () => {
+    it("advertises the configured concrete bind address (matches /api/discovery_info)", () => {
       const boundConfig: AdapterConfig = { ...config, bindAddress: "192.168.1.50" };
       const boundService = new MDNSService(adapter as never, boundConfig, crypto.randomUUID());
       boundService.start();
       const broadcastLog = adapter._logs.find(l => l.level === "debug" && l.msg.includes("mDNS: Broadcasting"));
       expect(broadcastLog!.msg).to.include("192.168.1.50:8123");
-      await boundService.stop();
+      boundService.stop();
     });
   });
 });
 
 describe("MDNSService cross-platform", () => {
-  it("should work without avahi (cross-platform)", async () => {
+  it("should work without avahi (cross-platform)", () => {
     // bonjour-service works on all platforms — no avahi needed
     const adapter = createMockAdapter();
     const service = new MDNSService(
@@ -294,12 +293,12 @@ describe("MDNSService cross-platform", () => {
     const errorLogs = adapter._logs.filter(l => l.level === "error");
     expect(errorLogs.length).to.equal(0);
 
-    await service.stop();
+    service.stop();
     expect(service.isActive()).to.be.false;
   });
 
   describe("async error handling (J6 v1.25.0 — D12 v1.15.0 coverage)", () => {
-    it("async publish error sets active=false and warns", async () => {
+    it("async publish error sets active=false and warns", () => {
       const localAdapter = createMockAdapter();
       const localService = new MDNSService(
         localAdapter as never,
@@ -330,7 +329,7 @@ describe("MDNSService cross-platform", () => {
       expect(warns).to.have.length(1);
       expect(warns[0].msg).to.include("mock dgram bind failure");
 
-      await localService.stop();
+      localService.stop();
     });
   });
 });

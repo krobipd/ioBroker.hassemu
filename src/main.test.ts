@@ -1,6 +1,6 @@
 /**
  * Orchestration tests for main.ts — lifecycle, migrations, stale-GC, master
- * switch, state-dispatch. Uses the fleet harness pattern: `@iobroker/adapter-core`
+ * switch, state-dispatch. Uses the fleet harness pattern: @iobroker/adapter-core
  * is mocked with a stub Adapter class (no js-controller), the factory seams
  * (makeWebServer/makeMdnsService/makeUrlDiscovery) are overridden with fakes,
  * while ClientRegistry/GlobalConfig run for real against the stub object store.
@@ -45,33 +45,30 @@ vi.mock("@iobroker/adapter-core", () => {
       return id.startsWith(`${this.namespace}.`) ? id : `${this.namespace}.${id}`;
     }
 
-    setState(id: string, state: { val: unknown; ack?: boolean }): Promise<void> {
+    async setState(id: string, state: { val: unknown; ack?: boolean }): Promise<void> {
       this.states.set(this.fullId(id), { val: state.val, ack: state.ack ?? false });
-      return Promise.resolve();
     }
 
-    getStateAsync(id: string): Promise<{ val: unknown; ack: boolean } | null> {
-      return Promise.resolve(this.states.get(this.fullId(id)) ?? null);
+    async getStateAsync(id: string): Promise<{ val: unknown; ack: boolean } | null> {
+      return this.states.get(this.fullId(id)) ?? null;
     }
 
-    getObjectAsync(id: string): Promise<ObjEntry | null> {
-      return Promise.resolve(this.objects.get(this.fullId(id)) ?? null);
+    async getObjectAsync(id: string): Promise<ObjEntry | null> {
+      return this.objects.get(this.fullId(id)) ?? null;
     }
 
-    setObject(id: string, obj: ObjEntry): Promise<void> {
+    async setObject(id: string, obj: ObjEntry): Promise<void> {
       this.objects.set(this.fullId(id), obj);
-      return Promise.resolve();
     }
 
-    setObjectNotExistsAsync(id: string, obj: ObjEntry): Promise<void> {
+    async setObjectNotExistsAsync(id: string, obj: ObjEntry): Promise<void> {
       const full = this.fullId(id);
       if (!this.objects.has(full)) {
         this.objects.set(full, obj);
       }
-      return Promise.resolve();
     }
 
-    extendObject(id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>): Promise<void> {
+    async extendObject(id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>): Promise<void> {
       const full = this.fullId(id);
       const existing = this.objects.get(full) ?? { type: "state" };
       const preserve = (options?.preserve as { common?: string[] } | undefined)?.common ?? [];
@@ -87,10 +84,9 @@ vi.mock("@iobroker/adapter-core", () => {
         common: mergedCommon,
         native: { ...(existing.native ?? {}), ...(obj.native ?? {}) },
       });
-      return Promise.resolve();
     }
 
-    delObjectAsync(id: string, _options?: { recursive?: boolean }): Promise<void> {
+    async delObjectAsync(id: string, _options?: { recursive?: boolean }): Promise<void> {
       const full = this.fullId(id);
       this.objects.delete(full);
       for (const k of [...this.objects.keys()]) {
@@ -103,19 +99,17 @@ vi.mock("@iobroker/adapter-core", () => {
           this.states.delete(k);
         }
       }
-      return Promise.resolve();
     }
 
-    getForeignObjectAsync(id: string): Promise<ObjEntry | null> {
-      return Promise.resolve(this.objects.get(id) ?? null);
+    async getForeignObjectAsync(id: string): Promise<ObjEntry | null> {
+      return this.objects.get(id) ?? null;
     }
 
-    setForeignObjectAsync(id: string, obj: ObjEntry): Promise<void> {
+    async setForeignObjectAsync(id: string, obj: ObjEntry): Promise<void> {
       this.objects.set(id, obj);
-      return Promise.resolve();
     }
 
-    extendForeignObjectAsync(id: string, obj: Partial<ObjEntry>): Promise<void> {
+    async extendForeignObjectAsync(id: string, obj: Partial<ObjEntry>): Promise<void> {
       const existing = this.objects.get(id) ?? { type: "instance" };
       this.objects.set(id, {
         ...existing,
@@ -123,10 +117,9 @@ vi.mock("@iobroker/adapter-core", () => {
         common: { ...(existing.common ?? {}), ...(obj.common ?? {}) },
         native: { ...(existing.native ?? {}), ...(obj.native ?? {}) },
       });
-      return Promise.resolve();
     }
 
-    getForeignObjectsAsync(pattern: string, type?: string): Promise<Record<string, ObjEntry>> {
+    async getForeignObjectsAsync(pattern: string, type?: string): Promise<Record<string, ObjEntry>> {
       const prefix = pattern.replace("*", "");
       const out: Record<string, ObjEntry> = {};
       // Type-faithful to js-controller: no type argument → 'state' view only
@@ -137,27 +130,23 @@ vi.mock("@iobroker/adapter-core", () => {
           out[id] = obj;
         }
       }
-      return Promise.resolve(out);
+      return out;
     }
 
-    subscribeStatesAsync(pattern: string): Promise<void> {
+    async subscribeStatesAsync(pattern: string): Promise<void> {
       this.stateSubscriptions.push(pattern);
-      return Promise.resolve();
     }
 
-    subscribeForeignObjectsAsync(pattern: string): Promise<void> {
+    async subscribeForeignObjectsAsync(pattern: string): Promise<void> {
       this.objectSubscriptions.push(pattern);
-      return Promise.resolve();
     }
 
-    unsubscribeStatesAsync(pattern: string): Promise<void> {
+    async unsubscribeStatesAsync(pattern: string): Promise<void> {
       this.stateUnsubscriptions.push(pattern);
-      return Promise.resolve();
     }
 
-    unsubscribeForeignObjectsAsync(pattern: string): Promise<void> {
+    async unsubscribeForeignObjectsAsync(pattern: string): Promise<void> {
       this.objectUnsubscriptions.push(pattern);
-      return Promise.resolve();
     }
 
     setInterval(_cb: () => void, _ms: number): object {
@@ -277,7 +266,7 @@ function makeFakeMdns(active = true): FakeMdns {
 }
 
 function makeFakeDiscovery(): FakeDiscovery {
-  return { collect: vi.fn(() => Promise.resolve({})), scheduleRefresh: vi.fn(), cancelRefresh: vi.fn() };
+  return { collect: vi.fn(async () => ({})), scheduleRefresh: vi.fn(), cancelRefresh: vi.fn() };
 }
 
 interface Setup {
@@ -331,9 +320,8 @@ describe("HassEmu onReady", () => {
   it("starts the web server BEFORE creating subscriptions (D11 v1.13.0)", async () => {
     const { internal, stub, webServer } = setup();
     let subscribedWhenStarted = false;
-    webServer.start.mockImplementation(() => {
+    webServer.start.mockImplementation(async () => {
       subscribedWhenStarted = stub.stateSubscriptions.length > 0;
-      return Promise.resolve();
     });
     await internal.onReady();
     expect(subscribedWhenStarted).toBe(false);
@@ -480,7 +468,7 @@ describe("computeNewClientMode", () => {
     const { internal } = setup();
     internal.globalConfig = internal.makeGlobalConfig();
     expect(internal.computeNewClientMode()).toBe("0");
-    await internal.globalConfig.handleEnabledWrite(true);
+    await internal.globalConfig!.handleEnabledWrite(true);
     expect(internal.computeNewClientMode()).toBe(MODE_GLOBAL);
   });
 });
@@ -493,11 +481,7 @@ describe("migrateLegacyDefaultVisUrl", () => {
   it("no legacy URL in config → no-op", async () => {
     const { internal, stub } = setup();
     internal.globalConfig = internal.makeGlobalConfig();
-    await migrateLegacyDefaultVisUrl(
-      internal as unknown as MigrationAdapter,
-      stub.config as unknown as AdapterConfig,
-      internal.globalConfig,
-    );
+    await migrateLegacyDefaultVisUrl(internal as unknown as MigrationAdapter, stub.config as unknown as AdapterConfig, internal.globalConfig);
     expect(stub.states.has("hassemu.0.global.visUrl")).toBe(false);
   });
 
@@ -507,11 +491,7 @@ describe("migrateLegacyDefaultVisUrl", () => {
     stub.config.defaultVisUrl = "http://legacy.local/vis";
     seedInstanceNative(stub, { defaultVisUrl: "http://legacy.local/vis", other: "stays" });
 
-    await migrateLegacyDefaultVisUrl(
-      internal as unknown as MigrationAdapter,
-      stub.config as unknown as AdapterConfig,
-      internal.globalConfig,
-    );
+    await migrateLegacyDefaultVisUrl(internal as unknown as MigrationAdapter, stub.config as unknown as AdapterConfig, internal.globalConfig);
 
     expect(stub.states.get("hassemu.0.global.visUrl")).toEqual({ val: "http://legacy.local/vis", ack: true });
     const native = stub.objects.get("system.adapter.hassemu.0")!.native!;
@@ -526,11 +506,7 @@ describe("migrateLegacyDefaultVisUrl", () => {
     stub.config.defaultVisUrl = "javascript:alert(1)";
     seedInstanceNative(stub, { defaultVisUrl: "javascript:alert(1)" });
 
-    await migrateLegacyDefaultVisUrl(
-      internal as unknown as MigrationAdapter,
-      stub.config as unknown as AdapterConfig,
-      internal.globalConfig,
-    );
+    await migrateLegacyDefaultVisUrl(internal as unknown as MigrationAdapter, stub.config as unknown as AdapterConfig, internal.globalConfig);
 
     expect(stub.states.has("hassemu.0.global.visUrl")).toBe(false);
     expect(logsOf(stub, "warn").some(m => m.includes("rejected as unsafe"))).toBe(true);
@@ -550,11 +526,7 @@ describe("migrateLegacyDefaultVisUrl", () => {
       return original(id, state);
     };
 
-    await migrateLegacyDefaultVisUrl(
-      internal as unknown as MigrationAdapter,
-      stub.config as unknown as AdapterConfig,
-      internal.globalConfig,
-    );
+    await migrateLegacyDefaultVisUrl(internal as unknown as MigrationAdapter, stub.config as unknown as AdapterConfig, internal.globalConfig);
 
     // Fallback wrote straight to the migration target.
     expect(stub.states.get("hassemu.0.global.mode")).toEqual({ val: MODE_MANUAL, ack: true });
@@ -568,15 +540,11 @@ describe("migrateLegacyDefaultVisUrl", () => {
     internal.globalConfig = internal.makeGlobalConfig();
     stub.config.visUrl = "http://precious.local/";
     seedInstanceNative(stub, { visUrl: "http://precious.local/" });
-    stub.setState = () => {
-      return Promise.reject(new Error("broker down"));
+    stub.setState = async () => {
+      throw new Error("broker down");
     };
 
-    await migrateLegacyDefaultVisUrl(
-      internal as unknown as MigrationAdapter,
-      stub.config as unknown as AdapterConfig,
-      internal.globalConfig,
-    );
+    await migrateLegacyDefaultVisUrl(internal as unknown as MigrationAdapter, stub.config as unknown as AdapterConfig, internal.globalConfig);
 
     expect(logsOf(stub, "warn").some(m => m.includes("Legacy URL preserved"))).toBe(true);
     // The recovery anchor MUST survive — this is the data-loss guard.
@@ -614,10 +582,10 @@ describe("migrateVisUrlToMode", () => {
   });
 
   it("an already-migrated install performs no delete round-trips (I5)", async () => {
-    const { internal } = setup();
+    const { internal, stub } = setup();
     internal.globalConfig = internal.makeGlobalConfig();
     internal.registry = internal.makeRegistry();
-    await internal.registry.identifyOrCreate(null, "10.0.0.9");
+    await internal.registry!.identifyOrCreate(null, "10.0.0.9");
     // No legacy visUrl anywhere — this is the state of EVERY start after the
     // first one, so a blind delObject here is a wasted broker round-trip per
     // client on every single adapter start.
@@ -638,7 +606,7 @@ describe("migrateVisUrlToMode", () => {
     const { internal, stub } = setup();
     internal.globalConfig = internal.makeGlobalConfig();
     internal.registry = internal.makeRegistry();
-    const rec = await internal.registry.identifyOrCreate(null, "10.0.0.1");
+    const rec = await internal.registry!.identifyOrCreate(null, "10.0.0.1");
     stub.states.set(`hassemu.0.clients.${rec.id}.visUrl`, { val: "http://client-old.local/", ack: true });
     stub.objects.set(`hassemu.0.clients.${rec.id}.visUrl`, { type: "state" });
 
@@ -658,7 +626,7 @@ describe("migrateVisUrlToMode", () => {
     const { internal, stub } = setup();
     internal.globalConfig = internal.makeGlobalConfig();
     internal.registry = internal.makeRegistry();
-    const rec = await internal.registry.identifyOrCreate(null, "10.0.0.2");
+    const rec = await internal.registry!.identifyOrCreate(null, "10.0.0.2");
     const modeBefore = rec.mode;
     stub.states.set(`hassemu.0.clients.${rec.id}.visUrl`, { val: "data:text/html,x", ack: true });
 
@@ -694,7 +662,7 @@ describe("migrateVisUrlToMode", () => {
     const { internal, stub } = setup();
     internal.globalConfig = internal.makeGlobalConfig();
     internal.registry = internal.makeRegistry();
-    const rec = await internal.registry.identifyOrCreate(null, "10.0.0.3");
+    const rec = await internal.registry!.identifyOrCreate(null, "10.0.0.3");
     stub.states.set(`hassemu.0.clients.${rec.id}.visUrl`, { val: "http://client-old.local/", ack: true });
     stub.objects.set(`hassemu.0.clients.${rec.id}.visUrl`, { type: "state" });
     const original = stub.setState.bind(stub);
@@ -723,12 +691,7 @@ describe("migrateVisUrlToMode", () => {
 });
 
 describe("gcStaleClients", () => {
-  /**
-   * Creates a client; tests then overwrite the lastSeen that touchLastSeen just seeded.
-   *
-   * @param internal Private adapter internals with the live registry
-   * @param ip Client IP the registry keys the record by
-   */
+  /** Creates a client; tests then overwrite the lastSeen that touchLastSeen just seeded. */
   async function seedClient(internal: Internal, ip: string): Promise<string> {
     const rec = await internal.registry!.identifyOrCreate(null, ip);
     return rec.id;
@@ -744,7 +707,7 @@ describe("gcStaleClients", () => {
 
     await internal.gcStaleClients();
 
-    expect(internal.registry.getById(id)).not.toBeNull();
+    expect(internal.registry!.getById(id)).not.toBeNull();
     expect(typeof stub.objects.get(`hassemu.0.clients.${id}`)!.native!.lastSeen).toBe("number");
   });
 
@@ -756,7 +719,7 @@ describe("gcStaleClients", () => {
 
     await internal.gcStaleClients();
 
-    expect(internal.registry.getById(id)).toBeNull();
+    expect(internal.registry!.getById(id)).toBeNull();
     expect(stub.objects.has(`hassemu.0.clients.${id}`)).toBe(false);
     expect(logsOf(stub, "info").some(m => m.includes("Removed 1 inactive client"))).toBe(true);
   });
@@ -769,7 +732,7 @@ describe("gcStaleClients", () => {
 
     await internal.gcStaleClients();
 
-    expect(internal.registry.getById(id)).not.toBeNull();
+    expect(internal.registry!.getById(id)).not.toBeNull();
     expect(logsOf(stub, "info").some(m => m.includes("Removed"))).toBe(false);
   });
 
@@ -790,8 +753,8 @@ describe("gcStaleClients", () => {
 
     await internal.gcStaleClients();
 
-    expect(internal.registry.getById(idBroken)).not.toBeNull();
-    expect(internal.registry.getById(idStale)).toBeNull();
+    expect(internal.registry!.getById(idBroken)).not.toBeNull();
+    expect(internal.registry!.getById(idStale)).toBeNull();
   });
 });
 
@@ -799,8 +762,8 @@ describe("applyMasterSwitch", () => {
   it("enabled=true → every client follows 'global'", async () => {
     const { internal } = setup();
     internal.registry = internal.makeRegistry();
-    const a = await internal.registry.identifyOrCreate(null, "10.0.0.1");
-    const b = await internal.registry.identifyOrCreate(null, "10.0.0.2");
+    const a = await internal.registry!.identifyOrCreate(null, "10.0.0.1");
+    const b = await internal.registry!.identifyOrCreate(null, "10.0.0.2");
     a.mode = "http://somewhere/";
     b.mode = "";
 
@@ -813,7 +776,7 @@ describe("applyMasterSwitch", () => {
   it("enabled=false → every client drops to '0' (no-choice → landing page)", async () => {
     const { internal } = setup();
     internal.registry = internal.makeRegistry();
-    const a = await internal.registry.identifyOrCreate(null, "10.0.0.1");
+    const a = await internal.registry!.identifyOrCreate(null, "10.0.0.1");
     a.mode = MODE_GLOBAL;
 
     await internal.applyMasterSwitch(false);
@@ -829,12 +792,12 @@ describe("applyMasterSwitch", () => {
 });
 
 describe("onStateChange routing", () => {
-  function readySetup(): Promise<Setup> {
+  async function readySetup(): Promise<Setup> {
     const s = setup();
     s.internal.registry = s.internal.makeRegistry();
     s.internal.globalConfig = s.internal.makeGlobalConfig();
     s.internal.urlDiscovery = s.discovery;
-    return Promise.resolve(s);
+    return s;
   }
 
   it("ignores acked states and null states", async () => {
@@ -871,10 +834,7 @@ describe("onStateChange routing", () => {
   it("routes clients.<id>.manualUrl writes to handleManualUrlWrite", async () => {
     const s = await readySetup();
     const rec = await s.internal.registry!.identifyOrCreate(null, "10.0.0.1");
-    await s.internal.onStateChange(`hassemu.0.clients.${rec.id}.manualUrl`, {
-      val: "http://manual.local/",
-      ack: false,
-    });
+    await s.internal.onStateChange(`hassemu.0.clients.${rec.id}.manualUrl`, { val: "http://manual.local/", ack: false });
     expect(rec.manualUrl).toBe("http://manual.local/");
   });
 
@@ -959,8 +919,8 @@ describe("onStateChange routing", () => {
   it("handler errors are caught and logged, never thrown", async () => {
     const s = await readySetup();
     const rec = await s.internal.registry!.identifyOrCreate(null, "10.0.0.1");
-    s.internal.registry!.handleModeWrite = () => {
-      return Promise.reject(new Error("handler exploded"));
+    s.internal.registry!.handleModeWrite = async () => {
+      throw new Error("handler exploded");
     };
     await s.internal.onStateChange(`hassemu.0.clients.${rec.id}.mode`, { val: "http://x/", ack: false });
     expect(logsOf(s.stub, "error").some(m => m.includes("stateChange failed"))).toBe(true);

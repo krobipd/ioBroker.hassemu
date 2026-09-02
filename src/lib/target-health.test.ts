@@ -32,16 +32,13 @@ function createMockAdapter(): MockAdapter {
   };
 }
 
-/**
- * Starts a local http server and resolves once it listens.
- *
- * @param server Server to bind to an ephemeral loopback port
- */
+/** Starts a local http server and resolves once it listens. */
 function listen(server: Server): Promise<number> {
   return new Promise(resolve => {
     server.listen(0, "127.0.0.1", () => resolve((server.address() as AddressInfo).port));
   });
 }
+
 
 /**
  * Throw-away self-signed localhost certificate for the TLS probe test (CN=localhost,
@@ -165,9 +162,9 @@ describe("target-health", () => {
     it("caches the probe verdict — repeated asks within the window cost one probe", async () => {
       const adapter = createMockAdapter();
       let calls = 0;
-      const health = new TargetHealth(adapter as never, () => {
+      const health = new TargetHealth(adapter as never, async () => {
         calls++;
-        return Promise.resolve(true);
+        return true;
       });
       expect(await health.isReachable("http://a.test/")).to.equal(true);
       expect(await health.isReachable("http://a.test/")).to.equal(true);
@@ -200,9 +197,9 @@ describe("target-health", () => {
       let calls = 0;
       const health = new TargetHealth(
         adapter as never,
-        () => {
+        async () => {
           calls++;
-          return Promise.resolve(true);
+          return true;
         },
         0,
       );
@@ -214,7 +211,7 @@ describe("target-health", () => {
     it("logs reachability TRANSITIONS at info — once per flip, silent in steady state", async () => {
       const adapter = createMockAdapter();
       const verdicts = [false, false, true, true];
-      const health = new TargetHealth(adapter as never, () => Promise.resolve(verdicts.shift() ?? true), 0);
+      const health = new TargetHealth(adapter as never, async () => verdicts.shift() ?? true, 0);
       await health.isReachable("http://a.test/");
       await health.isReachable("http://a.test/");
       await health.isReachable("http://a.test/");
@@ -228,8 +225,8 @@ describe("target-health", () => {
 
     it("fails OPEN when the probe itself throws — no card, no log", async () => {
       const adapter = createMockAdapter();
-      const health = new TargetHealth(adapter as never, () => {
-        return Promise.reject(new Error("prober bug"));
+      const health = new TargetHealth(adapter as never, async () => {
+        throw new Error("prober bug");
       });
       expect(await health.isReachable("http://a.test/")).to.equal(true);
       expect(adapter._logs).to.deep.equal([]);
@@ -237,7 +234,7 @@ describe("target-health", () => {
 
     it("refreshing a known target at the cap must NOT evict an unrelated entry (evict-on-insert-only)", async () => {
       const adapter = createMockAdapter();
-      const health = new TargetHealth(adapter as never, () => Promise.resolve(true), 0);
+      const health = new TargetHealth(adapter as never, async () => true, 0);
       for (let i = 0; i < TARGET_HEALTH_CACHE_CAP; i++) {
         await health.isReachable(`http://u${i}.test/`);
       }
@@ -275,9 +272,9 @@ describe("target-health", () => {
     it("dispose() drops the cache so the next ask probes fresh", async () => {
       const adapter = createMockAdapter();
       let calls = 0;
-      const health = new TargetHealth(adapter as never, () => {
+      const health = new TargetHealth(adapter as never, async () => {
         calls++;
-        return Promise.resolve(true);
+        return true;
       });
       await health.isReachable("http://a.test/");
       health.dispose();
