@@ -113,10 +113,26 @@ export const NEW_CLIENT_BURST_CAP = 200;
 export const NEW_CLIENT_THROTTLE_PER_HOUR = 30;
 
 /**
+ * IP-INDEPENDENT ceiling on new persistent clients per {@link NEW_CLIENT_WINDOW_MS}
+ * across ALL IPs — a second bound below {@link NEW_CLIENT_THROTTLE_PER_HOUR}. The
+ * per-IP throttle keys on `req.ip`, which becomes attacker-controlled when
+ * `trustProxy` is enabled without a sanitising reverse proxy in front (a documented
+ * misconfiguration): a single device that rotates `X-Forwarded-For` per request then
+ * looks like a fresh IP every time and never trips the per-IP throttle, minting
+ * unbounded persisted `clients.<id>` objects (4 writes each). This global ceiling
+ * closes that hole regardless of IP spoofing — over budget, the registry serves
+ * transient records (the display still resolves to its dashboard). Generous: a real
+ * install onboards a handful of displays over the adapter's lifetime, never a hundred
+ * within one hour, so legitimate use never reaches it.
+ */
+export const GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW = 100;
+
+/**
  * Rolling window for the per-IP new-client tracking. Both the throttle decision
  * ({@link NEW_CLIENT_THROTTLE_PER_HOUR}) and the burst-warn operate on the same
  * `newClientBurst` map, so they MUST share this window — one named constant
- * keeps them from drifting apart.
+ * keeps them from drifting apart. Shared by the global ceiling
+ * ({@link GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW}) so both windows stay aligned.
  */
 export const NEW_CLIENT_WINDOW_MS = 60 * 60 * 1000;
 

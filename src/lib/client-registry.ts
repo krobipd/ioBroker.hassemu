@@ -25,6 +25,7 @@ import {
   shallowStatesEqual,
 } from "./coerce";
 import {
+  GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW,
   LASTSEEN_FLUSH_INTERVAL_MS,
   MODE_GLOBAL,
   MODE_MANUAL,
@@ -90,6 +91,16 @@ export class ClientRegistry {
    * NEW_CLIENT_WINDOW_MS recovers and can mint persistent clients again.
    */
   private readonly newClientBurst = new Map<string, { count: number; lastActivity: number; warnedAt: number }>();
+  /**
+   * IP-INDEPENDENT sliding-window counter for persistent cookieless creates — a
+   * second ceiling below the per-IP {@link isIpThrottled} one. The per-IP throttle
+   * keys on `req.ip`; with `trustProxy` on but no sanitising proxy in front, a single
+   * device can rotate `X-Forwarded-For` per request so every request looks like a
+   * fresh IP and never trips it, minting unbounded persisted `clients.<id>` objects.
+   * This window closes that hole regardless of IP spoofing. Same reset-on-idle shape
+   * as {@link newClientBurst}. See {@link GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW}.
+   */
+  private globalBurst = { count: 0, lastCreate: 0, warnedAt: 0 };
 
   /** @param adapter Adapter instance used for object/state I/O. */
   constructor(adapter: RegistryAdapter) {
@@ -269,6 +280,21 @@ export class ClientRegistry {
         this.touchLastSeen(existing);
         return existing;
       }
+    }
+    // IP-INDEPENDENT ceiling on persistent creation, checked before the per-IP path
+    // below. Closes the trustProxy / spoofed-X-Forwarded-For hole: a device rotating
+    // its apparent IP never trips the per-IP throttle, so without this it could grow
+    // the object DB without bound. Over budget → transient record (still resolves to
+    // the dashboard, just no persisted identity until the burst subsides). The per-IP
+    // window is still refreshed so a throttled real IP keeps its own budget accurate.
+    const now = Date.now();
+    if (this.isGloballyThrottled(now)) {
+      if (ip) {
+        this.recordNewClientActivity(ip, false, now);
+      }
+      this.warnGlobalThrottleOnce(now);
+      this.adapter.log.debug("identify: global new-client ceiling reached — serving a transient record (no object)");
+      return this.transientRecord(ip, hostname);
     }
     // No valid cookie: before spinning up a new client, check whether this
     // IP already has a create in flight. If so, await that Promise — the
@@ -654,6 +680,9 @@ export class ClientRegistry {
     this.adapter.log.info(
       ip ? `New client connected: ${id} (${oneLine(hostname ?? ip)})` : `New client connected: ${id}`,
     );
+    // Count this persistent create against the global, IP-independent ceiling
+    // (the trustProxy / spoofed-X-Forwarded-For bound; see isGloballyThrottled).
+    this.recordGlobalCreate();
     // v1.19.0 (G5): IP burst detection for broken-cookie displays. A persistent
     // create bumps the sliding-window count and warns once per window if the same
     // IP mints more than NEW_CLIENT_BURST_WARN_THRESHOLD clients (cookie mechanism
@@ -681,6 +710,56 @@ export class ClientRegistry {
       return false;
     }
     return entry.count >= NEW_CLIENT_THROTTLE_PER_HOUR;
+  }
+
+  /**
+   * True when the global persistent-create window is over budget. IP-independent
+   * companion to {@link isIpThrottled}; see {@link globalBurst} +
+   * {@link GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW}. Read-only — the window is advanced
+   * by {@link recordGlobalCreate} on an actual persistent create, and reset after a
+   * full idle {@link NEW_CLIENT_WINDOW_MS}.
+   *
+   * @param now Current time in ms (injectable for tests).
+   */
+  private isGloballyThrottled(now: number = Date.now()): boolean {
+    if (now - this.globalBurst.lastCreate >= NEW_CLIENT_WINDOW_MS) {
+      return false;
+    }
+    return this.globalBurst.count >= GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW;
+  }
+
+  /**
+   * Records one persistent cookieless create into the global window. Resets the
+   * window (count + warn cooldown) after a full idle {@link NEW_CLIENT_WINDOW_MS}, so
+   * a continuous spray keeps the window alive and stays throttled while normal
+   * onboarding — gaps far longer than the window — always starts fresh. Called only
+   * from {@link createClient}, the single persistent-create site.
+   *
+   * @param now Current time in ms (injectable for tests).
+   */
+  private recordGlobalCreate(now: number = Date.now()): void {
+    if (now - this.globalBurst.lastCreate >= NEW_CLIENT_WINDOW_MS) {
+      this.globalBurst.count = 0;
+      this.globalBurst.warnedAt = 0;
+    }
+    this.globalBurst.count += 1;
+    this.globalBurst.lastCreate = now;
+  }
+
+  /**
+   * One warn per window when the global ceiling is serving transient records — the
+   * signature of a spoofed-`X-Forwarded-For` spray (or `trustProxy` set without a
+   * sanitising proxy). Deduplicated against `warnedAt`, which resets with the window.
+   *
+   * @param now Current time in ms.
+   */
+  private warnGlobalThrottleOnce(now: number): void {
+    if (now - this.globalBurst.warnedAt > NEW_CLIENT_WINDOW_MS) {
+      this.adapter.log.warn(
+        `More than ${GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW} new clients within an hour across all IPs — throttling persistent client creation (a spoofed X-Forwarded-For spray, or trustProxy enabled without a sanitising reverse proxy?)`,
+      );
+      this.globalBurst.warnedAt = now;
+    }
   }
 
   /**

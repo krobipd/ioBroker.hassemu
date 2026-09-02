@@ -1,4 +1,8 @@
 # Older Changes
+## 1.37.1 (2026-07-11)
+
+- Internal cleanup. No user-facing changes.
+
 ## 1.37.0 (2026-07-09)
 
 - A custom name you give a display now survives even when its network hostname resolves later — the name you set sticks.

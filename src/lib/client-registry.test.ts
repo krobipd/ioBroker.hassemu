@@ -24,6 +24,7 @@ vi.mock("@iobroker/adapter-core", async () => {
 
 import { ClientRegistry, parseClientStateId } from "./client-registry";
 import {
+  GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW,
   MODE_GLOBAL,
   MODE_MANUAL,
   NEW_CLIENT_THROTTLE_PER_HOUR,
@@ -1303,6 +1304,60 @@ describe("ClientRegistry", () => {
       // A different IP is unaffected — the throttle is per-IP.
       const other = await reg.identifyOrCreate(null, "8.8.8.8");
       expect(reg.getById(other.id)).to.not.be.null;
+    });
+  });
+
+  describe("global new-client ceiling (trustProxy / spoofed X-Forwarded-For, IP-independent)", () => {
+    const buildReg = (): { reg: ClientRegistry; store: MockStore } => {
+      const built = createMockAdapter();
+      return { reg: new ClientRegistry(built.adapter as never), store: built.store };
+    };
+
+    it("caps persistent cookieless creation across all-distinct IPs, then serves transient records + warns once", async () => {
+      const { reg, store } = buildReg();
+      // One device rotating X-Forwarded-For: a fresh IP + UA every request, so the
+      // per-IP throttle never trips — only the global ceiling can stop the flood.
+      for (let i = 0; i < GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW; i++) {
+        await reg.identifyOrCreate(null, `10.0.${(i >> 8) & 255}.${i & 255}`, { userAgent: `UA-${i}` });
+      }
+      expect(reg.listAll(), "every distinct-IP create below the ceiling is persisted").to.have.length(
+        GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW,
+      );
+      // Three more fresh IPs are all over the global ceiling → transient (untracked,
+      // no object) — and the warn is emitted once, not once per over-ceiling request.
+      for (const ip of ["10.9.9.9", "10.9.9.10", "10.9.9.11"]) {
+        const transient = await reg.identifyOrCreate(null, ip, { userAgent: `x-${ip}` });
+        expect(reg.getById(transient.id), "over-ceiling create is not tracked").to.be.null;
+      }
+      expect(reg.listAll(), "no object-DB growth past the ceiling").to.have.length(
+        GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW,
+      );
+      expect(
+        store.logs.filter(l => l.level === "warn" && l.msg.includes("across all IPs")),
+        "warns exactly ONCE per window, naming the spoofed-XFF / trustProxy cause (not once per request)",
+      ).to.have.length(1);
+    });
+
+    it("recovers the global ceiling after a full idle window — and stays recovered for a burst", async () => {
+      const { reg } = buildReg();
+      const spy = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+      try {
+        for (let i = 0; i < GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW; i++) {
+          await reg.identifyOrCreate(null, `10.0.${(i >> 8) & 255}.${i & 255}`, { userAgent: `UA-${i}` });
+        }
+        const throttled = await reg.identifyOrCreate(null, "10.9.9.9", { userAgent: "z" });
+        expect(reg.getById(throttled.id), "over the ceiling within the window → transient").to.be.null;
+        // Idle a full window, then onboard a small burst. All must persist: the window
+        // reset must zero the COUNT (recordGlobalCreate), not merely let one create
+        // through — otherwise the second create after recovery re-trips immediately.
+        spy.mockReturnValue(1_000_000 + NEW_CLIENT_WINDOW_MS + 1);
+        for (const ip of ["10.9.9.10", "10.9.9.11", "10.9.9.12"]) {
+          const after = await reg.identifyOrCreate(null, ip, { userAgent: `y-${ip}` });
+          expect(reg.getById(after.id), `after a full idle window ${ip} must persist`).to.not.be.null;
+        }
+      } finally {
+        spy.mockRestore();
+      }
     });
   });
 

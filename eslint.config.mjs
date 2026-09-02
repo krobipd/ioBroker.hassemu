@@ -6,10 +6,9 @@ export default [
     languageOptions: {
       parserOptions: {
         projectService: {
-          // L55: only vitest.config.ts needs this — `*.mjs` is covered by the
-          // `*.config.mjs` ignore below and `test/*.ts` matches nothing (test/ is
-          // .js only and ignored via `test/**`).
-          allowDefaultProject: ["vitest.config.ts"],
+          // The vitest config is the only linted file outside tsconfig's include
+          // (`*.config.mjs` is ignored below, `test/**` is .js and ignored too).
+          allowDefaultProject: ["vitest.config.mts"],
         },
         tsconfigRootDir: import.meta.dirname,
       },

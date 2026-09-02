@@ -180,6 +180,10 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+### 1.40.0 (2026-09-02)
+
+- Fixed: with trustProxy enabled but no sanitising reverse proxy in front, a single device could create unlimited display entries — a global ceiling now caps this
+
 ### 1.39.0 (2026-09-01)
 
 - New: Displays show a "Redirect target not reachable" card with the target URL instead of a black screen when the configured dashboard is down — also right when the display starts
@@ -199,10 +203,6 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 - The setup screen on the display now explains how to pick a dashboard from the dropdown, or choose Manual URL and enter your own address next to it.
 - The global and per-display redirect datapoints now have descriptions explaining each option, and everything you see consistently says display.
 - The sign-in and error pages shown while a display is onboarding now appear in your ioBroker language instead of English only.
-
-### 1.37.1 (2026-07-11)
-
-- Internal cleanup. No user-facing changes.
 
 [Older changelogs can be found there](CHANGELOG_OLD.md)
 

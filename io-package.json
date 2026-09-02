@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.39.0",
+    "version": "1.40.0",
     "news": {
+      "1.40.0": {
+        "en": "Hardening: with trustProxy enabled but no sanitising reverse proxy in front, a single device could create unlimited display entries — a global ceiling now caps this.",
+        "de": "Härtung: Mit aktiviertem trustProxy ohne bereinigenden Reverse-Proxy konnte ein einzelnes Gerät unbegrenzt Display-Einträge anlegen — eine globale Obergrenze deckelt das jetzt.",
+        "ru": "Усиление защиты: при включённом trustProxy без очищающего обратного прокси одно устройство могло создавать неограниченно записей дисплеев — теперь действует общий предел.",
+        "pt": "Reforço: com trustProxy ativo mas sem proxy reverso de saneamento, um único dispositivo podia criar entradas de ecrã ilimitadas — um limite global agora impede isso.",
+        "nl": "Verharding: met trustProxy ingeschakeld maar zonder opschonende reverse proxy kon één apparaat onbeperkt display-vermeldingen aanmaken — een globaal plafond begrenst dit nu.",
+        "fr": "Renforcement : avec trustProxy activé sans proxy inverse assainissant, un seul appareil pouvait créer des entrées d'écran illimitées — un plafond global l'empêche désormais.",
+        "it": "Irrobustimento: con trustProxy attivo ma senza reverse proxy di sanificazione, un singolo dispositivo poteva creare voci display illimitate — ora un limite globale lo impedisce.",
+        "es": "Refuerzo: con trustProxy activado pero sin proxy inverso saneador, un solo dispositivo podía crear entradas de pantalla ilimitadas — ahora un límite global lo impide.",
+        "pl": "Wzmocnienie: przy włączonym trustProxy bez oczyszczającego reverse proxy jedno urządzenie mogło tworzyć nieograniczoną liczbę wpisów wyświetlaczy — teraz obowiązuje globalny limit.",
+        "uk": "Посилення захисту: з увімкненим trustProxy без очищувального зворотного проксі один пристрій міг створювати необмежено записів дисплеїв — тепер діє загальний ліміт.",
+        "zh-cn": "加固：启用 trustProxy 但前端没有净化反向代理时，单个设备可无限创建显示器条目——现在有全局上限加以限制。"
+      },
       "1.39.0": {
         "en": "Displays now show a \"Redirect target not reachable\" card instead of a black screen when the configured dashboard is down, and reload automatically once it answers again",
         "de": "Displays zeigen jetzt eine Karte \"Weiterleitungsziel nicht erreichbar\" statt eines schwarzen Bildschirms, wenn das Dashboard nicht antwortet, und laden neu, sobald es wieder erreichbar ist",
@@ -80,19 +93,6 @@
         "pl": "Ustawiona przez Ciebie nazwa wyświetlacza pozostaje teraz po późniejszej zmianie nazwy sieciowej, a wadliwy wyświetlacz nie gromadzi już zbędnych wpisów w ioBroker.",
         "uk": "Задане вами ім'я дисплея тепер зберігається після подальшої зміни мережевого імені, а несправний дисплей більше не накопичує зайві записи в ioBroker.",
         "zh-cn": "你设置的显示器名称现在在网络名称稍后变更后仍会保留，出问题的显示器不再在 ioBroker 中堆积无用条目。"
-      },
-      "1.36.0": {
-        "en": "Fixed a rare crash that briefly took displays offline and a display name being overwritten by the device IP, plus authentication and reliability fixes.",
-        "de": "Behoben: ein seltener Absturz (Displays kurz offline) und ein Display-Name, der durch die Geräte-IP überschrieben wurde, plus Authentifizierungs- und Zuverlässigkeitsfixes.",
-        "ru": "Исправлены: редкий сбой (дисплеи ненадолго отключались) и перезапись имени дисплея IP-адресом устройства, а также исправления аутентификации и надёжности.",
-        "pt": "Corrigidos: uma falha rara (ecrãs offline por instantes) e o nome de um ecrã substituído pelo IP do dispositivo, além de correções de autenticação e fiabilidade.",
-        "nl": "Opgelost: een zeldzame crash (schermen kort offline) en een schermnaam die door het apparaat-IP werd overschreven, plus auth- en betrouwbaarheidsfixes.",
-        "fr": "Corrigés : un plantage rare (écrans brièvement hors ligne) et un nom d'écran écrasé par l'IP de l'appareil, ainsi que des correctifs d'authentification et de fiabilité.",
-        "it": "Corretti: un raro arresto (display brevemente offline) e un nome del display sovrascritto dall'IP del dispositivo, oltre a correzioni di autenticazione e affidabilità.",
-        "es": "Corregidos: un fallo raro (pantallas sin conexión brevemente) y un nombre de pantalla sobrescrito por la IP del dispositivo, más correcciones de autenticación y fiabilidad.",
-        "pl": "Naprawiono: rzadką awarię (wyświetlacze na chwilę offline) i nadpisanie nazwy wyświetlacza adresem IP urządzenia, plus poprawki uwierzytelniania i niezawodności.",
-        "uk": "Виправлено: рідкісний збій (дисплеї ненадовго вимикалися) і перезапис імені дисплея IP-адресою пристрою, а також виправлення автентифікації та надійності.",
-        "zh-cn": "修复了一个会导致显示器短暂离线的罕见崩溃，以及显示器名称被设备 IP 覆盖的问题，并改进了身份验证和可靠性。"
       }
     },
     "plugins": {

@@ -70,6 +70,16 @@ class ClientRegistry {
    * NEW_CLIENT_WINDOW_MS recovers and can mint persistent clients again.
    */
   newClientBurst = /* @__PURE__ */ new Map();
+  /**
+   * IP-INDEPENDENT sliding-window counter for persistent cookieless creates — a
+   * second ceiling below the per-IP {@link isIpThrottled} one. The per-IP throttle
+   * keys on `req.ip`; with `trustProxy` on but no sanitising proxy in front, a single
+   * device can rotate `X-Forwarded-For` per request so every request looks like a
+   * fresh IP and never trips it, minting unbounded persisted `clients.<id>` objects.
+   * This window closes that hole regardless of IP spoofing. Same reset-on-idle shape
+   * as {@link newClientBurst}. See {@link GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW}.
+   */
+  globalBurst = { count: 0, lastCreate: 0, warnedAt: 0 };
   /** @param adapter Adapter instance used for object/state I/O. */
   constructor(adapter) {
     this.adapter = adapter;
@@ -198,6 +208,15 @@ class ClientRegistry {
         this.touchLastSeen(existing);
         return existing;
       }
+    }
+    const now = Date.now();
+    if (this.isGloballyThrottled(now)) {
+      if (ip) {
+        this.recordNewClientActivity(ip, false, now);
+      }
+      this.warnGlobalThrottleOnce(now);
+      this.adapter.log.debug("identify: global new-client ceiling reached \u2014 serving a transient record (no object)");
+      return this.transientRecord(ip, hostname);
     }
     if (ip) {
       if (this.isIpThrottled(ip)) {
@@ -508,6 +527,7 @@ class ClientRegistry {
     this.adapter.log.info(
       ip ? `New client connected: ${id} (${(0, import_coerce.oneLine)(hostname != null ? hostname : ip)})` : `New client connected: ${id}`
     );
+    this.recordGlobalCreate();
     if (ip) {
       this.recordNewClientActivity(ip, true);
     }
@@ -530,6 +550,53 @@ class ClientRegistry {
       return false;
     }
     return entry.count >= import_constants.NEW_CLIENT_THROTTLE_PER_HOUR;
+  }
+  /**
+   * True when the global persistent-create window is over budget. IP-independent
+   * companion to {@link isIpThrottled}; see {@link globalBurst} +
+   * {@link GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW}. Read-only — the window is advanced
+   * by {@link recordGlobalCreate} on an actual persistent create, and reset after a
+   * full idle {@link NEW_CLIENT_WINDOW_MS}.
+   *
+   * @param now Current time in ms (injectable for tests).
+   */
+  isGloballyThrottled(now = Date.now()) {
+    if (now - this.globalBurst.lastCreate >= import_constants.NEW_CLIENT_WINDOW_MS) {
+      return false;
+    }
+    return this.globalBurst.count >= import_constants.GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW;
+  }
+  /**
+   * Records one persistent cookieless create into the global window. Resets the
+   * window (count + warn cooldown) after a full idle {@link NEW_CLIENT_WINDOW_MS}, so
+   * a continuous spray keeps the window alive and stays throttled while normal
+   * onboarding — gaps far longer than the window — always starts fresh. Called only
+   * from {@link createClient}, the single persistent-create site.
+   *
+   * @param now Current time in ms (injectable for tests).
+   */
+  recordGlobalCreate(now = Date.now()) {
+    if (now - this.globalBurst.lastCreate >= import_constants.NEW_CLIENT_WINDOW_MS) {
+      this.globalBurst.count = 0;
+      this.globalBurst.warnedAt = 0;
+    }
+    this.globalBurst.count += 1;
+    this.globalBurst.lastCreate = now;
+  }
+  /**
+   * One warn per window when the global ceiling is serving transient records — the
+   * signature of a spoofed-`X-Forwarded-For` spray (or `trustProxy` set without a
+   * sanitising proxy). Deduplicated against `warnedAt`, which resets with the window.
+   *
+   * @param now Current time in ms.
+   */
+  warnGlobalThrottleOnce(now) {
+    if (now - this.globalBurst.warnedAt > import_constants.NEW_CLIENT_WINDOW_MS) {
+      this.adapter.log.warn(
+        `More than ${import_constants.GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW} new clients within an hour across all IPs \u2014 throttling persistent client creation (a spoofed X-Forwarded-For spray, or trustProxy enabled without a sanitising reverse proxy?)`
+      );
+      this.globalBurst.warnedAt = now;
+    }
   }
   /**
    * A non-persisted, untracked client handed out when an IP is over the
