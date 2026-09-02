@@ -119,11 +119,28 @@ describe("html-shared", () => {
   describe("cardTableCss (L21)", () => {
     const landing = cardTableCss(
       { card: "main", content: ".content", table: ".info", cell: ".info" },
-      { cardBg: "var(--card-bg)", shadow: "var(--shadow)", border: "var(--border)", thColor: "var(--muted)", codeBg: "var(--code-bg)" },
+      {
+        cardBg: "var(--card-bg)",
+        shadow: "var(--shadow)",
+        border: "var(--border)",
+        thColor: "var(--muted)",
+        codeBg: "var(--code-bg)",
+      },
     );
     const down = cardTableCss(
-      { card: "#hassemu-down .card", content: "#hassemu-down .content", table: "#hassemu-down table", cell: "#hassemu-down" },
-      { cardBg: "#1e293b", shadow: "0 4px 18px rgba(0,0,0,.35)", border: "#334155", thColor: "#94a3b8", codeBg: "#0f172a" },
+      {
+        card: "#hassemu-down .card",
+        content: "#hassemu-down .content",
+        table: "#hassemu-down table",
+        cell: "#hassemu-down",
+      },
+      {
+        cardBg: "#1e293b",
+        shadow: "0 4px 18px rgba(0,0,0,.35)",
+        border: "#334155",
+        thColor: "#94a3b8",
+        codeBg: "#0f172a",
+      },
     );
 
     it("emits the card shell with the given selector + tokens (landing)", () => {

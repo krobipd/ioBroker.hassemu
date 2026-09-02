@@ -58,24 +58,24 @@ function createMockAdapter(): MockAdapter & DiscoveryAdapter {
     clearTimeout: (id: unknown) => {
       timers.delete(id as number);
     },
-    getForeignObjectsAsync: async (): Promise<Record<string, unknown>> => mock._instances,
-    readDirAsync: async (adapterName: string): Promise<unknown[]> => {
+    getForeignObjectsAsync: (): Promise<Record<string, unknown>> => Promise.resolve(mock._instances),
+    readDirAsync: (adapterName: string): Promise<unknown[]> => {
       const d = mock._dirs[adapterName];
       if (d instanceof Error) {
-        throw d;
+        return Promise.reject(d);
       }
-      return d ?? [];
+      return Promise.resolve(d ?? []);
     },
-    readFileAsync: async (adapterName: string, path: string) => {
+    readFileAsync: (adapterName: string, path: string) => {
       const key = `${adapterName}:${path}`;
       const f = mock._files[key];
       if (f instanceof Error) {
-        throw f;
+        return Promise.reject(f);
       }
       if (f === undefined) {
-        throw new Error(`file not found: ${key}`);
+        return Promise.reject(new Error(`file not found: ${key}`));
       }
-      return f;
+      return Promise.resolve(f);
     },
   };
   return mock as never;
@@ -83,7 +83,7 @@ function createMockAdapter(): MockAdapter & DiscoveryAdapter {
 
 function enabledInstance(partial: Record<string, unknown>): Record<string, unknown> {
   return {
-    common: { enabled: true, ...((partial.common as object) ?? {}) },
+    common: { enabled: true, ...(partial.common ?? {}) },
     native: partial.native ?? {},
   };
 }
@@ -401,8 +401,8 @@ describe("UrlDiscovery", () => {
     });
 
     it("gracefully handles getForeignObjectsAsync failure", async () => {
-      adapter.getForeignObjectsAsync = async () => {
-        throw new Error("boom");
+      adapter.getForeignObjectsAsync = () => {
+        return Promise.reject(new Error("boom"));
       };
       const result = await discovery.collect();
       expect(Object.keys(result)).to.have.lengthOf(0);
@@ -426,8 +426,8 @@ describe("UrlDiscovery", () => {
       // every mode dropdown to an empty option list, and a client on
       // mode='<url>' would resolve to nothing → landing page instead of its
       // dashboard, until the next refresh.
-      adapter.getForeignObjectsAsync = async () => {
-        throw new Error("boom");
+      adapter.getForeignObjectsAsync = () => {
+        return Promise.reject(new Error("boom"));
       };
       const afterError = await d.collect();
       expect(afterError).to.deep.equal(good);
@@ -584,9 +584,9 @@ describe("UrlDiscovery", () => {
       // setup that doesn't store views in this format). The top-level
       // ?<project>-URL must still be discovered.
       let readCalls = 0;
-      adapter.readFileAsync = async () => {
+      adapter.readFileAsync = () => {
         readCalls++;
-        throw new Error("file not found");
+        return Promise.reject(new Error("file not found"));
       };
       const result = await discovery.collect();
       expect(result["http://192.168.1.10:8082/vis/index.html?legacy"]).to.equal("VIS: legacy");
@@ -606,7 +606,7 @@ describe("UrlDiscovery", () => {
       adapter._instances = {
         "system.adapter.web.0": enabledInstance({ native: { bind: "192.168.1.10", port: 8082 } }),
       };
-      adapter.readDirAsync = async () => "garbage" as unknown as unknown[];
+      adapter.readDirAsync = () => Promise.resolve("garbage" as unknown as unknown[]);
       const result = await discovery.collect();
       expect(Object.keys(result)).to.have.lengthOf(0);
     });

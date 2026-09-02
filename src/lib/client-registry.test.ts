@@ -13,7 +13,9 @@ vi.mock("@iobroker/adapter-core", async () => {
       getTranslatedObject: vi.fn((key: string) => {
         const result: Record<string, string> = {};
         for (const [lang, data] of Object.entries(i18nData)) {
-          if (data[key]) result[lang] = data[key];
+          if (data[key]) {
+            result[lang] = data[key];
+          }
         }
         return Object.keys(result).length > 0 ? result : { en: key };
       }),
@@ -95,7 +97,7 @@ function createMockAdapter(namespace = "hassemu.0"): {
       clearInterval: () => undefined,
       setTimeout: () => undefined,
       clearTimeout: () => undefined,
-      getForeignObjectsAsync: async (pattern: string, type?: string) => {
+      getForeignObjectsAsync: (pattern: string, type?: string) => {
         const prefix = pattern.replace("*", "");
         const out: Record<string, ObjEntry> = {};
         // Type-faithful to js-controller: a string pattern with no type argument
@@ -109,24 +111,26 @@ function createMockAdapter(namespace = "hassemu.0"): {
             out[id] = obj;
           }
         }
-        return out;
+        return Promise.resolve(out);
       },
-      getStateAsync: async (id: string) => store.states.get(`${namespace}.${id}`) ?? null,
-      getObjectAsync: async (id: string) => {
+      getStateAsync: (id: string) => Promise.resolve(store.states.get(`${namespace}.${id}`) ?? null),
+      getObjectAsync: (id: string) => {
         const fullId = id.startsWith(`${namespace}.`) ? id : `${namespace}.${id}`;
-        return store.objects.get(fullId) ?? null;
+        return Promise.resolve(store.objects.get(fullId) ?? null);
       },
-      setObject: async (id: string, obj: ObjEntry) => {
+      setObject: (id: string, obj: ObjEntry) => {
         const fullId = id.startsWith(`${namespace}.`) ? id : `${namespace}.${id}`;
         store.objects.set(fullId, obj);
+        return Promise.resolve();
       },
-      setObjectNotExistsAsync: async (id: string, obj: ObjEntry) => {
+      setObjectNotExistsAsync: (id: string, obj: ObjEntry) => {
         const fullId = `${namespace}.${id}`;
         if (!store.objects.has(fullId)) {
           store.objects.set(fullId, obj);
         }
+        return Promise.resolve();
       },
-      extendObject: async (id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>) => {
+      extendObject: (id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>) => {
         const fullId = `${namespace}.${id}`;
         const existing = store.objects.get(fullId) ?? { type: "state" };
         const preserve = (options?.preserve as { common?: string[] })?.common ?? [];
@@ -142,11 +146,13 @@ function createMockAdapter(namespace = "hassemu.0"): {
           common: mergedCommon,
           native: { ...(existing.native ?? {}), ...(obj.native ?? {}) },
         });
+        return Promise.resolve();
       },
-      setState: async (id: string, value: { val: unknown; ack?: boolean }) => {
+      setState: (id: string, value: { val: unknown; ack?: boolean }) => {
         store.states.set(`${namespace}.${id}`, { val: value.val, ack: value.ack ?? false });
+        return Promise.resolve();
       },
-      delObjectAsync: async (id: string) => {
+      delObjectAsync: (id: string) => {
         const fullId = `${namespace}.${id}`;
         store.objects.delete(fullId);
         for (const k of [...store.states.keys()]) {
@@ -159,6 +165,7 @@ function createMockAdapter(namespace = "hassemu.0"): {
             store.objects.delete(k);
           }
         }
+        return Promise.resolve();
       },
     };
   }
@@ -685,7 +692,7 @@ describe("ClientRegistry", () => {
     });
 
     it("rejects non-string values (logs debug, G7 v1.18.0)", async () => {
-      await registry.handleModeWrite(rec.id, 42 as unknown);
+      await registry.handleModeWrite(rec.id, 42);
       expect(rec.mode).to.equal(MODE_GLOBAL);
       // v1.18.0 (G7): downgrade warn→debug — das war UI-echo, kein Server-Concern.
       const debug = store.logs.find(l => l.level === "debug" && l.msg.includes("non-string"));
@@ -929,7 +936,7 @@ describe("ClientRegistry", () => {
           role: "state",
           read: true,
           write: true,
-          states: { "0": "---", global: "Global URL", manual: "Manual URL", "http://vis/": "VIS" },
+          states: { 0: "---", global: "Global URL", manual: "Manual URL", "http://vis/": "VIS" },
         },
         native: {},
       });
@@ -1164,7 +1171,10 @@ describe("ClientRegistry", () => {
       const rec = await reg.identifyOrCreate(null, "10.0.0.7");
       const key = `hassemu.0.clients.${rec.id}`;
       // Mark the stored value so a second write is visible.
-      built.store.objects.set(key, { ...built.store.objects.get(key)!, native: { ...(built.store.objects.get(key)!.native ?? {}), lastSeen: 1 } });
+      built.store.objects.set(key, {
+        ...built.store.objects.get(key)!,
+        native: { ...(built.store.objects.get(key)!.native ?? {}), lastSeen: 1 },
+      });
 
       // A display polls the page every few seconds; an unthrottled upsert would
       // be one object write per request, per display, forever.
@@ -1238,8 +1248,12 @@ describe("ClientRegistry", () => {
     it("tracks bursts per IP independently", () => {
       const { reg, store } = buildReg();
       const access = reg as unknown as BurstAccess;
-      for (let i = 0; i < 4; i++) access.recordNewClientActivity("1.2.3.4", true);
-      for (let i = 0; i < 4; i++) access.recordNewClientActivity("5.6.7.8", true);
+      for (let i = 0; i < 4; i++) {
+        access.recordNewClientActivity("1.2.3.4", true);
+      }
+      for (let i = 0; i < 4; i++) {
+        access.recordNewClientActivity("5.6.7.8", true);
+      }
       const burstWarn = store.logs.filter(l => l.level === "warn" && l.msg.includes("not persisting cookies"));
       expect(burstWarn).to.have.length(2);
     });
@@ -1259,10 +1273,14 @@ describe("ClientRegistry", () => {
       const { reg, store } = buildReg();
       const access = reg as unknown as BurstAccess;
       const t0 = 10 * NEW_CLIENT_WINDOW_MS; // realistic (warn cooldown compares now - warnedAt)
-      for (let i = 0; i < 4; i++) access.recordNewClientActivity("1.2.3.4", true, t0 + i);
+      for (let i = 0; i < 4; i++) {
+        access.recordNewClientActivity("1.2.3.4", true, t0 + i);
+      }
       // Idle a full window past the last activity (t0+3), then spray again → fresh window, warns again.
       const t1 = t0 + 3 + NEW_CLIENT_WINDOW_MS;
-      for (let i = 0; i < 4; i++) access.recordNewClientActivity("1.2.3.4", true, t1 + i);
+      for (let i = 0; i < 4; i++) {
+        access.recordNewClientActivity("1.2.3.4", true, t1 + i);
+      }
       const burstWarn = store.logs.filter(l => l.level === "warn" && l.msg.includes("not persisting cookies"));
       expect(burstWarn).to.have.length(2);
     });
@@ -1273,7 +1291,9 @@ describe("ClientRegistry", () => {
       const ip = "7.7.7.7";
       const t0 = 5_000_000;
       // Drive the IP to the throttle threshold with persistent creates.
-      for (let i = 0; i < NEW_CLIENT_THROTTLE_PER_HOUR; i++) access.recordNewClientActivity(ip, true, t0 + i);
+      for (let i = 0; i < NEW_CLIENT_THROTTLE_PER_HOUR; i++) {
+        access.recordNewClientActivity(ip, true, t0 + i);
+      }
       expect(access.isIpThrottled(ip, t0 + NEW_CLIENT_THROTTLE_PER_HOUR)).to.be.true;
       // Continuous spraying (throttled transient path, persistent=false) just under
       // the window keeps refreshing lastActivity → still throttled long after the

@@ -3,7 +3,7 @@ import { vi } from "vitest";
 /** os.networkInterfaces is swappable so the interface-priority rules are testable. */
 const osMock = vi.hoisted(() => ({ interfaces: null as NodeJS.Dict<os.NetworkInterfaceInfo[]> | null }));
 vi.mock("node:os", async importOriginal => {
-  const actual = await importOriginal<typeof import("node:os")>();
+  const actual = await importOriginal<typeof os>();
   const networkInterfaces = (): NodeJS.Dict<os.NetworkInterfaceInfo[]> =>
     osMock.interfaces ?? actual.networkInterfaces();
   return { ...actual, default: { ...actual, networkInterfaces }, networkInterfaces };
@@ -12,7 +12,13 @@ vi.mock("node:os", async importOriginal => {
 import type * as os from "node:os";
 import { generateClientId, getLocalIp, isWildcardBind, resolveAdvertisedHost } from "./network";
 
-/** Build one interface entry with only the fields getLocalIp reads. */
+/**
+ * Build one interface entry with only the fields getLocalIp reads.
+ *
+ * @param address IP address of the interface
+ * @param family Address family as os.networkInterfaces reports it
+ * @param internal Whether it is a loopback/internal interface
+ */
 function iface(address: string, family: "IPv4" | "IPv6", internal = false): os.NetworkInterfaceInfo {
   return { address, family, internal, netmask: "", mac: "", cidr: null } as os.NetworkInterfaceInfo;
 }
