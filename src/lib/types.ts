@@ -25,9 +25,12 @@ export interface AdapterConfig {
    * - Cookie `secure: true` wenn der Proxy `X-Forwarded-Proto: https` setzt
    *
    * Achtung: bei `trustProxy: true` ohne echten Reverse-Proxy kann jeder
-   * Client per `X-Forwarded-For` seine sichtbare IP fälschen (verfälscht die
-   * IP in den Logs und die per-IP-Burst-Erkennung defekter Cookies). Default
-   * ist `false`. Optional in jsonConfig.
+   * Client per `X-Forwarded-For` seine sichtbare IP fälschen — das verfälscht
+   * die IP in den Logs und die per-IP-Burst-Erkennung defekter Cookies UND
+   * hebelt die per-IP-Drossel für neue Clients aus (jede Anfrage eine „neue
+   * IP"). Dagegen steht die IP-unabhängige globale Obergrenze der Registry
+   * (`GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW`), die den Schaden deckelt.
+   * Default ist `false`. Optional in jsonConfig.
    */
   trustProxy?: boolean;
 }

@@ -211,7 +211,9 @@ export class WebServer {
     // `X-Forwarded-For` (statt aus dem Socket), `req.protocol` aus
     // `X-Forwarded-Proto` etc. — Voraussetzung: der Proxy bereinigt diese
     // Header (sonst kann jeder Client seine sichtbare IP fälschen → verfälscht
-    // Logs + die per-IP-Burst-Erkennung defekter Cookies).
+    // Logs + die per-IP-Burst-Erkennung defekter Cookies und hebelt die per-IP-
+    // Drossel neuer Clients aus; die IP-unabhängige globale Obergrenze der
+    // Registry deckelt diesen Schaden — GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW).
     this.app = Fastify({ logger: false, trustProxy: this.config.trustProxy === true });
     // v1.14.0 (H8): inject einmal binden, nicht pro Getter-Access.
     (this as { inject: WebserverInject }).inject = this.app.inject.bind(this.app);

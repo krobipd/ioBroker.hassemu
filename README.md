@@ -97,6 +97,8 @@ Want the same URL on every display? Set `global.mode` (plus `global.manualUrl` f
 | Username / Password | When Auth is on                                                                   | admin / — |
 | Trust Proxy         | Only behind a trusted reverse proxy that terminates TLS and strips X-Forwarded-*  | off       |
 
+Leave _Trust Proxy_ off unless that proxy really exists: without it any client can fake its address on every request. Since 1.40.0 a global per-hour ceiling on new display entries limits the damage, but it does not make the setting safe.
+
 ---
 
 ## State tree
@@ -158,6 +160,8 @@ Set the instance log level to `debug` first — since v1.31.1 the adapter traces
 
 **Display lost its identity (new id on every visit)** — the display is not persisting the cookie. Common causes: aggressive privacy mode, factory reset, browser cache flush. The old `clients.<id>`-channels can be removed via their `remove` button, but the root cause is on the display side, not in hassemu.
 
+**Log warns "More than 100 new clients within an hour across all IPs"** — something is creating display entries far faster than any real setup does. Typical cause: _Trust Proxy_ is on without a sanitising reverse proxy in front, so a device can fake a different address on every request and slips past the per-address limit. Turn _Trust Proxy_ off (or put a real proxy in front). Displays keep working meanwhile; the adapter just stops persisting new entries until the burst is over.
+
 **HA Companion App says "Server is not Home Assistant"** — point the app at `http://<ioBroker-IP>:8123`, not at the ioBroker Admin port. If a reverse proxy is in front of hassemu, make sure `/manifest.json` is passed through unmodified — the App parses `name === "Home Assistant"` to verify the server.
 
 **Aura entry in the dropdown points at the wrong port** — `native.port` of the Aura instance must match its actually-listening port. Trigger `info.refreshUrls = true` to re-run discovery after fixing the Aura config.
@@ -180,6 +184,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+
 ### 1.40.0 (2026-09-02)
 
 - Fixed: with trustProxy enabled but no sanitising reverse proxy in front, a single device could create unlimited display entries — a global ceiling now caps this
