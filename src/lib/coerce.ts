@@ -156,6 +156,42 @@ export function coerceString(value: unknown): string | null {
 }
 
 /**
+ * Read the plain text out of a `common.name`, whichever form it has.
+ *
+ * `common.name` is either a bare string (what every version before v1.41.0 wrote)
+ * or a translation object (what the adapter writes now). Every comparison against
+ * a name — "is this still the auto-assigned one?", "does this hold a hostname?" —
+ * has to work on both, otherwise converting the form silently breaks the logic that
+ * reads it. English is the reference key because that is the language the adapter
+ * writes its own auto-names in.
+ *
+ * @param value `common.name` as read from an object.
+ * @returns The text, or null when there is none.
+ */
+export function nameText(value: unknown): string | null {
+  if (typeof value === "string") {
+    return value.length > 0 ? value : null;
+  }
+  if (isPlainObject(value)) {
+    const en = value.en;
+    if (typeof en === "string" && en.length > 0) {
+      return en;
+    }
+  }
+  return null;
+}
+
+/**
+ * True when `common.name` is still a bare string — i.e. the object predates the
+ * translation-object standard and needs converting.
+ *
+ * @param value `common.name` as read from an object.
+ */
+export function isBareStringName(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+/**
  * Coerce to a boolean. Only accepts actual `true` / `false`.
  *
  * @param value Untrusted input.

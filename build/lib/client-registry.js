@@ -161,13 +161,17 @@ class ClientRegistry {
       const refreshToken = (0, import_coerce.coerceUuid)(native.refreshToken);
       const tokenExpiresAt = token && typeof native.tokenExpiresAt === "number" ? native.tokenExpiresAt : null;
       const legacyHostname = (0, import_coerce.coerceString)(hostnameRaw);
-      let channelName = (0, import_coerce.coerceString)((_a = obj.common) == null ? void 0 : _a.name);
+      const rawChannelName = (_a = obj.common) == null ? void 0 : _a.name;
+      let channelName = (0, import_coerce.nameText)(rawChannelName);
+      if ((0, import_coerce.isBareStringName)(rawChannelName)) {
+        await this.adapter.extendObject(`clients.${id}`, { common: { name: (0, import_i18n.tRaw)(rawChannelName) } });
+      }
       if (legacyHostname) {
         this.adapter.log.debug(
           `restore: legacy hostname migration for client ${id} \u2014 '${legacyHostname}' moved to common.name`
         );
         if (legacyHostname !== channelName) {
-          await this.adapter.extendObject(`clients.${id}`, { common: { name: legacyHostname } });
+          await this.adapter.extendObject(`clients.${id}`, { common: { name: (0, import_i18n.tRaw)(legacyHostname) } });
           channelName = legacyHostname;
         }
         try {
@@ -738,7 +742,7 @@ class ClientRegistry {
     const mergedStates = this.buildModeStates();
     await this.adapter.setObjectNotExistsAsync(`clients.${id}`, {
       type: "device",
-      common: { name: (_a = hostname != null ? hostname : ip) != null ? _a : id },
+      common: { name: (0, import_i18n.tRaw)((_a = hostname != null ? hostname : ip) != null ? _a : id) },
       native: { cookie, token: null }
     });
     const modeFullCommon = {
@@ -783,25 +787,34 @@ class ClientRegistry {
       existing.type = "state";
       await (0, import_object_repair.replaceObjectPreservingValue)(this.adapter, path, existing);
     };
+    const refreshModeText = async () => {
+      await ensureModeObject(refreshStates);
+      await this.adapter.extendObject(`clients.${id}.mode`, {
+        common: { name: (0, import_i18n.tName)("clientMode"), desc: (0, import_i18n.tName)("clientModeDesc") }
+      });
+    };
     await Promise.all([
-      ensureModeObject(refreshStates),
-      this.adapter.extendObject(
-        `clients.${id}.manualUrl`,
-        {
-          type: "state",
-          common: {
-            name: (0, import_i18n.tName)("clientManualUrl"),
-            type: "string",
-            role: "url",
-            read: true,
-            write: true,
-            def: ""
-          },
-          native: {}
+      refreshModeText(),
+      // All three use `extendObject` WITHOUT `preserve` — it creates the object when it
+      // is missing (what `setObjectNotExists` did) and, unlike it, carries a changed name
+      // into an object that already exists. `preserve: { common: ["name"] }` used to sit
+      // on manualUrl and froze its name for the life of the client; the rename guarantee
+      // of v1.36.0 C4 covers the client CHANNEL, never these states, so nothing is lost.
+      // Measured on the live tree 2026-09-03: `.ip` still read "Client IP" and `.remove`
+      // "Forget this client", both renamed in admin/i18n versions ago.
+      this.adapter.extendObject(`clients.${id}.manualUrl`, {
+        type: "state",
+        common: {
+          name: (0, import_i18n.tName)("clientManualUrl"),
+          type: "string",
+          role: "url",
+          read: true,
+          write: true,
+          def: ""
         },
-        { preserve: { common: ["name"] } }
-      ),
-      this.adapter.setObjectNotExistsAsync(`clients.${id}.ip`, {
+        native: {}
+      }),
+      this.adapter.extendObject(`clients.${id}.ip`, {
         type: "state",
         common: {
           name: (0, import_i18n.tName)("clientIp"),
@@ -813,7 +826,7 @@ class ClientRegistry {
         },
         native: {}
       }),
-      this.adapter.setObjectNotExistsAsync(`clients.${id}.remove`, {
+      this.adapter.extendObject(`clients.${id}.remove`, {
         type: "state",
         common: {
           name: (0, import_i18n.tName)("clientRemove"),
@@ -901,9 +914,10 @@ class ClientRegistry {
     var _a;
     const obj = await this.adapter.getObjectAsync(`clients.${recordId}`);
     const currentName = (_a = obj == null ? void 0 : obj.common) == null ? void 0 : _a.name;
-    const isAutoName = currentName === void 0 || typeof currentName === "string" && autoValues.includes(currentName);
+    const currentText = (0, import_coerce.nameText)(currentName);
+    const isAutoName = currentName === void 0 || currentText !== null && autoValues.includes(currentText);
     if (isAutoName) {
-      await this.adapter.extendObject(`clients.${recordId}`, { common: { name: newName } });
+      await this.adapter.extendObject(`clients.${recordId}`, { common: { name: (0, import_i18n.tRaw)(newName) } });
     }
   }
   async readState(subId) {

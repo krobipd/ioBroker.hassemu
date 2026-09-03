@@ -1,4 +1,11 @@
 # Older Changes
+## 1.38.0 (2026-07-12) — stable
+
+- Known displays were re-created as new clients after every adapter restart — losing their saved redirect and login, and leaving duplicates. The display list is now restored correctly.
+- The setup screen on the display now explains how to pick a dashboard from the dropdown, or choose Manual URL and enter your own address next to it.
+- The global and per-display redirect datapoints now have descriptions explaining each option, and everything you see consistently says display.
+- The sign-in and error pages shown while a display is onboarding now appear in your ioBroker language instead of English only.
+
 ## 1.37.1 (2026-07-11)
 
 - Internal cleanup. No user-facing changes.

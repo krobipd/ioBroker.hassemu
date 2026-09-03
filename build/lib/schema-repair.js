@@ -46,15 +46,11 @@ async function repairOne(adapter, instanceObjects, id, expectedCommonType) {
     return;
   }
   try {
-    await adapter.extendObject(
-      id,
-      {
-        type: schema.type,
-        common: schema.common,
-        native: (_b = schema.native) != null ? _b : {}
-      },
-      { preserve: { common: ["name"] } }
-    );
+    await adapter.extendObject(id, {
+      type: schema.type,
+      common: schema.common,
+      native: (_b = schema.native) != null ? _b : {}
+    });
     adapter.log.debug(`Schema repair applied: ${id} (common.type was missing, restored from instanceObjects)`);
   } catch (err) {
     adapter.log.debug(`repair ${id} failed: ${String(err)}`);

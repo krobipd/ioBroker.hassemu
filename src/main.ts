@@ -6,6 +6,7 @@ import { ClientRegistry, parseClientStateId } from "./lib/client-registry";
 import { coerceUuid, decideGcAction } from "./lib/coerce";
 import { MODE_GLOBAL, STALE_CLIENT_TTL_MS } from "./lib/constants";
 import { GlobalConfig, parseGlobalStateId } from "./lib/global-config";
+import { tName } from "./lib/i18n";
 import { migrateLegacyDefaultVisUrl, migrateVisUrlToMode } from "./lib/legacy-migration";
 import { MDNSService } from "./lib/mdns";
 import { type InstanceObjectSchema, repairGlobalSchemas } from "./lib/schema-repair";
@@ -146,6 +147,11 @@ export class HassEmu extends utils.Adapter {
       await migrateVisUrlToMode(this, this.globalConfig, this.registry);
       await repairGlobalSchemas(this, instanceObjectsList as InstanceObjectSchema[]);
 
+      // Carry the manifest's names/descriptions into an ALREADY EXISTING tree — without
+      // this an update reaches fresh installs only. Runs after the schema repair so a
+      // just-healed object gets the current text in the same start.
+      await this.refreshInstanceObjects();
+
       // L59 (v1.37.0): the manual-refresh button was renamed info.refresh_urls →
       // info.refreshUrls. Delete the old state once on upgrade so it doesn't linger
       // as an orphan beside the new one — js-controller does not auto-remove states
@@ -246,6 +252,157 @@ export class HassEmu extends utils.Adapter {
       await this.webServer?.stop().catch(() => {});
       this.terminate(11);
     }
+  }
+
+  /**
+   * Re-apply the adapter's OWN nine objects on every start, so a changed name or
+   * description reaches an installation that already has them.
+   *
+   * js-controller creates the manifest's `instanceObjects` only where they are MISSING.
+   * Without this pass the manifest, the state-role gate and the linter are all green
+   * while the real tree keeps the text of whatever version first created it
+   * (`reference_iobroker_bestehende_objekte_erreichen`). Measured on the live tree
+   * 2026-09-03: seven objects still carried a bare English string instead of the
+   * translation object the manifest declares, `clients` still read "Known display
+   * clients" and `global.manualUrl` still showed the developer note
+   * "(used when mode='manual')" to the user.
+   *
+   * Written out one object at a time on purpose, not looped over the manifest: the
+   * consistency gate verifies coverage by finding each id in the source, and a loop
+   * names none of them. Texts come from `tName`, i.e. from `admin/i18n` — the same file
+   * `scripts/sync-iopackage-from-i18n.py` fills the manifest from, so the runtime and
+   * the manifest cannot drift apart.
+   *
+   * Two things are deliberately NOT written: `common.states` (the mode dropdown belongs
+   * to `syncUrlDropdown`, and `extendObject` deep-merges it — a copy here would resurrect
+   * stale URL keys) and a `desc` on the four objects that have nothing to explain
+   * (`feedback_beschreibung_ist_erklaerung`: empty is allowed, an invented sentence is not).
+   *
+   * Nine unconditional writes per start are deliberate and cheap — hueemu does the same
+   * for its three; a read-before-write would cost the same round-trips.
+   */
+  private async refreshInstanceObjects(): Promise<void> {
+    // Tolerance per OBJECT, not per pass: if one write fails, the remaining objects must
+    // still be refreshed — stopping at the first failure would leave everything after it
+    // silently on the old text, which is exactly the defect this pass exists to fix.
+    // The id stays the literal first argument of `extendObject` so the consistency gate
+    // can verify coverage.
+    const tolerate = async (id: string, write: ioBroker.SetObjectPromise): Promise<void> => {
+      try {
+        await write;
+      } catch (err: unknown) {
+        this.log.debug(`Could not refresh the object ${id}: ${String(err)}`);
+      }
+    };
+
+    await Promise.all([
+      tolerate("info", this.extendObject("info", { type: "channel", common: { name: tName("info") }, native: {} })),
+      tolerate(
+        "info.connection",
+        this.extendObject("info.connection", {
+          type: "state",
+          common: {
+            name: tName("connection"),
+            type: "boolean",
+            role: "indicator.connected",
+            read: true,
+            write: false,
+            def: false,
+          },
+          native: {},
+        }),
+      ),
+      tolerate(
+        "info.serverUuid",
+        this.extendObject("info.serverUuid", {
+          type: "state",
+          common: {
+            name: tName("serverUuid"),
+            desc: tName("serverUuidDesc"),
+            type: "string",
+            role: "text",
+            read: true,
+            write: false,
+            def: "",
+          },
+          native: {},
+        }),
+      ),
+      tolerate(
+        "info.refreshUrls",
+        this.extendObject("info.refreshUrls", {
+          type: "state",
+          common: {
+            name: tName("refreshUrls"),
+            desc: tName("refreshUrlsDesc"),
+            type: "boolean",
+            role: "button",
+            read: false,
+            write: true,
+            def: false,
+          },
+          native: {},
+        }),
+      ),
+      tolerate(
+        "clients",
+        this.extendObject("clients", { type: "folder", common: { name: tName("clients") }, native: {} }),
+      ),
+      tolerate(
+        "global",
+        this.extendObject("global", { type: "channel", common: { name: tName("global") }, native: {} }),
+      ),
+      tolerate(
+        "global.enabled",
+        this.extendObject("global.enabled", {
+          type: "state",
+          common: {
+            name: tName("globalEnabled"),
+            desc: tName("globalEnabledDesc"),
+            type: "boolean",
+            role: "switch.enable",
+            read: true,
+            write: true,
+            def: false,
+          },
+          native: {},
+        }),
+      ),
+      // No `states` here — syncUrlDropdown is the single authority for the dropdown.
+      tolerate(
+        "global.mode",
+        this.extendObject("global.mode", {
+          type: "state",
+          common: {
+            name: tName("globalMode"),
+            desc: tName("globalModeDesc"),
+            type: "mixed",
+            role: "state",
+            read: true,
+            write: true,
+            def: "0",
+          },
+          native: {},
+        }),
+      ),
+      tolerate(
+        "global.manualUrl",
+        this.extendObject("global.manualUrl", {
+          type: "state",
+          common: {
+            name: tName("globalManualUrl"),
+            desc: tName("globalManualUrlDesc"),
+            type: "string",
+            role: "url",
+            read: true,
+            write: true,
+            def: "",
+          },
+          native: {},
+        }),
+      ),
+    ]);
+    this.log.debug("Refreshed the adapter's own objects (names/descriptions reach existing installations)");
   }
 
   /**

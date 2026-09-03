@@ -6,6 +6,9 @@
  * while ClientRegistry/GlobalConfig run for real against the stub object store.
  */
 
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+
 vi.mock("@iobroker/adapter-core", () => {
   interface ObjEntry {
     type: string;
@@ -26,6 +29,8 @@ vi.mock("@iobroker/adapter-core", () => {
     objectSubscriptions: string[] = [];
     stateUnsubscriptions: string[] = [];
     objectUnsubscriptions: string[] = [];
+    /** Every extendObject call, so a test can assert HOW it was written, not just the result. */
+    extendCalls: { id: string; common: Record<string, unknown>; options?: Record<string, unknown> }[] = [];
 
     log = {
       debug: (m: string): void => void this.logs.push({ level: "debug", msg: m }),
@@ -73,6 +78,7 @@ vi.mock("@iobroker/adapter-core", () => {
 
     extendObject(id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>): Promise<void> {
       const full = this.fullId(id);
+      this.extendCalls.push({ id, common: obj.common ?? {}, options });
       const existing = this.objects.get(full) ?? { type: "state" };
       const preserve = (options?.preserve as { common?: string[] } | undefined)?.common ?? [];
       const mergedCommon: Record<string, unknown> = { ...(existing.common ?? {}), ...(obj.common ?? {}) };
@@ -177,12 +183,29 @@ vi.mock("@iobroker/adapter-core", () => {
     }
   }
 
+  // Read the REAL admin/i18n files (same as client-registry.test.ts). The object
+  // refresh exists to land the actual user-visible text in an existing tree, so a mock
+  // that echoed the key back would let a wrong key pass unnoticed.
+  const i18nDir = join(__dirname, "../admin/i18n");
+  const i18nData: Record<string, Record<string, string>> = {};
+  for (const f of readdirSync(i18nDir).filter(f => f.endsWith(".json"))) {
+    i18nData[f.replace(".json", "")] = JSON.parse(readFileSync(join(i18nDir, f), "utf8"));
+  }
+
   return {
     Adapter: StubAdapter,
     I18n: {
       init: vi.fn(async () => {}),
-      getTranslatedObject: vi.fn((key: string) => ({ en: key })),
-      translate: vi.fn((key: string) => key),
+      getTranslatedObject: vi.fn((key: string) => {
+        const result: Record<string, string> = {};
+        for (const [lang, data] of Object.entries(i18nData)) {
+          if (data[key]) {
+            result[lang] = data[key];
+          }
+        }
+        return Object.keys(result).length > 0 ? result : { en: key };
+      }),
+      translate: vi.fn((key: string) => i18nData.en?.[key] ?? key),
     },
   };
 });
@@ -193,6 +216,7 @@ import type { GlobalConfig } from "./lib/global-config";
 import { MODE_GLOBAL, MODE_MANUAL } from "./lib/constants";
 import { migrateLegacyDefaultVisUrl, migrateVisUrlToMode, type MigrationAdapter } from "./lib/legacy-migration";
 import type { AdapterConfig } from "./lib/types";
+import iobrokerPackage from "../io-package.json";
 
 interface ObjEntry {
   type: string;
@@ -211,6 +235,7 @@ interface StubSurface {
   objectSubscriptions: string[];
   stateUnsubscriptions: string[];
   objectUnsubscriptions: string[];
+  extendCalls: { id: string; common: Record<string, unknown>; options?: Record<string, unknown> }[];
   setState: (id: string, state: { val: unknown; ack?: boolean }) => Promise<void>;
 }
 
@@ -312,6 +337,107 @@ function setup(config: Partial<typeof BASE_CONFIG> = {}): Setup {
 function logsOf(stub: StubSurface, level: string): string[] {
   return stub.logs.filter(l => l.level === level).map(l => l.msg);
 }
+
+describe("HassEmu refreshInstanceObjects (v1.41.0)", () => {
+  // js-controller creates instanceObjects only where they are MISSING, so a changed
+  // name/description otherwise reaches fresh installs only. Measured on the live tree
+  // 2026-09-03: seven of the nine objects still carried a bare English string.
+  // Derived from the manifest, not typed out: a newly declared instanceObject that the
+  // refresh forgets fails this suite instead of quietly reaching fresh installs only.
+  const MANIFEST_IDS = (iobrokerPackage as { instanceObjects: { _id: string }[] }).instanceObjects.map(o => o._id);
+
+  it("the manifest still declares the nine objects this suite expects", () => {
+    expect(MANIFEST_IDS).to.have.members([
+      "info",
+      "info.connection",
+      "info.serverUuid",
+      "info.refreshUrls",
+      "clients",
+      "global",
+      "global.enabled",
+      "global.mode",
+      "global.manualUrl",
+    ]);
+  });
+
+  it("onReady REACHES the refresh — every manifest object is extended", async () => {
+    // The point of this test: a refresh method nobody calls passes lint and tsc.
+    const { internal, stub } = setup();
+    await internal.onReady();
+    const extended = stub.extendCalls.map(c => c.id);
+    for (const id of MANIFEST_IDS) {
+      expect(extended, `onReady extends ${id}`).toContain(id);
+    }
+  });
+
+  it("lands the current name on an object that ALREADY exists with the old text", async () => {
+    const { internal, stub } = setup();
+    // The exact drift measured on the live tree: the folder still says "clients".
+    stub.objects.set("hassemu.0.clients", { type: "folder", common: { name: "Known display clients" }, native: {} });
+    await internal.onReady();
+    const name = stub.objects.get("hassemu.0.clients")?.common?.name as Record<string, string>;
+    expect(typeof name).toBe("object");
+    expect(name.en).toBe("Known displays");
+  });
+
+  it("replaces a bare string name with the translation object", async () => {
+    const { internal, stub } = setup();
+    // common.type is correct on purpose, so the schema repair returns early and this
+    // test measures the REFRESH alone. Without it the repair would write the manifest
+    // name too and cover for a refresh that never happened (measured: mutation R3).
+    stub.objects.set("hassemu.0.global.manualUrl", {
+      type: "state",
+      common: { name: "Global manual URL (used when mode='manual')", type: "string", role: "url" },
+      native: {},
+    });
+    await internal.onReady();
+    const name = stub.objects.get("hassemu.0.global.manualUrl")?.common?.name as Record<string, string>;
+    expect(typeof name).toBe("object");
+    expect(name.en).toBe("Global manual URL");
+    expect(name.de).toBeTypeOf("string");
+  });
+
+  it("uses no `preserve` — that option is exactly what froze the old names", async () => {
+    const { internal, stub } = setup();
+    await internal.onReady();
+    for (const call of stub.extendCalls.filter(c => MANIFEST_IDS.includes(c.id))) {
+      expect(call.options?.preserve, `${call.id} is written without preserve`).toBeUndefined();
+    }
+  });
+
+  it("never sends common.states — the dropdown stays with syncUrlDropdown", async () => {
+    // extendObject deep-merges `states`; shipping a copy would resurrect stale URL keys.
+    const { internal, stub } = setup();
+    await internal.onReady();
+    for (const call of stub.extendCalls.filter(c => MANIFEST_IDS.includes(c.id))) {
+      expect(call.common, `${call.id} carries no states`).not.toHaveProperty("states");
+    }
+  });
+
+  it("does not stamp a null description over an object that has nothing to explain", async () => {
+    const { internal, stub } = setup();
+    await internal.onReady();
+    const infoCall = stub.extendCalls.find(c => c.id === "info");
+    expect(infoCall?.common).not.toHaveProperty("desc");
+  });
+
+  it("keeps writing the rest when one object cannot be written", async () => {
+    const { internal, stub, adapter } = setup();
+    const real = (adapter as unknown as { extendObject: (...a: unknown[]) => Promise<void> }).extendObject.bind(
+      adapter,
+    );
+    (adapter as unknown as { extendObject: (...a: unknown[]) => Promise<void> }).extendObject = (
+      id: unknown,
+      ...rest: unknown[]
+    ) => (id === "global" ? Promise.reject(new Error("broker offline")) : real(id, ...rest));
+    await internal.onReady();
+    const extended = stub.extendCalls.map(c => c.id);
+    expect(extended).toContain("global.mode");
+    expect(logsOf(stub, "debug").some(m => m.includes("Could not refresh the object global"))).toBe(true);
+    // A failed refresh must not take the adapter down with it.
+    expect(stub.states.get("hassemu.0.info.connection")).toEqual({ val: true, ack: true });
+  });
+});
 
 describe("HassEmu onReady", () => {
   it("happy path: I18n init, migrations, webserver started, subscriptions, connection=true", async () => {

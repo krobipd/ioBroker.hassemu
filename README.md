@@ -184,6 +184,12 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+### 1.41.0 (2026-09-03)
+
+- Fixed: renamed datapoints now reach installations that already exist — until now a changed name or description only ever showed up on a fresh install
+- Fixed: the object tree kept outdated labels ("Known display clients", "Client IP", "Forget this client") and showed a developer note in the global manual URL name
+- Changed: datapoint names now appear in your ioBroker language throughout the object tree, including the names the displays report for themselves
+- New: full user documentation in English and German covering setup, the object tree and troubleshooting, shown by the ioBroker documentation portal
 
 ### 1.40.0 (2026-09-02)
 
@@ -201,13 +207,6 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 ### 1.38.1 (2026-08-22)
 
 - Changed: Internal cleanup. No user-facing changes.
-
-### 1.38.0 (2026-07-12) — stable
-
-- Known displays were re-created as new clients after every adapter restart — losing their saved redirect and login, and leaving duplicates. The display list is now restored correctly.
-- The setup screen on the display now explains how to pick a dashboard from the dropdown, or choose Manual URL and enter your own address next to it.
-- The global and per-display redirect datapoints now have descriptions explaining each option, and everything you see consistently says display.
-- The sign-in and error pages shown while a display is onboarding now appear in your ioBroker language instead of English only.
 
 [Older changelogs can be found there](CHANGELOG_OLD.md)
 

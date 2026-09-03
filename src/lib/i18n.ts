@@ -1,7 +1,28 @@
 import { I18n } from "@iobroker/adapter-core";
 import type translations from "../../admin/i18n/en.json";
+import { SUPPORTED_LANGS } from "./html-shared";
 
 type I18nKey = keyof typeof translations;
+
+/**
+ * Wrap a text that does not come from `admin/i18n` — the hostname a display
+ * announced itself with, for example — as a translation object.
+ *
+ * There is nothing to translate (the display sends one string, identical in every
+ * language), but `common.name` must be a translation object for every object type,
+ * never a bare string (core team, nut2 #15). Offering the same text under every
+ * language key makes the object browser show it whatever the system language is,
+ * instead of falling back on an untranslated name.
+ *
+ * Uses the same eleven languages as the rendered pages ({@link SUPPORTED_LANGS}) so
+ * the adapter carries ONE language list, not two that can drift apart.
+ *
+ * @param text The display-supplied text, passed through unchanged.
+ * @returns The same text under every supported language key.
+ */
+export function tRaw(text: string): ioBroker.StringOrTranslated {
+  return Object.fromEntries(SUPPORTED_LANGS.map(lang => [lang, text])) as ioBroker.StringOrTranslated;
+}
 
 /**
  * @param key Translation key from admin/i18n/en.json

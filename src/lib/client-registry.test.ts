@@ -35,6 +35,19 @@ import {
 } from "./constants";
 import type { ClientRecord } from "./types";
 
+/**
+ * Resolve a `common.name` to its plain text, whichever form it carries.
+ *
+ * Client names are translation objects since v1.41.0 (core team, nut2 #15) — the
+ * adapter writes the same display-supplied text under every language key. These
+ * tests assert on that TEXT; that the form really is a translation object has its
+ * own test ("writes the client name as a translation object").
+ *
+ * @param name `common.name` as read from the mock store.
+ */
+const nameOf = (name: unknown): unknown =>
+  name !== null && typeof name === "object" ? (name as Record<string, string>).en : name;
+
 interface ObjEntry {
   type: string;
   common?: Record<string, unknown>;
@@ -230,27 +243,27 @@ describe("ClientRegistry", () => {
     it("sets common.name to ip when hostname is unknown", async () => {
       const rec = await registry.identifyOrCreate(null, "192.168.1.5");
       const ch = store.objects.get(`hassemu.0.clients.${rec.id}`);
-      expect(ch?.common?.name).to.equal("192.168.1.5");
+      expect(nameOf(ch?.common?.name)).to.equal("192.168.1.5");
     });
 
     it("sets common.name to hostname when known at creation", async () => {
       const rec = await registry.identifyOrCreate(null, "192.168.1.5", { hostname: "tablet.local" });
       const ch = store.objects.get(`hassemu.0.clients.${rec.id}`);
-      expect(ch?.common?.name).to.equal("tablet.local");
+      expect(nameOf(ch?.common?.name)).to.equal("tablet.local");
     });
 
     it("updates common.name when hostname resolves after creation", async () => {
       const rec = await registry.identifyOrCreate(null, "192.168.1.5");
       await registry.identifyOrCreate(rec.cookie, "192.168.1.5", { hostname: "tablet.local" });
       const ch = store.objects.get(`hassemu.0.clients.${rec.id}`);
-      expect(ch?.common?.name).to.equal("tablet.local");
+      expect(nameOf(ch?.common?.name)).to.equal("tablet.local");
     });
 
     it("keeps common.name in sync with ip while hostname unknown", async () => {
       const rec = await registry.identifyOrCreate(null, "1.1.1.1");
       await registry.identifyOrCreate(rec.cookie, "2.2.2.2");
       const ch = store.objects.get(`hassemu.0.clients.${rec.id}`);
-      expect(ch?.common?.name).to.equal("2.2.2.2");
+      expect(nameOf(ch?.common?.name)).to.equal("2.2.2.2");
     });
 
     it("preserves a user-renamed common.name across an IP change (v1.36.0 C4)", async () => {
@@ -273,14 +286,14 @@ describe("ClientRegistry", () => {
       delete (ch.common as Record<string, unknown>).name;
 
       await registry.identifyOrCreate(rec.cookie, "2.2.2.2");
-      expect(store.objects.get(key)?.common?.name).to.not.equal("2.2.2.2");
+      expect(nameOf(store.objects.get(key)?.common?.name)).to.not.equal("2.2.2.2");
     });
 
     it("writes ip and hostname only when they actually change", async () => {
       const rec = await registry.identifyOrCreate(null, "1.1.1.1", { hostname: "tablet.local" });
       const ipKey = `hassemu.0.clients.${rec.id}.ip`;
       store.states.delete(ipKey);
-      const namesBefore = store.objects.get(`hassemu.0.clients.${rec.id}`)?.common?.name;
+      const namesBefore = nameOf(store.objects.get(`hassemu.0.clients.${rec.id}`)?.common?.name);
 
       // Every page load repeats the same ip + hostname. Re-writing them turns
       // each request into two broker writes per display.
@@ -293,7 +306,9 @@ describe("ClientRegistry", () => {
       await registry.identifyOrCreate(rec.cookie, "1.1.1.1", { hostname: "tablet.local" });
       await registry.identifyOrCreate(rec.cookie, "1.1.1.1", { hostname: "tablet.local" });
       expect(store.states.has(ipKey), "no ip write for an unchanged ip").to.be.false;
-      expect(store.objects.get(chKey)?.common?.name, "no name write for an unchanged hostname").to.equal("MARKER");
+      expect(nameOf(store.objects.get(chKey)?.common?.name), "no name write for an unchanged hostname").to.equal(
+        "MARKER",
+      );
       expect(namesBefore).to.equal("tablet.local");
 
       // The name itself is protected by a read-before-overwrite inside
@@ -319,7 +334,7 @@ describe("ClientRegistry", () => {
       const rec = await registry.identifyOrCreate(null, "1.1.1.1", { hostname: "tablet.local" });
       await registry.identifyOrCreate(rec.cookie, "2.2.2.2");
       const ch = store.objects.get(`hassemu.0.clients.${rec.id}`);
-      expect(ch?.common?.name).to.equal("tablet.local");
+      expect(nameOf(ch?.common?.name)).to.equal("tablet.local");
     });
 
     it("persists cookie in channel.native", async () => {
@@ -426,7 +441,7 @@ describe("ClientRegistry", () => {
       await registry.identifyOrCreate(rec.cookie, "1.1.1.1", { hostname: "new.local" });
       expect(rec.hostname).to.equal("new.local");
       const ch = store.objects.get(`hassemu.0.clients.${rec.id}`);
-      expect(ch?.common?.name).to.equal("new.local");
+      expect(nameOf(ch?.common?.name)).to.equal("new.local");
     });
 
     it("does not overwrite ip with null on subsequent visit", async () => {
@@ -990,7 +1005,7 @@ describe("ClientRegistry", () => {
       const rec = registry.getById(id);
       expect(rec?.hostname).to.equal("tablet.local");
       const ch = store.objects.get(`hassemu.0.clients.${id}`);
-      expect(ch?.common?.name).to.equal("tablet.local");
+      expect(nameOf(ch?.common?.name)).to.equal("tablet.local");
       expect(store.objects.has(`hassemu.0.clients.${id}.hostname`)).to.be.false;
       expect(store.states.has(`hassemu.0.clients.${id}.hostname`)).to.be.false;
     });
@@ -1413,7 +1428,7 @@ describe("ClientRegistry", () => {
       const rec = await reg.identifyOrCreate(null, "10.0.0.30"); // name = ip
       await reg.updateHostname(rec.cookie, "tablet.local");
       expect(reg.getById(rec.id)?.hostname).to.equal("tablet.local");
-      expect(built.store.objects.get(`hassemu.0.clients.${rec.id}`)?.common?.name).to.equal("tablet.local");
+      expect(nameOf(built.store.objects.get(`hassemu.0.clients.${rec.id}`)?.common?.name)).to.equal("tablet.local");
     });
 
     it("is a no-op for an unknown cookie — never mints a ghost client (M5)", async () => {
@@ -1435,6 +1450,184 @@ describe("ClientRegistry", () => {
       expect(built.store.objects.get(`hassemu.0.clients.${rec.id}`)?.common?.name).to.equal("Wohnzimmer");
       expect(reg.getById(rec.id)?.hostname).to.equal("late-dns.local");
     });
+  });
+});
+
+describe("ClientRegistry name/description reach existing clients (v1.41.0)", () => {
+  // Four write paths used to freeze a client's texts for the life of the client:
+  // setObjectNotExists on .ip/.remove, `preserve` on .manualUrl, and the name-preserving
+  // early return in ensureModeObject. Measured on the live tree 2026-09-03: `.ip` still
+  // read "Client IP" and `.remove` "Forget this client" — both renamed in admin/i18n
+  // versions earlier. (`reference_iobroker_bestehende_objekte_erreichen`)
+  const textOf = (name: unknown): unknown =>
+    name !== null && typeof name === "object" ? (name as Record<string, string>).en : name;
+
+  it("brings the current name to an EXISTING .ip that still has the old one", async () => {
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never);
+    const rec = await reg.identifyOrCreate(null, "10.0.0.7");
+    // Simulate the tree of an installation created before the rename.
+    built.store.objects.get(`hassemu.0.clients.${rec.id}.ip`)!.common = { name: "Client IP" };
+
+    const reg2 = new ClientRegistry(built.adapter as never);
+    await reg2.restore();
+
+    expect(textOf(built.store.objects.get(`hassemu.0.clients.${rec.id}.ip`)?.common?.name)).to.equal("Display IP");
+  });
+
+  it("brings the current name to an EXISTING .remove", async () => {
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never);
+    const rec = await reg.identifyOrCreate(null, "10.0.0.8");
+    built.store.objects.get(`hassemu.0.clients.${rec.id}.remove`)!.common = { name: "Forget this client" };
+
+    await new ClientRegistry(built.adapter as never).restore();
+
+    expect(textOf(built.store.objects.get(`hassemu.0.clients.${rec.id}.remove`)?.common?.name)).to.equal(
+      "Forget this display",
+    );
+  });
+
+  it("no longer shields .manualUrl behind `preserve`", async () => {
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never);
+    const rec = await reg.identifyOrCreate(null, "10.0.0.9");
+    built.store.objects.get(`hassemu.0.clients.${rec.id}.manualUrl`)!.common = { name: "STALE" };
+
+    await new ClientRegistry(built.adapter as never).restore();
+
+    expect(textOf(built.store.objects.get(`hassemu.0.clients.${rec.id}.manualUrl`)?.common?.name)).to.equal(
+      "Manual URL",
+    );
+  });
+
+  it("brings the current name to .mode even when its schema is already fine", async () => {
+    // ensureModeObject returns early on a healthy schema — the name can only arrive
+    // through its own extendObject after that.
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never);
+    const rec = await reg.identifyOrCreate(null, "10.0.0.10");
+    const modeObj = built.store.objects.get(`hassemu.0.clients.${rec.id}.mode`)!;
+    modeObj.common = { ...modeObj.common, name: "STALE MODE" };
+
+    await new ClientRegistry(built.adapter as never).restore();
+
+    expect(textOf(built.store.objects.get(`hassemu.0.clients.${rec.id}.mode`)?.common?.name)).to.equal("Redirect mode");
+  });
+
+  it("keeps the mode dropdown out of the name refresh", async () => {
+    // extendObject deep-merges `states`; a refresh that carried them would resurrect
+    // URL keys syncUrlDropdown had dropped (v1.27.2).
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never);
+    const rec = await reg.identifyOrCreate(null, "10.0.0.11");
+    const modeObj = built.store.objects.get(`hassemu.0.clients.${rec.id}.mode`)!;
+    modeObj.common = { ...modeObj.common, states: { 0: "---", "http://gone": "stale" } };
+
+    await new ClientRegistry(built.adapter as never).restore();
+
+    const states = built.store.objects.get(`hassemu.0.clients.${rec.id}.mode`)?.common?.states;
+    expect(states).to.deep.equal({ 0: "---", "http://gone": "stale" });
+  });
+
+  it("writes a new client's name as a translation object, text unchanged", async () => {
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never);
+    const rec = await reg.identifyOrCreate(null, "10.0.0.12", { hostname: "tablet.local" });
+    const name = built.store.objects.get(`hassemu.0.clients.${rec.id}`)?.common?.name as Record<string, string>;
+    expect(name).to.be.an("object");
+    expect(name.en).to.equal("tablet.local");
+    expect(name.de).to.equal("tablet.local");
+  });
+
+  it("converts a pre-v1.41.0 bare-string client name on restore, keeping the text", async () => {
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never);
+    const rec = await reg.identifyOrCreate(null, "10.0.0.13");
+    // The live tree carried exactly this: the display's own hostname as a bare string.
+    built.store.objects.get(`hassemu.0.clients.${rec.id}`)!.common = { name: "ShellyWallDisplay-00A90B9CF0B7" };
+
+    await new ClientRegistry(built.adapter as never).restore();
+
+    const name = built.store.objects.get(`hassemu.0.clients.${rec.id}`)?.common?.name as Record<string, string>;
+    expect(name).to.be.an("object");
+    expect(name.en).to.equal("ShellyWallDisplay-00A90B9CF0B7");
+  });
+
+  it("converts a bare-string name the USER typed, without changing it", async () => {
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never);
+    const rec = await reg.identifyOrCreate(null, "10.0.0.14");
+    built.store.objects.get(`hassemu.0.clients.${rec.id}`)!.common = { name: "Küche Display" };
+
+    await new ClientRegistry(built.adapter as never).restore();
+
+    const name = built.store.objects.get(`hassemu.0.clients.${rec.id}`)?.common?.name as Record<string, string>;
+    expect(name.en).to.equal("Küche Display");
+  });
+
+  it("leaves an already-converted client name untouched", async () => {
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never);
+    const rec = await reg.identifyOrCreate(null, "10.0.0.15");
+    const before = built.store.objects.get(`hassemu.0.clients.${rec.id}`)?.common?.name;
+
+    await new ClientRegistry(built.adapter as never).restore();
+
+    expect(built.store.objects.get(`hassemu.0.clients.${rec.id}`)?.common?.name).to.deep.equal(before);
+  });
+
+  it("still recognises the auto-name once it is a translation object (IP change renames)", async () => {
+    // The guard that protects a user rename compares the CURRENT name against the auto
+    // values. Comparing the raw value would never match a translation object — every
+    // display would look user-renamed and the IP update would silently stop.
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never);
+    const rec = await reg.identifyOrCreate(null, "1.1.1.1");
+    await reg.identifyOrCreate(rec.cookie, "2.2.2.2");
+    expect(textOf(built.store.objects.get(`hassemu.0.clients.${rec.id}`)?.common?.name)).to.equal("2.2.2.2");
+  });
+
+  it("writes the renamed auto-name as a translation object, not a bare string", async () => {
+    // The IP-change rename must not put the form back to a bare string — otherwise the
+    // tree drifts back one display at a time whenever an address changes (mutation C9).
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never);
+    const rec = await reg.identifyOrCreate(null, "1.1.1.1");
+    await reg.identifyOrCreate(rec.cookie, "2.2.2.2");
+    const name = built.store.objects.get(`hassemu.0.clients.${rec.id}`)?.common?.name as Record<string, string>;
+    expect(name).to.be.an("object");
+    expect(name.en).to.equal("2.2.2.2");
+    expect(name.de).to.equal("2.2.2.2");
+  });
+
+  it("still reads the hostname out of a name that is already a translation object", async () => {
+    // restore() derives "does this client have a hostname?" from the channel name. Reading
+    // only the string form would make a converted client look nameless — and the next IP
+    // would be stamped over its hostname (mutation C11).
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never);
+    const rec = await reg.identifyOrCreate(null, "10.0.0.20", { hostname: "tablet.local" });
+
+    const reg2 = new ClientRegistry(built.adapter as never);
+    await reg2.restore();
+    expect(reg2.getById(rec.id)?.hostname).to.equal("tablet.local");
+
+    // …and an address change must not overwrite that hostname.
+    await reg2.identifyOrCreate(rec.cookie, "10.0.0.99");
+    const name = built.store.objects.get(`hassemu.0.clients.${rec.id}`)?.common?.name as Record<string, string>;
+    expect(name.en).to.equal("tablet.local");
+  });
+
+  it("still refuses to overwrite a user rename that is already a translation object", async () => {
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never);
+    const rec = await reg.identifyOrCreate(null, "1.1.1.1");
+    built.store.objects.get(`hassemu.0.clients.${rec.id}`)!.common = {
+      name: { en: "Kitchen Display", de: "Kitchen Display" },
+    };
+    await reg.identifyOrCreate(rec.cookie, "2.2.2.2");
+    expect(textOf(built.store.objects.get(`hassemu.0.clients.${rec.id}`)?.common?.name)).to.equal("Kitchen Display");
   });
 });
 

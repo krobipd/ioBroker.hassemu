@@ -16,7 +16,9 @@ import {
   coerceString,
   coerceUuid,
   evictOldest,
+  isBareStringName,
   isPlainObject,
+  nameText,
   oneLine,
   parseAdapterStateId,
   parseManualUrlWrite,
@@ -35,7 +37,7 @@ import {
   NEW_CLIENT_WINDOW_MS,
   OAUTH_ACCESS_TOKEN_TTL_S,
 } from "./constants";
-import { resolveLabel, tName } from "./i18n";
+import { resolveLabel, tName, tRaw } from "./i18n";
 import { generateClientId } from "./network";
 import { replaceObjectPreservingValue } from "./object-repair";
 import type { AdapterInterface, ClientRecord, UrlStates } from "./types";
@@ -217,13 +219,26 @@ export class ClientRegistry {
       // Legacy migration (<=1.1.1): hostname lived in its own state. If present,
       // move the value into common.name and drop the state.
       const legacyHostname = coerceString(hostnameRaw);
-      let channelName = coerceString(obj.common?.name);
+      // `nameText`, not `coerceString`: the name is a bare string on every client created
+      // before v1.41.0 and a translation object afterwards — reading only the string form
+      // would make an already-converted client look nameless and re-stamp its IP over the
+      // hostname on the next restore.
+      const rawChannelName = obj.common?.name;
+      let channelName = nameText(rawChannelName);
+      // v1.41.0: convert a client created before this version to a translation object.
+      // The TEXT is kept exactly as it stands — it is the display's hostname, or a name
+      // the user typed in the admin UI; only the form changes (core team, nut2 #15).
+      // Guarded on the bare-string form, so an already-converted client is left alone
+      // and this costs one write once per client, not one per start.
+      if (isBareStringName(rawChannelName)) {
+        await this.adapter.extendObject(`clients.${id}`, { common: { name: tRaw(rawChannelName) } });
+      }
       if (legacyHostname) {
         this.adapter.log.debug(
           `restore: legacy hostname migration for client ${id} — '${legacyHostname}' moved to common.name`,
         );
         if (legacyHostname !== channelName) {
-          await this.adapter.extendObject(`clients.${id}`, { common: { name: legacyHostname } });
+          await this.adapter.extendObject(`clients.${id}`, { common: { name: tRaw(legacyHostname) } });
           channelName = legacyHostname;
         }
         try {
@@ -928,9 +943,13 @@ export class ClientRegistry {
     // physical thing. Legacy `channel` client objects are migrated to `device` on
     // restore (see restoreChannel). setObjectNotExistsAsync — common.name is updated
     // dynamically by updateIpHostname() when reverse-DNS resolves; we must not clobber it.
+    // v1.41.0: the auto-name goes in as a translation object like every other name
+    // (core team, nut2 #15). The TEXT is unchanged — it is the display's own hostname
+    // (or its IP / id); `tRaw` only offers it under every language key so the object
+    // browser shows it whatever the system language is.
     await this.adapter.setObjectNotExistsAsync(`clients.${id}`, {
       type: "device",
-      common: { name: hostname ?? ip ?? id },
+      common: { name: tRaw(hostname ?? ip ?? id) },
       native: { cookie, token: null },
     });
 
@@ -996,25 +1015,40 @@ export class ClientRegistry {
       existing.type = "state";
       await replaceObjectPreservingValue(this.adapter, path, existing);
     };
+    // v1.41.0: the schema pass above deliberately keeps whatever name is in the tree
+    // (and returns early when the schema is fine), so the CURRENT text can only reach an
+    // existing object through its own `extendObject`. Sequenced AFTER the schema pass —
+    // running both concurrently would let the full-object replace overwrite this write.
+    // Only name/desc go in: `states` stays with syncUrlDropdown, its single authority,
+    // and `extendObject` deep-merges `states` (v1.27.2).
+    const refreshModeText = async (): Promise<void> => {
+      await ensureModeObject(refreshStates);
+      await this.adapter.extendObject(`clients.${id}.mode`, {
+        common: { name: tName("clientMode"), desc: tName("clientModeDesc") },
+      });
+    };
     await Promise.all([
-      ensureModeObject(refreshStates),
-      this.adapter.extendObject(
-        `clients.${id}.manualUrl`,
-        {
-          type: "state",
-          common: {
-            name: tName("clientManualUrl"),
-            type: "string",
-            role: "url",
-            read: true,
-            write: true,
-            def: "",
-          },
-          native: {},
+      refreshModeText(),
+      // All three use `extendObject` WITHOUT `preserve` — it creates the object when it
+      // is missing (what `setObjectNotExists` did) and, unlike it, carries a changed name
+      // into an object that already exists. `preserve: { common: ["name"] }` used to sit
+      // on manualUrl and froze its name for the life of the client; the rename guarantee
+      // of v1.36.0 C4 covers the client CHANNEL, never these states, so nothing is lost.
+      // Measured on the live tree 2026-09-03: `.ip` still read "Client IP" and `.remove`
+      // "Forget this client", both renamed in admin/i18n versions ago.
+      this.adapter.extendObject(`clients.${id}.manualUrl`, {
+        type: "state",
+        common: {
+          name: tName("clientManualUrl"),
+          type: "string",
+          role: "url",
+          read: true,
+          write: true,
+          def: "",
         },
-        { preserve: { common: ["name"] } },
-      ),
-      this.adapter.setObjectNotExistsAsync(`clients.${id}.ip`, {
+        native: {},
+      }),
+      this.adapter.extendObject(`clients.${id}.ip`, {
         type: "state",
         common: {
           name: tName("clientIp"),
@@ -1026,7 +1060,7 @@ export class ClientRegistry {
         },
         native: {},
       }),
-      this.adapter.setObjectNotExistsAsync(`clients.${id}.remove`, {
+      this.adapter.extendObject(`clients.${id}.remove`, {
         type: "state",
         common: {
           name: tName("clientRemove"),
@@ -1127,10 +1161,14 @@ export class ClientRegistry {
   private async applyAutoName(recordId: string, newName: string, autoValues: (string | null)[]): Promise<void> {
     const obj = await this.adapter.getObjectAsync(`clients.${recordId}`);
     const currentName = obj?.common?.name;
-    const isAutoName =
-      currentName === undefined || (typeof currentName === "string" && autoValues.includes(currentName));
+    // v1.41.0: the name is a translation object now, so the "is it still auto?" test
+    // reads the TEXT out of either form (`nameText`). Comparing the raw value would
+    // never match once converted — every display would look user-renamed and the
+    // hostname/IP update would silently stop working.
+    const currentText = nameText(currentName);
+    const isAutoName = currentName === undefined || (currentText !== null && autoValues.includes(currentText));
     if (isAutoName) {
-      await this.adapter.extendObject(`clients.${recordId}`, { common: { name: newName } });
+      await this.adapter.extendObject(`clients.${recordId}`, { common: { name: tRaw(newName) } });
     }
   }
 

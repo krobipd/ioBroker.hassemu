@@ -21,10 +21,15 @@ __export(i18n_exports, {
   makePageTranslator: () => makePageTranslator,
   resolveLabel: () => resolveLabel,
   tName: () => tName,
-  tPage: () => tPage
+  tPage: () => tPage,
+  tRaw: () => tRaw
 });
 module.exports = __toCommonJS(i18n_exports);
 var import_adapter_core = require("@iobroker/adapter-core");
+var import_html_shared = require("./html-shared");
+function tRaw(text) {
+  return Object.fromEntries(import_html_shared.SUPPORTED_LANGS.map((lang) => [lang, text]));
+}
 function tName(key) {
   return import_adapter_core.I18n.getTranslatedObject(key);
 }
@@ -48,6 +53,7 @@ function makePageTranslator(language) {
   makePageTranslator,
   resolveLabel,
   tName,
-  tPage
+  tPage,
+  tRaw
 });
 //# sourceMappingURL=i18n.js.map

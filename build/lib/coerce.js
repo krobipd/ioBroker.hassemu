@@ -37,10 +37,12 @@ __export(coerce_exports, {
   decideGcAction: () => decideGcAction,
   decideLegacyVisMigration: () => decideLegacyVisMigration,
   evictOldest: () => evictOldest,
+  isBareStringName: () => isBareStringName,
   isEmptyValue: () => isEmptyValue,
   isNoChoice: () => isNoChoice,
   isPlainObject: () => isPlainObject,
   isValidRedirectUri: () => isValidRedirectUri,
+  nameText: () => nameText,
   oneLine: () => oneLine,
   parseAdapterStateId: () => parseAdapterStateId,
   parseManualUrlWrite: () => parseManualUrlWrite,
@@ -107,6 +109,21 @@ function coerceString(value) {
     return value;
   }
   return null;
+}
+function nameText(value) {
+  if (typeof value === "string") {
+    return value.length > 0 ? value : null;
+  }
+  if (isPlainObject(value)) {
+    const en = value.en;
+    if (typeof en === "string" && en.length > 0) {
+      return en;
+    }
+  }
+  return null;
+}
+function isBareStringName(value) {
+  return typeof value === "string" && value.length > 0;
 }
 function coerceBoolean(value) {
   if (typeof value === "boolean") {
@@ -261,10 +278,12 @@ function shouldAttemptReverseDns(opts) {
   decideGcAction,
   decideLegacyVisMigration,
   evictOldest,
+  isBareStringName,
   isEmptyValue,
   isNoChoice,
   isPlainObject,
   isValidRedirectUri,
+  nameText,
   oneLine,
   parseAdapterStateId,
   parseManualUrlWrite,

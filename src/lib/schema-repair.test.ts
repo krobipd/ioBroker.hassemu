@@ -74,7 +74,9 @@ describe("schema-repair", () => {
       expect(extendCalls[0].id).to.equal("global.mode");
       expect(extendCalls[0].obj.type).to.equal("state");
       expect(extendCalls[0].obj.common).to.deep.equal(INSTANCE_OBJECTS[0].common);
-      expect(extendCalls[0].options).to.deep.equal({ preserve: { common: ["name"] } });
+      // v1.41.0: written WITHOUT preserve — the adapter owns these names and
+      // refreshInstanceObjects sets them from admin/i18n right after.
+      expect(extendCalls[0].options).to.equal(undefined);
     });
 
     it("repairs a non-existent object (getObject → null)", async () => {

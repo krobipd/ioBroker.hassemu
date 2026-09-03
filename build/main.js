@@ -39,6 +39,7 @@ var import_client_registry = require("./lib/client-registry");
 var import_coerce = require("./lib/coerce");
 var import_constants = require("./lib/constants");
 var import_global_config = require("./lib/global-config");
+var import_i18n = require("./lib/i18n");
 var import_legacy_migration = require("./lib/legacy-migration");
 var import_mdns = require("./lib/mdns");
 var import_schema_repair = require("./lib/schema-repair");
@@ -135,6 +136,7 @@ class HassEmu extends utils.Adapter {
       await (0, import_legacy_migration.migrateLegacyDefaultVisUrl)(this, this.config, this.globalConfig);
       await (0, import_legacy_migration.migrateVisUrlToMode)(this, this.globalConfig, this.registry);
       await (0, import_schema_repair.repairGlobalSchemas)(this, instanceObjectsList);
+      await this.refreshInstanceObjects();
       if (await this.getObjectAsync("info.refresh_urls")) {
         await this.delObjectAsync("info.refresh_urls").catch(() => {
         });
@@ -184,6 +186,150 @@ class HassEmu extends utils.Adapter {
       }));
       this.terminate(11);
     }
+  }
+  /**
+   * Re-apply the adapter's OWN nine objects on every start, so a changed name or
+   * description reaches an installation that already has them.
+   *
+   * js-controller creates the manifest's `instanceObjects` only where they are MISSING.
+   * Without this pass the manifest, the state-role gate and the linter are all green
+   * while the real tree keeps the text of whatever version first created it
+   * (`reference_iobroker_bestehende_objekte_erreichen`). Measured on the live tree
+   * 2026-09-03: seven objects still carried a bare English string instead of the
+   * translation object the manifest declares, `clients` still read "Known display
+   * clients" and `global.manualUrl` still showed the developer note
+   * "(used when mode='manual')" to the user.
+   *
+   * Written out one object at a time on purpose, not looped over the manifest: the
+   * consistency gate verifies coverage by finding each id in the source, and a loop
+   * names none of them. Texts come from `tName`, i.e. from `admin/i18n` — the same file
+   * `scripts/sync-iopackage-from-i18n.py` fills the manifest from, so the runtime and
+   * the manifest cannot drift apart.
+   *
+   * Two things are deliberately NOT written: `common.states` (the mode dropdown belongs
+   * to `syncUrlDropdown`, and `extendObject` deep-merges it — a copy here would resurrect
+   * stale URL keys) and a `desc` on the four objects that have nothing to explain
+   * (`feedback_beschreibung_ist_erklaerung`: empty is allowed, an invented sentence is not).
+   *
+   * Nine unconditional writes per start are deliberate and cheap — hueemu does the same
+   * for its three; a read-before-write would cost the same round-trips.
+   */
+  async refreshInstanceObjects() {
+    const tolerate = async (id, write) => {
+      try {
+        await write;
+      } catch (err) {
+        this.log.debug(`Could not refresh the object ${id}: ${String(err)}`);
+      }
+    };
+    await Promise.all([
+      tolerate("info", this.extendObject("info", { type: "channel", common: { name: (0, import_i18n.tName)("info") }, native: {} })),
+      tolerate(
+        "info.connection",
+        this.extendObject("info.connection", {
+          type: "state",
+          common: {
+            name: (0, import_i18n.tName)("connection"),
+            type: "boolean",
+            role: "indicator.connected",
+            read: true,
+            write: false,
+            def: false
+          },
+          native: {}
+        })
+      ),
+      tolerate(
+        "info.serverUuid",
+        this.extendObject("info.serverUuid", {
+          type: "state",
+          common: {
+            name: (0, import_i18n.tName)("serverUuid"),
+            desc: (0, import_i18n.tName)("serverUuidDesc"),
+            type: "string",
+            role: "text",
+            read: true,
+            write: false,
+            def: ""
+          },
+          native: {}
+        })
+      ),
+      tolerate(
+        "info.refreshUrls",
+        this.extendObject("info.refreshUrls", {
+          type: "state",
+          common: {
+            name: (0, import_i18n.tName)("refreshUrls"),
+            desc: (0, import_i18n.tName)("refreshUrlsDesc"),
+            type: "boolean",
+            role: "button",
+            read: false,
+            write: true,
+            def: false
+          },
+          native: {}
+        })
+      ),
+      tolerate(
+        "clients",
+        this.extendObject("clients", { type: "folder", common: { name: (0, import_i18n.tName)("clients") }, native: {} })
+      ),
+      tolerate(
+        "global",
+        this.extendObject("global", { type: "channel", common: { name: (0, import_i18n.tName)("global") }, native: {} })
+      ),
+      tolerate(
+        "global.enabled",
+        this.extendObject("global.enabled", {
+          type: "state",
+          common: {
+            name: (0, import_i18n.tName)("globalEnabled"),
+            desc: (0, import_i18n.tName)("globalEnabledDesc"),
+            type: "boolean",
+            role: "switch.enable",
+            read: true,
+            write: true,
+            def: false
+          },
+          native: {}
+        })
+      ),
+      // No `states` here — syncUrlDropdown is the single authority for the dropdown.
+      tolerate(
+        "global.mode",
+        this.extendObject("global.mode", {
+          type: "state",
+          common: {
+            name: (0, import_i18n.tName)("globalMode"),
+            desc: (0, import_i18n.tName)("globalModeDesc"),
+            type: "mixed",
+            role: "state",
+            read: true,
+            write: true,
+            def: "0"
+          },
+          native: {}
+        })
+      ),
+      tolerate(
+        "global.manualUrl",
+        this.extendObject("global.manualUrl", {
+          type: "state",
+          common: {
+            name: (0, import_i18n.tName)("globalManualUrl"),
+            desc: (0, import_i18n.tName)("globalManualUrlDesc"),
+            type: "string",
+            role: "url",
+            read: true,
+            write: true,
+            def: ""
+          },
+          native: {}
+        })
+      )
+    ]);
+    this.log.debug("Refreshed the adapter's own objects (names/descriptions reach existing installations)");
   }
   /**
    * Liefert die persistente Server-UUID. Beim ersten Start wird sie generiert und in

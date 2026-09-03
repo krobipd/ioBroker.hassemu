@@ -81,15 +81,16 @@ async function repairOne(
     // scheitert an `Partial<StateCommon>` vs `Partial<OtherCommon>`). Daher der
     // bewusste Cast auf `PartialObject` (statt `never`): die Shape ist durch das
     // Manifest garantiert.
-    await adapter.extendObject(
-      id,
-      {
-        type: schema.type,
-        common: schema.common,
-        native: schema.native ?? {},
-      } as unknown as ioBroker.PartialObject,
-      { preserve: { common: ["name"] } },
-    );
+    // v1.41.0: no `preserve` any more. It used to shield `common.name`, but the adapter
+    // owns the names of its own manifest objects and `refreshInstanceObjects` overwrites
+    // them from admin/i18n on the very next step of onReady — two writes in one start
+    // disagreeing about who owns the name is a contradiction, not a safeguard
+    // (`reference_preserve_name_verhindert_umbenennung`).
+    await adapter.extendObject(id, {
+      type: schema.type,
+      common: schema.common,
+      native: schema.native ?? {},
+    } as unknown as ioBroker.PartialObject);
     adapter.log.debug(`Schema repair applied: ${id} (common.type was missing, restored from instanceObjects)`);
   } catch (err) {
     adapter.log.debug(`repair ${id} failed: ${String(err)}`);

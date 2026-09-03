@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.40.0",
+    "version": "1.41.0",
     "news": {
+      "1.41.0": {
+        "en": "Renamed datapoints now reach installations that already exist — outdated labels in the object tree are corrected and shown in your ioBroker language. Full user documentation added.",
+        "de": "Umbenannte Datenpunkte erreichen jetzt auch bestehende Anlagen — veraltete Bezeichnungen im Objektbaum werden korrigiert und in deiner ioBroker-Sprache gezeigt. Nutzerdoku ergänzt.",
+        "ru": "Переименованные точки данных теперь доходят и до существующих установок — устаревшие подписи в дереве объектов исправляются и показываются на вашем языке. Добавлена документация.",
+        "pt": "Os pontos de dados renomeados chegam agora às instalações existentes — rótulos desatualizados na árvore são corrigidos e mostrados no seu idioma. Documentação de utilizador incluída.",
+        "nl": "Hernoemde datapunten bereiken nu ook bestaande installaties — verouderde labels in de objectboom worden gecorrigeerd en in jouw taal getoond. Gebruikersdocumentatie toegevoegd.",
+        "fr": "Les points de données renommés atteignent les installations existantes — les libellés obsolètes de l'arbre sont corrigés et affichés dans votre langue. Documentation utilisateur ajoutée.",
+        "it": "I punti dati rinominati raggiungono ora le installazioni esistenti — le etichette obsolete nell'albero vengono corrette e mostrate nella tua lingua. Aggiunta la documentazione utente.",
+        "es": "Los puntos de datos renombrados llegan ahora a las instalaciones existentes — las etiquetas obsoletas del árbol se corrigen y se muestran en tu idioma. Documentación de usuario añadida.",
+        "pl": "Zmienione nazwy punktów danych docierają teraz do istniejących instalacji — nieaktualne etykiety w drzewie są poprawiane i pokazywane w Twoim języku. Dodano dokumentację użytkownika.",
+        "uk": "Перейменовані точки даних тепер доходять і до наявних установок — застарілі підписи в дереві виправляються та показуються вашою мовою. Додано документацію користувача.",
+        "zh-cn": "重命名的数据点现在也能到达已有安装——对象树中过时的标签会被更正，并以你的 ioBroker 语言显示。新增完整的用户文档。"
+      },
       "1.40.0": {
         "en": "Hardening: with trustProxy enabled but no sanitising reverse proxy in front, a single device could create unlimited display entries — a global ceiling now caps this.",
         "de": "Härtung: Mit aktiviertem trustProxy ohne bereinigenden Reverse-Proxy konnte ein einzelnes Gerät unbegrenzt Display-Einträge anlegen — eine globale Obergrenze deckelt das jetzt.",
@@ -80,19 +93,6 @@
         "pl": "Wewnętrzne porządki. Brak zmian widocznych dla użytkownika.",
         "uk": "Внутрішнє очищення. Жодних змін для користувача.",
         "zh-cn": "内部清理。对用户无可见更改。"
-      },
-      "1.37.0": {
-        "en": "A display name you set now survives a later network-name change, and a misbehaving display no longer piles up unused entries in ioBroker.",
-        "de": "Ein von dir gesetzter Display-Name überlebt jetzt eine spätere Netzwerknamen-Änderung, und ein fehlerhaftes Display häuft keine unnötigen Einträge mehr in ioBroker an.",
-        "ru": "Заданное вами имя дисплея теперь сохраняется при последующем изменении сетевого имени, а сбойный дисплей больше не накапливает лишние записи в ioBroker.",
-        "pt": "Um nome de ecrã que definiu mantém-se agora após uma alteração posterior do nome de rede, e um ecrã com problemas já não acumula entradas inúteis no ioBroker.",
-        "nl": "Een schermnaam die je instelt blijft nu behouden na een latere netwerknaam-wijziging, en een haperend scherm stapelt geen overbodige items meer op in ioBroker.",
-        "fr": "Un nom d'écran que vous définissez survit désormais à un changement ultérieur de nom réseau, et un écran défaillant n'accumule plus d'entrées inutiles dans ioBroker.",
-        "it": "Un nome del display che imposti ora sopravvive a un successivo cambio di nome di rete, e un display difettoso non accumula più voci inutili in ioBroker.",
-        "es": "Un nombre de pantalla que definas ahora se conserva tras un cambio posterior de nombre de red, y una pantalla con fallos ya no acumula entradas inútiles en ioBroker.",
-        "pl": "Ustawiona przez Ciebie nazwa wyświetlacza pozostaje teraz po późniejszej zmianie nazwy sieciowej, a wadliwy wyświetlacz nie gromadzi już zbędnych wpisów w ioBroker.",
-        "uk": "Задане вами ім'я дисплея тепер зберігається після подальшої зміни мережевого імені, а несправний дисплей більше не накопичує зайві записи в ioBroker.",
-        "zh-cn": "你设置的显示器名称现在在网络名称稍后变更后仍会保留，出问题的显示器不再在 ioBroker 中堆积无用条目。"
       }
     },
     "plugins": {
@@ -145,6 +145,14 @@
     "icon": "hassemu.svg",
     "extIcon": "https://raw.githubusercontent.com/krobipd/ioBroker.hassemu/main/admin/hassemu.svg",
     "readme": "https://github.com/krobipd/ioBroker.hassemu/blob/main/README.md",
+    "docs": {
+      "en": [
+        "docs/en/README.md"
+      ],
+      "de": [
+        "docs/de/README.md"
+      ]
+    },
     "enabled": true,
     "tier": 3,
     "loglevel": "info",
