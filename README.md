@@ -184,7 +184,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
-### **WORK IN PROGRESS**
+### 1.42.0 (2026-09-04)
 
 - Fixed: a leftover setting from older versions is now removed from the instance completely instead of only being switched off — switched off, it stayed behind for good
 
@@ -207,10 +207,6 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 ### 1.38.2 (2026-08-27) — stable
 
 - Fixed: Stopping or restarting the adapter was cut short — the instance stayed marked as connected and displays kept looking for a server that was already gone.
-
-### 1.38.1 (2026-08-22)
-
-- Changed: Internal cleanup. No user-facing changes.
 
 [Older changelogs can be found there](CHANGELOG_OLD.md)
 

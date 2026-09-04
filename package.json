@@ -1,6 +1,6 @@
 {
   "name": "iobroker.hassemu",
-  "version": "1.41.0",
+  "version": "1.42.0",
   "description": "Emulates a minimal Home Assistant server so devices expecting a Home Assistant dashboard can display any custom web URL.",
   "author": {
     "name": "krobi",
@@ -39,7 +39,7 @@
     "@fastify/websocket": "^11.3.0",
     "@iobroker/adapter-core": "^3.4.3",
     "bonjour-service": "^1.4.4",
-    "fastify": "^5.12.1"
+    "fastify": "^5.12.3"
   },
   "devDependencies": {
     "@alcalzone/release-script": "^5.2.1",

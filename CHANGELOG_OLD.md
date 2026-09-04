@@ -1,4 +1,8 @@
 # Older Changes
+## 1.38.1 (2026-08-22)
+
+- Changed: Internal cleanup. No user-facing changes.
+
 ## 1.38.0 (2026-07-12) — stable
 
 - Known displays were re-created as new clients after every adapter restart — losing their saved redirect and login, and leaving duplicates. The display list is now restored correctly.

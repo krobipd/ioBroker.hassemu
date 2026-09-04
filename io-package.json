@@ -1,9 +1,9 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.41.0",
+    "version": "1.42.0",
     "news": {
-      "NEXT": {
+      "1.42.0": {
         "en": "A leftover setting from older versions is now removed from the instance completely instead of only being switched off — switched off, it stayed behind for good.",
         "de": "Eine Alt-Einstellung aus früheren Versionen wird jetzt vollständig aus der Instanz entfernt statt nur abgeschaltet — abgeschaltet blieb sie dauerhaft stehen.",
         "ru": "Устаревшая настройка из прежних версий теперь полностью удаляется из экземпляра, а не просто выключается — выключенной она оставалась навсегда.",
