@@ -1200,16 +1200,40 @@ describe("onUnload", () => {
 describe("stopInstance self-correction", () => {
   const INSTANCE_ID = "system.adapter.hassemu.0";
 
-  it("switches the leftover flag off and aborts the start (the host restarts us)", async () => {
+  it("deletes the leftover key and aborts the start (the host restarts us)", async () => {
     const { internal, stub, webServer } = setup();
     stub.objects.set(INSTANCE_ID, { type: "instance", common: { supportedMessages: { stopInstance: true } } });
 
     await internal.onReady();
 
-    expect(stub.objects.get(INSTANCE_ID)?.common?.supportedMessages).toEqual({ stopInstance: false });
+    // The whole key goes, not just the entry: `supportedMessages` is a positive list, so an
+    // object with nothing but `false` in it would switch the messagebox off for good.
+    expect(stub.objects.get(INSTANCE_ID)?.common?.supportedMessages).toBeNull();
     expect(webServer.start).not.toHaveBeenCalled();
     expect(stub.stateSubscriptions).toEqual([]);
     expect(logsOf(stub, "info").some(m => m.includes("restarts once"))).toBe(true);
+  });
+
+  it("still corrects an instance that an earlier version half-corrected", async () => {
+    const { internal, stub, webServer } = setup();
+    // What 1.38.2–1.41.0 left behind. A guard that looks at `stopInstance` never sees its own
+    // result again, so this installation would keep the key forever.
+    stub.objects.set(INSTANCE_ID, { type: "instance", common: { supportedMessages: { stopInstance: false } } });
+
+    await internal.onReady();
+
+    expect(stub.objects.get(INSTANCE_ID)?.common?.supportedMessages).toBeNull();
+    expect(webServer.start).not.toHaveBeenCalled();
+  });
+
+  it("leaves the key alone once it has been cleared (no restart loop)", async () => {
+    const { internal, stub, webServer } = setup();
+    stub.objects.set(INSTANCE_ID, { type: "instance", common: { supportedMessages: null } });
+
+    await internal.onReady();
+
+    expect(webServer.start).toHaveBeenCalledTimes(1);
+    expect(logsOf(stub, "info").some(m => m.includes("restarts once"))).toBe(false);
   });
 
   it("leaves a healthy instance object alone and starts normally", async () => {

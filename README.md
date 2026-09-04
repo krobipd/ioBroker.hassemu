@@ -184,6 +184,10 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+### **WORK IN PROGRESS**
+
+- Fixed: a leftover setting from older versions is now removed from the instance completely instead of only being switched off — switched off, it stayed behind forever and would have silenced anything the adapter is sent
+
 ### 1.41.0 (2026-09-03)
 
 - Fixed: renamed datapoints now reach installations that already exist — until now a changed name or description only ever showed up on a fresh install

@@ -63,15 +63,16 @@ export class HassEmu extends utils.Adapter {
   }
 
   /**
-   * Switch off `supportedMessages.stopInstance` on this instance's own object.
+   * Remove the leftover `supportedMessages` key from this instance's own object.
    *
    * The entry was dropped from the manifest, which only helps a FRESH install: an upgrade
    * merges the manifest into the existing instance object and never removes a key, so the old
-   * `true` survives in the database — and that is what the host reads. With it the host kills
-   * the process one second after asking it to stop, `onUnload` never runs, `info.connection`
-   * stays `true` and the mDNS goodbye that tells the displays the server is gone never leaves.
+   * value survives in the database — and that is what the host reads. While it says
+   * `stopInstance`, the host kills the process one second after asking it to stop, `onUnload`
+   * never runs, `info.connection` stays `true` and the mDNS goodbye that tells the displays the
+   * server is gone never leaves.
    *
-   * Only written when it is actually still on: every instance-object change restarts the
+   * Only written when the key is actually there: every instance-object change restarts the
    * instance, so doing it unconditionally would be a restart loop.
    *
    * @returns true when the correction was written and the restart is coming — the caller has
@@ -81,12 +82,23 @@ export class HassEmu extends utils.Adapter {
     const id = `system.adapter.${this.namespace}`;
     try {
       const obj = await this.getForeignObjectAsync(id);
-      const supported = obj?.common?.supportedMessages as { stopInstance?: unknown } | undefined;
-      if (!supported?.stopInstance) {
+      const supported = obj?.common?.supportedMessages;
+      // Correct as soon as the KEY exists at all — not just when the flag is on. The earlier
+      // guard never matched its own result, so an instance corrected once stayed that way
+      // forever.
+      if (supported === undefined || supported === null) {
         return false;
       }
       this.log.info("Correcting a leftover setting from an earlier version — this instance restarts once");
-      await this.extendForeignObjectAsync(id, { common: { supportedMessages: { stopInstance: false } } });
+      // Delete the whole key instead of writing an object into it. `supportedMessages` is a
+      // POSITIVE LIST: js-controller stops looking at `common.messagebox` as soon as the field
+      // is an object, and a list without a single entry that is not `false` means "no messages
+      // at all" — `subscribeMessage` never runs and no `sendTo` ever reaches the adapter, with
+      // no log line at all (that is what happened to govee-smart for weeks). hassemu has no
+      // message handler today, so nothing is broken right now — but a half-corrected object is
+      // a trap for the day it gets one. `null` is copied by the merge (`undefined` would be
+      // skipped), which puts the instance back on the plain messagebox path.
+      await this.extendForeignObjectAsync(id, { common: { supportedMessages: null } });
       return true;
     } catch (err: unknown) {
       // Objects DB unreachable — not worth failing the start over; the next start retries.
