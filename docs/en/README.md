@@ -78,12 +78,12 @@ and switch on `global.enabled` instead of setting each display separately.
 
 Every display carries its own **mode**. The adapter resolves it on each request:
 
-| mode              | What the display gets                            |
-| ----------------- | ------------------------------------------------ |
-| a URL             | that page                                        |
-| `Manual URL`      | whatever is in this display's `manualUrl`        |
-| `Global URL`      | whatever `global.mode` resolves to               |
-| `---` (no choice) | the waiting page with the device ID              |
+| mode              | What the display gets                     |
+| ----------------- | ----------------------------------------- |
+| a URL             | that page                                 |
+| `Manual URL`      | whatever is in this display's `manualUrl` |
+| `Global URL`      | whatever `global.mode` resolves to        |
+| `---` (no choice) | the waiting page with the device ID       |
 
 `global.mode` is resolved the same way, except it cannot itself be `Global URL` — that
 would point at itself, and the adapter rejects the write.
@@ -139,7 +139,7 @@ refreshes itself every 15 seconds, so it disappears on its own once you pick a m
 
 **"hassemu offline"** — the adapter has stopped or is unreachable. The display notices
 after about 1.5 minutes and offers a reload button, then returns to your dashboard by itself
-once the adapter is back. One limitation: a display that starts up *while* the adapter is
+once the adapter is back. One limitation: a display that starts up _while_ the adapter is
 down cannot load this page and shows its own connection error instead.
 
 **"Redirect target not reachable"** — the adapter is running, but the page you sent the
@@ -147,7 +147,7 @@ display to is not answering. Without this you would just get a black screen. The
 the target address and offers a reload; the display returns to the dashboard by itself as
 soon as the target answers again.
 
-The adapter judges "not reachable" conservatively: *any* HTTP answer counts as reachable,
+The adapter judges "not reachable" conservatively: _any_ HTTP answer counts as reachable,
 including a login page or an error page — those mean a server is running there. Only a
 refused connection or a timeout raises the card. It does not check certificates, because
 self-signed certificates are normal on a home dashboard.
@@ -194,10 +194,10 @@ the setting safe.
 
 ## Ports
 
-| Port       | Direction | What the adapter needs it for                     |
-| ---------- | --------- | ------------------------------------------------- |
-| 8123 / TCP | inbound   | the HA interface the display talks to             |
-| 5353 / UDP | inbound   | mDNS, so displays find the server on their own    |
+| Port       | Direction | What the adapter needs it for                  |
+| ---------- | --------- | ---------------------------------------------- |
+| 8123 / TCP | inbound   | the HA interface the display talks to          |
+| 5353 / UDP | inbound   | mDNS, so displays find the server on their own |
 
 ## Questions that come up
 

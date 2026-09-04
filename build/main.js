@@ -78,15 +78,16 @@ class HassEmu extends utils.Adapter {
     this.on("unload", this.onUnload.bind(this));
   }
   /**
-   * Switch off `supportedMessages.stopInstance` on this instance's own object.
+   * Remove the leftover `supportedMessages` key from this instance's own object.
    *
    * The entry was dropped from the manifest, which only helps a FRESH install: an upgrade
    * merges the manifest into the existing instance object and never removes a key, so the old
-   * `true` survives in the database — and that is what the host reads. With it the host kills
-   * the process one second after asking it to stop, `onUnload` never runs, `info.connection`
-   * stays `true` and the mDNS goodbye that tells the displays the server is gone never leaves.
+   * value survives in the database — and that is what the host reads. While it says
+   * `stopInstance`, the host kills the process one second after asking it to stop, `onUnload`
+   * never runs, `info.connection` stays `true` and the mDNS goodbye that tells the displays the
+   * server is gone never leaves.
    *
-   * Only written when it is actually still on: every instance-object change restarts the
+   * Only written when the key is actually there: every instance-object change restarts the
    * instance, so doing it unconditionally would be a restart loop.
    *
    * @returns true when the correction was written and the restart is coming — the caller has
@@ -98,11 +99,11 @@ class HassEmu extends utils.Adapter {
     try {
       const obj = await this.getForeignObjectAsync(id);
       const supported = (_a2 = obj == null ? void 0 : obj.common) == null ? void 0 : _a2.supportedMessages;
-      if (!(supported == null ? void 0 : supported.stopInstance)) {
+      if (supported === void 0 || supported === null) {
         return false;
       }
       this.log.info("Correcting a leftover setting from an earlier version \u2014 this instance restarts once");
-      await this.extendForeignObjectAsync(id, { common: { supportedMessages: { stopInstance: false } } });
+      await this.extendForeignObjectAsync(id, { common: { supportedMessages: null } });
       return true;
     } catch (err) {
       this.log.debug(`Could not check the instance object ${id}: ${String(err)}`);

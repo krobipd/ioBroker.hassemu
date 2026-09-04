@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.41.0",
     "news": {
+      "NEXT": {
+        "en": "A leftover setting from older versions is now removed from the instance completely instead of only being switched off — switched off, it stayed behind for good.",
+        "de": "Eine Alt-Einstellung aus früheren Versionen wird jetzt vollständig aus der Instanz entfernt statt nur abgeschaltet — abgeschaltet blieb sie dauerhaft stehen.",
+        "ru": "Устаревшая настройка из прежних версий теперь полностью удаляется из экземпляра, а не просто выключается — выключенной она оставалась навсегда.",
+        "pt": "Uma definição antiga de versões anteriores é agora removida por completo da instância em vez de apenas desligada — desligada, ficava lá para sempre.",
+        "nl": "Een oude instelling uit eerdere versies wordt nu volledig uit de instantie verwijderd in plaats van alleen uitgeschakeld — uitgeschakeld bleef ze voorgoed staan.",
+        "fr": "Un réglage résiduel des versions précédentes est désormais entièrement supprimé de l'instance au lieu d'être seulement désactivé — désactivé, il restait là pour toujours.",
+        "it": "Un'impostazione residua delle versioni precedenti ora viene rimossa del tutto dall'istanza invece di essere solo disattivata — disattivata restava lì per sempre.",
+        "es": "Un ajuste residual de versiones anteriores ahora se elimina por completo de la instancia en lugar de solo desactivarse — desactivado se quedaba allí para siempre.",
+        "pl": "Pozostała po starszych wersjach opcja jest teraz całkowicie usuwana z instancji, a nie tylko wyłączana — wyłączona zostawała tam na zawsze.",
+        "uk": "Залишкове налаштування з попередніх версій тепер повністю видаляється з екземпляра, а не лише вимикається — вимкненим воно лишалося назавжди.",
+        "zh-cn": "旧版本遗留的设置现在会从实例中彻底移除，而不再只是关闭——仅关闭时它会永远留在那里。"
+      },
       "1.41.0": {
         "en": "Renamed datapoints now reach installations that already exist — outdated labels in the object tree are corrected and shown in your ioBroker language. Full user documentation added.",
         "de": "Umbenannte Datenpunkte erreichen jetzt auch bestehende Anlagen — veraltete Bezeichnungen im Objektbaum werden korrigiert und in deiner ioBroker-Sprache gezeigt. Nutzerdoku ergänzt.",
@@ -80,19 +93,6 @@
         "pl": "Znane wyświetlacze nie są już tworzone na nowo jako nowi klienci po restarcie adaptera — przekierowania i logowania są zachowane, bez duplikatów.",
         "uk": "Відомі дисплеї більше не створюються заново як нові клієнти після перезапуску адаптера — перенаправлення та входи зберігаються, без дублікатів.",
         "zh-cn": "适配器重启后，已知显示器不再被重新创建为新客户端——重定向和登录得以保留，不再产生重复条目。"
-      },
-      "1.37.1": {
-        "en": "Internal cleanup. No user-facing changes.",
-        "de": "Interne Aufräumarbeiten. Keine für Nutzer sichtbaren Änderungen.",
-        "ru": "Внутренняя очистка кода. Никаких изменений для пользователя.",
-        "pt": "Limpeza interna. Nenhuma alteração visível para o utilizador.",
-        "nl": "Interne opschoning. Geen zichtbare wijzigingen voor de gebruiker.",
-        "fr": "Nettoyage interne. Aucune modification visible pour l'utilisateur.",
-        "it": "Pulizia interna. Nessuna modifica visibile per l'utente.",
-        "es": "Limpieza interna. Sin cambios visibles para el usuario.",
-        "pl": "Wewnętrzne porządki. Brak zmian widocznych dla użytkownika.",
-        "uk": "Внутрішнє очищення. Жодних змін для користувача.",
-        "zh-cn": "内部清理。对用户无可见更改。"
       }
     },
     "plugins": {

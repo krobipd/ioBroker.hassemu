@@ -78,12 +78,12 @@ Sollen alle Displays dieselbe Seite zeigen, nimm `hassemu.0.global.mode` (und
 
 Jedes Display trägt seinen eigenen **mode**. Der Adapter löst ihn bei jeder Anfrage auf:
 
-| mode                | Was das Display bekommt                        |
-| ------------------- | ---------------------------------------------- |
-| eine URL            | diese Seite                                    |
-| `Manuelle URL`      | was in `manualUrl` dieses Displays steht       |
-| `Globale URL`       | worauf `global.mode` hinausläuft               |
-| `---` (keine Wahl)  | die Warteseite mit der Geräte-Kennung          |
+| mode               | Was das Display bekommt                  |
+| ------------------ | ---------------------------------------- |
+| eine URL           | diese Seite                              |
+| `Manuelle URL`     | was in `manualUrl` dieses Displays steht |
+| `Globale URL`      | worauf `global.mode` hinausläuft         |
+| `---` (keine Wahl) | die Warteseite mit der Geräte-Kennung    |
 
 `global.mode` wird genauso aufgelöst, nur darf er selbst nicht `Globale URL` sein — das
 zeigte auf sich selbst, und der Adapter weist den Schreibvorgang ab.
@@ -142,7 +142,7 @@ du einen Modus setzt.
 **„hassemu offline"** — der Adapter ist gestoppt oder nicht erreichbar. Das Display merkt es
 nach etwa 1,5 Minuten, bietet einen Knopf zum Neuladen und kehrt von selbst zu deinem
 Dashboard zurück, sobald der Adapter wieder da ist. Eine Einschränkung: Ein Display, das
-startet, *während* der Adapter aus ist, kann diese Seite nicht laden und zeigt stattdessen
+startet, _während_ der Adapter aus ist, kann diese Seite nicht laden und zeigt stattdessen
 seinen eigenen Verbindungsfehler.
 
 **„Weiterleitungsziel nicht erreichbar"** — der Adapter läuft, aber die Seite, auf die er das
@@ -199,10 +199,10 @@ deckelt den Schaden — sie macht die Einstellung nicht sicher.
 
 ## Ports
 
-| Port       | Richtung  | Wofür der Adapter ihn braucht                        |
-| ---------- | --------- | ---------------------------------------------------- |
-| 8123 / TCP | eingehend | die HA-Schnittstelle, mit der das Display spricht    |
-| 5353 / UDP | eingehend | mDNS, damit Displays den Server von allein finden    |
+| Port       | Richtung  | Wofür der Adapter ihn braucht                     |
+| ---------- | --------- | ------------------------------------------------- |
+| 8123 / TCP | eingehend | die HA-Schnittstelle, mit der das Display spricht |
+| 5353 / UDP | eingehend | mDNS, damit Displays den Server von allein finden |
 
 ## Häufige Fragen
 

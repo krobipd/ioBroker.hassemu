@@ -186,7 +186,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 -->
 ### **WORK IN PROGRESS**
 
-- Fixed: a leftover setting from older versions is now removed from the instance completely instead of only being switched off — switched off, it stayed behind forever and would have silenced anything the adapter is sent
+- Fixed: a leftover setting from older versions is now removed from the instance completely instead of only being switched off — switched off, it stayed behind for good
 
 ### 1.41.0 (2026-09-03)
 
