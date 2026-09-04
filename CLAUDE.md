@@ -37,6 +37,7 @@ src/lib/mdns.ts              → mDNS Broadcasting via bonjour-service (stop() l
 src/lib/client-registry.ts   → Multi-Client-Store (Cookie → Record), bulkSetMode, updateHostname, NewClientModeProvider, lastSeen-Tracking, per-IP-Throttle + globale IP-unabhängige Client-Obergrenze (v1.40.0)
 src/lib/global-config.ts     → global.mode + global.manualUrl + global.enabled, MODE_GLOBAL/MODE_MANUAL Sentinels, Resolver-Delegate
 src/lib/schema-repair.ts     → repairGlobalSchemas (partial-formed global.*-Objekte aus io-package.json:instanceObjects heilen)
+src/lib/object-repair.ts     → replaceObjectPreservingValue: Voll-Ersatz eines State-Objekts (delObject→setObjectNotExists, Wert gerettet) — der von ClientRegistry + GlobalConfig geteilte Weg, veraltete common.states-Schlüssel physisch loszuwerden (extendObject mischt sie zurück, setObject meldet der repochecker als S5054)
 src/lib/legacy-migration.ts  → pre-1.2.0 visUrl → mode/manualUrl Upgrade-Migrationen (I10 v1.37.0, aus main.ts extrahiert, isoliert testbar)
 src/lib/url-discovery.ts     → Sammelt VIS/VIS-2/Aura/Admin-URLs (collect → mode-Dropdown)
 src/lib/webserver.ts         → Fastify HTTP Server + HA API Emulation + Cookie-Handling + Sessions-Caps + timing-safe Credentials + WS + route-config-Auth-Guard
