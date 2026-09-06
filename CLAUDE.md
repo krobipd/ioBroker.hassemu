@@ -101,7 +101,7 @@ src/lib/i18n.ts              → tName, tRaw, resolveLabel, tPage, makePageTrans
    3. `clients.<id>.mode = <URL>` → diese URL
    4. sonst → 200 HTML mit der Landing-Seite
 
-## Tests (739 unit + 57 package + 3 inventory = 799)
+## Tests (739 unit + 58 package + 3 inventory = 800)
 
 Tests leben seit v1.1.6 neben dem Source als `src/lib/*.test.ts` und laufen direkt via **vitest** (seit v1.32.0; vorher mocha+ts-node, vitest löst den ESM-Loader-Bug strukturell und ist ~10× schneller). Seit v1.35.2 mit ehrlicher Coverage (`coverage.include: src/**` — main.ts inkludiert).
 

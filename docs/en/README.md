@@ -115,6 +115,7 @@ hassemu.0.
     └── <id>            one entry per display, named after its host name or address
         ├── mode        what this display shows
         ├── manualUrl   free address, used when mode is Manual URL
+        ├── resolvedUrl the address this display was actually sent to
         ├── ip          the address this display was last seen at
         └── remove      button: forget this display
 ```
@@ -126,6 +127,12 @@ the display. If it changed, every display would want to be set up again.
 **remove** deletes the entry, and with it the display's identity. The next time that display
 connects it is a new one and starts at `---`. Use it for displays you have got rid of; the
 adapter also clears entries by itself once they have not been seen for 30 days.
+
+**resolvedUrl** is the answer to "where did this display actually end up". It is read-only and
+follows every change: pick a dashboard and it holds that address, switch the display to Global URL
+and it holds whatever the global setting resolves to, take the choice back and it is empty because
+the display is on its landing page. Handy when a display is set to Global URL and you would
+otherwise have to work through two settings to see the result.
 
 **ip** is informational. Displays are identified by their cookie, not their address, so a
 new address from your router does not create a second entry.

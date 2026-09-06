@@ -116,6 +116,7 @@ hassemu.0.
     └── <Kennung>       ein Eintrag je Display, benannt nach Hostname oder Adresse
         ├── mode        was dieses Display zeigt
         ├── manualUrl   freie Adresse, genutzt wenn mode auf Manuelle URL steht
+        ├── resolvedUrl die Adresse, an die dieses Display tatsächlich geschickt wurde
         ├── ip          die Adresse, unter der das Display zuletzt gesehen wurde
         └── remove      Knopf: dieses Display vergessen
 ```
@@ -127,6 +128,12 @@ Server aussieht. Änderte sie sich, wollte sich jedes Display neu einrichten.
 **remove** löscht den Eintrag und damit die Identität des Displays. Verbindet es sich das
 nächste Mal, ist es ein neues und startet auf `---`. Gedacht für Displays, die du abgebaut
 hast; Einträge, die 30 Tage nicht gesehen wurden, räumt der Adapter ohnehin selbst weg.
+
+**resolvedUrl** beantwortet die Frage „wo ist dieses Display tatsächlich gelandet". Der Wert
+ist nur lesbar und folgt jeder Änderung: Wählst du ein Dashboard, steht dessen Adresse drin;
+steht das Display auf Globale URL, das Ergebnis der globalen Einstellung; nimmst du die Auswahl
+zurück, ist er leer, weil das Display seine Startseite zeigt. Praktisch bei Displays auf Globale
+URL — sonst müsstest du dich für das Ergebnis durch zwei Einstellungen arbeiten.
 
 **ip** ist nur zur Information. Displays werden über ihr Erkennungsmerkmal identifiziert,
 nicht über die Adresse — eine neue Adresse vom Router legt also keinen zweiten Eintrag an.

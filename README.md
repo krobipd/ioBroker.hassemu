@@ -119,6 +119,7 @@ hassemu.0.
     └── <id>            — one channel per display (channel name = hostname or IP)
         ├── mode        — per-client URL choice
         ├── manualUrl   — free-text URL, used when mode = `manual`
+        ├── resolvedUrl — the URL this display was actually sent to (read-only)
         ├── ip          — last seen client IP
         └── remove      — forget this client (button, set to true)
 ```
@@ -158,7 +159,7 @@ Set the instance log level to `debug` first — since v1.31.1 the adapter traces
 
 **Display can't find the server** — with mDNS on, the log should show `mDNS: Broadcasting`. If that line is missing, mDNS failed to bind (port 5353/UDP). Workaround: turn mDNS off in the instance config and point the display at `http://<ioBroker-IP>:8123` by hand.
 
-**Display shows the wrong URL or the landing page** — open Object Browser, check `clients.<id>.mode` (and `manualUrl` if mode is `manual`). At `mode='global'`, also check `global.mode` / `global.manualUrl`. The device id is shown on the landing page and stored at `clients.<id>.ip`. The debug log shows the full resolver chain (`chain=global→manual→…`) per request.
+**Display shows the wrong URL or the landing page** — open Object Browser, check `clients.<id>.mode` (and `manualUrl` if mode is `manual`). At `mode='global'`, also check `global.mode` / `global.manualUrl`. `clients.<id>.resolvedUrl` shows where the display was actually sent, so you can see the outcome without following the mode chain yourself. The device id is shown on the landing page and stored at `clients.<id>.ip`. The debug log shows the full resolver chain (`chain=global→manual→…`) per request.
 
 **Display lost its identity (new id on every visit)** — the display is not persisting the cookie. Common causes: aggressive privacy mode, factory reset, browser cache flush. The old `clients.<id>`-channels can be removed via their `remove` button, but the root cause is on the display side, not in hassemu.
 
