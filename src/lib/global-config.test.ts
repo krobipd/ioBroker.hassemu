@@ -162,7 +162,7 @@ describe("GlobalConfig", () => {
 
   describe("restore", () => {
     // restore() reads broker-state into private fields; we verify via the
-    // public surface (resolveUrlFor + isEnabled) — no getter leakage.
+    // public surface (`redirect` + isEnabled) — no getter leakage.
 
     it("defaults to empty mode, null manualUrl, disabled", async () => {
       await g.restore();
@@ -206,7 +206,7 @@ describe("GlobalConfig", () => {
     });
   });
 
-  describe("resolveUrlFor — delegate via record.mode", () => {
+  describe("resolveRedirect — delegate via record.mode", () => {
     it("returns client manualUrl when mode='manual'", () => {
       const rec = makeRecord({ mode: MODE_MANUAL, manualUrl: "http://m/" });
       expect(resolveRedirect(rec, g.redirect)).to.equal("http://m/");

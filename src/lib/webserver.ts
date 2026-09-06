@@ -1237,9 +1237,13 @@ export class WebServer {
         );
         await this.registry.setResolvedUrl(client.id, next);
       }
-      // v1.39.0: verdict for the wrapper's target-down card. `null` target means
-      // the wrapper is about to reload to the landing page anyway — report
-      // reachable so no card flashes in between.
+      // v1.39.0: verdict for the wrapper's target-down card. A `null` target is
+      // reported reachable so no card flashes while the wrapper reloads to the
+      // landing page. v1.43.0 (A1): that reload is what this sentence claimed for
+      // five releases without it being true — the poll only reloaded on a
+      // non-empty, DIFFERENT target, so withdrawing the choice left the display on
+      // its old dashboard. The guarantee now lives in `decidePollAction`
+      // (redirect-wrapper.ts), which the tests execute; do not re-assert it here.
       const targetReachable = next === null ? true : await this.targetHealth.isReachable(next);
       return { target: next, targetReachable };
     });
