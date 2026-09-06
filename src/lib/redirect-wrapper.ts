@@ -20,6 +20,68 @@ const DOWN_THRESHOLD = 3;
  */
 const TARGET_DOWN_THRESHOLD = 2;
 
+/** What one poll tick decides to do. */
+export type PollAction = "reload" | "show-target-down" | "none";
+
+/** Inputs of one poll tick — everything the decision needs, nothing else. */
+export interface PollInput {
+  /** The target this page was rendered for. */
+  current: string;
+  /** Parsed JSON body of `/api/redirect_check` (untrusted — any shape). */
+  body: unknown;
+  /** Consecutive `targetReachable:false` answers so far. */
+  targetFails: number;
+  /** Threshold at which the target-down card appears. */
+  targetThreshold: number;
+  /** Whether the target-down card is currently on screen. */
+  targetDownVisible: boolean;
+}
+
+/**
+ * Decide what one `/api/redirect_check` answer means. Pure — no DOM, no timers,
+ * no closure over anything — so it can be unit-tested directly AND serialised into
+ * the inline `<script>` of the page (see {@link renderRedirectWrapper}).
+ *
+ * Before v1.43.0 this logic lived only as a string inside the page template and was
+ * therefore never EXECUTED by a test — only matched against with `expect(html).to.include(…)`.
+ * That is how the null-target defect below survived five audits.
+ *
+ * The target comparison treats "no target any more" as a change. The earlier
+ * `typeof j.target === 'string' && j.target && j.target !== current` never fired for
+ * `target: null`, which is exactly what the server answers once the user picks `---`
+ * or switches the master off (`bulkSetMode("0")` → resolver returns null): the display
+ * kept showing the dashboard it had, forever, unless the amber target-down card happened
+ * to be up (whose recovery branch reloads by accident). After a reload the display lands
+ * on the landing page, whose own `<meta http-equiv="refresh" content="15">` brings it
+ * back as soon as a URL is set again — no second mechanism needed.
+ *
+ * A body without a `target` key at all (a proxy error page, a truncated answer) is NOT
+ * treated as "target gone" — otherwise a malformed response would reload the display
+ * every poll interval forever.
+ *
+ * @param input The tick's inputs.
+ * @returns The action to run and the new consecutive-failure count.
+ */
+export function decidePollAction(input: PollInput): { action: PollAction; targetFails: number } {
+  const body = input.body as { target?: unknown; targetReachable?: unknown } | null;
+  const isObject = !!body && typeof body === "object";
+  if (isObject && "target" in body) {
+    const raw = body.target;
+    const next = typeof raw === "string" && raw ? raw : null;
+    if (next !== input.current) {
+      return { action: "reload", targetFails: input.targetFails };
+    }
+  }
+  if (isObject && body.targetReachable === false) {
+    const fails = input.targetFails + 1;
+    return { action: fails >= input.targetThreshold ? "show-target-down" : "none", targetFails: fails };
+  }
+  if (input.targetDownVisible) {
+    return { action: "reload", targetFails: 0 };
+  }
+  return { action: "none", targetFails: 0 };
+}
+
 /**
  * v1.39.0: shared color tokens for BOTH overlay cards (hassemu-down + target-down).
  * One source — the cards must not drift apart visually; only the banner color
@@ -204,27 +266,23 @@ ${CONNECTION_STATUS_SCRIPT}
       if(iframeEl){iframeEl.style.display='none';}
     }
   }
+  // The decision itself is the SAME function the unit tests run — serialised here
+  // instead of rewritten as a string, so the page can never drift from what is tested.
+  var decide=${decidePollAction.toString()};
   window.setInterval(function(){
     fetch('/api/redirect_check',{cache:'no-store',credentials:'same-origin'})
       .then(function(r){return r.json();})
       .then(function(j){
         fails=0;
         hideDown();
-        if(j&&typeof j.target==='string'&&j.target&&j.target!==current){
+        var d=decide({current:current,body:j,targetFails:targetFails,targetThreshold:TARGET_THRESHOLD,targetDownVisible:targetDownVisible()});
+        targetFails=d.targetFails;
+        if(d.action==='reload'){
           location.reload();
           return;
         }
-        if(j&&j.targetReachable===false){
-          targetFails++;
-          if(targetFails>=TARGET_THRESHOLD){
-            showTargetDown();
-          }
-        }else{
-          if(targetDownVisible()){
-            location.reload();
-            return;
-          }
-          targetFails=0;
+        if(d.action==='show-target-down'){
+          showTargetDown();
         }
       })
       .catch(function(){

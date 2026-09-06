@@ -17,23 +17,19 @@ vi.mock("node:crypto", async importOriginal => {
 });
 
 import {
-  coerceFiniteNumber,
-  coerceString,
   coerceBoolean,
-  coerceUuid,
+  coerceFiniteNumber,
   coerceSafeUrl,
-  decideGcAction,
-  decideLegacyVisMigration,
-  evictOldest,
+  coerceString,
+  coerceUuid,
   isEmptyValue,
   isPlainObject,
   isValidRedirectUri,
   oneLine,
-  parseAdapterStateId,
   safeStringEqual,
-  shallowStatesEqual,
-  shouldAttemptReverseDns,
 } from "./coerce";
+import { evictOldest, parseAdapterStateId, shallowStatesEqual } from "./object-utils";
+import { decideGcAction, decideLegacyVisMigration } from "./state-write-rules";
 
 describe("coerce", () => {
   describe("coerceFiniteNumber", () => {
@@ -157,6 +153,33 @@ describe("coerce", () => {
   });
 
   describe("coerceSafeUrl", () => {
+    it("rejects a URL carrying characters the parser strips (validated string == stored string)", () => {
+      // `new URL()` removes tab/LF/CR anywhere and trims leading/trailing spaces and
+      // control chars. Returning the RAW string after validating the PARSED one meant the
+      // adapter stored, logged and rendered a different string from the one it checked.
+      for (const raw of [
+        "http://ok.test/\n",
+        "\thttp://ok.test/",
+        "htt\np://ok.test/",
+        "http://ok.\rtest/",
+        " http://ok.test/ ",
+        "http://ok.test/\t/x",
+      ]) {
+        expect(coerceSafeUrl(raw), JSON.stringify(raw)).to.be.null;
+      }
+    });
+
+    it("still accepts every ordinary dashboard URL unchanged", () => {
+      for (const raw of [
+        "http://192.168.1.10:8082/vis-2/index.html?main",
+        "https://dash.example.test/",
+        "http://host:8081",
+        "http://192.168.1.10:8082/vis-2/index.html?main#kitchen",
+      ]) {
+        expect(coerceSafeUrl(raw), raw).to.equal(raw);
+      }
+    });
+
     it("accepts http and https URLs", () => {
       expect(coerceSafeUrl("http://example.com")).to.equal("http://example.com");
       expect(coerceSafeUrl("https://example.com/path")).to.equal("https://example.com/path");
@@ -462,25 +485,6 @@ describe("coerce", () => {
     });
   });
 
-  describe("shouldAttemptReverseDns (I8 v1.38.0)", () => {
-    const TTL = 30_000;
-    const base = { hasHostname: false, inFlight: false, lastNegative: undefined, now: 100_000, negativeCacheMs: TTL };
-    it("attempts when nothing blocks it", () => {
-      expect(shouldAttemptReverseDns(base)).to.be.true;
-    });
-    it("skips when the client already has a hostname", () => {
-      expect(shouldAttemptReverseDns({ ...base, hasHostname: true })).to.be.false;
-    });
-    it("skips when a lookup is already in flight", () => {
-      expect(shouldAttemptReverseDns({ ...base, inFlight: true })).to.be.false;
-    });
-    it("skips within the negative-cache window (recent no-PTR result)", () => {
-      expect(shouldAttemptReverseDns({ ...base, lastNegative: base.now - (TTL - 1) })).to.be.false;
-    });
-    it("attempts again once the negative-cache window has lapsed", () => {
-      expect(shouldAttemptReverseDns({ ...base, lastNegative: base.now - TTL })).to.be.true;
-    });
-  });
   describe("length caps + shapes without a test (mutation audit)", () => {
     it("rejects an over-long client_id / redirect_uri (2048-char cap)", () => {
       const long = `https://example.com/${"a".repeat(2100)}`;

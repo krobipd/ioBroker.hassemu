@@ -1,0 +1,27 @@
+{
+  "_comment": [
+    "Display fixtures for the object inventory. hassemu creates one `device` plus four",
+    "states per display, so what varies between displays is not a device TYPE but the",
+    "SHAPE of what the adapter knows about them — which is what the object texts and",
+    "the auto-naming depend on. The adapter mints a random id per display; the inventory",
+    "maps those to stable `display-N` keys, so two runs stay byte-identical."
+  ],
+  "displays": [
+    {
+      "name": "192.168.178.31",
+      "comment": "Auto-named after its IP — a display whose reverse DNS yields nothing (the LAN norm for a DHCP client without a PTR record).",
+      "mode": "global"
+    },
+    {
+      "name": "wall-display-kitchen.lan",
+      "comment": "Auto-named after its reverse-DNS hostname.",
+      "mode": "manual",
+      "manualUrl": "http://192.168.178.10:8082/vis-2/index.html?kitchen"
+    },
+    {
+      "name": "192.168.178.44",
+      "comment": "No choice made — the display sits on the landing page. Its name is adapter-assigned like every other, because a name the USER typed in the admin is not adapter output and has no place in an inventory of what the adapter creates (the guarantee that such a name survives is unit-tested instead).",
+      "mode": "0"
+    }
+  ]
+}

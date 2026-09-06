@@ -58,6 +58,8 @@ Want to add a URL the adapter doesn't auto-detect? Set `manual` and paste it.
 - ioBroker js-controller ≥ 7.2.2
 - ioBroker Admin ≥ 8.0.11
 
+> The adapter CANNOT be installed via GitHub: The adapter must be installed via the ioBroker repository (stable or latest).
+
 ---
 
 ## Ports
@@ -184,6 +186,16 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+
+### 1.43.0 (2026-09-06)
+
+- Fixed: taking a display's choice back (mode `---`, or turning the master switch off) now reaches the display — until now it kept the dashboard it had until someone reloaded it by hand
+- Fixed: a display that lost power no longer holds up the adapter's shutdown for 30 seconds
+- Fixed: VIS projects are found on every VIS instance, not only on `vis.0` / `vis-2.0`
+- Fixed: upgrading from a pre-1.1.1 version no longer overwrites the whole instance configuration while removing the old URL setting
+- New: every display now shows the address it was actually sent to, so you can see at a glance where a display landed without walking through the global and per-display settings yourself
+- Changed: `info.serverUuid` and `global.enabled` carry clearer labels, and the per-display manual URL now has a description
+
 ### 1.42.0 (2026-09-04)
 
 - Fixed: a leftover setting from older versions is now removed from the instance completely instead of only being switched off — switched off, it stayed behind for good
@@ -203,10 +215,6 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 
 - New: Displays show a "Redirect target not reachable" card with the target URL instead of a black screen when the configured dashboard is down — also right when the display starts
 - New: Once the target answers again, the display reloads its dashboard automatically — no manual reload or display restart needed
-
-### 1.38.2 (2026-08-27) — stable
-
-- Fixed: Stopping or restarting the adapter was cut short — the instance stayed marked as connected and displays kept looking for a server that was already gone.
 
 [Older changelogs can be found there](CHANGELOG_OLD.md)
 

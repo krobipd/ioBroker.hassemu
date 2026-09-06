@@ -10,28 +10,24 @@
  */
 
 import crypto from "node:crypto";
+import { coerceSafeUrl, coerceString, coerceUuid, isPlainObject, oneLine } from "./coerce";
 import {
-  buildDropdownStates,
-  coerceSafeUrl,
-  coerceString,
-  coerceUuid,
   evictOldest,
   isBareStringName,
-  isPlainObject,
   nameText,
-  oneLine,
   parseAdapterStateId,
-  parseManualUrlWrite,
-  parseModeWrite,
   safeGetState,
   shallowStatesEqual,
-} from "./coerce";
+} from "./object-utils";
+import { buildDropdownStates, parseManualUrlWrite, parseModeWrite } from "./state-write-rules";
 import {
+  CLIENT_OBJECTS_VERSION,
   GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW,
   LASTSEEN_FLUSH_INTERVAL_MS,
   MODE_GLOBAL,
   MODE_MANUAL,
   NEW_CLIENT_BURST_CAP,
+  NO_CHOICE,
   NEW_CLIENT_BURST_WARN_THRESHOLD,
   NEW_CLIENT_THROTTLE_PER_HOUR,
   NEW_CLIENT_WINDOW_MS,
@@ -103,6 +99,18 @@ export class ClientRegistry {
    * as {@link newClientBurst}. See {@link GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW}.
    */
   private globalBurst = { count: 0, lastCreate: 0, warnedAt: 0 };
+  /**
+   * Legacy `clients.<id>.visUrl` values seen during {@link restore}, keyed by client id.
+   *
+   * `migrateVisUrlToMode` used to ask the broker for this state once per client on every
+   * single start — sequentially, and on every installation migrated since v1.2.0 the
+   * answer was `null` every time. `restore()` already reads that client's states in one
+   * parallel batch, so the value comes along for free and the migration needs no
+   * round-trip of its own. Consumed (and cleared) by {@link takeLegacyVisUrls}: a value
+   * is offered exactly once, so a failed migration attempt is not retried against a
+   * stale copy but against the broker on the next start.
+   */
+  private readonly legacyVisUrls = new Map<string, unknown>();
 
   /** @param adapter Adapter instance used for object/state I/O. */
   constructor(adapter: RegistryAdapter) {
@@ -201,13 +209,23 @@ export class ClientRegistry {
       // v1.9.0 (D8): vier readState-Calls parallel statt sequenziell.
       // Mit 50 Clients waren das vorher 200 sequenzielle Round-Trips
       // bevor der WebServer up war; jetzt 50 parallele 4er-Gruppen.
-      const [modeRaw, manualUrlRaw, ipRaw, hostnameRaw] = await Promise.all([
+      // The fifth read is the pre-1.2.0 `visUrl` the migration needs. It rides along in
+      // the batch that already runs here instead of costing the migration its own
+      // sequential round-trip per client on every start (see legacyVisUrls).
+      const [modeRaw, manualUrlRaw, ipRaw, hostnameRaw, legacyVisUrlRaw] = await Promise.all([
         this.readState(`${id}.mode`),
         this.readState(`${id}.manualUrl`),
         this.readState(`${id}.ip`),
         this.readState(`${id}.hostname`),
+        this.readState(`${id}.visUrl`),
       ]);
+      if (legacyVisUrlRaw !== null && legacyVisUrlRaw !== undefined && legacyVisUrlRaw !== "") {
+        this.legacyVisUrls.set(id, legacyVisUrlRaw);
+      }
       const mode = typeof modeRaw === "string" ? modeRaw : "";
+      // A pre-v1.43.0 install may still hold "" in the state; normalise on the way in so
+      // exactly one form lives in memory.
+      const normalisedMode = mode === "" ? NO_CHOICE : mode;
       const manualUrl = coerceSafeUrl(manualUrlRaw);
       const ip = coerceString(ipRaw);
       const token = coerceUuid(native.token);
@@ -249,13 +267,27 @@ export class ClientRegistry {
       }
       const hostname = channelName && channelName !== ip && channelName !== id ? channelName : null;
 
-      const record: ClientRecord = { id, cookie, token, tokenExpiresAt, refreshToken, mode, manualUrl, ip, hostname };
+      const record: ClientRecord = {
+        id,
+        cookie,
+        token,
+        tokenExpiresAt,
+        refreshToken,
+        mode: normalisedMode,
+        manualUrl,
+        ip,
+        hostname,
+      };
       this.trackInMemory(record);
+      // Text revision this client's objects were last written with. Missing/older →
+      // ensureObjects refreshes the texts once and re-stamps; equal → it only guarantees
+      // the objects EXIST and writes nothing (see CLIENT_OBJECTS_VERSION).
+      const storedVersion = typeof native.objectsVersion === "number" ? native.objectsVersion : 0;
       // Legacy clients (v1.1.x) only had `visUrl` + `ip` + `remove` objects;
       // ensure the v1.2.0+ objects (`mode`, `manualUrl`) exist before any
       // state writes from migration land — otherwise js-controller logs
       // "State has no existing object" warnings.
-      await this.ensureObjects(record, false);
+      await this.ensureObjects(record, false, storedVersion);
       // Promote a blank mode value to the string "0" so the dropdown renders the
       // `0='---'` option as selected. v1.2.0 installs left the value as `''`
       // which matches no common.states entry. Reuses `mode` from the parallel
@@ -263,7 +295,7 @@ export class ClientRegistry {
       // ensureObjects() only writes objects, never the mode value, so a second
       // getState would return the same thing. v1.37.0 (L24).
       if (mode === "") {
-        await this.adapter.setState(`clients.${id}.mode`, { val: "0", ack: true });
+        await this.adapter.setState(`clients.${id}.mode`, { val: NO_CHOICE, ack: true });
       }
     } catch (err) {
       this.adapter.log.debug(`client-registry: skipping ${id} during restore — ${String(err)}`);
@@ -424,6 +456,40 @@ export class ClientRegistry {
   }
 
   /**
+   * Persist the URL a display was just sent to.
+   *
+   * Written only when the answer CHANGED (the caller already tracks that for its log line),
+   * so a display polling every 15–30 s costs no writes while nothing moves.
+   *
+   * @param id  Client id.
+   * @param url The resolved URL, or null for the landing page.
+   */
+  async setResolvedUrl(id: string, url: string | null): Promise<void> {
+    if (!this.byId.has(id)) {
+      return; // transient (throttled) record — it owns no objects
+    }
+    await this.adapter
+      .setState(`clients.${id}.resolvedUrl`, { val: url ?? "", ack: true })
+      .catch(err => this.adapter.log.debug(`setResolvedUrl failed for ${id}: ${String(err)}`));
+  }
+
+  /**
+   * Hand over the legacy `visUrl` values collected during {@link restore} and forget them.
+   *
+   * Empty on every installation migrated since v1.2.0 — which is the point: the migration
+   * then does nothing at all instead of asking the broker once per client, every start.
+   * Handing them over exactly once keeps a failed migration honest: the next start reads
+   * the broker again rather than a stale in-memory copy.
+   *
+   * @returns Map of client id → raw legacy value; empty when there is nothing to migrate.
+   */
+  takeLegacyVisUrls(): Map<string, unknown> {
+    const taken = new Map(this.legacyVisUrls);
+    this.legacyVisUrls.clear();
+    return taken;
+  }
+
+  /**
    * Updates in-memory token and persists to channel.native. Old token is freed.
    *
    * @param id    Client id.
@@ -492,15 +558,19 @@ export class ClientRegistry {
     const result = parseModeWrite(rawValue, [MODE_GLOBAL, MODE_MANUAL]);
     switch (result.kind) {
       case "no-choice":
-        record.mode = "";
-        await this.adapter.setState(`clients.${id}.mode`, { val: "0", ack: true });
+        // "0" in memory too, not "" — the value the state carries and the dropdown key.
+        // Two representations for one meaning made `bulkSetMode`'s equality skip miss:
+        // a client sitting on "" got a pointless write every time the master switch went
+        // off. I19 (v1.37.0) unified the STORED value; this unifies the in-memory one.
+        record.mode = NO_CHOICE;
+        await this.adapter.setState(`clients.${id}.mode`, { val: NO_CHOICE, ack: true });
         this.adapter.log.debug(`Client ${id}: mode → cleared (no-choice)`);
         return;
       case "rejected-non-string":
         // v1.18.0 (G7): debug statt warn — nicht-string mode-Schreibungen
         // sind UI-Echo, kein Server-Concern.
         this.adapter.log.debug(`client-registry: rejected non-string mode for ${id}`);
-        await this.adapter.setState(`clients.${id}.mode`, { val: record.mode || "0", ack: true });
+        await this.adapter.setState(`clients.${id}.mode`, { val: record.mode || NO_CHOICE, ack: true });
         return;
       case "sentinel":
         if (result.value === MODE_MANUAL && !record.manualUrl) {
@@ -519,7 +589,7 @@ export class ClientRegistry {
         // L37: revert to `record.mode || 0` (not bare `record.mode`) so a blank
         // mode reverts to the string "0" the dropdown renders, matching the other
         // revert paths — a bare "" regresses the dropdown to no selection.
-        await this.adapter.setState(`clients.${id}.mode`, { val: record.mode || "0", ack: true });
+        await this.adapter.setState(`clients.${id}.mode`, { val: record.mode || NO_CHOICE, ack: true });
         return;
       case "url":
         record.mode = result.value;
@@ -529,7 +599,7 @@ export class ClientRegistry {
       // 'rejected-disallowed-sentinel' kommt hier nicht vor weil beide
       // Sentinels (global/manual) erlaubt sind. Defensive: revert.
       default:
-        await this.adapter.setState(`clients.${id}.mode`, { val: record.mode || "0", ack: true });
+        await this.adapter.setState(`clients.${id}.mode`, { val: record.mode || NO_CHOICE, ack: true });
     }
   }
 
@@ -933,10 +1003,19 @@ export class ClientRegistry {
    * @param refreshStates  When true (runtime) the mode dropdown states are compared and
    *                       refreshed; when false (restore, before URL discovery) only a
    *                       broken schema is repaired and states are left untouched (L1).
+   * @param storedVersion  The `native.objectsVersion` this client's objects were last
+   *                       written with. Equal to {@link CLIENT_OBJECTS_VERSION} → the texts
+   *                       are current and only EXISTENCE is guaranteed (no write). Older or
+   *                       missing → the texts are refreshed once and the stamp is renewed.
+   *                       Defaults to 0 (unknown) so `createClient` always writes in full.
    */
-  private async ensureObjects(record: ClientRecord, refreshStates = true): Promise<void> {
+  private async ensureObjects(record: ClientRecord, refreshStates = true, storedVersion = 0): Promise<void> {
     const { id, cookie, ip, hostname } = record;
     const mergedStates = this.buildModeStates();
+    // Whether the four per-client texts have to be (re)written this start. See
+    // CLIENT_OBJECTS_VERSION: v1.41.0 wrote them unconditionally — four broker calls per
+    // display per start to deliver a text that changes about once a year.
+    const textsCurrent = storedVersion === CLIENT_OBJECTS_VERSION;
 
     // Device (I22 v1.37.0): each client is a `device` — it represents a physical
     // display, matching the ioBroker convention (and govee-smart) of `device` for a
@@ -981,7 +1060,7 @@ export class ClientRegistry {
       // I19: no-choice sentinel is the STRING "0" everywhere (matches the dropdown key
       // built by buildDropdownStates); a numeric default would be a lone drift from
       // that convention. v1.38.0 (I2).
-      def: "0",
+      def: NO_CHOICE,
       states: mergedStates,
     };
     const ensureModeObject = async (refreshStates: boolean): Promise<void> => {
@@ -1023,56 +1102,74 @@ export class ClientRegistry {
     // and `extendObject` deep-merges `states` (v1.27.2).
     const refreshModeText = async (): Promise<void> => {
       await ensureModeObject(refreshStates);
-      await this.adapter.extendObject(`clients.${id}.mode`, {
-        common: { name: tName("clientMode"), desc: tName("clientModeDesc") },
-      });
+      if (!textsCurrent) {
+        await this.adapter.extendObject(`clients.${id}.mode`, {
+          common: { name: tName("clientMode"), desc: tName("clientModeDesc") },
+        });
+      }
     };
-    await Promise.all([
-      refreshModeText(),
-      // All three use `extendObject` WITHOUT `preserve` — it creates the object when it
-      // is missing (what `setObjectNotExists` did) and, unlike it, carries a changed name
-      // into an object that already exists. `preserve: { common: ["name"] }` used to sit
-      // on manualUrl and froze its name for the life of the client; the rename guarantee
-      // of v1.36.0 C4 covers the client CHANNEL, never these states, so nothing is lost.
-      // Measured on the live tree 2026-09-03: `.ip` still read "Client IP" and `.remove`
-      // "Forget this client", both renamed in admin/i18n versions ago.
-      this.adapter.extendObject(`clients.${id}.manualUrl`, {
-        type: "state",
-        common: {
+
+    // The three plain states. `extendObject` carries a CHANGED text into an object that
+    // already exists (what `setObjectNotExists` never did — measured on the live tree
+    // 2026-09-03: `.ip` still read "Client IP", `.remove` "Forget this client"), but it
+    // also writes when nothing changed. So: write in full only while the stamp is behind,
+    // and otherwise fall back to `setObjectNotExists`, which still RE-CREATES an object
+    // somebody deleted in the object browser but writes nothing when it is there.
+    const stateSchemas: Array<[string, ioBroker.StateCommon]> = [
+      [
+        `clients.${id}.manualUrl`,
+        {
           name: tName("clientManualUrl"),
+          desc: tName("clientManualUrlDesc"),
           type: "string",
           role: "url",
           read: true,
           write: true,
           def: "",
         },
-        native: {},
-      }),
-      this.adapter.extendObject(`clients.${id}.ip`, {
-        type: "state",
-        common: {
-          name: tName("clientIp"),
+      ],
+      [
+        `clients.${id}.ip`,
+        { name: tName("clientIp"), type: "string", role: "info.ip", read: true, write: false, def: "" },
+      ],
+      [
+        // Read-only: what the resolver ACTUALLY answered for this display. `mode` shows the
+        // CHOICE; with `mode = global` the user had to walk the chain (global.mode → maybe
+        // global.manualUrl) by hand to learn where the display went. The adapter computes
+        // this on every request anyway — it just never wrote it down.
+        `clients.${id}.resolvedUrl`,
+        {
+          name: tName("clientResolvedUrl"),
+          desc: tName("clientResolvedUrlDesc"),
           type: "string",
-          role: "info.ip",
+          role: "url",
           read: true,
           write: false,
           def: "",
         },
-        native: {},
-      }),
-      this.adapter.extendObject(`clients.${id}.remove`, {
-        type: "state",
-        common: {
-          name: tName("clientRemove"),
-          type: "boolean",
-          role: "button",
-          read: false,
-          write: true,
-          def: false,
-        },
-        native: {},
-      }),
+      ],
+      [
+        `clients.${id}.remove`,
+        { name: tName("clientRemove"), type: "boolean", role: "button", read: false, write: true, def: false },
+      ],
+    ];
+
+    await Promise.all([
+      refreshModeText(),
+      ...stateSchemas.map(([path, common]) =>
+        textsCurrent
+          ? this.adapter.setObjectNotExistsAsync(path, { type: "state", common, native: {} })
+          : this.adapter.extendObject(path, { type: "state", common, native: {} }),
+      ),
     ]);
+
+    // Stamp the revision so the next start can skip the refresh above. Written only when
+    // it actually moved — otherwise this would be the very write it exists to avoid.
+    if (!textsCurrent) {
+      await this.adapter
+        .extendObject(`clients.${id}`, { native: { objectsVersion: CLIENT_OBJECTS_VERSION } })
+        .catch(err => this.adapter.log.debug(`client-registry: version stamp failed for ${id}: ${String(err)}`));
+    }
   }
 
   private async createObjects(record: ClientRecord): Promise<void> {

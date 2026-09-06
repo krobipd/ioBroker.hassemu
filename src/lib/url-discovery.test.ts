@@ -58,7 +58,20 @@ function createMockAdapter(): MockAdapter & DiscoveryAdapter {
     clearTimeout: (id: unknown) => {
       timers.delete(id as number);
     },
-    getForeignObjectsAsync: (): Promise<Record<string, unknown>> => Promise.resolve(mock._instances),
+    getForeignObjectsAsync: (): Promise<Record<string, unknown>> => {
+      // Discovery reads WHICH VIS instances exist from the instance list — `vis-2.0` /
+      // `vis.0` are no longer assumed. A fixture that puts files under `vis-2.0` is
+      // describing an installation that HAS that instance, so the mock reports it,
+      // exactly as the broker would. A test that wants the "VIS not installed" case
+      // simply provides no files for it.
+      const derived: Record<string, unknown> = {};
+      for (const adapterName of Object.keys(mock._dirs)) {
+        if (adapterName.startsWith("vis-2.") || adapterName.startsWith("vis.")) {
+          derived[`system.adapter.${adapterName}`] = { common: { enabled: true }, native: {} };
+        }
+      }
+      return Promise.resolve({ ...derived, ...mock._instances });
+    },
     readDirAsync: (adapterName: string): Promise<unknown[]> => {
       const d = mock._dirs[adapterName];
       if (d instanceof Error) {
@@ -455,6 +468,39 @@ describe("UrlDiscovery", () => {
       expect(result["http://192.168.1.10:8082/vis-2/index.html?kitchen"]).to.equal("VIS-2: kitchen");
       // _globals filtered (starts with '_')
       expect(Object.keys(result).some(k => k.includes("_globals"))).to.be.false;
+    });
+
+    it("finds the projects of a SECOND vis-2 instance, not just vis-2.0", async () => {
+      // `vis-2.0` / `vis.0` used to be hardcoded here while the web and aura sources
+      // already iterated every instance — a second VIS server contributed nothing.
+      adapter._instances = {
+        "system.adapter.web.0": enabledInstance({ native: { bind: "192.168.1.10", port: 8082 } }),
+      };
+      adapter._dirs["vis-2.0"] = [{ file: "main", isDir: true }];
+      adapter._dirs["vis-2.1"] = [{ file: "attic", isDir: true }];
+
+      const result = await discovery.collect();
+
+      expect(result["http://192.168.1.10:8082/vis-2/index.html?main"]).to.equal("VIS-2 (vis-2.0): main");
+      expect(result["http://192.168.1.10:8082/vis-2/index.html?attic"]).to.equal("VIS-2 (vis-2.1): attic");
+    });
+
+    it("does not probe VIS at all when no vis instance exists", async () => {
+      // Without an instance there is nothing to read — the old code fired a doomed
+      // readDirAsync("vis-2.0") on every single discovery pass.
+      adapter._instances = {
+        "system.adapter.web.0": enabledInstance({ native: { bind: "192.168.1.10", port: 8082 } }),
+      };
+      const asked: string[] = [];
+      const realReadDir = adapter.readDirAsync;
+      adapter.readDirAsync = (adapterName: string, path: string): Promise<unknown[]> => {
+        asked.push(adapterName);
+        return realReadDir(adapterName, path);
+      };
+
+      await discovery.collect();
+
+      expect(asked, `unexpected reads: ${asked.join(", ")}`).to.deep.equal([]);
     });
 
     it("finds VIS-1 projects with ?<project> query (one URL per project)", async () => {

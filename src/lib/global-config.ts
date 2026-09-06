@@ -11,22 +11,14 @@
  * The resolver delegates: a client whose `mode === 'global'` ends up here.
  */
 
-import {
-  buildDropdownStates,
-  coerceBoolean,
-  coerceSafeUrl,
-  isNoChoice,
-  oneLine,
-  parseAdapterStateId,
-  parseManualUrlWrite,
-  parseModeWrite,
-  safeGetState,
-  shallowStatesEqual,
-} from "./coerce";
-import { MODE_GLOBAL, MODE_MANUAL } from "./constants";
+import { coerceBoolean, coerceSafeUrl, oneLine } from "./coerce";
+import { parseAdapterStateId, safeGetState, shallowStatesEqual } from "./object-utils";
+import { buildDropdownStates, parseManualUrlWrite, parseModeWrite } from "./state-write-rules";
+import { MODE_MANUAL, NO_CHOICE } from "./constants";
 import { resolveLabel } from "./i18n";
+import type { GlobalRedirect } from "./redirect-resolver";
 import { replaceObjectPreservingValue } from "./object-repair";
-import type { AdapterInterface, ClientRecord, UrlStates } from "./types";
+import type { AdapterInterface, UrlStates } from "./types";
 
 /** Extended adapter interface — needs state I/O and object extend. */
 export type GlobalConfigAdapter = AdapterInterface &
@@ -41,7 +33,7 @@ export type GlobalStateKind = "mode" | "manualUrl" | "enabled";
 /** Holds the runtime state of the global redirect override. */
 export class GlobalConfig {
   private readonly adapter: GlobalConfigAdapter;
-  private mode: string = "";
+  private mode: string = NO_CHOICE;
   private manualUrl: string | null = null;
   private enabled = false;
 
@@ -55,7 +47,9 @@ export class GlobalConfig {
     const modeState = await safeGetState(this.adapter, "global.mode");
     const manualState = await safeGetState(this.adapter, "global.manualUrl");
     const enabledState = await safeGetState(this.adapter, "global.enabled");
-    this.mode = typeof modeState?.val === "string" ? modeState.val : "";
+    const restoredMode = typeof modeState?.val === "string" ? modeState.val : "";
+    // Normalise the pre-v1.43.0 blank form on the way in (D5).
+    this.mode = restoredMode === "" ? NO_CHOICE : restoredMode;
     this.manualUrl = coerceSafeUrl(manualState?.val);
     this.enabled = coerceBoolean(enabledState?.val) === true;
 
@@ -66,78 +60,19 @@ export class GlobalConfig {
     // `''`, which matched no common.states entry (empty selection).
     const v = modeState?.val;
     if (v === "" || v === null || v === undefined || v === 0) {
-      await this.adapter.setState("global.mode", { val: "0", ack: true });
+      await this.adapter.setState("global.mode", { val: NO_CHOICE, ack: true });
     }
   }
 
   /**
-   * Resolves the redirect URL for `record`.
+   * The global override's current values, for {@link resolveRedirect}.
    *
-   * Delegates via the client's `mode`:
-   * - `'global'` → resolve global mode/manualUrl
-   * - `'manual'` → client's manualUrl
-   * - URL string → that URL
-   * - empty / unknown → null (setup page)
-   *
-   * @param record Client to resolve for.
+   * The resolution rules moved to `redirect-resolver.ts` in v1.43.0 — "where does this
+   * display go" is the adapter's central question and does not belong to the class that
+   * happens to hold one of its two inputs. This class now supplies that input.
    */
-  resolveUrlFor(record: ClientRecord): string | null {
-    // Single resolution path: WithChain holds the logic; the plain caller just
-    // drops the (cheap) chain string. Avoids the prior duplicate impl that could
-    // drift from the chain version.
-    return this.resolveUrlForWithChain(record).url;
-  }
-
-  /**
-   * v1.32.0 B1: Resolves the redirect URL AND returns the resolution chain
-   * for debug-tracing. Chain examples:
-   *   `direct→{url}`           — client.mode is a URL itself
-   *   `manual→{url}`           — client.mode='manual' + client.manualUrl
-   *   `global→direct→{url}`    — client.mode='global' + global.mode=URL
-   *   `global→manual→{url}`    — client.mode='global' + global.mode='manual' + global.manualUrl
-   *   `global→landing`         — client.mode='global' + global has no resolvable URL
-   *   `landing`                — client.mode is empty/no-choice
-   *
-   * @param record Client to resolve for.
-   */
-  resolveUrlForWithChain(record: ClientRecord): { url: string | null; chain: string } {
-    // `global` recurses into the global config; every other mode value resolves the
-    // same way at the client and global level, so both delegate to resolveOne().
-    if (record.mode === MODE_GLOBAL) {
-      const inner = this.resolveGlobalModeWithChain();
-      return { url: inner.url, chain: `global→${inner.chain}` };
-    }
-    return this.resolveOne(record.mode, record.manualUrl);
-  }
-
-  private resolveGlobalModeWithChain(): { url: string | null; chain: string } {
-    return this.resolveOne(this.mode, this.manualUrl);
-  }
-
-  /**
-   * I16 (v1.37.0): resolve a single (mode, manualUrl) pair to a URL + debug chain.
-   * The shared tail of {@link resolveUrlForWithChain} (client level) and
-   * {@link resolveGlobalModeWithChain} (global level) — they differ only in whether
-   * `global` is a legal mode (client-only), which the client caller handles before
-   * delegating here. `ClientRecord.manualUrl` is already `string | null` (L45).
-   *
-   * @param mode      A `mode` value (`'manual'`, a URL, or a no-choice sentinel).
-   * @param manualUrl The `manualUrl` paired with `mode === 'manual'`.
-   */
-  private resolveOne(mode: unknown, manualUrl: string | null): { url: string | null; chain: string } {
-    // Deliberately without its own test: removing this shortcut changes
-    // nothing observable — a no-choice value is not a safe URL either, so the
-    // tail below returns the same `{ url: null, chain: "landing" }` (measured
-    // as an equivalent mutant in the 2026-08-22 test audit). It stays because
-    // it names the case a reader is looking for.
-    if (isNoChoice(mode)) {
-      return { url: null, chain: "landing" };
-    }
-    if (mode === MODE_MANUAL) {
-      return { url: manualUrl, chain: manualUrl ? `manual→${manualUrl}` : "manual→landing" };
-    }
-    const safe = coerceSafeUrl(mode);
-    return { url: safe, chain: safe ? `direct→${safe}` : "landing" };
+  get redirect(): GlobalRedirect {
+    return { mode: this.mode, manualUrl: this.manualUrl };
   }
 
   /** Returns whether the master switch is currently active. */
@@ -159,19 +94,23 @@ export class GlobalConfig {
     const result = parseModeWrite(rawValue, [MODE_MANUAL]);
     switch (result.kind) {
       case "no-choice":
-        this.mode = "";
-        await this.adapter.setState("global.mode", { val: "0", ack: true });
+        // "0" in memory as well — one representation, the one the state carries (D5).
+        this.mode = NO_CHOICE;
+        await this.adapter.setState("global.mode", { val: NO_CHOICE, ack: true });
         this.adapter.log.debug(`global.mode → cleared (no-choice)`);
         return;
       case "rejected-non-string":
-        this.adapter.log.warn(`global.mode rejected — non-string value`);
-        await this.adapter.setState("global.mode", { val: this.mode || "0", ack: true });
+        // debug, matching the client path: a non-string mode write is UI echo, not a
+        // server concern (G7 v1.18.0). The same event logged at two levels was the only
+        // difference between the two handlers.
+        this.adapter.log.debug(`global.mode rejected — non-string value`);
+        await this.adapter.setState("global.mode", { val: this.mode || NO_CHOICE, ack: true });
         return;
       case "rejected-disallowed-sentinel":
         // MODE_GLOBAL bei global.mode → self-referential.
         this.adapter.log.warn(`global.mode rejected — "global" is not allowed at the global level (self-referential)`);
         // L37: revert to `this.mode || "0"` so a blank mode reverts to the dropdown's `0='---'`.
-        await this.adapter.setState("global.mode", { val: this.mode || "0", ack: true });
+        await this.adapter.setState("global.mode", { val: this.mode || NO_CHOICE, ack: true });
         return;
       case "sentinel":
         if (result.value === MODE_MANUAL && !this.manualUrl) {
@@ -187,7 +126,7 @@ export class GlobalConfig {
         // L1(b): raw is an unvalidated state value — flatten + cap it for the log.
         this.adapter.log.warn(`global.mode rejected — unsafe URL value "${oneLine(result.raw).substring(0, 120)}"`);
         // L37: revert to `this.mode || "0"` so a blank mode reverts to the dropdown's `0='---'`.
-        await this.adapter.setState("global.mode", { val: this.mode || "0", ack: true });
+        await this.adapter.setState("global.mode", { val: this.mode || NO_CHOICE, ack: true });
         return;
       case "url":
         this.mode = result.value;

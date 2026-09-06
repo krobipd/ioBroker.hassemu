@@ -128,7 +128,7 @@ export class MDNSService {
     // (which dropped the goodbye). Best-effort: in the synchronous onUnload path
     // js-controller may end the process before the goodbye leaves the buffer, so a
     // guaranteed goodbye isn't achievable — this only improves the odds without
-    // blocking unload. (Verified against bonjour-service 1.4.2: registry.stop takes
+    // blocking unload. (Verified against bonjour-service 1.4.4, the installed version: registry.stop takes
     // a callback and teardown announces before invoking it.) v1.37.0 (I1).
     return new Promise<void>(resolve => {
       let destroyed = false;

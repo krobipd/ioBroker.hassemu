@@ -8,8 +8,6 @@
 
 import crypto from "node:crypto";
 
-import { MODE_GLOBAL, MODE_MANUAL } from "./constants";
-
 /**
  * IndieAuth-style redirect_uri validation + HA Companion App whitelist.
  *
@@ -91,21 +89,6 @@ export function safeStringEqual(a: string, b: string): boolean {
 }
 
 /**
- * „No-choice"-Marker: User hat den Default-Eintrag `0='---'` (oder eine seiner
- * Repräsentationen) gewählt. Behandelt sowohl die numerische `0` (Admin-UI
- * mit `type: mixed` Dropdowns), die String-Variante `'0'` und den leeren String.
- *
- * Wird in beiden Mode-Handlers (client-registry, global-config) gleich behandelt
- * — vor v1.8.0 war die Logik 4× dupliziert. Jeder andere Wert ist ein „echter"
- * User-Input und muss validiert werden.
- *
- * @param value Untrusted input vom Mode-State (numeric 0 / string '0' / '' / URL / sentinel).
- */
-export function isNoChoice(value: unknown): boolean {
-  return value === 0 || value === "0" || value === "";
-}
-
-/**
  * True when a value represents "no value set" — empty string, null or undefined.
  * The shared predicate behind the manualUrl / legacy-migration / restore blank
  * checks (was written out inline in four places).
@@ -156,42 +139,6 @@ export function coerceString(value: unknown): string | null {
 }
 
 /**
- * Read the plain text out of a `common.name`, whichever form it has.
- *
- * `common.name` is either a bare string (what every version before v1.41.0 wrote)
- * or a translation object (what the adapter writes now). Every comparison against
- * a name — "is this still the auto-assigned one?", "does this hold a hostname?" —
- * has to work on both, otherwise converting the form silently breaks the logic that
- * reads it. English is the reference key because that is the language the adapter
- * writes its own auto-names in.
- *
- * @param value `common.name` as read from an object.
- * @returns The text, or null when there is none.
- */
-export function nameText(value: unknown): string | null {
-  if (typeof value === "string") {
-    return value.length > 0 ? value : null;
-  }
-  if (isPlainObject(value)) {
-    const en = value.en;
-    if (typeof en === "string" && en.length > 0) {
-      return en;
-    }
-  }
-  return null;
-}
-
-/**
- * True when `common.name` is still a bare string — i.e. the object predates the
- * translation-object standard and needs converting.
- *
- * @param value `common.name` as read from an object.
- */
-export function isBareStringName(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0;
-}
-
-/**
  * Coerce to a boolean. Only accepts actual `true` / `false`.
  *
  * @param value Untrusted input.
@@ -226,76 +173,12 @@ export function coerceUuid(value: unknown): string | null {
   return UUID_REGEX.test(value) ? value.toLowerCase() : null;
 }
 
-/** Result of {@link parseManualUrlWrite}. */
-export type ManualUrlWriteResult = { ok: true; safe: string | null } | { ok: false };
-
 /**
- * Validates a write to a `manualUrl` state. Empty / null / undefined → clear
- * (`safe: null`). Otherwise must pass {@link coerceSafeUrl}; if not → `ok: false`
- * so the caller can reject + revert. Centralises the validation that both
- * `ClientRegistry.handleManualUrlWrite` and `GlobalConfig.handleManualUrlWrite`
- * share — caller still owns logging + setState because the prefixes/state-IDs
- * differ.
- *
- * @param rawValue Value written to the state.
+ * Characters `new URL()` silently strips before parsing: ASCII tab, LF and CR, plus
+ * leading/trailing C0 control characters and spaces. A value containing them parses as one
+ * URL but is stored as another — see {@link coerceSafeUrl}.
  */
-export function parseManualUrlWrite(rawValue: unknown): ManualUrlWriteResult {
-  if (isEmptyValue(rawValue)) {
-    return { ok: true, safe: null };
-  }
-  const safe = coerceSafeUrl(rawValue);
-  if (!safe) {
-    return { ok: false };
-  }
-  return { ok: true, safe };
-}
-
-/** Result of {@link parseModeWrite}. */
-export type ModeWriteResult =
-  | { kind: "no-choice" }
-  | { kind: "sentinel"; value: string }
-  | { kind: "url"; value: string }
-  | { kind: "rejected-non-string" }
-  | { kind: "rejected-disallowed-sentinel"; value: string }
-  | { kind: "rejected-unsafe-url"; raw: string };
-
-/**
- * v1.23.0 (F2): zentralisierte Validierung für Mode-Writes. Vorher hatten
- * `ClientRegistry.handleModeWrite` und `GlobalConfig.handleModeWrite` ~80%
- * der Logik dupliziert (no-choice, non-string-reject, sentinel-check, URL-
- * coerce). Beide nutzen jetzt diesen Helper und steuern nur ihre eigenen
- * State-IDs / Logging-Prefixes / erlaubte Sentinels.
- *
- * `allowedSentinels` ist die Liste der zulässigen non-URL Mode-Werte —
- * client-registry erlaubt z.B. `[MODE_GLOBAL, MODE_MANUAL]`, global-config
- * nur `[MODE_MANUAL]` (MODE_GLOBAL wäre self-referential).
- *
- * @param rawValue         Wert vom State-Write.
- * @param allowedSentinels Erlaubte Non-URL-Sentinels.
- */
-export function parseModeWrite(rawValue: unknown, allowedSentinels: readonly string[]): ModeWriteResult {
-  if (isNoChoice(rawValue)) {
-    return { kind: "no-choice" };
-  }
-  if (typeof rawValue !== "string") {
-    return { kind: "rejected-non-string" };
-  }
-  // String-Sentinels haben Vorrang vor URL-Coerce.
-  if (allowedSentinels.includes(rawValue)) {
-    return { kind: "sentinel", value: rawValue };
-  }
-  // Disallowed-Sentinel-Detection: wenn der Caller MODE_GLOBAL/MODE_MANUAL
-  // als known-strings hat, aber sie nicht in allowedSentinels sind, melden
-  // wir das explizit (für Self-Referential-Check in global-config).
-  if (rawValue === MODE_GLOBAL || rawValue === MODE_MANUAL) {
-    return { kind: "rejected-disallowed-sentinel", value: rawValue };
-  }
-  const safe = coerceSafeUrl(rawValue);
-  if (!safe) {
-    return { kind: "rejected-unsafe-url", raw: rawValue };
-  }
-  return { kind: "url", value: safe };
-}
+const URL_STRIPPED_CHARS = /[\t\n\r]/;
 
 /**
  * Coerce to a safe redirect URL, or null.
@@ -305,11 +188,30 @@ export function parseModeWrite(rawValue: unknown, allowedSentinels: readonly str
  * - Parseable by URL()
  * - No embedded credentials (user:pass@host)
  * - Max 2048 chars
+ * - The string as given IS what was parsed — no characters the URL parser removes
+ *
+ * That last rule closes a gap this function had since it was written: it validated the
+ * PARSED url and then returned the RAW string. `new URL()` removes tab/LF/CR anywhere in
+ * the input and trims leading/trailing control characters and spaces, so
+ * `"http://ok.test/\n"` or `"htt\np://ok.test/"` passed every check above and was then
+ * stored, logged and rendered in that exact form — a different string from the one the
+ * checks were applied to. No exploit was reachable through it (every dangerous scheme
+ * still normalises into `protocol` and is rejected), but "validated X, kept Y" is the
+ * shape a boundary validator exists to prevent.
+ *
+ * Rejecting rather than normalising is deliberate: `url.href` would rewrite legitimate
+ * stored values (`http://host:8081` → `http://host:8081/`) and those values are the KEYS
+ * of the mode dropdown, so every existing selection would need a migration to keep
+ * matching. No real dashboard URL contains a tab or a line break.
  *
  * @param value Untrusted input.
  */
 export function coerceSafeUrl(value: unknown): string | null {
   if (typeof value !== "string" || value.length === 0 || value.length > 2048) {
+    return null;
+  }
+  // Reject before parsing: what is checked below has to be the string that is kept.
+  if (URL_STRIPPED_CHARS.test(value) || value.trim() !== value) {
     return null;
   }
   let url: URL;
@@ -332,173 +234,6 @@ export function coerceSafeUrl(value: unknown): string | null {
 // global-config bisher dupliziert waren.
 // ---------------------------------------------------------------------------
 
-/** Minimal-Surface für `safeGetState` — Tests können das mocken. */
-export interface StateReader {
-  /** Returns the state for `id`, or `null|undefined` if it does not exist. */
-  getStateAsync: (id: string) => Promise<ioBroker.State | null | undefined>;
-}
-
-/**
- * v1.20.0 (F10): try/catch + null-Fallback um `getStateAsync`. Vorher hatten
- * `client-registry.readState` und `global-config.safeGetState` identische
- * Wrapper. Caller extrahieren `.val` selbst, wenn sie nur den Wert wollen.
- *
- * @param adapter Anything that exposes `getStateAsync(id)`.
- * @param id      Voller State-ID (mit Namespace) oder relativer Pfad — wie der
- *                Caller das schon bisher übergeben hat.
- */
-export async function safeGetState(adapter: StateReader, id: string): Promise<ioBroker.State | null> {
-  try {
-    return (await adapter.getStateAsync(id)) ?? null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * v1.20.0 (F9): generischer Parser für Namespace-Prefix-Tail-Kind State-IDs.
- * Vorher hatten `parseClientStateId` und `parseGlobalStateId` identische
- * Prefix-Validierung + Split-Logik. Beide delegieren jetzt hier.
- *
- * Beispiel: `parseAdapterStateId('hassemu.0.clients.abc.mode', 'hassemu.0', 'clients.', 2)`
- * liefert `['abc', 'mode']` (zwei Tail-Parts mit `clients.<id>.<kind>`).
- *
- * @param fullId      Voller State-ID aus dem Event.
- * @param namespace   Adapter-Namespace (z.B. `hassemu.0`).
- * @param prefix      Sub-Pfad nach dem Namespace, **mit** trailing dot (z.B. `clients.`).
- * @param expectedParts Anzahl erwarteter Tail-Segmente (1 für `global.<kind>`, 2 für `clients.<id>.<kind>`).
- * @returns Tail-Segments als Tuple, oder `null` wenn Prefix/Anzahl nicht passt.
- */
-export function parseAdapterStateId(
-  fullId: string,
-  namespace: string,
-  prefix: string,
-  expectedParts: number,
-): string[] | null {
-  const fullPrefix = `${namespace}.${prefix}`;
-  if (!fullId.startsWith(fullPrefix)) {
-    return null;
-  }
-  const tail = fullId.substring(fullPrefix.length);
-  const parts = tail.split(".");
-  if (parts.length !== expectedParts) {
-    return null;
-  }
-  return parts;
-}
-
-/**
- * v1.25.0 (J1): pure decision-helper für `gcStaleClients` (main.ts).
- * Drei Outcomes:
- *  - `'seed'` — kein lastSeen vorhanden, Timestamp setzen, GC wartet einen Cycle
- *  - `'stale'` — lastSeen älter als TTL → entfernen
- *  - `'keep'` — lastSeen neu genug → keep
- *
- * Vorher war diese Logik inline in main.ts → nicht direkt unit-testbar.
- *
- * @param lastSeen Untyped value (kommt aus broker `native.lastSeen`).
- * @param now      Aktuelle Zeit in ms.
- * @param ttlMs    Stale-TTL in ms.
- */
-export function decideGcAction(lastSeen: unknown, now: number, ttlMs: number): "seed" | "stale" | "keep" {
-  const ls = typeof lastSeen === "number" && Number.isFinite(lastSeen) ? lastSeen : 0;
-  if (ls === 0) {
-    return "seed";
-  }
-  if (now - ls > ttlMs) {
-    return "stale";
-  }
-  return "keep";
-}
-
-/** Result of {@link decideLegacyVisMigration}. */
-export type LegacyVisMigration = { kind: "empty" } | { kind: "safe-url"; safe: string } | { kind: "unsafe-rejected" };
-
-/**
- * v1.25.0 (J2): pure decision-helper für die `migrateVisUrlToMode`-Logik
- * (main.ts). Behandelt drei Fälle:
- *  - leer/undefined/null → `'empty'` (keine Migration nötig)
- *  - safe-URL → `'safe-url'` (legacy-URL übernehmen)
- *  - unsafe (`javascript:`/Credentials/etc.) → `'unsafe-rejected'` (Manual-Mode setzen, URL verwerfen)
- *
- * Vorher war diese Logik inline in main.ts → nicht direkt unit-testbar.
- *
- * @param rawValue Untyped value (aus dem legacy `*.visUrl`-State).
- */
-export function decideLegacyVisMigration(rawValue: unknown): LegacyVisMigration {
-  if (isEmptyValue(rawValue)) {
-    return { kind: "empty" };
-  }
-  const safe = coerceSafeUrl(rawValue);
-  if (safe) {
-    return { kind: "safe-url", safe };
-  }
-  return { kind: "unsafe-rejected" };
-}
-
-/**
- * v1.20.0 (F4): composed `0='---' + sentinels + url-states` — Grundgerüst
- * der Mode-Dropdowns. Vorher hatten `client-registry.buildModeStates` und
- * `global-config.syncUrlDropdown` identische Composition.
- *
- * @param sentinels Zusätzliche Sentinel-Einträge (z.B. `{ global: 'Follow master', manual: 'Manual URL' }`).
- * @param urlStates Discovered URLs (`{ 'http://x/': 'X', ... }`).
- */
-export function buildDropdownStates(
-  sentinels: Record<string, string>,
-  urlStates: Record<string, string>,
-): Record<string, string> {
-  return { 0: "---", ...sentinels, ...urlStates };
-}
-
-/**
- * Drops oldest entries from a Map until size is below `cap`. Map iteration order
- * in JS is insertion order, so `keys().next()` is the oldest. While-loop is
- * defensive — if `cap` is lowered at runtime or a bulk-insert pushes multiple
- * entries past the threshold in one call, all overflow gets evicted.
- *
- * v1.32.0: konsolidiert aus `webserver.ts:evictOldest` (private static, while-loop)
- * und `client-registry.ts:recordNewClientIp` (single-shot inline) zu einem shared
- * helper.
- *
- * @param map Map to evict from.
- * @param cap Hard cap — evicts while `map.size >= cap`.
- */
-export function evictOldest<V>(map: Map<string, V>, cap: number): void {
-  while (map.size >= cap) {
-    const oldest = map.keys().next().value;
-    if (oldest === undefined) {
-      return;
-    }
-    map.delete(oldest);
-  }
-}
-
-/**
- * Order-independent shallow equality for a `common.states` dropdown map (flat
- * string→string). Used to skip an object rewrite when the discovered dropdown
- * has not changed. A non-object `a`, or any differing key/value, counts as
- * unequal — so a malformed or stale existing object is always rewritten (repaired).
- *
- * @param a Existing states value from the broker (untrusted shape).
- * @param b Freshly built states map.
- */
-export function shallowStatesEqual(a: unknown, b: Record<string, string>): boolean {
-  if (!isPlainObject(a)) {
-    return false;
-  }
-  const bKeys = Object.keys(b);
-  if (Object.keys(a).length !== bKeys.length) {
-    return false;
-  }
-  for (const k of bKeys) {
-    if (a[k] !== b[k]) {
-      return false;
-    }
-  }
-  return true;
-}
-
 /**
  * Collapse runs of line-breaking / control whitespace in an untrusted string to
  * a single space before it is interpolated into a log line — prevents log
@@ -511,34 +246,4 @@ export function shallowStatesEqual(a: unknown, b: Record<string, string>): boole
  */
 export function oneLine(value: string): string {
   return value.replace(/[\r\n\t\0\v\f\u2028\u2029]+/g, " ");
-}
-
-/**
- * Decides whether a reverse-DNS lookup should be attempted for a client IP. Skips when
- * the client already has a hostname, a lookup for that IP is already in flight, or the
- * IP resolved to no hostname within the negative-cache window (the LAN norm for DHCP
- * clients without a PTR record \u2014 L6). Pure so the negative-cache decision is unit-testable
- * without driving real DNS or timers. v1.38.0 (I8).
- *
- * @param opts                 Reverse-DNS decision inputs.
- * @param opts.hasHostname     True if the client already has a resolved hostname.
- * @param opts.inFlight        True if a lookup for this IP is already running.
- * @param opts.lastNegative    Timestamp (ms) of the last no-hostname result, or undefined.
- * @param opts.now             Current time in ms.
- * @param opts.negativeCacheMs Negative-cache window in ms.
- */
-export function shouldAttemptReverseDns(opts: {
-  hasHostname: boolean;
-  inFlight: boolean;
-  lastNegative: number | undefined;
-  now: number;
-  negativeCacheMs: number;
-}): boolean {
-  if (opts.hasHostname || opts.inFlight) {
-    return false;
-  }
-  if (opts.lastNegative !== undefined && opts.now - opts.lastNegative < opts.negativeCacheMs) {
-    return false;
-  }
-  return true;
 }

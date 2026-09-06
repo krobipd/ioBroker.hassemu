@@ -33,6 +33,7 @@ vi.mock("@iobroker/adapter-core", () => {
     extendCalls: { id: string; common: Record<string, unknown>; options?: Record<string, unknown> }[] = [];
 
     log = {
+      silly: (m: string): void => void this.logs.push({ level: "silly", msg: m }),
       debug: (m: string): void => void this.logs.push({ level: "debug", msg: m }),
       info: (m: string): void => void this.logs.push({ level: "info", msg: m }),
       warn: (m: string): void => void this.logs.push({ level: "warn", msg: m }),
@@ -214,6 +215,7 @@ import { HassEmu } from "./main";
 import type { ClientRegistry } from "./lib/client-registry";
 import type { GlobalConfig } from "./lib/global-config";
 import { MODE_GLOBAL, MODE_MANUAL } from "./lib/constants";
+import { resolveRedirect } from "./lib/redirect-resolver";
 import { migrateLegacyDefaultVisUrl, migrateVisUrlToMode, type MigrationAdapter } from "./lib/legacy-migration";
 import type { AdapterConfig } from "./lib/types";
 import iobrokerPackage from "../io-package.json";
@@ -641,9 +643,74 @@ describe("migrateLegacyDefaultVisUrl", () => {
 
     expect(stub.states.get("hassemu.0.global.visUrl")).toEqual({ val: "http://legacy.local/vis", ack: true });
     const native = stub.objects.get("system.adapter.hassemu.0")!.native!;
-    expect(native.defaultVisUrl).toBeUndefined();
-    expect(native.visUrl).toBeUndefined();
+    // Cleared via the merge (`null`, not a whole-object rewrite) — falsy is all the
+    // migration ever reads them for.
+    expect(native.defaultVisUrl).toBeFalsy();
+    expect(native.visUrl).toBeFalsy();
     expect(native.other).toBe("stays");
+  });
+
+  it("signals the caller to abort the start — writing the instance object restarts it", async () => {
+    const { internal, stub } = setup();
+    internal.globalConfig = internal.makeGlobalConfig();
+    stub.config.defaultVisUrl = "http://legacy.local/vis";
+    seedInstanceNative(stub, { defaultVisUrl: "http://legacy.local/vis" });
+
+    const restarting = await migrateLegacyDefaultVisUrl(
+      internal as unknown as MigrationAdapter,
+      stub.config as unknown as AdapterConfig,
+      internal.globalConfig,
+    );
+    expect(restarting).toBe(true);
+  });
+
+  it("does not touch the instance object when the legacy keys are already gone", async () => {
+    const { internal, stub } = setup();
+    internal.globalConfig = internal.makeGlobalConfig();
+    // config still carries the value (a stale cached config) but the object is clean.
+    stub.config.defaultVisUrl = "http://legacy.local/vis";
+    seedInstanceNative(stub, { other: "stays" });
+    const before = stub.objects.get("system.adapter.hassemu.0");
+
+    const restarting = await migrateLegacyDefaultVisUrl(
+      internal as unknown as MigrationAdapter,
+      stub.config as unknown as AdapterConfig,
+      internal.globalConfig,
+    );
+    // No write, no restart — otherwise the adapter would restart on every start.
+    expect(restarting).toBe(false);
+    expect(stub.objects.get("system.adapter.hassemu.0")).toBe(before);
+  });
+
+  it("MERGES instead of rewriting — a concurrent change to the instance object survives", async () => {
+    const { internal, stub } = setup();
+    internal.globalConfig = internal.makeGlobalConfig();
+    stub.config.defaultVisUrl = "http://legacy.local/vis";
+    seedInstanceNative(stub, { defaultVisUrl: "http://legacy.local/vis" });
+    // Someone (the admin saving the config) changes the object after the migration
+    // read it and before it writes. A read-modify-write of the WHOLE object would
+    // silently drop this.
+    const surface = stub as unknown as {
+      getForeignObjectAsync: (id: string) => Promise<ObjEntry | null>;
+    };
+    const original = surface.getForeignObjectAsync.bind(stub);
+    surface.getForeignObjectAsync = async (id: string) => {
+      const obj = await original(id);
+      if (id === "system.adapter.hassemu.0") {
+        stub.objects.set(id, { type: "instance", common: {}, native: { ...obj!.native, addedMeanwhile: "keep me" } });
+      }
+      return obj;
+    };
+
+    await migrateLegacyDefaultVisUrl(
+      internal as unknown as MigrationAdapter,
+      stub.config as unknown as AdapterConfig,
+      internal.globalConfig,
+    );
+
+    const native = stub.objects.get("system.adapter.hassemu.0")!.native!;
+    expect(native.addedMeanwhile).toBe("keep me");
+    expect(native.defaultVisUrl).toBeFalsy();
   });
 
   it("unsafe legacy URL → warn, NOT written, native still cleaned", async () => {
@@ -660,7 +727,7 @@ describe("migrateLegacyDefaultVisUrl", () => {
 
     expect(stub.states.has("hassemu.0.global.visUrl")).toBe(false);
     expect(logsOf(stub, "warn").some(m => m.includes("rejected as unsafe"))).toBe(true);
-    expect(stub.objects.get("system.adapter.hassemu.0")!.native!.defaultVisUrl).toBeUndefined();
+    expect(stub.objects.get("system.adapter.hassemu.0")!.native!.defaultVisUrl).toBeFalsy();
   });
 
   it("global.visUrl write fails → falls back to globalConfig.migrationSet (URL not lost)", async () => {
@@ -686,7 +753,7 @@ describe("migrateLegacyDefaultVisUrl", () => {
     expect(stub.states.get("hassemu.0.global.mode")).toEqual({ val: MODE_MANUAL, ack: true });
     expect(stub.states.get("hassemu.0.global.manualUrl")).toEqual({ val: "http://fallback.local/", ack: true });
     // Native was cleaned because the value is safely persisted.
-    expect(stub.objects.get("system.adapter.hassemu.0")!.native!.visUrl).toBeUndefined();
+    expect(stub.objects.get("system.adapter.hassemu.0")!.native!.visUrl).toBeFalsy();
   });
 
   it("BOTH write paths fail → native values preserved as recovery anchor + warn", async () => {
@@ -709,6 +776,41 @@ describe("migrateLegacyDefaultVisUrl", () => {
     expect(stub.objects.get("system.adapter.hassemu.0")!.native!.visUrl).toBe("http://precious.local/");
   });
 });
+
+/**
+ * Seed a client the way a real start sees it: a persisted `clients.<id>` device with its
+ * states, then `registry.restore()`. The legacy `visUrl` reaches the migration through the
+ * restore batch now (no getState of its own per client per start), so a test that only
+ * writes the state without restoring would exercise a path that no longer exists.
+ *
+ * @param stub     The adapter stub holding objects + states.
+ * @param internal The adapter under test (its `registry` must already be built).
+ * @param visUrl   Legacy value to place on `clients.<id>.visUrl`, or null for none.
+ * @returns The restored client record.
+ */
+async function seedRestoredClient(
+  stub: StubSurface,
+  internal: Internal,
+  visUrl: string | null,
+): Promise<ReturnType<ClientRegistry["listAll"]>[number]> {
+  const id = "c0ffee";
+  stub.objects.set(`hassemu.0.clients.${id}`, {
+    type: "device",
+    common: { name: { en: "Display" } },
+    native: { cookie: "11111111-2222-4333-8444-555555555555" },
+  });
+  stub.states.set(`hassemu.0.clients.${id}.mode`, { val: "0", ack: true });
+  if (visUrl !== null) {
+    stub.states.set(`hassemu.0.clients.${id}.visUrl`, { val: visUrl, ack: true });
+    stub.objects.set(`hassemu.0.clients.${id}.visUrl`, { type: "state" });
+  }
+  await internal.registry!.restore();
+  const rec = internal.registry!.getById(id);
+  if (!rec) {
+    throw new Error("seedRestoredClient: restore did not load the client");
+  }
+  return rec;
+}
 
 describe("migrateVisUrlToMode", () => {
   it("global legacy visUrl (safe) → migrationSet(manual, url) + legacy object dropped", async () => {
@@ -764,9 +866,7 @@ describe("migrateVisUrlToMode", () => {
     const { internal, stub } = setup();
     internal.globalConfig = internal.makeGlobalConfig();
     internal.registry = internal.makeRegistry();
-    const rec = await internal.registry.identifyOrCreate(null, "10.0.0.1");
-    stub.states.set(`hassemu.0.clients.${rec.id}.visUrl`, { val: "http://client-old.local/", ack: true });
-    stub.objects.set(`hassemu.0.clients.${rec.id}.visUrl`, { type: "state" });
+    const rec = await seedRestoredClient(stub, internal, "http://client-old.local/");
 
     await migrateVisUrlToMode(internal as unknown as MigrationAdapter, internal.globalConfig, internal.registry);
 
@@ -784,9 +884,8 @@ describe("migrateVisUrlToMode", () => {
     const { internal, stub } = setup();
     internal.globalConfig = internal.makeGlobalConfig();
     internal.registry = internal.makeRegistry();
-    const rec = await internal.registry.identifyOrCreate(null, "10.0.0.2");
+    const rec = await seedRestoredClient(stub, internal, "data:text/html,x");
     const modeBefore = rec.mode;
-    stub.states.set(`hassemu.0.clients.${rec.id}.visUrl`, { val: "data:text/html,x", ack: true });
 
     await migrateVisUrlToMode(internal as unknown as MigrationAdapter, internal.globalConfig, internal.registry);
 
@@ -820,9 +919,7 @@ describe("migrateVisUrlToMode", () => {
     const { internal, stub } = setup();
     internal.globalConfig = internal.makeGlobalConfig();
     internal.registry = internal.makeRegistry();
-    const rec = await internal.registry.identifyOrCreate(null, "10.0.0.3");
-    stub.states.set(`hassemu.0.clients.${rec.id}.visUrl`, { val: "http://client-old.local/", ack: true });
-    stub.objects.set(`hassemu.0.clients.${rec.id}.visUrl`, { type: "state" });
+    const rec = await seedRestoredClient(stub, internal, "http://client-old.local/");
     const original = stub.setState.bind(stub);
     stub.setState = async (id, state) => {
       if (id === `clients.${rec.id}.mode` || id === `clients.${rec.id}.manualUrl`) {
@@ -1024,7 +1121,7 @@ describe("onStateChange routing", () => {
     await s.internal.onStateChange("hassemu.0.global.mode", { val: MODE_MANUAL, ack: false });
     const rec = await s.internal.registry!.identifyOrCreate(null, "10.0.0.1");
     rec.mode = MODE_GLOBAL;
-    expect(s.internal.globalConfig!.resolveUrlFor(rec)).toBe("http://gm.local/");
+    expect(resolveRedirect(rec, s.internal.globalConfig!.redirect)).toBe("http://gm.local/");
   });
 
   it("global.enabled write persists AND bulk-syncs all client modes", async () => {

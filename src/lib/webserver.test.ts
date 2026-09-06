@@ -27,6 +27,7 @@ vi.mock("@iobroker/adapter-core", async () => {
 });
 
 import { CLIENT_COOKIE, WebServer } from "./webserver";
+import type { HostnameResolver } from "./hostname-resolver";
 import { ClientRegistry } from "./client-registry";
 import { GlobalConfig } from "./global-config";
 import { COOKIE_MAX_AGE_S, MODE_MANUAL, HA_VERSION } from "./constants";
@@ -50,7 +51,13 @@ interface MockStore {
 
 interface MockAdapterApi {
   namespace: string;
-  log: { debug(m: string): void; info(m: string): void; warn(m: string): void; error(m: string): void };
+  log: {
+    silly(m: string): void;
+    debug(m: string): void;
+    info(m: string): void;
+    warn(m: string): void;
+    error(m: string): void;
+  };
   setInterval(cb: () => void, ms: number): ioBroker.Interval;
   clearInterval(h?: unknown): void;
   setTimeout(): undefined;
@@ -81,6 +88,7 @@ function createMockAdapter(namespace = "hassemu.0"): {
     return {
       namespace,
       log: {
+        silly: (m: string) => store.logs.push({ level: "silly", msg: m }),
         debug: (m: string) => store.logs.push({ level: "debug", msg: m }),
         info: (m: string) => store.logs.push({ level: "info", msg: m }),
         warn: (m: string) => store.logs.push({ level: "warn", msg: m }),
@@ -1294,6 +1302,61 @@ describe("WebServer", () => {
       await s["app"].close();
     });
 
+    it("repeats of the SAME landing answer do not pile up on debug (15s auto-refresh)", async () => {
+      // The landing page reloads every 15 s. Before this, each reload wrote two debug
+      // lines — ~11 500 a day per unconfigured display — all of them saying nothing had
+      // changed. Only the CHANGE is a debug line now; the steady state drops to silly,
+      // the same discipline /api/redirect_check has had since v1.32.0 (F1).
+      const { s, store } = await buildServer({ globalMode: null });
+      const first = await s.inject({ method: "GET", url: "/" });
+      const cookie = /hassemu_client=([^;]+)/.exec(first.headers["set-cookie"] as string)![1];
+      store.logs.length = 0;
+
+      for (let i = 0; i < 5; i++) {
+        await s.inject({ method: "GET", url: "/", headers: { cookie: `${CLIENT_COOKIE}=${cookie}` } });
+      }
+
+      const debugLanding = store.logs.filter(l => l.level === "debug" && l.msg.includes("→ landing"));
+      const sillyLanding = store.logs.filter(l => l.level === "silly" && l.msg.includes("→ landing"));
+      expect(debugLanding, "no repeated debug lines for an unchanged answer").to.have.lengthOf(0);
+      expect(sillyLanding, "the repeats are still traceable on silly").to.have.lengthOf(5);
+      await s.stop();
+    });
+
+    it("records the resolved URL on the display's own datapoint", async () => {
+      // `mode` shows the CHOICE; with mode='global' the user had to walk the chain by hand
+      // to learn where the display actually went. The adapter resolves it on every request
+      // anyway — now it writes it down, and only when it changed.
+      const { s, store } = await buildServer({ globalMode: "http://dash.test/" });
+      const first = await s.inject({ method: "GET", url: "/" });
+      const cookie = /hassemu_client=([^;]+)/.exec(first.headers["set-cookie"] as string)![1];
+      const id = [...store.objects.keys()]
+        .find(k => /clients\.[0-9a-f]{6}$/.test(k))!
+        .split(".")
+        .pop()!;
+
+      expect(store.states.get(`hassemu.0.clients.${id}.resolvedUrl`)?.val).to.equal("http://dash.test/");
+
+      // Unchanged answer → no further write.
+      store.states.delete(`hassemu.0.clients.${id}.resolvedUrl`);
+      await s.inject({ method: "GET", url: "/", headers: { cookie: `${CLIENT_COOKIE}=${cookie}` } });
+      expect(store.states.has(`hassemu.0.clients.${id}.resolvedUrl`)).to.equal(false);
+      await s.stop();
+    });
+
+    it("a CHANGED target is still a debug line on GET /", async () => {
+      const { s, store, g } = await buildServer({ globalMode: null });
+      const first = await s.inject({ method: "GET", url: "/" });
+      const cookie = /hassemu_client=([^;]+)/.exec(first.headers["set-cookie"] as string)![1];
+      store.logs.length = 0;
+      await g.handleModeWrite("http://dash.test/");
+
+      await s.inject({ method: "GET", url: "/", headers: { cookie: `${CLIENT_COOKIE}=${cookie}` } });
+
+      expect(store.logs.filter(l => l.level === "debug" && l.msg.includes("→ URL"))).to.have.lengthOf(1);
+      await s.stop();
+    });
+
     it("GET / landing page honours the ioBroker system language (de)", async () => {
       const { s, reg } = await buildServer({ globalMode: null, globalEnabled: false, systemLanguage: "de" });
 
@@ -1966,13 +2029,15 @@ describe("WebServer bindAddress / start-stop", () => {
       crypto.randomUUID(),
     );
     await s.start();
-    // Inject a marker as if a long-running reverse-DNS lookup were in-flight.
-    const access = s as unknown as { dnsInFlight: Set<string> };
-    access.dnsInFlight.add("203.0.113.42");
-    access.dnsInFlight.add("203.0.113.43");
-    expect(access.dnsInFlight.size).to.equal(2);
+    // Drive the REAL resolver: two lookups for unroutable TEST-NET-3 addresses that will
+    // never answer, so both are genuinely in flight when stop() runs. (The bookkeeping
+    // moved into HostnameResolver in v1.43.0; the guarantee is unchanged.)
+    const resolver = (s as unknown as { hostnames: HostnameResolver }).hostnames;
+    resolver.resolve({ id: "aaa111", cookie: crypto.randomUUID(), hasHostname: false }, "203.0.113.42");
+    resolver.resolve({ id: "bbb222", cookie: crypto.randomUUID(), hasHostname: false }, "203.0.113.43");
+    expect(resolver.inFlightCount).to.equal(2);
     await s.stop();
-    expect(access.dnsInFlight.size).to.equal(0);
+    expect(resolver.inFlightCount).to.equal(0);
   });
 
   // --- D6: Request-error log cooldown (v1.9.x) ---
@@ -2277,5 +2342,25 @@ describe("WebServer /api/websocket (v1.34.0)", () => {
     ws.send("x".repeat(70 * 1024));
     const [code] = (await once(ws, "close")) as [number, Buffer];
     expect(code).to.equal(1009); // 1009 = message too big
+  });
+
+  it("stops promptly even when a display no longer answers the close handshake", async () => {
+    // A display that lost power keeps the TCP connection but answers nothing. The
+    // plugin's preClose only SENDS a close frame and then waits — measured at 30 s
+    // (ws's closeTimeout) before this was fixed, while the host kills the process
+    // after common.stopTimeout. stop() must therefore terminate the sockets itself.
+    const ws = new WebSocket(wsUrl);
+    const col = wsCollector(ws);
+    await col.next(); // auth_required
+    ws.send(JSON.stringify({ type: "auth", access_token: TOKEN }));
+    await col.next(); // auth_ok — the socket is now a real, authenticated connection
+    // Stop reading: the peer will never answer the server's close frame.
+    (ws as unknown as { _socket: { pause(): void } })._socket.pause();
+
+    const started = Date.now();
+    await s.stop();
+    const elapsed = Date.now() - started;
+    expect(elapsed, `stop() took ${elapsed} ms`).to.be.lessThan(2000);
+    (ws as unknown as { terminate(): void }).terminate();
   });
 });

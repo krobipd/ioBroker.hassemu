@@ -8,7 +8,7 @@
  * are silently skipped.
  */
 
-import { coerceFiniteNumber, coerceString, coerceSafeUrl, isPlainObject } from "./coerce";
+import { coerceFiniteNumber, coerceSafeUrl, coerceString, isPlainObject } from "./coerce";
 import { getLocalIp, isWildcardBind } from "./network";
 import type { AdapterInterface, UrlStates } from "./types";
 
@@ -204,11 +204,47 @@ export class UrlDiscovery {
     // instance×2 Promise.all. Behaviour is identical for the common single-web-server
     // case; with several web instances it also makes the `skipped` order deterministic
     // (instance order) instead of completion-race order.
+    // Which VIS instances exist is read from the SAME instance list the web and aura
+    // sources are read from — `vis-2.0` / `vis.0` used to be hardcoded here, so a second
+    // VIS server contributed nothing, and an installation without VIS ran a doomed
+    // `readDirAsync` on every discovery pass. `vis.` does not match `vis-2.0`, so the two
+    // families stay apart. Sorted for a deterministic dropdown order across restarts.
+    const visInstances = (prefix: string): string[] =>
+      Array.from(crossRefs.keys())
+        .filter(n => n.startsWith(prefix))
+        .sort();
+    const vis2Instances = visInstances("vis-2.");
+    const vis1Instances = visInstances("vis.");
+    const showVis2Suffix = vis2Instances.length > 1;
+    const showVis1Suffix = vis1Instances.length > 1;
+
     for (const [shortName, native] of webInstances) {
       const labelSuffix = showWebSuffix ? ` (${shortName})` : "";
+      // I7 (v1.37.0) keeps the fan-out bounded: web instances stay sequential, the VIS
+      // lookups of ONE web instance run in parallel.
       await Promise.all([
-        this.addVisProjects(result, native, hostIp, "vis-2.0", "vis-2", `VIS-2${labelSuffix}`, skipped),
-        this.addVisProjects(result, native, hostIp, "vis.0", "vis", `VIS${labelSuffix}`, skipped),
+        ...vis2Instances.map(visName =>
+          this.addVisProjects(
+            result,
+            native,
+            hostIp,
+            visName,
+            "vis-2",
+            `VIS-2${showVis2Suffix ? ` (${visName})` : ""}${labelSuffix}`,
+            skipped,
+          ),
+        ),
+        ...vis1Instances.map(visName =>
+          this.addVisProjects(
+            result,
+            native,
+            hostIp,
+            visName,
+            "vis",
+            `VIS${showVis1Suffix ? ` (${visName})` : ""}${labelSuffix}`,
+            skipped,
+          ),
+        ),
       ]);
     }
 
@@ -322,8 +358,12 @@ export class UrlDiscovery {
       skipped.push({ adapter: adapterName, reason: "port-null" });
       return;
     }
+    // No `!` here: a null bind IS a wildcard bind (isWildcardBind returns true for it), so
+    // the fallback covers it — but the compiler cannot see that through the helper, and an
+    // assertion is a claim a reader has to verify by hand. `?? hostIp` states the same
+    // guarantee in a way the type system checks.
     const bindRaw = coerceString(native.bind);
-    const ip = isWildcardBind(bindRaw) ? hostIp : bindRaw!;
+    const ip = isWildcardBind(bindRaw) ? hostIp : (bindRaw ?? hostIp);
     const protocol = native.secure === true ? "https" : "http";
 
     let entries: unknown[] = [];

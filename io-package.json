@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.42.0",
+    "version": "1.43.0",
     "news": {
+      "1.43.0": {
+        "en": "Taking a display's choice back now reaches the display right away — until now it kept showing the dashboard it had until someone reloaded it by hand.",
+        "de": "Das Zurücknehmen der Auswahl erreicht das Display jetzt sofort — bisher zeigte es sein altes Dashboard weiter, bis jemand von Hand neu lud.",
+        "ru": "Отмена выбора теперь сразу доходит до дисплея — раньше он показывал старую панель, пока кто-нибудь не перезагружал страницу вручную.",
+        "pt": "Retirar a escolha chega agora imediatamente ao display — até agora ele continuava a mostrar o painel antigo até alguém recarregar à mão.",
+        "nl": "Het terugnemen van de keuze bereikt het display nu meteen — tot nu toe bleef het oude dashboard staan tot iemand handmatig herlaadde.",
+        "fr": "Annuler le choix atteint désormais l'écran immédiatement — jusqu'ici il gardait son ancien tableau de bord jusqu'à un rechargement manuel.",
+        "it": "Revocare la scelta ora raggiunge subito il display — finora restava sulla vecchia dashboard finché qualcuno non ricaricava a mano.",
+        "es": "Retirar la elección ahora llega de inmediato a la pantalla — hasta ahora seguía mostrando el panel antiguo hasta recargarlo a mano.",
+        "pl": "Cofnięcie wyboru dociera teraz od razu do wyświetlacza — dotąd pokazywał on stary pulpit, dopóki ktoś nie odświeżył go ręcznie.",
+        "uk": "Скасування вибору тепер одразу доходить до дисплея — досі він показував стару панель, доки хтось не перезавантажував її вручну.",
+        "zh-cn": "撤销选择现在会立即传达到显示器——此前它会一直显示旧的仪表板，直到有人手动重新加载。"
+      },
       "1.42.0": {
         "en": "A leftover setting from older versions is now removed from the instance completely instead of only being switched off — switched off, it stayed behind for good.",
         "de": "Eine Alt-Einstellung aus früheren Versionen wird jetzt vollständig aus der Instanz entfernt statt nur abgeschaltet — abgeschaltet blieb sie dauerhaft stehen.",
@@ -80,19 +93,6 @@
         "pl": "Porządki wewnętrzne. Bez zmian dla użytkownika.",
         "uk": "Внутрішнє прибирання. Без змін для користувачів.",
         "zh-cn": "内部清理。用户无可见变化。"
-      },
-      "1.38.0": {
-        "en": "Known displays are no longer re-created as new clients after an adapter restart — saved redirects and logins are kept, and no duplicate entries pile up.",
-        "de": "Bekannte Displays werden nach einem Adapter-Neustart nicht mehr als neue Clients neu angelegt — Weiterleitungen und Logins bleiben erhalten, keine Duplikate mehr.",
-        "ru": "Известные дисплеи больше не создаются заново как новые клиенты после перезапуска адаптера — перенаправления и входы сохраняются, дубликаты не накапливаются.",
-        "pt": "Os displays conhecidos deixam de ser recriados como novos clientes após reiniciar o adaptador — redirecionamentos e sessões são mantidos, sem duplicados.",
-        "nl": "Bekende displays worden na een herstart van de adapter niet meer opnieuw als nieuwe clients aangemaakt — doorverwijzingen en logins blijven behouden, geen duplicaten.",
-        "fr": "Les écrans connus ne sont plus recréés comme nouveaux clients après un redémarrage — redirections et connexions sont conservées, sans doublons.",
-        "it": "I display conosciuti non vengono più ricreati come nuovi client dopo il riavvio dell'adattatore — reindirizzamenti e accessi mantenuti, niente duplicati.",
-        "es": "Las pantallas conocidas ya no se recrean como nuevos clientes tras reiniciar el adaptador — se conservan redirecciones e inicios de sesión, sin duplicados.",
-        "pl": "Znane wyświetlacze nie są już tworzone na nowo jako nowi klienci po restarcie adaptera — przekierowania i logowania są zachowane, bez duplikatów.",
-        "uk": "Відомі дисплеї більше не створюються заново як нові клієнти після перезапуску адаптера — перенаправлення та входи зберігаються, без дублікатів.",
-        "zh-cn": "适配器重启后，已知显示器不再被重新创建为新客户端——重定向和登录得以保留，不再产生重复条目。"
       }
     },
     "plugins": {
@@ -157,6 +157,7 @@
     "tier": 3,
     "loglevel": "info",
     "mode": "daemon",
+    "stopTimeout": 2000,
     "type": "infrastructure",
     "compact": true,
     "connectionType": "local",
@@ -173,7 +174,8 @@
       {
         "admin": ">=8.0.11"
       }
-    ]
+    ],
+    "nogit": true
   },
   "encryptedNative": [
     "password"
@@ -283,17 +285,17 @@
       "type": "state",
       "common": {
         "name": {
-          "en": "Apply global URL to all clients",
-          "de": "Globale URL für alle Clients anwenden",
-          "ru": "Применять глобальный URL для всех клиентов",
-          "pt": "Aplicar URL global a todos os clientes",
-          "nl": "Globale URL toepassen op alle clients",
-          "fr": "Appliquer l’URL globale à tous les clients",
-          "it": "Applica URL globale a tutti i client",
-          "es": "Aplicar URL global a todos los clientes",
-          "pl": "Stosuj globalny URL do wszystkich klientów",
-          "uk": "Застосувати глобальний URL до всіх клієнтів",
-          "zh-cn": "将全局 URL 应用到所有客户端"
+          "en": "Apply the global URL to all displays",
+          "de": "Globale URL für alle Displays anwenden",
+          "ru": "Применять глобальный URL ко всем дисплеям",
+          "pt": "Aplicar a URL global a todos os displays",
+          "nl": "Globale URL toepassen op alle displays",
+          "fr": "Appliquer l’URL globale à tous les écrans",
+          "it": "Applica l’URL globale a tutti i display",
+          "es": "Aplicar la URL global a todas las pantallas",
+          "pl": "Stosuj globalny URL do wszystkich wyświetlaczy",
+          "uk": "Застосувати глобальний URL до всіх дисплеїв",
+          "zh-cn": "将全局 URL 应用到所有显示器"
         },
         "type": "boolean",
         "role": "switch.enable",
@@ -321,17 +323,17 @@
       "type": "state",
       "common": {
         "name": {
-          "en": "HA-server UUID (stable across restarts)",
-          "de": "HA-Server-UUID (bleibt über Neustarts hinweg)",
-          "ru": "UUID HA-сервера (стабилен при перезапусках)",
-          "pt": "UUID do servidor HA (estável entre reinícios)",
-          "nl": "HA-server UUID (stabiel over herstarts)",
-          "fr": "UUID du serveur HA (stable entre les redémarrages)",
-          "it": "UUID del server HA (stabile tra i riavvii)",
-          "es": "UUID del servidor HA (estable entre reinicios)",
-          "pl": "UUID serwera HA (stabilny między restartami)",
-          "uk": "UUID HA-сервера (стабільний між перезапусками)",
-          "zh-cn": "HA 服务器 UUID（重启后保持不变）"
+          "en": "HA-server UUID",
+          "de": "HA-Server-UUID",
+          "ru": "UUID HA-сервера",
+          "pt": "UUID do servidor HA",
+          "nl": "HA-server UUID",
+          "fr": "UUID du serveur HA",
+          "it": "UUID del server HA",
+          "es": "UUID del servidor HA",
+          "pl": "UUID serwera HA",
+          "uk": "UUID HA-сервера",
+          "zh-cn": "HA 服务器 UUID"
         },
         "desc": {
           "en": "Persistent UUID broadcast via mDNS and /api/discovery_info. Generated once on first start and re-used across restarts so HA-Clients don't treat each restart as a new server (which would invalidate cached identity, force re-onboarding and drop tokens).",

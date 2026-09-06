@@ -1,4 +1,5 @@
-import { coerceSafeUrl, decideLegacyVisMigration } from "./coerce";
+import { coerceSafeUrl } from "./coerce";
+import { decideLegacyVisMigration } from "./state-write-rules";
 import { MODE_MANUAL } from "./constants";
 import type { ClientRegistry } from "./client-registry";
 import type { GlobalConfig } from "./global-config";
@@ -21,7 +22,7 @@ export type MigrationAdapter = Pick<
   | "log"
   | "namespace"
   | "getForeignObjectAsync"
-  | "setForeignObjectAsync"
+  | "extendForeignObjectAsync"
   | "getStateAsync"
   | "setState"
   | "delObjectAsync"
@@ -33,19 +34,37 @@ export type MigrationAdapter = Pick<
  * path and the successfully-migrated path clean up identically. Best-effort:
  * failures only warn.
  *
+ * Two rules this obeys, both learned elsewhere in this adapter:
+ * - **Merge, never write the whole object.** Reading `system.adapter.<ns>` and writing it
+ *   back wholesale loses every change made to it in between (the admin saving the config
+ *   in the same second, another migration step). `extendForeignObjectAsync` touches only
+ *   the two keys; `null` is copied by the merge (`undefined` would be skipped) and makes
+ *   both keys falsy, which is all the migration reads them for.
+ * - **A write here restarts the instance.** Any change to the adapter's own instance object
+ *   makes js-controller restart it — the same mechanic `getOrCreateServerUuid` avoids by
+ *   using a state and `clearStopInstanceFlag` handles by aborting the start. So this
+ *   reports back whether it wrote, and `onReady` stops instead of binding a port in a
+ *   process that is going down.
+ *
  * @param adapter Adapter surface for object I/O + logging.
+ * @returns true when the instance object was changed — the caller must abort the start.
  */
-export async function cleanupLegacyNativeUrl(adapter: MigrationAdapter): Promise<void> {
+export async function cleanupLegacyNativeUrl(adapter: MigrationAdapter): Promise<boolean> {
   try {
     const id = `system.adapter.${adapter.namespace}`;
     const obj = await adapter.getForeignObjectAsync(id);
-    if (obj?.native) {
-      delete obj.native.defaultVisUrl;
-      delete obj.native.visUrl;
-      await adapter.setForeignObjectAsync(id, obj);
+    const native = obj?.native as { defaultVisUrl?: unknown; visUrl?: unknown } | undefined;
+    // Only write when a key is actually there — an unconditional write would restart
+    // the instance on every single start.
+    if (!native || (native.defaultVisUrl === undefined && native.visUrl === undefined)) {
+      return false;
     }
+    await adapter.extendForeignObjectAsync(id, { native: { defaultVisUrl: null, visUrl: null } });
+    adapter.log.info("Removed the legacy URL from the instance configuration — this instance restarts once");
+    return true;
   } catch (err) {
     adapter.log.warn(`Legacy config cleanup failed: ${String(err)}`);
+    return false;
   }
 }
 
@@ -58,16 +77,18 @@ export async function cleanupLegacyNativeUrl(adapter: MigrationAdapter): Promise
  * @param adapter      Adapter surface for state/object I/O + logging.
  * @param config       Instance config (read for the legacy `defaultVisUrl`/`visUrl`).
  * @param globalConfig Global config collaborator, or null if not yet constructed.
+ * @returns true when the instance object was rewritten and a restart is coming — the
+ *   caller must abort the start (see {@link cleanupLegacyNativeUrl}).
  */
 export async function migrateLegacyDefaultVisUrl(
   adapter: MigrationAdapter,
   config: AdapterConfig,
   globalConfig: GlobalConfig | null,
-): Promise<void> {
+): Promise<boolean> {
   const legacy = config as AdapterConfig & { defaultVisUrl?: string; visUrl?: string };
   const url = legacy.defaultVisUrl || legacy.visUrl;
   if (!url) {
-    return;
+    return false;
   }
   // Defensive: validiere die legacy-URL bevor wir sie nach `global.visUrl`
   // schreiben. Malicious-Werte (`javascript:`, `data:`) sollen nicht durch
@@ -77,8 +98,7 @@ export async function migrateLegacyDefaultVisUrl(
   const safe = coerceSafeUrl(url);
   if (!safe) {
     adapter.log.warn(`Migration: legacy global URL rejected as unsafe — please set global.manualUrl manually`);
-    await cleanupLegacyNativeUrl(adapter);
-    return;
+    return await cleanupLegacyNativeUrl(adapter);
   }
 
   adapter.log.info(`Migrating legacy URL configuration to the new model`);
@@ -110,10 +130,10 @@ export async function migrateLegacyDefaultVisUrl(
   if (!stateWritten) {
     // Both paths failed — keep native values as a recovery anchor for the user.
     adapter.log.warn(`Legacy URL preserved in instance config — neither global URL write succeeded`);
-    return;
+    return false;
   }
 
-  await cleanupLegacyNativeUrl(adapter);
+  return await cleanupLegacyNativeUrl(adapter);
 }
 
 /**
@@ -166,38 +186,54 @@ export async function migrateVisUrlToMode(
   }
 
   // 2) Per-client visUrl → mode='manual' + manualUrl
-  const records = registry?.listAll() ?? [];
-  for (const record of records) {
-    let clientMigrated = true;
-    let clientHadLegacy = false;
-    try {
-      const legacy = await adapter.getStateAsync(`clients.${record.id}.visUrl`);
-      const decision = decideLegacyVisMigration(legacy?.val);
-      clientHadLegacy = decision.kind !== "empty";
-      if (decision.kind === "safe-url") {
-        record.mode = MODE_MANUAL;
-        record.manualUrl = decision.safe;
-        await adapter.setState(`clients.${record.id}.mode`, { val: MODE_MANUAL, ack: true });
-        await adapter.setState(`clients.${record.id}.manualUrl`, { val: decision.safe, ack: true });
-        adapter.log.info(`Migration: client ${record.id} URL "${decision.safe}" moved to manualUrl`);
-      } else if (decision.kind === "unsafe-rejected") {
-        adapter.log.warn(`Migration: client ${record.id} legacy URL rejected as unsafe — please set the URL manually`);
-      }
-    } catch (err) {
-      // Same as the global block: a write failure must not delete the legacy
-      // source — keep clients.<id>.visUrl as a recovery anchor + warn. v1.36.0 (C5).
-      clientMigrated = false;
-      adapter.log.warn(`Migration: client ${record.id} URL move failed — legacy visUrl preserved (${String(err)})`);
-    }
-    // I5: as for the global block — skip the delete when there was no legacy value.
-    if (clientMigrated && clientHadLegacy) {
-      try {
-        await adapter.delObjectAsync(`clients.${record.id}.visUrl`);
-      } catch {
-        /* didn't exist */
-      }
-    }
+  //
+  // The legacy values come from the registry's restore pass, which read them in the
+  // batch it runs for every client anyway. Before that, this block asked the broker for
+  // `clients.<id>.visUrl` once per client on EVERY start — sequentially, and answered
+  // `null` every time on any installation migrated since v1.2.0. Now an already-migrated
+  // install does nothing here at all, and the rare real migration runs its clients in
+  // parallel like every other per-client pass in the adapter.
+  const legacyByClient = registry?.takeLegacyVisUrls() ?? new Map<string, unknown>();
+  if (legacyByClient.size === 0) {
+    return;
   }
+  const byId = new Map((registry?.listAll() ?? []).map(r => [r.id, r]));
+  await Promise.all(
+    [...legacyByClient].map(async ([id, rawValue]) => {
+      const record = byId.get(id);
+      if (!record) {
+        return;
+      }
+      let clientMigrated = true;
+      const decision = decideLegacyVisMigration(rawValue);
+      if (decision.kind === "empty") {
+        return;
+      }
+      try {
+        if (decision.kind === "safe-url") {
+          record.mode = MODE_MANUAL;
+          record.manualUrl = decision.safe;
+          await adapter.setState(`clients.${id}.mode`, { val: MODE_MANUAL, ack: true });
+          await adapter.setState(`clients.${id}.manualUrl`, { val: decision.safe, ack: true });
+          adapter.log.info(`Migration: client ${id} URL "${decision.safe}" moved to manualUrl`);
+        } else {
+          adapter.log.warn(`Migration: client ${id} legacy URL rejected as unsafe — please set the URL manually`);
+        }
+      } catch (err) {
+        // Same as the global block: a write failure must not delete the legacy
+        // source — keep clients.<id>.visUrl as a recovery anchor + warn. v1.36.0 (C5).
+        clientMigrated = false;
+        adapter.log.warn(`Migration: client ${id} URL move failed — legacy visUrl preserved (${String(err)})`);
+      }
+      if (clientMigrated) {
+        try {
+          await adapter.delObjectAsync(`clients.${id}.visUrl`);
+        } catch {
+          /* didn't exist */
+        }
+      }
+    }),
+  );
 
   // 3) global.mode + global.manualUrl repair handled by repairGlobalSchemas()
   // (called separately in onReady so it ALSO runs for users upgrading from

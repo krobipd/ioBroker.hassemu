@@ -144,12 +144,43 @@ export const NEW_CLIENT_WINDOW_MS = 60 * 60 * 1000;
 export const NEW_CLIENT_BURST_WARN_THRESHOLD = 3;
 
 /**
+ * Schema/text revision of the per-client objects (`clients.<id>` + its four states),
+ * stamped into `clients.<id>.native.objectsVersion`.
+ *
+ * Why a stamp at all: since v1.41.0 `ensureObjects` refreshed `.manualUrl`, `.ip`,
+ * `.remove` and the `.mode` name with an unconditional `extendObject` on EVERY start for
+ * EVERY client — four broker calls per display per start (120 on a 30-display farm), each
+ * one a write plus an objectChange fan-out, to deliver a text that changes maybe once a
+ * year. The adapter avoids exactly this churn in four other places (I4, I6, L1, the
+ * lastSeen throttle); this restores that rule here without giving up the delivery
+ * guarantee that v1.41.0 was built for.
+ *
+ * **Bump this whenever a per-client object's name, desc, role, type or def changes** —
+ * that is what makes the new text reach installations that already have the objects.
+ * Existence is NOT gated by it: a client object deleted in the object browser is still
+ * re-created on the next start, the stamp only skips the text REFRESH.
+ */
+export const CLIENT_OBJECTS_VERSION = 2;
+
+/**
  * Resolver-Sentinels für `client.mode` und `global.mode`. `'global'` heißt:
  * delegate an `global.mode`. `'manual'` heißt: nutze die zugehörige
  * `manualUrl`-State. Jeder andere String wird als URL interpretiert.
  */
 export const MODE_GLOBAL = "global";
 export const MODE_MANUAL = "manual";
+
+/**
+ * "No choice yet" — the key of the `0 = '---'` dropdown entry, and since v1.43.0 the ONE
+ * representation of that meaning: in the state, in the dropdown and in memory.
+ *
+ * It used to be `""` in memory but `"0"` in the state, so `bulkSetMode`'s "skip when
+ * unchanged" check compared `"" === "0"` and wrote anyway — a pointless object write per
+ * client every time the master switch was turned off. I19 (v1.37.0) unified the stored
+ * value; this constant unifies the in-memory one. `isNoChoice` stays lenient for values
+ * restored from older installs.
+ */
+export const NO_CHOICE = "0";
 
 /**
  * Timeout for one reachability probe of the redirect target (v1.39.0). Short on

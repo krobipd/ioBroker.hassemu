@@ -3,12 +3,14 @@ import { join } from "node:path";
 import { I18n } from "@iobroker/adapter-core";
 import * as utils from "@iobroker/adapter-core";
 import { ClientRegistry, parseClientStateId } from "./lib/client-registry";
-import { coerceUuid, decideGcAction } from "./lib/coerce";
-import { MODE_GLOBAL, STALE_CLIENT_TTL_MS } from "./lib/constants";
+import { coerceUuid } from "./lib/coerce";
+import { decideGcAction } from "./lib/state-write-rules";
+import { MODE_GLOBAL, NO_CHOICE, STALE_CLIENT_TTL_MS } from "./lib/constants";
 import { GlobalConfig, parseGlobalStateId } from "./lib/global-config";
 import { tName } from "./lib/i18n";
 import { migrateLegacyDefaultVisUrl, migrateVisUrlToMode } from "./lib/legacy-migration";
 import { MDNSService } from "./lib/mdns";
+import { resolveRedirect } from "./lib/redirect-resolver";
 import { type InstanceObjectSchema, repairGlobalSchemas } from "./lib/schema-repair";
 import { isUrlSourceAdapterEvent, UrlDiscovery, type UrlStatesListener } from "./lib/url-discovery";
 import { WebServer } from "./lib/webserver";
@@ -152,7 +154,13 @@ export class HassEmu extends utils.Adapter {
       // idempotent (cheap no-op on already-migrated installs). Removable in a
       // future major once pre-1.2.0 upgrades are no longer plausible — until then
       // dropping them would silently break those upgrade paths.
-      await migrateLegacyDefaultVisUrl(this, this.config, this.globalConfig);
+      // Dropping the legacy keys writes this instance's own object, which makes the host
+      // restart us — so stop here exactly like clearStopInstanceFlag does, instead of
+      // binding a port in a process that is already going down. Only ever true on a
+      // pre-1.1.1 upgrade, and only once.
+      if (await migrateLegacyDefaultVisUrl(this, this.config, this.globalConfig)) {
+        return;
+      }
       // globalConfig was constructed + restored above (control-flow keeps it non-null
       // here), so it satisfies migrateVisUrlToMode's non-null contract — its writes
       // have no null-safe fallback, unlike the nullable registry. L5.
@@ -392,7 +400,7 @@ export class HassEmu extends utils.Adapter {
             role: "state",
             read: true,
             write: true,
-            def: "0",
+            def: NO_CHOICE,
           },
           native: {},
         }),
@@ -463,7 +471,7 @@ export class HassEmu extends utils.Adapter {
     if (this.globalConfig?.isEnabled()) {
       return MODE_GLOBAL;
     }
-    return "0";
+    return NO_CHOICE;
   }
 
   /**
@@ -560,7 +568,7 @@ export class HassEmu extends utils.Adapter {
     // zeigt jedes Display die Landing-Page (statt automatisch auf irgendeine
     // discovered URL umzuswitchen, die der User vielleicht gar nicht meinte).
     this.log.debug(`applyMasterSwitch: enabled=false → propagating mode='0' (no-choice) to all clients`);
-    await this.registry.bulkSetMode("0");
+    await this.registry.bulkSetMode(NO_CHOICE);
   }
 
   private async onStateChange(id: string, state: ioBroker.State | null | undefined): Promise<void> {
@@ -581,7 +589,7 @@ export class HassEmu extends utils.Adapter {
           // give them a one-shot heads-up so the cause of the empty redirect
           // is obvious without digging through the resolver code.
           const record = registry.getById(clientParsed.id);
-          if (record?.mode === MODE_GLOBAL && globalConfig?.resolveUrlFor(record) === null) {
+          if (record?.mode === MODE_GLOBAL && globalConfig && resolveRedirect(record, globalConfig.redirect) === null) {
             this.log.warn(
               `Client ${record.id}: mode is "global" but global has no resolvable URL — fill global.mode/manualUrl, or pick a different mode`,
             );

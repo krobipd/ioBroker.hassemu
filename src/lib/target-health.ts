@@ -1,6 +1,6 @@
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
-import { evictOldest } from "./coerce";
+import { evictOldest } from "./object-utils";
 import { TARGET_HEALTH_CACHE_CAP, TARGET_PROBE_CACHE_MS, TARGET_PROBE_TIMEOUT_MS } from "./constants";
 import type { AdapterInterface } from "./types";
 

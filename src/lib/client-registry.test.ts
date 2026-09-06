@@ -26,8 +26,10 @@ vi.mock("@iobroker/adapter-core", async () => {
 
 import { ClientRegistry, parseClientStateId } from "./client-registry";
 import {
+  CLIENT_OBJECTS_VERSION,
   GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW,
   MODE_GLOBAL,
+  NO_CHOICE,
   MODE_MANUAL,
   NEW_CLIENT_THROTTLE_PER_HOUR,
   NEW_CLIENT_WINDOW_MS,
@@ -684,7 +686,11 @@ describe("ClientRegistry", () => {
     it("accepts empty string (clears mode)", async () => {
       rec.mode = MODE_GLOBAL;
       await registry.handleModeWrite(rec.id, "");
-      expect(rec.mode).to.equal("");
+      // "0" in memory as well as in the state since v1.43.0 — one representation for one
+      // meaning. Two of them made bulkSetMode's "skip when unchanged" compare "" to "0"
+      // and write anyway, once per client every time the master switch went off.
+      expect(rec.mode).to.equal(NO_CHOICE);
+      expect(store.states.get(`hassemu.0.clients.${rec.id}.mode`)?.val).to.equal(NO_CHOICE);
     });
 
     it("rejects javascript: URL and restores previous value", async () => {
@@ -1462,12 +1468,28 @@ describe("ClientRegistry name/description reach existing clients (v1.41.0)", () 
   const textOf = (name: unknown): unknown =>
     name !== null && typeof name === "object" ? (name as Record<string, string>).en : name;
 
+  /**
+   * Put a client's objects into the state an installation from BEFORE the text change is
+   * in: the objects exist, but their revision stamp is older than the current one. That —
+   * not a freshly created client — is the situation the delivery guarantee is about.
+   *
+   * @param built             Mock adapter bundle.
+   * @param built.store        Its object/state store.
+   * @param built.store.objects The object map the stamp is aged in.
+   * @param id                 Client id whose stamp should be aged.
+   */
+  const ageObjectsVersion = (built: { store: { objects: Map<string, ObjEntry> } }, id: string): void => {
+    const container = built.store.objects.get(`hassemu.0.clients.${id}`)!;
+    container.native = { ...(container.native ?? {}), objectsVersion: 1 };
+  };
+
   it("brings the current name to an EXISTING .ip that still has the old one", async () => {
     const built = createMockAdapter();
     const reg = new ClientRegistry(built.adapter as never);
     const rec = await reg.identifyOrCreate(null, "10.0.0.7");
     // Simulate the tree of an installation created before the rename.
     built.store.objects.get(`hassemu.0.clients.${rec.id}.ip`)!.common = { name: "Client IP" };
+    ageObjectsVersion(built, rec.id);
 
     const reg2 = new ClientRegistry(built.adapter as never);
     await reg2.restore();
@@ -1480,6 +1502,7 @@ describe("ClientRegistry name/description reach existing clients (v1.41.0)", () 
     const reg = new ClientRegistry(built.adapter as never);
     const rec = await reg.identifyOrCreate(null, "10.0.0.8");
     built.store.objects.get(`hassemu.0.clients.${rec.id}.remove`)!.common = { name: "Forget this client" };
+    ageObjectsVersion(built, rec.id);
 
     await new ClientRegistry(built.adapter as never).restore();
 
@@ -1493,6 +1516,7 @@ describe("ClientRegistry name/description reach existing clients (v1.41.0)", () 
     const reg = new ClientRegistry(built.adapter as never);
     const rec = await reg.identifyOrCreate(null, "10.0.0.9");
     built.store.objects.get(`hassemu.0.clients.${rec.id}.manualUrl`)!.common = { name: "STALE" };
+    ageObjectsVersion(built, rec.id);
 
     await new ClientRegistry(built.adapter as never).restore();
 
@@ -1509,10 +1533,100 @@ describe("ClientRegistry name/description reach existing clients (v1.41.0)", () 
     const rec = await reg.identifyOrCreate(null, "10.0.0.10");
     const modeObj = built.store.objects.get(`hassemu.0.clients.${rec.id}.mode`)!;
     modeObj.common = { ...modeObj.common, name: "STALE MODE" };
+    ageObjectsVersion(built, rec.id);
 
     await new ClientRegistry(built.adapter as never).restore();
 
     expect(textOf(built.store.objects.get(`hassemu.0.clients.${rec.id}.mode`)?.common?.name)).to.equal("Redirect mode");
+  });
+
+  it("re-stamps the revision so the refresh happens once, not on every start", async () => {
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never);
+    const rec = await reg.identifyOrCreate(null, "10.0.0.12");
+    ageObjectsVersion(built, rec.id);
+
+    await new ClientRegistry(built.adapter as never).restore();
+
+    expect(built.store.objects.get(`hassemu.0.clients.${rec.id}`)?.native?.objectsVersion).to.equal(
+      CLIENT_OBJECTS_VERSION,
+    );
+  });
+
+  it("writes NOTHING for a client whose objects already carry the current revision", async () => {
+    // v1.41.0 refreshed .manualUrl / .ip / .remove / .mode-name unconditionally: four
+    // broker calls per display per start, each a write plus an objectChange fan-out, for
+    // a text that changes about once a year. The stamp restores the adapter's own rule
+    // (I4/I6/L1) without giving up delivery — see the four tests above.
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never);
+    const rec = await reg.identifyOrCreate(null, "10.0.0.13");
+    // First restore brings the stamp up to date.
+    await new ClientRegistry(built.adapter as never).restore();
+
+    const writes: string[] = [];
+    const realExtend = built.adapter.extendObject;
+    (built.adapter as { extendObject: typeof realExtend }).extendObject = (id, obj, options) => {
+      writes.push(id);
+      return realExtend(id, obj, options);
+    };
+
+    await new ClientRegistry(built.adapter as never).restore();
+
+    // The registry addresses its own objects WITHOUT the namespace prefix — filtering on
+    // prefixed ids would match nothing and the test would pass no matter what.
+    const perClientTextWrites = writes.filter(id =>
+      [
+        `clients.${rec.id}.manualUrl`,
+        `clients.${rec.id}.ip`,
+        `clients.${rec.id}.remove`,
+        `clients.${rec.id}.mode`,
+        `clients.${rec.id}`,
+      ].includes(id),
+    );
+    expect(perClientTextWrites, `unexpected writes: ${perClientTextWrites.join(", ")}`).to.deep.equal([]);
+  });
+
+  it("creates the read-only resolvedUrl datapoint for every display", async () => {
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never);
+    const rec = await reg.identifyOrCreate(null, "10.0.0.20");
+    const obj = built.store.objects.get(`hassemu.0.clients.${rec.id}.resolvedUrl`);
+    expect(obj, "resolvedUrl object missing").to.not.be.undefined;
+    expect(obj?.common?.role).to.equal("url");
+    expect(obj?.common?.write).to.equal(false);
+  });
+
+  it("writes the resolved URL and clears it for the landing page", async () => {
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never);
+    const rec = await reg.identifyOrCreate(null, "10.0.0.21");
+
+    await reg.setResolvedUrl(rec.id, "http://dash.test/");
+    expect(built.store.states.get(`hassemu.0.clients.${rec.id}.resolvedUrl`)?.val).to.equal("http://dash.test/");
+
+    await reg.setResolvedUrl(rec.id, null);
+    expect(built.store.states.get(`hassemu.0.clients.${rec.id}.resolvedUrl`)?.val).to.equal("");
+  });
+
+  it("writes no resolvedUrl for a transient (throttled) record — it owns no objects", async () => {
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never);
+    await reg.setResolvedUrl("ghost1", "http://dash.test/");
+    expect(built.store.states.has("hassemu.0.clients.ghost1.resolvedUrl")).to.equal(false);
+  });
+
+  it("still RE-CREATES a per-client object somebody deleted, current revision or not", async () => {
+    // The stamp gates the text REFRESH, never the existence guarantee.
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never);
+    const rec = await reg.identifyOrCreate(null, "10.0.0.14");
+    await new ClientRegistry(built.adapter as never).restore(); // stamp is current now
+    built.store.objects.delete(`hassemu.0.clients.${rec.id}.ip`);
+
+    await new ClientRegistry(built.adapter as never).restore();
+
+    expect(built.store.objects.has(`hassemu.0.clients.${rec.id}.ip`), ".ip was re-created").to.equal(true);
   });
 
   it("keeps the mode dropdown out of the name refresh", async () => {

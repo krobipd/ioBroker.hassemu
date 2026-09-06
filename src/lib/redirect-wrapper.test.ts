@@ -24,7 +24,7 @@ vi.mock("@iobroker/adapter-core", async () => {
   };
 });
 
-import { renderRedirectWrapper } from "./redirect-wrapper";
+import { decidePollAction, renderRedirectWrapper } from "./redirect-wrapper";
 
 describe("redirect-wrapper", () => {
   describe("renderRedirectWrapper", () => {
@@ -149,14 +149,13 @@ describe("redirect-wrapper", () => {
         expect(html).to.include("Geräte-ID");
       });
 
-      it("polling JS reacts to targetReachable: threshold 2 to show, reload on recovery", () => {
+      it("ships the decision function itself into the page (no hand-written twin)", () => {
         const html = renderRedirectWrapper("https://x.test/", "a1b2c3", "en");
         expect(html).to.include("var TARGET_THRESHOLD=2");
-        expect(html).to.include("j.targetReachable===false");
-        expect(html).to.include("targetFails++");
+        // The page calls the very function the tests below execute.
+        expect(html).to.include("var decide=");
+        expect(html).to.include("decide({current:current,body:j,targetFails:targetFails,");
         expect(html).to.include("showTargetDown");
-        // Recovery path is a FULL reload (a dead-loaded iframe never retries itself).
-        expect(html).to.include("if(targetDownVisible()){");
       });
 
       it("hassemu-down recovery does NOT unhide the iframe while the target card is visible", () => {
@@ -184,6 +183,113 @@ describe("redirect-wrapper", () => {
         expect(html).not.to.include('"><img src=x');
         expect(html).to.include("&quot;&gt;&lt;img");
       });
+    });
+  });
+
+  // The poll decision RUN, not string-matched. Before this suite existed the logic
+  // lived only inside the page template, so no test ever executed it — which is how
+  // the null-target defect below survived five audits.
+  describe("decidePollAction", () => {
+    const base = {
+      current: "https://a.test/",
+      body: {} as unknown,
+      targetFails: 0,
+      targetThreshold: 2,
+      targetDownVisible: false,
+    };
+
+    it("reloads when the target changed to a different URL", () => {
+      const r = decidePollAction({ ...base, body: { target: "https://b.test/", targetReachable: true } });
+      expect(r.action).to.equal("reload");
+    });
+
+    it("reloads when the target is WITHDRAWN (mode '---' / master switch off)", () => {
+      // The server answers `{target:null, targetReachable:true}` once the resolver has
+      // nothing to resolve. Before v1.43.0 this was silently ignored and the display
+      // kept showing its old dashboard forever.
+      const r = decidePollAction({ ...base, body: { target: null, targetReachable: true } });
+      expect(r.action).to.equal("reload");
+    });
+
+    it("reloads when the target is withdrawn even while the target-down card is up", () => {
+      const r = decidePollAction({
+        ...base,
+        body: { target: null, targetReachable: true },
+        targetDownVisible: true,
+      });
+      expect(r.action).to.equal("reload");
+    });
+
+    it("does nothing while the target is unchanged and reachable", () => {
+      const r = decidePollAction({ ...base, body: { target: "https://a.test/", targetReachable: true } });
+      expect(r).to.deep.equal({ action: "none", targetFails: 0 });
+    });
+
+    it("does NOT reload on a body without a target key (a proxy error page must not loop)", () => {
+      for (const body of [{}, { targetReachable: true }, null, "nope", 42, []]) {
+        const r = decidePollAction({ ...base, body });
+        expect(r.action, JSON.stringify(body)).to.equal("none");
+      }
+    });
+
+    it("counts consecutive unreachable answers and shows the card at the threshold", () => {
+      const first = decidePollAction({ ...base, body: { target: "https://a.test/", targetReachable: false } });
+      expect(first).to.deep.equal({ action: "none", targetFails: 1 });
+      const second = decidePollAction({
+        ...base,
+        body: { target: "https://a.test/", targetReachable: false },
+        targetFails: first.targetFails,
+      });
+      expect(second).to.deep.equal({ action: "show-target-down", targetFails: 2 });
+    });
+
+    it("keeps the card up while the target stays unreachable", () => {
+      const r = decidePollAction({
+        ...base,
+        body: { target: "https://a.test/", targetReachable: false },
+        targetFails: 5,
+        targetDownVisible: true,
+      });
+      expect(r).to.deep.equal({ action: "show-target-down", targetFails: 6 });
+    });
+
+    it("reloads on the first recovery so the dead iframe is re-created", () => {
+      const r = decidePollAction({
+        ...base,
+        body: { target: "https://a.test/", targetReachable: true },
+        targetFails: 2,
+        targetDownVisible: true,
+      });
+      expect(r).to.deep.equal({ action: "reload", targetFails: 0 });
+    });
+
+    it("resets the counter after a single reachable answer below the threshold", () => {
+      const r = decidePollAction({
+        ...base,
+        body: { target: "https://a.test/", targetReachable: true },
+        targetFails: 1,
+      });
+      expect(r).to.deep.equal({ action: "none", targetFails: 0 });
+    });
+
+    it("treats an empty-string target like a withdrawn one", () => {
+      const r = decidePollAction({ ...base, body: { target: "", targetReachable: true } });
+      expect(r.action).to.equal("reload");
+    });
+  });
+
+  // The copy in the page must be the SAME function, not a hand-written twin — that
+  // drift is what let the page and its tests disagree for five audits.
+  describe("serialised decision in the page", () => {
+    it("embeds the module's own function verbatim", () => {
+      const html = renderRedirectWrapper("https://a.test/", "a1b2c3", "en");
+      expect(html).to.include(`var decide=${decidePollAction.toString()};`);
+    });
+
+    it("carries no second, hand-written copy of the old inline logic", () => {
+      const html = renderRedirectWrapper("https://a.test/", "a1b2c3", "en");
+      expect(html).not.to.include("j.targetReachable===false");
+      expect(html).not.to.include("typeof j.target==='string'");
     });
   });
 });

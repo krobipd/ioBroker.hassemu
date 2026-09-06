@@ -23,6 +23,7 @@ vi.mock("@iobroker/adapter-core", async () => {
 });
 
 import { GlobalConfig, parseGlobalStateId } from "./global-config";
+import { resolveRedirect } from "./redirect-resolver";
 import { MODE_GLOBAL, MODE_MANUAL } from "./constants";
 import type { ClientRecord } from "./types";
 
@@ -167,7 +168,7 @@ describe("GlobalConfig", () => {
       await g.restore();
       const rec = makeRecord({ mode: MODE_GLOBAL });
       // empty global.mode → resolveGlobalMode returns null
-      expect(g.resolveUrlFor(rec)).to.be.null;
+      expect(resolveRedirect(rec, g.redirect)).to.be.null;
       expect(g.isEnabled()).to.be.false;
     });
 
@@ -178,7 +179,7 @@ describe("GlobalConfig", () => {
       await g.restore();
       const rec = makeRecord({ mode: MODE_GLOBAL });
       // global.mode='manual' delegates to global.manualUrl
-      expect(g.resolveUrlFor(rec)).to.equal("http://vis.local/");
+      expect(resolveRedirect(rec, g.redirect)).to.equal("http://vis.local/");
       expect(g.isEnabled()).to.be.true;
     });
 
@@ -186,7 +187,7 @@ describe("GlobalConfig", () => {
       store.states.set("hassemu.0.global.mode", { val: "http://direct/", ack: true });
       await g.restore();
       const rec = makeRecord({ mode: MODE_GLOBAL });
-      expect(g.resolveUrlFor(rec)).to.equal("http://direct/");
+      expect(resolveRedirect(rec, g.redirect)).to.equal("http://direct/");
     });
 
     it("ignores unsafe persisted manualUrl", async () => {
@@ -195,7 +196,7 @@ describe("GlobalConfig", () => {
       store.states.set("hassemu.0.global.manualUrl", { val: "javascript:alert(1)", ack: true });
       await g.restore();
       const rec = makeRecord({ mode: MODE_GLOBAL });
-      expect(g.resolveUrlFor(rec)).to.be.null;
+      expect(resolveRedirect(rec, g.redirect)).to.be.null;
     });
 
     it("treats non-boolean enabled as false", async () => {
@@ -208,50 +209,50 @@ describe("GlobalConfig", () => {
   describe("resolveUrlFor — delegate via record.mode", () => {
     it("returns client manualUrl when mode='manual'", () => {
       const rec = makeRecord({ mode: MODE_MANUAL, manualUrl: "http://m/" });
-      expect(g.resolveUrlFor(rec)).to.equal("http://m/");
+      expect(resolveRedirect(rec, g.redirect)).to.equal("http://m/");
     });
 
     it("returns null when mode='manual' but manualUrl empty", () => {
       const rec = makeRecord({ mode: MODE_MANUAL, manualUrl: null });
-      expect(g.resolveUrlFor(rec)).to.be.null;
+      expect(resolveRedirect(rec, g.redirect)).to.be.null;
     });
 
     it("returns the URL when mode is a URL string", () => {
       const rec = makeRecord({ mode: "http://direct/" });
-      expect(g.resolveUrlFor(rec)).to.equal("http://direct/");
+      expect(resolveRedirect(rec, g.redirect)).to.equal("http://direct/");
     });
 
     it("returns null when mode is empty", () => {
       const rec = makeRecord({ mode: "" });
-      expect(g.resolveUrlFor(rec)).to.be.null;
+      expect(resolveRedirect(rec, g.redirect)).to.be.null;
     });
 
     it("returns null when mode is the no-choice sentinel '0' (default for new clients ≥ v1.26.0)", () => {
       const rec = makeRecord({ mode: "0" });
-      expect(g.resolveUrlFor(rec)).to.be.null;
+      expect(resolveRedirect(rec, g.redirect)).to.be.null;
     });
 
     it("delegates to global when mode='global' (URL value)", async () => {
       await g.handleModeWrite("http://global/");
       const rec = makeRecord({ mode: MODE_GLOBAL });
-      expect(g.resolveUrlFor(rec)).to.equal("http://global/");
+      expect(resolveRedirect(rec, g.redirect)).to.equal("http://global/");
     });
 
     it("delegates to global manualUrl when mode='global' and global.mode='manual'", async () => {
       await g.handleManualUrlWrite("http://gm/");
       await g.handleModeWrite(MODE_MANUAL);
       const rec = makeRecord({ mode: MODE_GLOBAL });
-      expect(g.resolveUrlFor(rec)).to.equal("http://gm/");
+      expect(resolveRedirect(rec, g.redirect)).to.equal("http://gm/");
     });
 
     it("returns null when mode='global' but global has nothing usable", () => {
       const rec = makeRecord({ mode: MODE_GLOBAL });
-      expect(g.resolveUrlFor(rec)).to.be.null;
+      expect(resolveRedirect(rec, g.redirect)).to.be.null;
     });
 
     it("returns null for unknown / garbage mode value", () => {
       const rec = makeRecord({ mode: "something-weird" });
-      expect(g.resolveUrlFor(rec)).to.be.null;
+      expect(resolveRedirect(rec, g.redirect)).to.be.null;
     });
   });
 
@@ -310,12 +311,15 @@ describe("GlobalConfig", () => {
       expect(warn).to.not.be.undefined;
     });
 
-    it("rejects non-string non-zero numbers", async () => {
+    it("rejects non-string non-zero numbers — on debug, like the client path", async () => {
       await g.handleModeWrite(42);
       // mode stays unchanged → state is reverted to current value (0 by default)
       expect(modeVal()).to.equal("0");
-      const warn = store.logs.find(l => l.level === "warn" && l.msg.includes("non-string"));
-      expect(warn).to.not.be.undefined;
+      // A non-string mode write is UI echo, not a server concern (G7 v1.18.0). The client
+      // handler has logged it on debug since then; the global one used to warn about the
+      // very same event — one cause, two levels.
+      expect(store.logs.find(l => l.level === "warn" && l.msg.includes("non-string"))).to.be.undefined;
+      expect(store.logs.find(l => l.level === "debug" && l.msg.includes("non-string"))).to.not.be.undefined;
     });
   });
 

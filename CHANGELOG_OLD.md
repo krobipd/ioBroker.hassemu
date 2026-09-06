@@ -1,4 +1,9 @@
 # Older Changes
+
+## 1.38.2 (2026-08-27) — stable
+
+- Fixed: Stopping or restarting the adapter was cut short — the instance stayed marked as connected and displays kept looking for a server that was already gone.
+
 ## 1.38.1 (2026-08-22)
 
 - Changed: Internal cleanup. No user-facing changes.
