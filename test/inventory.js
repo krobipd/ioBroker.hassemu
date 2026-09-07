@@ -9,7 +9,10 @@
 // Suite 2 "upgrade from the previous release" (only when INVENTORY_PREVIOUS is
 //   set — pre-release.py exports the last tag's inventory): seed the previous
 //   objects BEFORE start, start, feed, then assert that every object carries the
-//   current name/desc/role/type/unit and that removed objects are gone.
+//   current name/desc/role/type/unit and that removed objects are gone. The seed
+//   un-normalises the two fields the dump flattens (`lastSeen`, `cookie`) — see
+//   reviveSeededClient; without that the suite measures freshly created objects
+//   and can prove nothing about an existing installation.
 //
 // hassemu-specific: the adapter IS an HTTP server, so the fixtures are HTTP requests
 // carrying a display's cookie — the same path a real Shelly Wall Display takes. The
@@ -98,17 +101,27 @@ async function waitForServer(timeoutMs) {
  * `display-N` keys in fixture order, so the inventory stays byte-identical across runs.
  * The random segment is per-installation noise, not object structure.
  *
+ * `knownCookies` is what separates the two suites. Suite 1 passes nothing: every display
+ * makes a cookieless first contact and IS new. Suite 2 passes the cookies it seeded, so
+ * each display comes back as the display that is already in the tree — the only way the
+ * run reaches the "objects already exist" path the revision stamp gates.
+ *
  * @param {import("@iobroker/testing").TestHarness} harness
+ * @param {Record<string, string>} knownCookies stable inventory id → cookie to come back with
  * @returns {Promise<Record<string, string>>} adapter-minted id → stable inventory id
  */
-async function feedFixtures(harness) {
+async function feedFixtures(harness, knownCookies = {}) {
   await waitForServer(30000);
   const idMap = {};
   for (const [index, display] of FIXTURES.displays.entries()) {
-    const first = await get("/", null);
-    assert.ok(first.cookie, `display ${display.id}: adapter set no cookie`);
-    const realId = await findClientIdByCookie(harness, first.cookie);
-    idMap[realId] = `display-${index + 1}`;
+    const stableId = `display-${index + 1}`;
+    const known = knownCookies[stableId] ?? null;
+    const first = await get("/", known);
+    // A recognised display gets no new Set-Cookie — its identity is the one we sent.
+    const cookie = known ?? first.cookie;
+    assert.ok(cookie, `display ${stableId}: adapter set no cookie`);
+    const realId = await findClientIdByCookie(harness, cookie);
+    idMap[realId] = stableId;
 
     await harness.states.setStateAsync(`${NS}clients.${realId}.mode`, { val: display.mode, ack: false });
     if (display.manualUrl) {
@@ -119,8 +132,8 @@ async function feedFixtures(harness) {
     }
     // Let the state handlers land before the display comes back.
     await new Promise(r => setTimeout(r, 400));
-    await get("/", first.cookie);
-    await get("/api/redirect_check", first.cookie);
+    await get("/", cookie);
+    await get("/api/redirect_check", cookie);
   }
   // Give the fire-and-forget object writes (lastSeen, auto-name) a moment to land.
   await new Promise(r => setTimeout(r, 1500));
@@ -142,6 +155,47 @@ async function findClientIdByCookie(harness, cookie) {
     }
   }
   throw new Error(`no client object carries cookie ${cookie}`);
+}
+
+/**
+ * Is this id a `clients.<id>` container (the display itself, not one of its states)?
+ *
+ * @param {string} id Full object id.
+ * @returns {boolean} True for exactly `<adapter>.0.clients.<id>`.
+ */
+function isClientContainer(id) {
+  return id.startsWith(`${NS}clients.`) && id.split(".").length === 4;
+}
+
+/**
+ * Undo, for ONE seeded display, the two normalisations {@link dumpObjects} applies —
+ * without them the upgrade suite proves nothing (measured 2026-09-07):
+ *
+ * * `lastSeen` is written as a FIXED 2023-11-14, which is far past the 30-day TTL, so
+ *   `gcStaleClients` deletes every seeded display at start ("Removed 3 inactive
+ *   client(s)"). Nothing of the previous release survives to be measured.
+ * * every cookie is collapsed to ONE constant, so the seeded displays share an identity
+ *   and the fixtures cannot come back AS one of them. They would mint new ids, and a
+ *   freshly created object always carries the current texts — which is why a forgotten
+ *   CLIENT_OBJECTS_VERSION bump passed this suite green.
+ *
+ * @param {Record<string, unknown>} obj    The seeded object from the previous inventory.
+ * @param {string} cookie                  The identity this display comes back with.
+ * @returns {Record<string, unknown>} The object to seed.
+ */
+function reviveSeededClient(obj, cookie) {
+  return { ...obj, native: { ...(obj.native ?? {}), cookie, lastSeen: Date.now() } };
+}
+
+/**
+ * A distinct cookie per seeded display. Any UUID `coerceUuid` accepts will do — a
+ * channel whose cookie does not parse is deleted as an orphan by `restore()`.
+ *
+ * @param {number} index Position among the seeded displays.
+ * @returns {string} `00000000-0000-4000-8000-<index+1 padded>`.
+ */
+function seededCookie(index) {
+  return `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`;
 }
 
 /**
@@ -231,6 +285,15 @@ tests.integration(ADAPTER_DIR, {
         let harness;
         let idMap = {};
         const previous = JSON.parse(fs.readFileSync(previousFile, "utf8"));
+        // One cookie per seeded display, in inventory order — the identity the fixtures
+        // come back with, so the adapter RESTORES these displays instead of minting new
+        // ones. See reviveSeededClient for why the seeded values cannot be used as-is.
+        const cookieByDisplay = Object.fromEntries(
+          Object.keys(previous)
+            .filter(isClientContainer)
+            .sort()
+            .map((id, i) => [id.substring(`${NS}clients.`.length), seededCookie(i)]),
+        );
         before(async function () {
           this.timeout(120000);
           harness = getHarness();
@@ -241,10 +304,30 @@ tests.integration(ADAPTER_DIR, {
           // upgrade an existing installation actually performs. The harness's own
           // before() runs ahead of this one, so the seed survives into the start.
           for (const [id, obj] of Object.entries(previous)) {
-            await harness.objects.setObjectAsync(id, obj);
+            const shortId = id.substring(`${NS}clients.`.length);
+            await harness.objects.setObjectAsync(
+              id,
+              isClientContainer(id) ? reviveSeededClient(obj, cookieByDisplay[shortId]) : obj,
+            );
           }
           await harness.startAdapterAndWait();
-          idMap = await feedFixtures(harness);
+          idMap = await feedFixtures(harness, cookieByDisplay);
+        });
+
+        it("restores the seeded displays instead of creating new ones", function () {
+          // The guard that keeps this suite from going blind. A display that comes back
+          // without its cookie gets a NEW id, and every object under it is freshly
+          // created — freshly created objects always carry the current texts, so the
+          // comparison below would pass whatever the adapter does to an installation
+          // that already exists. That is the only thing this suite is for.
+          const created = Object.entries(idMap)
+            .filter(([realId, stableId]) => realId !== stableId)
+            .map(([realId, stableId]) => `${stableId} came back as ${realId}`);
+          assert.deepStrictEqual(
+            created,
+            [],
+            `the run created new displays instead of restoring the seeded ones — this suite would measure nothing:\n${created.join("\n")}`,
+          );
         });
 
         it("every current object carries the current texts and roles", async function () {
