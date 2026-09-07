@@ -43,6 +43,7 @@
   "clientResolvedUrlDesc": "The URL this display was last sent to. Empty means it shows the landing page.",
   "clientIp": "Display IP",
   "clientRemove": "Forget this display",
+  "clientRemoveDesc": "Write true to delete this display's folder and all its states — on its next request it reappears as a new entry showing the landing page.",
   "serverUuidDesc": "Persistent UUID broadcast via mDNS and /api/discovery_info. Generated once on first start and re-used across restarts so HA-Clients don't treat each restart as a new server (which would invalidate cached identity, force re-onboarding and drop tokens).",
   "refreshUrlsDesc": "Write true to re-scan the broker for VIS/VIS-2 projects, Admin tiles and other discovered URLs. Useful after creating a new VIS view without restarting the adapter.",
   "globalUrl": "Global URL",

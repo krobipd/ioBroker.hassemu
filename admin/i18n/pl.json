@@ -43,6 +43,7 @@
   "clientResolvedUrlDesc": "URL, do którego ten wyświetlacz został ostatnio wysłany. Puste oznacza stronę startową.",
   "clientIp": "IP wyświetlacza",
   "clientRemove": "Zapomnij ten wyświetlacz",
+  "clientRemoveDesc": "Wpisz true, aby usunąć folder tego wyświetlacza wraz ze wszystkimi stanami — przy następnym żądaniu pojawi się ponownie jako nowy wpis ze stroną startową.",
   "serverUuidDesc": "Trwały UUID rozgłaszany przez mDNS i /api/discovery_info. Generowany raz przy pierwszym starcie i ponownie używany przy restartach, aby klienci HA nie traktowali każdego restartu jako nowego serwera.",
   "refreshUrlsDesc": "Wpisz true, aby ponownie przeszukać broker pod kątem projektów VIS/VIS-2, kafelków Admin i innych URL. Przydatne po utworzeniu nowego widoku VIS bez restartu adaptera.",
   "globalUrl": "Globalny URL",

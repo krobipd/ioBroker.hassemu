@@ -1,0 +1,4 @@
+{
+  "info.connection": "The name states it: the server is running. There is nothing behind it to explain.",
+  "clients.*.ip": "The IP the display was last seen at — the name is the whole fact."
+}

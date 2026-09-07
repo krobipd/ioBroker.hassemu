@@ -1150,7 +1150,15 @@ export class ClientRegistry {
       ],
       [
         `clients.${id}.remove`,
-        { name: tName("clientRemove"), type: "boolean", role: "button", read: false, write: true, def: false },
+        {
+          name: tName("clientRemove"),
+          desc: tName("clientRemoveDesc"),
+          type: "boolean",
+          role: "button",
+          read: false,
+          write: true,
+          def: false,
+        },
       ],
     ];
 

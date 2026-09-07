@@ -43,6 +43,7 @@
   "clientResolvedUrlDesc": "De URL waarheen dit display het laatst is gestuurd. Leeg betekent dat het de startpagina toont.",
   "clientIp": "Display-IP",
   "clientRemove": "Dit display vergeten",
+  "clientRemoveDesc": "Schrijf true om de map van dit display en al zijn datapunten te verwijderen — bij het volgende verzoek verschijnt het weer als een nieuw item met de startpagina.",
   "serverUuidDesc": "Persistente UUID die via mDNS en /api/discovery_info wordt uitgezonden. Wordt eenmaal gegenereerd bij de eerste start en blijft over herstarts behouden zodat HA-clients elke herstart niet als nieuwe server zien.",
   "refreshUrlsDesc": "Schrijf true om de broker opnieuw te scannen op VIS/VIS-2-projecten, admin-tegels en andere URLs. Handig na het aanmaken van een nieuwe VIS-view zonder de adapter te herstarten.",
   "globalUrl": "Globale URL",

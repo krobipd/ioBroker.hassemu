@@ -80,6 +80,7 @@ describe("i18n completeness", () => {
       "clientManualUrl",
       "clientIp",
       "clientRemove",
+      "clientRemoveDesc",
       "serverUuidDesc",
       "refreshUrlsDesc",
       "globalUrl",

@@ -43,6 +43,7 @@
   "clientResolvedUrlDesc": "A URL para onde este display foi enviado pela última vez. Vazio significa que mostra a página inicial.",
   "clientIp": "IP do display",
   "clientRemove": "Esquecer este display",
+  "clientRemoveDesc": "Escreve true para eliminar a pasta deste display e todos os seus estados — no pedido seguinte volta a aparecer como uma nova entrada com a página inicial.",
   "serverUuidDesc": "UUID persistente difundido via mDNS e /api/discovery_info. Gerado uma vez no primeiro arranque e reutilizado entre reinícios para que os clientes HA não tratem cada reinício como um novo servidor.",
   "refreshUrlsDesc": "Escreve true para voltar a procurar projetos VIS/VIS-2, mosaicos Admin e outros URLs no broker. Útil após criar uma nova view VIS sem reiniciar o adaptador.",
   "globalUrl": "URL global",

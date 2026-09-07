@@ -43,6 +43,7 @@
   "clientResolvedUrlDesc": "Die URL, zu der dieses Display zuletzt geschickt wurde. Leer heißt: es zeigt die Startseite.",
   "clientIp": "Display-IP",
   "clientRemove": "Dieses Display entfernen",
+  "clientRemoveDesc": "Auf true setzen, um den Ordner dieses Displays samt aller Datenpunkte zu löschen — bei der nächsten Anfrage taucht es als neuer Eintrag mit der Startseite wieder auf.",
   "serverUuidDesc": "Persistente UUID, broadcastet via mDNS und /api/discovery_info. Wird beim ersten Start einmal erzeugt und über Neustarts hinweg wiederverwendet, sodass HA-Clients nicht jeden Neustart als neuen Server behandeln (was die gecachte Identität ungültig machen, Re-Onboarding erzwingen und Tokens verwerfen würde).",
   "refreshUrlsDesc": "Auf true setzen, um den Broker nach VIS/VIS-2-Projekten, Admin-Kacheln und weiteren URLs neu zu durchsuchen. Sinnvoll nach Anlegen einer neuen VIS-View ohne Adapter-Neustart.",
   "globalUrl": "Globale URL",

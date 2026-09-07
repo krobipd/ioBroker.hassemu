@@ -43,6 +43,7 @@
   "clientResolvedUrlDesc": "L'URL vers laquelle cet écran a été envoyé en dernier. Vide signifie qu'il affiche la page d'accueil.",
   "clientIp": "IP de l'écran",
   "clientRemove": "Oublier cet écran",
+  "clientRemoveDesc": "Écrivez true pour supprimer le dossier de cet écran et tous ses états — à sa prochaine requête, il réapparaît comme une nouvelle entrée affichant la page d'accueil.",
   "serverUuidDesc": "UUID persistant diffusé via mDNS et /api/discovery_info. Généré une fois au premier démarrage et réutilisé entre redémarrages, ainsi les clients HA ne traitent pas chaque redémarrage comme un nouveau serveur.",
   "refreshUrlsDesc": "Écrivez true pour ré-analyser le broker à la recherche de projets VIS/VIS-2, de tuiles Admin et d’autres URL. Utile après la création d’une nouvelle vue VIS sans redémarrer l’adaptateur.",
   "globalUrl": "URL globale",

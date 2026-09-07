@@ -160,7 +160,7 @@ export const NEW_CLIENT_BURST_WARN_THRESHOLD = 3;
  * Existence is NOT gated by it: a client object deleted in the object browser is still
  * re-created on the next start, the stamp only skips the text REFRESH.
  */
-export const CLIENT_OBJECTS_VERSION = 2;
+export const CLIENT_OBJECTS_VERSION = 3;
 
 /**
  * Resolver-Sentinels für `client.mode` und `global.mode`. `'global'` heißt:

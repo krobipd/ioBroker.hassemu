@@ -39,7 +39,7 @@
     "native": {
       "cookie": "00000000-0000-4000-8000-000000000000",
       "token": null,
-      "objectsVersion": 2,
+      "objectsVersion": 3,
       "lastSeen": 1700000000000
     },
     "_id": "hassemu.0.clients.display-1"
@@ -166,6 +166,19 @@
         "uk": "Забути цей дисплей",
         "zh-cn": "忘记此显示器"
       },
+      "desc": {
+        "de": "Auf true setzen, um den Ordner dieses Displays samt aller Datenpunkte zu löschen — bei der nächsten Anfrage taucht es als neuer Eintrag mit der Startseite wieder auf.",
+        "en": "Write true to delete this display's folder and all its states — on its next request it reappears as a new entry showing the landing page.",
+        "es": "Escribe true para eliminar la carpeta de esta pantalla y todos sus estados — en su siguiente petición reaparece como una entrada nueva con la página de inicio.",
+        "fr": "Écrivez true pour supprimer le dossier de cet écran et tous ses états — à sa prochaine requête, il réapparaît comme une nouvelle entrée affichant la page d'accueil.",
+        "it": "Scrivi true per eliminare la cartella di questo display e tutti i suoi stati — alla richiesta successiva ricompare come nuova voce con la pagina iniziale.",
+        "nl": "Schrijf true om de map van dit display en al zijn datapunten te verwijderen — bij het volgende verzoek verschijnt het weer als een nieuw item met de startpagina.",
+        "pl": "Wpisz true, aby usunąć folder tego wyświetlacza wraz ze wszystkimi stanami — przy następnym żądaniu pojawi się ponownie jako nowy wpis ze stroną startową.",
+        "pt": "Escreve true para eliminar a pasta deste display e todos os seus estados — no pedido seguinte volta a aparecer como uma nova entrada com a página inicial.",
+        "ru": "Запишите true, чтобы удалить папку этого дисплея со всеми его состояниями — при следующем запросе он снова появится как новая запись со стартовой страницей.",
+        "uk": "Запишіть true, щоб видалити теку цього дисплея з усіма його станами — при наступному запиті він знову з'явиться як новий запис зі стартовою сторінкою.",
+        "zh-cn": "写入 true 以删除此显示器的文件夹及其所有数据点 — 在下次请求时它会作为新条目重新出现并显示起始页。"
+      },
       "type": "boolean",
       "role": "button",
       "read": false,
@@ -233,7 +246,7 @@
     "native": {
       "cookie": "00000000-0000-4000-8000-000000000000",
       "token": null,
-      "objectsVersion": 2,
+      "objectsVersion": 3,
       "lastSeen": 1700000000000
     },
     "_id": "hassemu.0.clients.display-2"
@@ -360,6 +373,19 @@
         "uk": "Забути цей дисплей",
         "zh-cn": "忘记此显示器"
       },
+      "desc": {
+        "de": "Auf true setzen, um den Ordner dieses Displays samt aller Datenpunkte zu löschen — bei der nächsten Anfrage taucht es als neuer Eintrag mit der Startseite wieder auf.",
+        "en": "Write true to delete this display's folder and all its states — on its next request it reappears as a new entry showing the landing page.",
+        "es": "Escribe true para eliminar la carpeta de esta pantalla y todos sus estados — en su siguiente petición reaparece como una entrada nueva con la página de inicio.",
+        "fr": "Écrivez true pour supprimer le dossier de cet écran et tous ses états — à sa prochaine requête, il réapparaît comme une nouvelle entrée affichant la page d'accueil.",
+        "it": "Scrivi true per eliminare la cartella di questo display e tutti i suoi stati — alla richiesta successiva ricompare come nuova voce con la pagina iniziale.",
+        "nl": "Schrijf true om de map van dit display en al zijn datapunten te verwijderen — bij het volgende verzoek verschijnt het weer als een nieuw item met de startpagina.",
+        "pl": "Wpisz true, aby usunąć folder tego wyświetlacza wraz ze wszystkimi stanami — przy następnym żądaniu pojawi się ponownie jako nowy wpis ze stroną startową.",
+        "pt": "Escreve true para eliminar a pasta deste display e todos os seus estados — no pedido seguinte volta a aparecer como uma nova entrada com a página inicial.",
+        "ru": "Запишите true, чтобы удалить папку этого дисплея со всеми его состояниями — при следующем запросе он снова появится как новая запись со стартовой страницей.",
+        "uk": "Запишіть true, щоб видалити теку цього дисплея з усіма його станами — при наступному запиті він знову з'явиться як новий запис зі стартовою сторінкою.",
+        "zh-cn": "写入 true 以删除此显示器的文件夹及其所有数据点 — 在下次请求时它会作为新条目重新出现并显示起始页。"
+      },
       "type": "boolean",
       "role": "button",
       "read": false,
@@ -427,7 +453,7 @@
     "native": {
       "cookie": "00000000-0000-4000-8000-000000000000",
       "token": null,
-      "objectsVersion": 2,
+      "objectsVersion": 3,
       "lastSeen": 1700000000000
     },
     "_id": "hassemu.0.clients.display-3"
@@ -553,6 +579,19 @@
         "ru": "Забыть этот дисплей",
         "uk": "Забути цей дисплей",
         "zh-cn": "忘记此显示器"
+      },
+      "desc": {
+        "de": "Auf true setzen, um den Ordner dieses Displays samt aller Datenpunkte zu löschen — bei der nächsten Anfrage taucht es als neuer Eintrag mit der Startseite wieder auf.",
+        "en": "Write true to delete this display's folder and all its states — on its next request it reappears as a new entry showing the landing page.",
+        "es": "Escribe true para eliminar la carpeta de esta pantalla y todos sus estados — en su siguiente petición reaparece como una entrada nueva con la página de inicio.",
+        "fr": "Écrivez true pour supprimer le dossier de cet écran et tous ses états — à sa prochaine requête, il réapparaît comme une nouvelle entrée affichant la page d'accueil.",
+        "it": "Scrivi true per eliminare la cartella di questo display e tutti i suoi stati — alla richiesta successiva ricompare come nuova voce con la pagina iniziale.",
+        "nl": "Schrijf true om de map van dit display en al zijn datapunten te verwijderen — bij het volgende verzoek verschijnt het weer als een nieuw item met de startpagina.",
+        "pl": "Wpisz true, aby usunąć folder tego wyświetlacza wraz ze wszystkimi stanami — przy następnym żądaniu pojawi się ponownie jako nowy wpis ze stroną startową.",
+        "pt": "Escreve true para eliminar a pasta deste display e todos os seus estados — no pedido seguinte volta a aparecer como uma nova entrada com a página inicial.",
+        "ru": "Запишите true, чтобы удалить папку этого дисплея со всеми его состояниями — при следующем запросе он снова появится как новая запись со стартовой страницей.",
+        "uk": "Запишіть true, щоб видалити теку цього дисплея з усіма його станами — при наступному запиті він знову з'явиться як новий запис зі стартовою сторінкою.",
+        "zh-cn": "写入 true 以删除此显示器的文件夹及其所有数据点 — 在下次请求时它会作为新条目重新出现并显示起始页。"
       },
       "type": "boolean",
       "role": "button",

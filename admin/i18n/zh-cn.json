@@ -43,6 +43,7 @@
   "clientResolvedUrlDesc": "此显示器最后被送往的 URL。为空表示显示起始页。",
   "clientIp": "显示器 IP",
   "clientRemove": "忘记此显示器",
+  "clientRemoveDesc": "写入 true 以删除此显示器的文件夹及其所有数据点 — 在下次请求时它会作为新条目重新出现并显示起始页。",
   "serverUuidDesc": "通过 mDNS 和 /api/discovery_info 广播的持久 UUID。首次启动时生成一次，重启之间复用，避免 HA 客户端每次重启都视为新服务器。",
   "refreshUrlsDesc": "写入 true 以重新扫描 broker 上的 VIS/VIS-2 项目、Admin 瓷贴和其他 URL。在不重启适配器的情况下创建新 VIS 视图后很有用。",
   "globalUrl": "全局 URL",
