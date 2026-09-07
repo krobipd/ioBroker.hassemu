@@ -188,6 +188,10 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     ### **WORK IN PROGRESS**
 -->
 
+### 1.43.1 (2026-09-07)
+
+- Changed: the button that removes a display now carries a description — it deletes the display's folder and all its states, and the display returns as a new entry on its next request
+
 ### 1.43.0 (2026-09-06)
 
 - Fixed: taking a display's choice back (mode `---`, or turning the master switch off) now reaches the display — until now it kept the dashboard it had until someone reloaded it by hand
@@ -211,11 +215,6 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 ### 1.40.0 (2026-09-02)
 
 - Fixed: with trustProxy enabled but no sanitising reverse proxy in front, a single device could create unlimited display entries — a global ceiling now caps this
-
-### 1.39.0 (2026-09-01)
-
-- New: Displays show a "Redirect target not reachable" card with the target URL instead of a black screen when the configured dashboard is down — also right when the display starts
-- New: Once the target answers again, the display reloads its dashboard automatically — no manual reload or display restart needed
 
 [Older changelogs can be found there](CHANGELOG_OLD.md)
 

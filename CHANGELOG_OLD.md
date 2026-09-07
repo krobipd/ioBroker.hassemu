@@ -1,5 +1,10 @@
 # Older Changes
 
+## 1.39.0 (2026-09-01)
+
+- New: Displays show a "Redirect target not reachable" card with the target URL instead of a black screen when the configured dashboard is down — also right when the display starts
+- New: Once the target answers again, the display reloads its dashboard automatically — no manual reload or display restart needed
+
 ## 1.38.2 (2026-08-27) — stable
 
 - Fixed: Stopping or restarting the adapter was cut short — the instance stayed marked as connected and displays kept looking for a server that was already gone.

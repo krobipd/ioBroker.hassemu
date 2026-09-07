@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.43.0",
+    "version": "1.43.1",
     "news": {
+      "1.43.1": {
+        "en": "The button that removes a display now carries a description: it deletes the display's folder and all its states, and the display returns as a new entry.",
+        "de": "Der Knopf zum Entfernen eines Displays trägt jetzt eine Beschreibung: Er löscht dessen Ordner samt aller Datenpunkte, das Display kehrt als neuer Eintrag zurück.",
+        "ru": "Кнопка удаления дисплея теперь имеет описание: она удаляет его папку со всеми состояниями, а дисплей возвращается как новая запись.",
+        "pt": "O botão que remove um display passa a ter uma descrição: apaga a pasta dele e todos os seus estados, e o display volta como uma nova entrada.",
+        "nl": "De knop om een display te verwijderen heeft nu een beschrijving: hij wist de map en alle datapunten, en het display komt terug als een nieuw item.",
+        "fr": "Le bouton qui supprime un écran porte désormais une description : il efface son dossier et tous ses états, et l'écran revient comme une nouvelle entrée.",
+        "it": "Il pulsante che rimuove un display ora ha una descrizione: elimina la sua cartella e tutti i suoi stati, e il display torna come una nuova voce.",
+        "es": "El botón que elimina una pantalla ahora tiene una descripción: borra su carpeta y todos sus estados, y la pantalla vuelve como una entrada nueva.",
+        "pl": "Przycisk usuwający wyświetlacz ma teraz opis: kasuje jego folder i wszystkie stany, a wyświetlacz wraca jako nowy wpis przy kolejnym żądaniu.",
+        "uk": "Кнопка видалення дисплея тепер має опис: вона стирає його теку й усі стани, а дисплей повертається як новий запис при наступному запиті.",
+        "zh-cn": "移除显示器的按钮现在带有说明：它会删除该显示器的文件夹及其所有数据点，之后该显示器会作为新条目重新出现。"
+      },
       "1.43.0": {
         "en": "Taking a display's choice back now reaches the display right away — until now it kept showing the dashboard it had until someone reloaded it by hand.",
         "de": "Das Zurücknehmen der Auswahl erreicht das Display jetzt sofort — bisher zeigte es sein altes Dashboard weiter, bis jemand von Hand neu lud.",
@@ -80,19 +93,6 @@
         "pl": "Zatrzymanie lub restart adaptera był przerywany — instancja pozostawała oznaczona jako połączona, a wyświetlacze wciąż szukały serwera, którego już nie było.",
         "uk": "Зупинка або перезапуск адаптера обривалися — екземпляр залишався позначеним як під'єднаний, а дисплеї далі шукали сервер, якого вже не було.",
         "zh-cn": "停止或重启适配器时过程被中断——实例仍显示为已连接，显示设备继续寻找一台已经不存在的服务器。"
-      },
-      "1.38.1": {
-        "en": "Internal cleanup. No user-facing changes.",
-        "de": "Interne Aufräumarbeiten. Keine Änderungen für Nutzer.",
-        "ru": "Внутренняя очистка. Изменений для пользователей нет.",
-        "pt": "Limpeza interna. Sem alterações para o utilizador.",
-        "nl": "Interne opschoning. Geen wijzigingen voor gebruikers.",
-        "fr": "Nettoyage interne. Aucun changement pour l'utilisateur.",
-        "it": "Pulizia interna. Nessuna modifica per gli utenti.",
-        "es": "Limpieza interna. Sin cambios para el usuario.",
-        "pl": "Porządki wewnętrzne. Bez zmian dla użytkownika.",
-        "uk": "Внутрішнє прибирання. Без змін для користувачів.",
-        "zh-cn": "内部清理。用户无可见变化。"
       }
     },
     "plugins": {
