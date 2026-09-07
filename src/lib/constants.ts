@@ -159,6 +159,12 @@ export const NEW_CLIENT_BURST_WARN_THRESHOLD = 3;
  * that is what makes the new text reach installations that already have the objects.
  * Existence is NOT gated by it: a client object deleted in the object browser is still
  * re-created on the next start, the stamp only skips the text REFRESH.
+ *
+ * A forgotten bump is caught by the upgrade suite in `test/inventory.js` — but only since
+ * v1.43.1: before that it seeded the previous inventory verbatim, so the normalised
+ * `lastSeen` (2023) made `gcStaleClients` delete every seeded display at start and the
+ * fixtures measured their own freshly created objects, which always carry the current
+ * texts. Measured by reverting this constant: the suite stayed green.
  */
 export const CLIENT_OBJECTS_VERSION = 3;
 
