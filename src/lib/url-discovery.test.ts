@@ -485,6 +485,28 @@ describe("UrlDiscovery", () => {
       expect(result["http://192.168.1.10:8082/vis-2/index.html?attic"]).to.equal("VIS-2 (vis-2.1): attic");
     });
 
+    it("ignores a DISABLED web instance: no entries on its port, no (web.N) suffix, named in the skip list", async () => {
+      // Audit 2026-09-15 (A2): a disabled second web instance (a test instance, an old
+      // port) contributed VIS entries that sent a display to a port nobody listens on,
+      // and its mere existence put an instance suffix on every label.
+      adapter._instances = {
+        "system.adapter.web.0": enabledInstance({ native: { bind: "192.168.1.10", port: 8082 } }),
+        "system.adapter.web.1": { common: { enabled: false }, native: { bind: "192.168.1.10", port: 8099 } },
+      };
+      adapter._dirs["vis-2.0"] = [{ file: "main", isDir: true }];
+
+      const result = await discovery.collect();
+
+      expect(result["http://192.168.1.10:8082/vis-2/index.html?main"]).to.equal("VIS-2: main");
+      expect(
+        Object.keys(result).some(k => k.includes(":8099/")),
+        "entries on the dead port",
+      ).to.be.false;
+      const summary = adapter._logs.find(l => l.includes("skipped:"));
+      expect(summary, "discovery summary names the disabled instance").to.include("web.1=disabled");
+      expect(summary!.split("web.1=disabled")).to.have.lengthOf(2);
+    });
+
     it("does not probe VIS at all when no vis instance exists", async () => {
       // Without an instance there is nothing to read — the old code fired a doomed
       // readDirAsync("vis-2.0") on every single discovery pass.
@@ -784,6 +806,17 @@ describe("UrlDiscovery", () => {
         };
         const result = await discovery.collect();
         expect(Object.values(result)).to.not.include("Aura");
+      });
+
+      it("a disabled second aura instance earns the running one no (aura.X) suffix", async () => {
+        // Audit 2026-09-15 (A2/N1): the suffix used to be decided on the instance count
+        // BEFORE the enabled-filter, so one disabled instance relabelled the live one.
+        adapter._instances = {
+          "system.adapter.aura.0": enabledInstance({ native: { port: 8095, secure: false, customUrl: "" } }),
+          "system.adapter.aura.1": { common: { enabled: false }, native: { port: 8096, secure: false } },
+        };
+        const result = await discovery.collect();
+        expect(Object.values(result)).to.deep.equal(["Aura"]);
       });
 
       it("does not also emit the aura backend `#/admin` URL via the generic localLinks path", async () => {

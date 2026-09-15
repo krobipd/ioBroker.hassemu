@@ -171,8 +171,8 @@ export class GlobalConfig {
     if (coerced === null) {
       // L9: a non-boolean write (a script setting 1 or "true") must not silently
       // flip the master switch off — revert to the current value + warn, like the
-      // mode-write rejects. main.ts reads isEnabled() afterwards, so an unchanged
-      // value bulk-syncs to a no-op.
+      // mode-write rejects. main.ts compares isEnabled() before and after this call
+      // and propagates only a transition, so the reverted value reaches no display.
       this.adapter.log.warn(`global.enabled rejected — non-boolean value`);
       await this.adapter.setState("global.enabled", { val: this.enabled, ack: true });
       return;

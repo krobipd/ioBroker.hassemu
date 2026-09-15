@@ -608,10 +608,16 @@ export class HassEmu extends utils.Adapter {
         } else if (globalParsed === "manualUrl") {
           await globalConfig.handleManualUrlWrite(state.val);
         } else if (globalParsed === "enabled") {
+          // Only a TRANSITION propagates to the displays. bulkSetMode compares every
+          // client with the target mode, not the master switch with its previous value —
+          // so a write of the same value (a script re-asserting `true` every morning) or
+          // a rejected non-boolean write used to reset every display's own choice to
+          // 'global' / '---' (audit 2026-09-15, A1). Design decision 7: "toggling".
+          const wasEnabled = globalConfig.isEnabled();
           await globalConfig.handleEnabledWrite(state.val);
-          // A non-boolean write reverts (no change), so bulkSetMode sees an unchanged
-          // value and no-ops — harmless. A real toggle propagates.
-          await this.applyMasterSwitch(globalConfig.isEnabled());
+          if (globalConfig.isEnabled() !== wasEnabled) {
+            await this.applyMasterSwitch(globalConfig.isEnabled());
+          }
         }
         // I7 (v1.38.0): every global.* write is fully handled here — return so it
         // can't fall through to the info.refreshUrls check (symmetry with the client

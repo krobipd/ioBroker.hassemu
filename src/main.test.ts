@@ -1138,6 +1138,36 @@ describe("onStateChange routing", () => {
     expect(rec.mode).toBe("0");
   });
 
+  // Audit 2026-09-15 (A1): only a TRANSITION of the master switch may touch the displays.
+  // bulkSetMode compares every client with the target mode, so before the fix a write of
+  // the same value — a script re-asserting `true` every morning — wiped every display's own
+  // choice. These two run through onStateChange on purpose: handleEnabledWrite alone was
+  // always fine, the orchestration in main.ts was the defect.
+  it("re-writing global.enabled with the SAME value leaves every display's own choice alone", async () => {
+    const s = await readySetup();
+    await s.internal.onStateChange("hassemu.0.global.enabled", { val: true, ack: false });
+    const rec = await s.internal.registry!.identifyOrCreate(null, "10.0.0.1");
+    rec.mode = "http://own.local/";
+
+    await s.internal.onStateChange("hassemu.0.global.enabled", { val: true, ack: false });
+
+    expect(s.internal.globalConfig!.isEnabled()).toBe(true);
+    expect(rec.mode).toBe("http://own.local/");
+  });
+
+  it("a rejected non-boolean write on global.enabled warns AND leaves every display's own choice alone", async () => {
+    const s = await readySetup();
+    await s.internal.onStateChange("hassemu.0.global.enabled", { val: true, ack: false });
+    const rec = await s.internal.registry!.identifyOrCreate(null, "10.0.0.1");
+    rec.mode = "http://own.local/";
+
+    await s.internal.onStateChange("hassemu.0.global.enabled", { val: "yes", ack: false });
+
+    expect(logsOf(s.stub, "warn").some(m => m.includes("global.enabled rejected"))).toBe(true);
+    expect(s.internal.globalConfig!.isEnabled()).toBe(true);
+    expect(rec.mode).toBe("http://own.local/");
+  });
+
   it("info.refreshUrls=true triggers an immediate collect and re-arms the button", async () => {
     const s = await readySetup();
     await s.internal.onStateChange("hassemu.0.info.refreshUrls", { val: true, ack: false });

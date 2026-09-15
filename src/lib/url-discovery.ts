@@ -185,7 +185,27 @@ export class UrlDiscovery {
     // im Dropdown — drei Mal `VIS-2: main / Wohnzimmer` ohne Hinweis welche
     // welcher web-Instance gehört). Bei nur einer web-Instance bleibt das
     // Label minimal (`VIS-2: main / Wohnzimmer`).
-    const webInstances = Array.from(crossRefs.entries()).filter(([n]) => n.startsWith("web."));
+    //
+    // Only ENABLED web instances serve anything. A disabled second instance (a test
+    // instance, an old port) used to contribute VIS entries that sent a display to a port
+    // nobody listens on — and inflated the instance suffix on every label (audit
+    // 2026-09-15, A2). Same rule as the aura source and collectFromInstance; the skip
+    // is recorded so the discovery summary names it. The VIS instances themselves are
+    // NOT filtered: web serves their runtime, the vis instance need not be running.
+    // collectFromInstance already records a disabled instance that carries links of
+    // its own; the summary names each instance once.
+    const enabledInstances = (prefix: string): Array<[string, Record<string, unknown>]> =>
+      Array.from(crossRefs.entries()).filter(([shortName, instance]) => {
+        if (!shortName.startsWith(prefix)) {
+          return false;
+        }
+        const enabled = isPlainObject(instance.common) && instance.common.enabled === true;
+        if (!enabled && !skipped.some(s => s.adapter === shortName && s.reason === "disabled")) {
+          skipped.push({ adapter: shortName, reason: "disabled" });
+        }
+        return enabled;
+      });
+    const webInstances = enabledInstances("web.");
     const showWebSuffix = webInstances.length > 1;
     // v1.28.3 (UD1): pro web-Instance vis-2- und vis-1-Discovery parallel.
     // addVisProjects mutiert `result` direkt — der Output bleibt deterministisch
@@ -218,7 +238,7 @@ export class UrlDiscovery {
     const showVis2Suffix = vis2Instances.length > 1;
     const showVis1Suffix = vis1Instances.length > 1;
 
-    for (const [shortName, native] of webInstances) {
+    for (const [shortName, webInstance] of webInstances) {
       const labelSuffix = showWebSuffix ? ` (${shortName})` : "";
       // I7 (v1.37.0) keeps the fan-out bounded: web instances stay sequential, the VIS
       // lookups of ONE web instance run in parallel.
@@ -226,7 +246,7 @@ export class UrlDiscovery {
         ...vis2Instances.map(visName =>
           this.addVisProjects(
             result,
-            native,
+            webInstance,
             hostIp,
             visName,
             "vis-2",
@@ -237,7 +257,7 @@ export class UrlDiscovery {
         ...vis1Instances.map(visName =>
           this.addVisProjects(
             result,
-            native,
+            webInstance,
             hostIp,
             visName,
             "vis",
@@ -255,14 +275,11 @@ export class UrlDiscovery {
     // it). Skipped in collectFromInstance to avoid duplicate / wrong-port
     // entries. Source: forks/ioBroker.aura/io-package.json native = {
     //   port: 8095, socketPort: 8082, secure: false, customUrl: "" }.
-    const auraInstances = Array.from(crossRefs.entries()).filter(([n]) => n.startsWith(AURA_PREFIX));
+    // Filter first, count second — a disabled aura instance must neither appear nor
+    // earn the running one an instance suffix (same rule as the web instances above).
+    const auraInstances = enabledInstances(AURA_PREFIX);
     const showAuraSuffix = auraInstances.length > 1;
     for (const [shortName, obj] of auraInstances) {
-      const enabled = isPlainObject(obj.common) && obj.common.enabled === true;
-      if (!enabled) {
-        skipped.push({ adapter: shortName, reason: "disabled" });
-        continue;
-      }
       this.addAuraInstance(result, obj, hostIp, shortName, showAuraSuffix, skipped);
     }
 
