@@ -499,11 +499,15 @@ export class HassEmu extends utils.Adapter {
    * Clients without `lastSeen` (pre-1.2.0) get the timestamp seeded on this run
    * — GC kicks in only on subsequent restarts.
    *
-   * v1.11.0 (C9): vorher übersprang GC alle token-haltenden Clients (`if record.token`).
-   * Effekt: über Jahre wuchs die Liste mit „authenticated, but never seen again"-
-   * Clients (Display weg/refurbished/Bridge-Reset etc.). Jetzt: lastSeen-basiert
-   * unabhängig vom Token. Access-Token sind ohnehin nur 30min gültig — wenn
-   * lastSeen 30 Tage zurückliegt, ist der Token längst abgelaufen.
+   * v1.11.0 (C9): the GC used to skip every token-holding client (`if record.token`),
+   * so the list grew for years with "authenticated, but never seen again" displays
+   * (replaced, refurbished, reset). Since then it is lastSeen-based regardless of
+   * tokens — including the long-lived refresh token persisted since v1.31.0: a display
+   * unseen for 30 days is forgotten and re-onboards when it comes back (documented in
+   * docs/, `remove` is the tool for anything earlier). Decided, not an oversight.
+   *
+   * Reads the stamps the registry restored with the client objects — no second object
+   * read per display (audit 2026-09-15, D1).
    */
   private async gcStaleClients(): Promise<void> {
     const now = Date.now();
@@ -520,11 +524,9 @@ export class HassEmu extends utils.Adapter {
     const results: number[] = await Promise.all(
       records.map(async (record): Promise<number> => {
         try {
-          const obj = await this.getObjectAsync(`clients.${record.id}`);
-          const native = (obj?.native as { lastSeen?: number } | undefined) ?? {};
           // v1.25.0 (J1): Decision-Logik in pure helper coerce.decideGcAction
           // (testbar). Hier nur das I/O zum Broker.
-          const action = decideGcAction(native.lastSeen, now, STALE_CLIENT_TTL_MS);
+          const action = decideGcAction(this.registry!.lastSeenOf(record.id), now, STALE_CLIENT_TTL_MS);
           if (action === "seed") {
             await this.registry!.seedLastSeen(record.id, now);
             return 0;

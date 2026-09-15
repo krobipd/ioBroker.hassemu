@@ -49,6 +49,7 @@ export type RegistryAdapter = AdapterInterface &
     | "setObjectNotExistsAsync"
     | "extendObject"
     | "setState"
+    | "setStateChangedAsync"
     | "delObjectAsync"
   >;
 
@@ -158,9 +159,11 @@ export class ClientRegistry {
       return;
     }
 
-    for (const [fullId, obj] of Object.entries(objects)) {
-      await this.restoreChannel(fullId, obj);
-    }
+    // All displays in parallel — restoreChannel shares nothing between displays except
+    // synchronous Map writes, and each has its own try/catch. Serial, this was N × (five
+    // reads + five existence checks + one object read) before the port was bound
+    // (audit 2026-09-15, D1).
+    await Promise.all(Object.entries(objects).map(([fullId, obj]) => this.restoreChannel(fullId, obj)));
     this.adapter.log.debug(`client-registry: restored ${this.byId.size} client(s)`);
   }
 
@@ -206,9 +209,9 @@ export class ClientRegistry {
           this.adapter.log.debug(`client-registry: channel→device migration failed for ${id}: ${String(err)}`);
         }
       }
-      // v1.9.0 (D8): vier readState-Calls parallel statt sequenziell.
-      // Mit 50 Clients waren das vorher 200 sequenzielle Round-Trips
-      // bevor der WebServer up war; jetzt 50 parallele 4er-Gruppen.
+      // v1.9.0 (D8): the reads of one display run in parallel; since the audit of
+      // 2026-09-15 the displays themselves do too (restore() above), so a start costs
+      // one round of round-trips instead of one per display.
       // The fifth read is the pre-1.2.0 `visUrl` the migration needs. It rides along in
       // the batch that already runs here instead of costing the migration its own
       // sequential round-trip per client on every start (see legacyVisUrls).
@@ -230,6 +233,14 @@ export class ClientRegistry {
       const ip = coerceString(ipRaw);
       const token = coerceUuid(native.token);
       const refreshToken = coerceUuid(native.refreshToken);
+      // The lastSeen throttle window survives a restart: the persisted stamp IS the last
+      // flush. Without this every display's first contact after a restart re-wrote a
+      // `lastSeen` that was seconds old — N object writes per restart for nothing
+      // (audit 2026-09-15, C1). A stamp older than the window is refreshed as before.
+      // gcStaleClients reads the same map instead of re-reading every object (D1).
+      if (typeof native.lastSeen === "number" && Number.isFinite(native.lastSeen)) {
+        this.lastSeenFlushedAt.set(id, native.lastSeen);
+      }
       // v1.36.0 (S5): restore the persisted access-token expiry so a token that
       // already expired before the restart is rejected by getByToken on next use.
       const tokenExpiresAt = token && typeof native.tokenExpiresAt === "number" ? native.tokenExpiresAt : null;
@@ -468,8 +479,12 @@ export class ClientRegistry {
     if (!this.byId.has(id)) {
       return; // transient (throttled) record — it owns no objects
     }
+    // setStateChanged, not setState: the caller only knows what it served since the
+    // restart, so a display's first poll after a restart looked like a change and
+    // re-wrote the value already in the datapoint (audit 2026-09-15, C2). The controller
+    // compares against the stored state and writes nothing when it is equal.
     await this.adapter
-      .setState(`clients.${id}.resolvedUrl`, { val: url ?? "", ack: true })
+      .setStateChangedAsync(`clients.${id}.resolvedUrl`, { val: url ?? "", ack: true })
       .catch(err => this.adapter.log.debug(`setResolvedUrl failed for ${id}: ${String(err)}`));
   }
 
@@ -966,6 +981,18 @@ export class ClientRegistry {
     } catch (err) {
       this.adapter.log.debug(`seedLastSeen failed for ${id}: ${String(err)}`);
     }
+  }
+
+  /**
+   * The last `native.lastSeen` this registry knows for a client — restored from the
+   * object on start, advanced by every flush. `undefined` for a client that never got
+   * a stamp (pre-1.2.0) — the stale-GC seeds one then. Lets the GC decide without a
+   * second object read per display (audit 2026-09-15, D1).
+   *
+   * @param id Client id.
+   */
+  lastSeenOf(id: string): number | undefined {
+    return this.lastSeenFlushedAt.get(id);
   }
 
   /**

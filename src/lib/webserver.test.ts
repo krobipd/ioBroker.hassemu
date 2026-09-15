@@ -69,6 +69,7 @@ interface MockAdapterApi {
   getObjectAsync(id: string): Promise<ObjEntry | null>;
   setObject(id: string, obj: ObjEntry): Promise<void>;
   setState(id: string, val: { val: unknown; ack?: boolean }): Promise<void>;
+  setStateChangedAsync(id: string, val: { val: unknown; ack?: boolean }): Promise<{ id: string; notChanged: boolean }>;
   delObjectAsync(id: string): Promise<void>;
 }
 
@@ -151,6 +152,15 @@ function createMockAdapter(namespace = "hassemu.0"): {
       setState: (id: string, val: { val: unknown; ack?: boolean }) => {
         store.states.set(`${namespace}.${id}`, { val: val.val, ack: val.ack ?? false });
         return Promise.resolve();
+      },
+      // Like the controller: writes only when the stored state differs.
+      setStateChangedAsync: (id: string, val: { val: unknown; ack?: boolean }) => {
+        const current = store.states.get(`${namespace}.${id}`);
+        if (current && current.val === val.val && current.ack === (val.ack ?? false)) {
+          return Promise.resolve({ id, notChanged: true });
+        }
+        store.states.set(`${namespace}.${id}`, { val: val.val, ack: val.ack ?? false });
+        return Promise.resolve({ id, notChanged: false });
       },
       delObjectAsync: (id: string) => {
         const full = `${namespace}.${id}`;

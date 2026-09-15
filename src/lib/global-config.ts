@@ -44,9 +44,11 @@ export class GlobalConfig {
 
   /** Loads the current global.* values from the broker. Call once on adapter start. */
   async restore(): Promise<void> {
-    const modeState = await safeGetState(this.adapter, "global.mode");
-    const manualState = await safeGetState(this.adapter, "global.manualUrl");
-    const enabledState = await safeGetState(this.adapter, "global.enabled");
+    const [modeState, manualState, enabledState] = await Promise.all([
+      safeGetState(this.adapter, "global.mode"),
+      safeGetState(this.adapter, "global.manualUrl"),
+      safeGetState(this.adapter, "global.enabled"),
+    ]);
     const restoredMode = typeof modeState?.val === "string" ? modeState.val : "";
     // Normalise the pre-v1.43.0 blank form on the way in (D5).
     this.mode = restoredMode === "" ? NO_CHOICE : restoredMode;

@@ -28,6 +28,7 @@ import { ClientRegistry, parseClientStateId } from "./client-registry";
 import {
   CLIENT_OBJECTS_VERSION,
   GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW,
+  LASTSEEN_FLUSH_INTERVAL_MS,
   MODE_GLOBAL,
   NO_CHOICE,
   MODE_MANUAL,
@@ -98,6 +99,10 @@ function createMockAdapter(namespace = "hassemu.0"): {
     setObjectNotExistsAsync: (id: string, obj: ObjEntry) => Promise<void>;
     extendObject: (id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>) => Promise<void>;
     setState: (id: string, value: { val: unknown; ack?: boolean }, _ack?: boolean) => Promise<void>;
+    setStateChangedAsync: (
+      id: string,
+      value: { val: unknown; ack?: boolean },
+    ) => Promise<{ id: string; notChanged: boolean }>;
     delObjectAsync: (id: string, options?: { recursive?: boolean }) => Promise<void>;
   } {
     return {
@@ -166,6 +171,16 @@ function createMockAdapter(namespace = "hassemu.0"): {
       setState: (id: string, value: { val: unknown; ack?: boolean }) => {
         store.states.set(`${namespace}.${id}`, { val: value.val, ack: value.ack ?? false });
         return Promise.resolve();
+      },
+      // Like the controller: compares with the stored state and writes only on a
+      // difference — a test counting `setState` calls sees the no-op as no write.
+      setStateChangedAsync: (id: string, value: { val: unknown; ack?: boolean }) => {
+        const current = store.states.get(`${namespace}.${id}`);
+        if (current && current.val === value.val && current.ack === (value.ack ?? false)) {
+          return Promise.resolve({ id, notChanged: true });
+        }
+        store.states.set(`${namespace}.${id}`, { val: value.val, ack: value.ack ?? false });
+        return Promise.resolve({ id, notChanged: false });
       },
       delObjectAsync: (id: string) => {
         const fullId = `${namespace}.${id}`;
@@ -1792,5 +1807,180 @@ describe("parseClientStateId", () => {
 
   it("returns null for too-deep IDs", () => {
     expect(parseClientStateId("hassemu.0.clients.abc.123.mode", ns)).to.be.null;
+  });
+});
+
+describe("ClientRegistry start cost (audit 2026-09-15 — C1, C2, D1)", () => {
+  // Nothing counted broker calls at start before this suite — that is how a restart
+  // silently cost every display one `lastSeen` object write, one `resolvedUrl` state
+  // write and a serial round of reads. Counts are the assertion, not "it passed".
+  type Counts = Record<string, number>;
+  type Bundle = ReturnType<typeof createMockAdapter>;
+
+  /**
+   * Wrap the broker methods of a mock adapter with call counters. A `setStateChangedAsync`
+   * that finds the stored value unchanged counts as a read, never as a write — the same
+   * split the controller makes.
+   *
+   * @param built The mock adapter bundle to instrument.
+   */
+  function count(built: Bundle): Counts {
+    const counts: Counts = {};
+    const a = built.adapter as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>;
+    for (const m of [
+      "getStateAsync",
+      "getObjectAsync",
+      "getForeignObjectsAsync",
+      "setObjectNotExistsAsync",
+      "setObject",
+      "extendObject",
+      "setState",
+      "delObjectAsync",
+    ]) {
+      const original = a[m];
+      a[m] = (...args) => {
+        counts[m] = (counts[m] ?? 0) + 1;
+        return original(...args);
+      };
+    }
+    const changed = a.setStateChangedAsync;
+    a.setStateChangedAsync = async (...args) => {
+      const result = (await changed(...args)) as { notChanged: boolean };
+      const key = result.notChanged ? "setStateChanged:unchanged" : "setStateChanged:written";
+      counts[key] = (counts[key] ?? 0) + 1;
+      return result;
+    };
+    return counts;
+  }
+
+  /** Object writes of any kind — what a restart must not cost for an unchanged installation. */
+  const writes = (c: Counts): number =>
+    (c.setObject ?? 0) +
+    (c.extendObject ?? 0) +
+    (c.setState ?? 0) +
+    (c.delObjectAsync ?? 0) +
+    (c["setStateChanged:written"] ?? 0);
+
+  /**
+   * Seed a display exactly as an up-to-date installation holds it: device + five leaves
+   * with the current revision stamp, valid state values, a persisted `lastSeen` and a
+   * persisted `resolvedUrl`.
+   *
+   * @param built    Mock adapter bundle.
+   * @param id       Display id.
+   * @param lastSeen The persisted `native.lastSeen`.
+   */
+  function seedDisplay(built: Bundle, id: string, lastSeen: number): string {
+    const cookie = crypto.randomUUID();
+    built.store.objects.set(`hassemu.0.clients.${id}`, {
+      type: "device",
+      common: { name: { en: `10.0.0.${id.length}` } },
+      native: { cookie, token: null, lastSeen, objectsVersion: CLIENT_OBJECTS_VERSION },
+    });
+    for (const leaf of ["mode", "manualUrl", "ip", "resolvedUrl", "remove"]) {
+      built.store.objects.set(`hassemu.0.clients.${id}.${leaf}`, {
+        type: "state",
+        common: { name: { en: leaf }, type: leaf === "mode" ? "mixed" : "string", role: "state" },
+        native: {},
+      });
+    }
+    built.store.states.set(`hassemu.0.clients.${id}.mode`, { val: "http://dash.local/", ack: true });
+    built.store.states.set(`hassemu.0.clients.${id}.manualUrl`, { val: "", ack: true });
+    built.store.states.set(`hassemu.0.clients.${id}.ip`, { val: "10.0.0.7", ack: true });
+    built.store.states.set(`hassemu.0.clients.${id}.resolvedUrl`, { val: "http://dash.local/", ack: true });
+    return cookie;
+  }
+
+  it("restoring N up-to-date displays writes nothing and reads one round per display, in parallel", async () => {
+    const built = createMockAdapter();
+    const N = 10;
+    for (let i = 0; i < N; i++) {
+      seedDisplay(built, `d${i}0000`.slice(0, 6), Date.now() - 5000);
+    }
+    const counts = count(built);
+    const reg = new ClientRegistry(built.adapter as never);
+
+    // Parallelism, measured rather than asserted from the code: with reads that take a
+    // tick to answer, a serial loop never has more than one display's five reads in
+    // flight; the parallel restore has every display's reads in flight at once.
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const a = built.adapter as unknown as { getStateAsync: (id: string) => Promise<unknown> };
+    const read = a.getStateAsync;
+    a.getStateAsync = (id: string) => {
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      return new Promise(resolve =>
+        setImmediate(() => {
+          inFlight--;
+          resolve(read(id));
+        }),
+      );
+    };
+    await reg.restore();
+
+    expect(reg.listAll()).to.have.lengthOf(N);
+    expect(writes(counts), JSON.stringify(counts)).to.equal(0);
+    expect(counts.getStateAsync).to.be.at.most(5 * N);
+    expect(counts.getObjectAsync).to.be.at.most(N);
+    expect(maxInFlight, "reads of all displays in flight together").to.equal(5 * N);
+  });
+
+  it("first contact after a restart does NOT re-write a lastSeen that is inside the flush window (C1)", async () => {
+    const built = createMockAdapter();
+    const cookie = seedDisplay(built, "fresh1", Date.now() - 5000);
+    const reg = new ClientRegistry(built.adapter as never);
+    await reg.restore();
+    const counts = count(built);
+
+    await reg.identifyOrCreate(cookie, "10.0.0.7");
+
+    expect(counts.extendObject ?? 0, JSON.stringify(counts)).to.equal(0);
+  });
+
+  it("first contact after a restart DOES write a lastSeen older than the flush window (the GC depends on it)", async () => {
+    // The mirror image of C1: if the restored stamp ever disabled the flush entirely,
+    // the stale-GC would forget a live display after 30 days without any gate going red.
+    const built = createMockAdapter();
+    const cookie = seedDisplay(built, "stale1", Date.now() - (LASTSEEN_FLUSH_INTERVAL_MS + 1));
+    const reg = new ClientRegistry(built.adapter as never);
+    await reg.restore();
+    const counts = count(built);
+    const before = built.store.objects.get("hassemu.0.clients.stale1")!.native!.lastSeen as number;
+
+    await reg.identifyOrCreate(cookie, "10.0.0.7");
+    await new Promise(resolve => setImmediate(resolve));
+
+    expect(counts.extendObject, JSON.stringify(counts)).to.equal(1);
+    const after = built.store.objects.get("hassemu.0.clients.stale1")!.native!.lastSeen as number;
+    expect(after).to.be.greaterThan(before);
+    expect(reg.lastSeenOf("stale1")).to.equal(after);
+  });
+
+  it("the GC stamp comes from the restore, not from a second object read (D1)", async () => {
+    const built = createMockAdapter();
+    const stamp = Date.now() - 12345;
+    seedDisplay(built, "gc0001", stamp);
+    const reg = new ClientRegistry(built.adapter as never);
+    await reg.restore();
+
+    expect(reg.lastSeenOf("gc0001")).to.equal(stamp);
+    expect(reg.lastSeenOf("nobody")).to.be.undefined;
+  });
+
+  it("an unchanged resolvedUrl after a restart is not written again; a changed one is (C2)", async () => {
+    const built = createMockAdapter();
+    seedDisplay(built, "url001", Date.now() - 5000);
+    const reg = new ClientRegistry(built.adapter as never);
+    await reg.restore();
+    const counts = count(built);
+
+    await reg.setResolvedUrl("url001", "http://dash.local/");
+    expect(writes(counts), JSON.stringify(counts)).to.equal(0);
+    expect(counts["setStateChanged:unchanged"]).to.equal(1);
+
+    await reg.setResolvedUrl("url001", null);
+    expect(counts["setStateChanged:written"]).to.equal(1);
+    expect(built.store.states.get("hassemu.0.clients.url001.resolvedUrl")?.val).to.equal("");
   });
 });

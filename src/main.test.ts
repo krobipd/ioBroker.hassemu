@@ -6,6 +6,7 @@
  * while ClientRegistry/GlobalConfig run for real against the stub object store.
  */
 
+import crypto from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -214,7 +215,7 @@ vi.mock("@iobroker/adapter-core", () => {
 import { HassEmu } from "./main";
 import type { ClientRegistry } from "./lib/client-registry";
 import type { GlobalConfig } from "./lib/global-config";
-import { MODE_GLOBAL, MODE_MANUAL } from "./lib/constants";
+import { CLIENT_OBJECTS_VERSION, MODE_GLOBAL, MODE_MANUAL } from "./lib/constants";
 import { resolveRedirect } from "./lib/redirect-resolver";
 import { migrateLegacyDefaultVisUrl, migrateVisUrlToMode, type MigrationAdapter } from "./lib/legacy-migration";
 import type { AdapterConfig } from "./lib/types";
@@ -947,74 +948,97 @@ describe("migrateVisUrlToMode", () => {
 
 describe("gcStaleClients", () => {
   /**
-   * Creates a client; tests then overwrite the lastSeen that touchLastSeen just seeded.
+   * Seeds a display the way an existing installation holds it — a device object with
+   * the given `lastSeen` (or none) — and restores the registry from it. The GC reads
+   * the stamps the restore loaded, not the objects (audit 2026-09-15, D1), so a test
+   * that patched the stored object AFTER the restore would test nothing.
    *
-   * @param internal Private adapter internals with the live registry
-   * @param ip Client IP the registry keys the record by
+   * @param stub Object store of the stub adapter
+   * @param id Display id
+   * @param lastSeen Persisted stamp, or undefined for a pre-1.2.0 display without one
    */
-  async function seedClient(internal: Internal, ip: string): Promise<string> {
-    const rec = await internal.registry!.identifyOrCreate(null, ip);
-    return rec.id;
+  function seedDisplay(stub: StubSurface, id: string, lastSeen: number | undefined): void {
+    stub.objects.set(`hassemu.0.clients.${id}`, {
+      type: "device",
+      common: { name: { en: `10.0.0.${id.length}` } },
+      native: {
+        cookie: crypto.randomUUID(),
+        token: null,
+        objectsVersion: CLIENT_OBJECTS_VERSION,
+        ...(lastSeen === undefined ? {} : { lastSeen }),
+      },
+    });
+    for (const leaf of ["mode", "manualUrl", "ip", "resolvedUrl", "remove"]) {
+      stub.objects.set(`hassemu.0.clients.${id}.${leaf}`, { type: "state", common: { name: leaf }, native: {} });
+    }
+    stub.states.set(`hassemu.0.clients.${id}.mode`, { val: "0", ack: true });
   }
 
   it("client without lastSeen gets seeded, not removed", async () => {
     const { internal, stub } = setup();
+    seedDisplay(stub, "a1", undefined);
     internal.registry = internal.makeRegistry();
-    const id = await seedClient(internal, "10.0.0.1");
-    // Wipe the lastSeen that identifyOrCreate just seeded.
-    const channel = stub.objects.get(`hassemu.0.clients.${id}`)!;
-    delete channel.native!.lastSeen;
+    await internal.registry.restore();
 
     await internal.gcStaleClients();
 
-    expect(internal.registry.getById(id)).not.toBeNull();
-    expect(typeof stub.objects.get(`hassemu.0.clients.${id}`)!.native!.lastSeen).toBe("number");
+    expect(internal.registry.getById("a1")).not.toBeNull();
+    expect(typeof stub.objects.get("hassemu.0.clients.a1")!.native!.lastSeen).toBe("number");
   });
 
   it("stale client (lastSeen older than 30d) is removed with an info log", async () => {
     const { internal, stub } = setup();
+    seedDisplay(stub, "b2", Date.now() - 31 * 24 * 60 * 60 * 1000);
     internal.registry = internal.makeRegistry();
-    const id = await seedClient(internal, "10.0.0.2");
-    stub.objects.get(`hassemu.0.clients.${id}`)!.native!.lastSeen = Date.now() - 31 * 24 * 60 * 60 * 1000;
+    await internal.registry.restore();
 
     await internal.gcStaleClients();
 
-    expect(internal.registry.getById(id)).toBeNull();
-    expect(stub.objects.has(`hassemu.0.clients.${id}`)).toBe(false);
+    expect(internal.registry.getById("b2")).toBeNull();
+    expect(stub.objects.has("hassemu.0.clients.b2")).toBe(false);
     expect(logsOf(stub, "info").some(m => m.includes("Removed 1 inactive client"))).toBe(true);
   });
 
-  it("fresh client is kept", async () => {
+  it("fresh client is kept — and the GC reads no object for it", async () => {
     const { internal, stub } = setup();
+    seedDisplay(stub, "c3", Date.now() - 1000);
     internal.registry = internal.makeRegistry();
-    const id = await seedClient(internal, "10.0.0.3");
-    stub.objects.get(`hassemu.0.clients.${id}`)!.native!.lastSeen = Date.now() - 1000;
-
-    await internal.gcStaleClients();
-
-    expect(internal.registry.getById(id)).not.toBeNull();
-    expect(logsOf(stub, "info").some(m => m.includes("Removed"))).toBe(false);
-  });
-
-  it("a getObject failure for one client does not abort the GC pass", async () => {
-    const { internal, stub } = setup();
-    internal.registry = internal.makeRegistry();
-    const idBroken = await seedClient(internal, "10.0.0.4");
-    const idStale = await seedClient(internal, "10.0.0.5");
-    stub.objects.get(`hassemu.0.clients.${idStale}`)!.native!.lastSeen = Date.now() - 31 * 24 * 60 * 60 * 1000;
+    await internal.registry.restore();
     const adapter = internal as unknown as { getObjectAsync: (id: string) => Promise<unknown> };
+    const reads: string[] = [];
     const original = adapter.getObjectAsync.bind(adapter);
     adapter.getObjectAsync = async (id: string) => {
-      if (id.includes(idBroken)) {
-        throw new Error("broker hiccup");
-      }
+      reads.push(id);
       return original(id);
     };
 
     await internal.gcStaleClients();
 
-    expect(internal.registry.getById(idBroken)).not.toBeNull();
-    expect(internal.registry.getById(idStale)).toBeNull();
+    expect(internal.registry.getById("c3")).not.toBeNull();
+    expect(logsOf(stub, "info").some(m => m.includes("Removed"))).toBe(false);
+    // The restore already read every client object; the GC decides on those stamps.
+    expect(reads).toEqual([]);
+  });
+
+  it("a broker failure for one client does not abort the GC pass", async () => {
+    const { internal, stub } = setup();
+    seedDisplay(stub, "d4", Date.now() - 31 * 24 * 60 * 60 * 1000);
+    seedDisplay(stub, "e5", Date.now() - 31 * 24 * 60 * 60 * 1000);
+    internal.registry = internal.makeRegistry();
+    await internal.registry.restore();
+    const adapter = internal as unknown as { delObjectAsync: (id: string, o?: unknown) => Promise<unknown> };
+    const original = adapter.delObjectAsync.bind(adapter);
+    adapter.delObjectAsync = async (id: string, o?: unknown) => {
+      if (id.includes("d4")) {
+        throw new Error("broker hiccup");
+      }
+      return original(id, o);
+    };
+
+    await internal.gcStaleClients();
+
+    expect(stub.objects.has("hassemu.0.clients.e5")).toBe(false);
+    expect(internal.registry.getById("e5")).toBeNull();
   });
 });
 
