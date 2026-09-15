@@ -1,5 +1,9 @@
 # Older Changes
 
+## 1.40.0 (2026-09-02)
+
+- Fixed: with trustProxy enabled but no sanitising reverse proxy in front, a single device could create unlimited display entries — a global ceiling now caps this
+
 ## 1.39.0 (2026-09-01)
 
 - New: Displays show a "Redirect target not reachable" card with the target URL instead of a black screen when the configured dashboard is down — also right when the display starts
