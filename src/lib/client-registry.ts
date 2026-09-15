@@ -288,6 +288,7 @@ export class ClientRegistry {
         manualUrl,
         ip,
         hostname,
+        persistent: true,
       };
       this.trackInMemory(record);
       // Text revision this client's objects were last written with. Missing/older →
@@ -768,12 +769,22 @@ export class ClientRegistry {
     }
   }
 
-  private async createClient(ip: string | null, hostname: string | null): Promise<ClientRecord> {
+  /**
+   * A random id no tracked client holds. Shared by the persistent and the transient
+   * path: a transient id that collided with a live display used to make that display's
+   * `byId` checks succeed for a stranger's request (audit 2026-09-15, B3).
+   */
+  private freshClientId(): string {
     let id = generateClientId();
     while (this.byId.has(id)) {
       id = generateClientId();
     }
-    const record = this.buildRecord(id, ip, hostname);
+    return id;
+  }
+
+  private async createClient(ip: string | null, hostname: string | null): Promise<ClientRecord> {
+    const record = this.buildRecord(this.freshClientId(), ip, hostname, true);
+    const { id } = record;
     this.trackInMemory(record);
     await this.createObjects(record);
     this.touchLastSeen(record);
@@ -874,7 +885,7 @@ export class ClientRegistry {
    * @param hostname Reverse-DNS hostname, if any.
    */
   private transientRecord(ip: string | null, hostname: string | null): ClientRecord {
-    return this.buildRecord(generateClientId(), ip, hostname);
+    return this.buildRecord(this.freshClientId(), ip, hostname, false);
   }
 
   /**
@@ -884,11 +895,12 @@ export class ClientRegistry {
    * createClient persists + tracks it, transientRecord hands it out untracked.
    * v1.37.0 (L13).
    *
-   * @param id       Short client id (createClient de-dupes it against byId).
-   * @param ip       Last observed IP.
-   * @param hostname Reverse-DNS hostname, if any.
+   * @param id         Short client id (see {@link freshClientId}).
+   * @param ip         Last observed IP.
+   * @param hostname   Reverse-DNS hostname, if any.
+   * @param persistent Whether the record is backed by objects (see {@link ClientRecord.persistent}).
    */
-  private buildRecord(id: string, ip: string | null, hostname: string | null): ClientRecord {
+  private buildRecord(id: string, ip: string | null, hostname: string | null, persistent: boolean): ClientRecord {
     return {
       id,
       cookie: crypto.randomUUID(),
@@ -899,6 +911,7 @@ export class ClientRegistry {
       manualUrl: null,
       ip,
       hostname,
+      persistent,
     };
   }
 
@@ -946,11 +959,11 @@ export class ClientRegistry {
    * @param record Client whose lastSeen-timestamp should be refreshed.
    */
   private touchLastSeen(record: ClientRecord): void {
-    // Only for tracked records. A transient (throttled) record is never in byId,
-    // and a record removed while a request was still in flight must not be
+    // Only for persistent, tracked records. A transient (throttled) record owns no
+    // objects, and a record removed while a request was still in flight must not be
     // resurrected by this fire-and-forget upsert — extendObject would re-create
     // the channel as a cookie-less orphan. v1.37.0 (M5).
-    if (!this.byId.has(record.id)) {
+    if (!record.persistent || !this.byId.has(record.id)) {
       return;
     }
     const now = Date.now();

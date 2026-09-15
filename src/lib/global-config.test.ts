@@ -144,6 +144,7 @@ function makeRecord(opts: Partial<ClientRecord>): ClientRecord {
     manualUrl: null,
     ip: null,
     hostname: null,
+    persistent: true,
     ...opts,
   };
 }

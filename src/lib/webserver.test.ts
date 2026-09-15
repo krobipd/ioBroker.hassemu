@@ -1946,6 +1946,80 @@ describe("WebServer", () => {
   });
 });
 
+describe("WebServer under the new-client throttle (audit 2026-09-15 — B2, D2)", () => {
+  /**
+   * Push the registry over the IP-independent ceiling so every cookieless request gets
+   * a transient record — the throttle's own path, exactly as under a spoofed-XFF flood.
+   *
+   * @param reg The registry behind the server.
+   */
+  const overCeiling = (reg: ClientRegistry): void => {
+    (reg as unknown as { globalBurst: { count: number; lastCreate: number; warnedAt: number } }).globalBurst = {
+      count: 100,
+      lastCreate: Date.now(),
+      warnedAt: 0,
+    };
+  };
+
+  it("refuses the token grant for a display that only has a transient identity — no phantom tokens (B2)", async () => {
+    // Measured before the fix: 200 + tokens the server never stored, then 401 on every
+    // API call and 400 on the first refresh — the Companion app drops the session.
+    const { s, reg } = await buildServer({
+      config: { authRequired: true, username: "admin", password: "secret" },
+      authGuard: true,
+    });
+    try {
+      overCeiling(reg);
+      const r1 = await s.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
+      const flowId = r1.json().flow_id;
+      const r2 = await s.inject({
+        method: "POST",
+        url: `/auth/login_flow/${flowId}`,
+        payload: { username: "admin", password: "secret" },
+      });
+      const code = r2.json().result;
+      expect(code, "the flow itself still completes").to.match(/^[0-9a-f-]{36}$/);
+
+      const r3 = await s.inject({
+        method: "POST",
+        url: "/auth/token",
+        payload: { grant_type: "authorization_code", code },
+      });
+
+      expect(r3.statusCode).to.equal(400);
+      expect(r3.json()).to.deep.equal({ error: "invalid_grant" });
+      expect(reg.listAll(), "nothing persisted for the throttled display").to.have.lengthOf(0);
+      // The code is consumed either way — a replay must not turn into a grant later.
+      const replay = await s.inject({
+        method: "POST",
+        url: "/auth/token",
+        payload: { grant_type: "authorization_code", code },
+      });
+      expect(replay.statusCode).to.equal(400);
+    } finally {
+      await s["app"].close();
+    }
+  });
+
+  it("throttled requests leave no entry in the redirect-target map (D2)", async () => {
+    // Measured before the fix: 50 cookieless requests under the ceiling → 0 clients but
+    // 50 map entries, growing with the request rate until the next cleanup pass.
+    const { s, reg } = await buildServer();
+    try {
+      overCeiling(reg);
+      for (let i = 0; i < 50; i++) {
+        const res = await s.inject({ method: "GET", url: "/", headers: { "user-agent": `spray-${i}` } });
+        expect(res.statusCode).to.equal(200);
+      }
+      const map = s["lastRedirectTargetByClient"];
+      expect(reg.listAll()).to.have.lengthOf(0);
+      expect(map.size).to.equal(0);
+    } finally {
+      await s["app"].close();
+    }
+  });
+});
+
 describe("WebServer bindAddress / start-stop", () => {
   it("defaults to 0.0.0.0 when bindAddress is falsy", async () => {
     const built = createMockAdapter();

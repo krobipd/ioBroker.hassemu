@@ -428,16 +428,25 @@ export class WebServer {
    * high-frequency and both are only worth a log line when the answer moved — the map
    * behind it is pruned against the live clients in {@link cleanupSessions}.
    *
-   * @param clientId Display the target was resolved for.
-   * @param target   The resolved URL, or null for the landing page.
+   * A transient (throttled) record is never noted: it owns no `resolvedUrl` to write,
+   * no log line is worth its fresh random id, and every such request used to leave an
+   * entry in the map until the next cleanup pass — under the very flood the throttle
+   * exists for, that was the memory growing instead of the object DB (audit
+   * 2026-09-15, D2).
+   *
+   * @param client Display the target was resolved for.
+   * @param target The resolved URL, or null for the landing page.
    * @returns true when this differs from what the client was served last.
    */
-  private noteRedirectTarget(clientId: string, target: string | null): boolean {
-    const previous = this.lastRedirectTargetByClient.get(clientId);
+  private noteRedirectTarget(client: ClientRecord, target: string | null): boolean {
+    if (!client.persistent) {
+      return false;
+    }
+    const previous = this.lastRedirectTargetByClient.get(client.id);
     if (previous === target) {
       return false;
     }
-    this.lastRedirectTargetByClient.set(clientId, target);
+    this.lastRedirectTargetByClient.set(client.id, target);
     return true;
   }
 
@@ -1056,7 +1065,7 @@ export class WebServer {
       // grant is a named method with its own invariant, the route is the dispatcher.
       const session = grant_type === "authorization_code" && code ? this.codeSessions.get(code) : undefined;
       if (session && code) {
-        return this.handleAuthCodeGrant(code, session);
+        return this.handleAuthCodeGrant(code, session, reply);
       }
 
       if (grant_type === "refresh_token") {
@@ -1080,12 +1089,29 @@ export class WebServer {
    *
    * @param code    The consumed authorization code (removed from codeSessions here).
    * @param session The code's session (holds the owning clientId).
+   * @param reply   Reply to set the 400 status on when the grant is refused.
    */
   private async handleAuthCodeGrant(
     code: string,
     session: SessionData,
-  ): Promise<{ access_token: string; token_type: string; refresh_token: string; expires_in: number }> {
+    reply: FastifyReply,
+  ): Promise<
+    { access_token: string; token_type: string; refresh_token: string; expires_in: number } | { error: string }
+  > {
     this.codeSessions.delete(code);
+    // The flow is bound to the display's identity in step 1 only; steps 2 and 3 run on
+    // flow id and code. A display that started the flow while the new-client throttle
+    // was active got a TRANSIENT identity, which the registry never tracks — setToken
+    // for it is a silent no-op, and the tokens handed out were never stored: every API
+    // call 401, the first refresh 400, the Companion app drops the session (audit
+    // 2026-09-15, B2). Refuse honestly; the display retries later with a persistent one.
+    if (!this.registry.getById(session.clientId)) {
+      this.adapter.log.debug(
+        `Token grant refused — client ${session.clientId} has no persistent identity yet (new-client throttle)`,
+      );
+      reply.status(400);
+      return { error: "invalid_grant" };
+    }
     const token = crypto.randomUUID();
     const refreshToken = crypto.randomUUID();
     await this.registry.setToken(session.clientId, token);
@@ -1197,7 +1223,7 @@ export class WebServer {
       // (F1) — and needed more here, because the landing page reloads every 15 s (twice
       // as often as the poll). An unconfigured display used to write ~5 800 identical
       // "→ landing" lines a day; the state that matters is the CHANGE.
-      const changed = this.noteRedirectTarget(client.id, url ?? null);
+      const changed = this.noteRedirectTarget(client, url ?? null);
       if (changed) {
         await this.registry.setResolvedUrl(client.id, url ?? null);
       }
@@ -1231,7 +1257,7 @@ export class WebServer {
       // First-time-poll-pro-restart wird auch geloggt weil Map leer ist.
       const prev = this.lastRedirectTargetByClient.get(client.id);
       const next = url ?? null;
-      if (this.noteRedirectTarget(client.id, next)) {
+      if (this.noteRedirectTarget(client, next)) {
         this.adapter.log.debug(
           `redirect_check client=${client.id}: ${prev === undefined ? "first-poll" : (prev ?? "none")} → ${next ?? "none"}`,
         );

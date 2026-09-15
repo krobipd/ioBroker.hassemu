@@ -25,6 +25,7 @@ vi.mock("@iobroker/adapter-core", async () => {
 });
 
 import { ClientRegistry, parseClientStateId } from "./client-registry";
+import * as network from "./network";
 import {
   CLIENT_OBJECTS_VERSION,
   GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW,
@@ -1986,5 +1987,67 @@ describe("ClientRegistry start cost (audit 2026-09-15 — C1, C2, D1)", () => {
     await reg.setResolvedUrl("url001", null);
     expect(counts["setStateChanged:written"]).to.equal(1);
     expect(built.store.states.get("hassemu.0.clients.url001.resolvedUrl")?.val).to.equal("");
+  });
+});
+
+describe("ClientRegistry transient records own nothing (audit 2026-09-15 — B3, D2)", () => {
+  /**
+   * Push the registry over the global ceiling so the next cookieless request gets a
+   * transient record — the throttle's own path, not a hand-built record.
+   *
+   * @param reg The registry to saturate.
+   */
+  const overCeiling = (reg: ClientRegistry): void => {
+    (reg as unknown as { globalBurst: { count: number; lastCreate: number; warnedAt: number } }).globalBurst = {
+      count: GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW,
+      lastCreate: Date.now(),
+      warnedAt: 0,
+    };
+  };
+
+  it("a transient record is flagged non-persistent and never gets a lastSeen or a resolvedUrl written", async () => {
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never);
+    overCeiling(reg);
+    const objectsBefore = built.store.objects.size;
+    const statesBefore = built.store.states.size;
+
+    const transient = await reg.identifyOrCreate(null, "10.9.9.9");
+    await reg.setResolvedUrl(transient.id, "http://dash.local/");
+    await new Promise(resolve => setImmediate(resolve));
+
+    expect(transient.persistent).to.be.false;
+    expect(reg.getById(transient.id)).to.be.null;
+    expect(built.store.objects.size).to.equal(objectsBefore);
+    expect(built.store.states.size).to.equal(statesBefore);
+  });
+
+  it("a persistent record is flagged persistent", async () => {
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never);
+    const rec = await reg.identifyOrCreate(null, "10.0.0.1");
+    expect(rec.persistent).to.be.true;
+  });
+
+  it("a transient id never collides with a live display (B3)", async () => {
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never);
+    const live = await reg.identifyOrCreate(null, "10.0.0.1");
+    // Force the generator to offer the live id first, then a free one — the transient
+    // path must skip the taken id exactly like createClient does.
+    const priv = reg as unknown as { freshClientId: () => string };
+    const offered = [live.id, "fresh1"];
+    const generator = vi.spyOn(network, "generateClientId").mockImplementation(() => {
+      const next = offered.shift();
+      if (next === undefined) {
+        throw new Error("generator asked more often than expected");
+      }
+      return next;
+    });
+    try {
+      expect(priv.freshClientId()).to.equal("fresh1");
+    } finally {
+      generator.mockRestore();
+    }
   });
 });

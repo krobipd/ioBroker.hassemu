@@ -85,6 +85,14 @@ export interface ClientRecord {
   ip: string | null;
   /** Reverse-DNS hostname of last observed IP (null if lookup failed). */
   hostname: string | null;
+  /**
+   * `true` for a record backed by `clients.<id>.*` objects and tracked in the registry;
+   * `false` for a transient record handed to a throttled (cookieless-spray) request —
+   * it owns no objects, so nothing may be written or remembered for it: no `lastSeen`,
+   * no `resolvedUrl`, no redirect-target bookkeeping, no tokens. Required + explicit
+   * like the token fields, so every construction site decides (audit 2026-09-15).
+   */
+  persistent: boolean;
 }
 
 /** Session data for in-flight OAuth2 flow/code entries. */
