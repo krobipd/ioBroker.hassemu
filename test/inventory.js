@@ -28,6 +28,10 @@ const ADAPTER_DIR = path.join(__dirname, "..");
 const ADAPTER = require(path.join(ADAPTER_DIR, "io-package.json")).common.name;
 const NS = `${ADAPTER}.0.`;
 const INVENTORY = path.join(__dirname, "objects.inventory.json");
+// Answers every reverse-DNS lookup in the adapter process with "no PTR record", so the
+// display names do not depend on what the runner resolves 127.0.0.1 to (see the hook).
+const HOOK = path.join(__dirname, "inventory-dns-hook.cjs");
+const ADAPTER_ENV = { NODE_OPTIONS: `--require ${HOOK}` };
 const VOLATILE = ["ts", "from", "user", "acl"];
 const COMPARED = ["name", "desc", "role", "type", "unit"];
 
@@ -256,7 +260,7 @@ tests.integration(ADAPTER_DIR, {
         // its own start, so a seed placed before it does not survive. The restart is
         // also the honest path — it is `restore()` that has to pick these displays
         // up, exactly as it does after an ioBroker restart.
-        await harness.startAdapterAndWait();
+        await harness.startAdapterAndWait(false, ADAPTER_ENV);
         idMap = await feedFixtures(harness);
       });
 
@@ -310,7 +314,7 @@ tests.integration(ADAPTER_DIR, {
               isClientContainer(id) ? reviveSeededClient(obj, cookieByDisplay[shortId]) : obj,
             );
           }
-          await harness.startAdapterAndWait();
+          await harness.startAdapterAndWait(false, ADAPTER_ENV);
           idMap = await feedFixtures(harness, cookieByDisplay);
         });
 
