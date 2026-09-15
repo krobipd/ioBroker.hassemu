@@ -189,7 +189,17 @@ describe("redirect-wrapper", () => {
   // The poll decision RUN, not string-matched. Before this suite existed the logic
   // lived only inside the page template, so no test ever executed it — which is how
   // the null-target defect below survived five audits.
-  describe("decidePollAction", () => {
+  // Every case runs twice: against the module function AND against the copy the page
+  // gets (`decidePollAction.toString()` evaluated in an empty scope, exactly like the
+  // browser does it). The copy has NO module around it — a reference to a module
+  // constant or helper compiles, passes tsc and the module half of this table, and
+  // throws a ReferenceError on the display (audit 2026-09-15, B1/F1: measured, such a
+  // mutant survived 30/30 tests). The serialised half is the only thing that sees it.
+  const serialisedCopy = new Function(`return (${decidePollAction.toString()})`)() as typeof decidePollAction;
+  describe.each([
+    ["module function", decidePollAction],
+    ["serialised copy", serialisedCopy],
+  ])("decidePollAction (%s)", (_form, decide) => {
     const base = {
       current: "https://a.test/",
       body: {} as unknown,
@@ -199,7 +209,7 @@ describe("redirect-wrapper", () => {
     };
 
     it("reloads when the target changed to a different URL", () => {
-      const r = decidePollAction({ ...base, body: { target: "https://b.test/", targetReachable: true } });
+      const r = decide({ ...base, body: { target: "https://b.test/", targetReachable: true } });
       expect(r.action).to.equal("reload");
     });
 
@@ -207,12 +217,12 @@ describe("redirect-wrapper", () => {
       // The server answers `{target:null, targetReachable:true}` once the resolver has
       // nothing to resolve. Before v1.43.0 this was silently ignored and the display
       // kept showing its old dashboard forever.
-      const r = decidePollAction({ ...base, body: { target: null, targetReachable: true } });
+      const r = decide({ ...base, body: { target: null, targetReachable: true } });
       expect(r.action).to.equal("reload");
     });
 
     it("reloads when the target is withdrawn even while the target-down card is up", () => {
-      const r = decidePollAction({
+      const r = decide({
         ...base,
         body: { target: null, targetReachable: true },
         targetDownVisible: true,
@@ -221,21 +231,21 @@ describe("redirect-wrapper", () => {
     });
 
     it("does nothing while the target is unchanged and reachable", () => {
-      const r = decidePollAction({ ...base, body: { target: "https://a.test/", targetReachable: true } });
+      const r = decide({ ...base, body: { target: "https://a.test/", targetReachable: true } });
       expect(r).to.deep.equal({ action: "none", targetFails: 0 });
     });
 
     it("does NOT reload on a body without a target key (a proxy error page must not loop)", () => {
       for (const body of [{}, { targetReachable: true }, null, "nope", 42, []]) {
-        const r = decidePollAction({ ...base, body });
+        const r = decide({ ...base, body });
         expect(r.action, JSON.stringify(body)).to.equal("none");
       }
     });
 
     it("counts consecutive unreachable answers and shows the card at the threshold", () => {
-      const first = decidePollAction({ ...base, body: { target: "https://a.test/", targetReachable: false } });
+      const first = decide({ ...base, body: { target: "https://a.test/", targetReachable: false } });
       expect(first).to.deep.equal({ action: "none", targetFails: 1 });
-      const second = decidePollAction({
+      const second = decide({
         ...base,
         body: { target: "https://a.test/", targetReachable: false },
         targetFails: first.targetFails,
@@ -244,7 +254,7 @@ describe("redirect-wrapper", () => {
     });
 
     it("keeps the card up while the target stays unreachable", () => {
-      const r = decidePollAction({
+      const r = decide({
         ...base,
         body: { target: "https://a.test/", targetReachable: false },
         targetFails: 5,
@@ -254,7 +264,7 @@ describe("redirect-wrapper", () => {
     });
 
     it("reloads on the first recovery so the dead iframe is re-created", () => {
-      const r = decidePollAction({
+      const r = decide({
         ...base,
         body: { target: "https://a.test/", targetReachable: true },
         targetFails: 2,
@@ -264,7 +274,7 @@ describe("redirect-wrapper", () => {
     });
 
     it("resets the counter after a single reachable answer below the threshold", () => {
-      const r = decidePollAction({
+      const r = decide({
         ...base,
         body: { target: "https://a.test/", targetReachable: true },
         targetFails: 1,
@@ -273,7 +283,7 @@ describe("redirect-wrapper", () => {
     });
 
     it("treats an empty-string target like a withdrawn one", () => {
-      const r = decidePollAction({ ...base, body: { target: "", targetReachable: true } });
+      const r = decide({ ...base, body: { target: "", targetReachable: true } });
       expect(r.action).to.equal("reload");
     });
   });

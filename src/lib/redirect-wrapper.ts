@@ -42,6 +42,12 @@ export interface PollInput {
  * no closure over anything — so it can be unit-tested directly AND serialised into
  * the inline `<script>` of the page (see {@link renderRedirectWrapper}).
  *
+ * It must not reference ANY binding of this module (a constant, a helper, an import):
+ * the page runs a `toString()` copy without the module around it, so such a reference
+ * compiles, passes tsc and every module-side test, and throws a ReferenceError on the
+ * display — which the poll loop swallows, and the display never reloads again. Every
+ * input comes in through `input`; the test table runs the serialised copy for that.
+ *
  * Before v1.43.0 this logic lived only as a string inside the page template and was
  * therefore never EXECUTED by a test — only matched against with `expect(html).to.include(…)`.
  * That is how the null-target defect below survived five audits.
