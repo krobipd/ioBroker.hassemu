@@ -1853,7 +1853,11 @@ describe("ClientRegistry start cost (audit 2026-09-15 — C1, C2, D1)", () => {
     return counts;
   }
 
-  /** Object writes of any kind — what a restart must not cost for an unchanged installation. */
+  /**
+   * Object writes of any kind — what a restart must not cost for an unchanged installation.
+   *
+   * @param c The call counts collected by {@link count}.
+   */
   const writes = (c: Counts): number =>
     (c.setObject ?? 0) +
     (c.extendObject ?? 0) +
