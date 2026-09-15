@@ -384,6 +384,16 @@ tests.integration(ADAPTER_DIR, {
                 stale.push(`${id}: ${f} still ${JSON.stringify(got.common?.[f])}`);
               }
             }
+            // The KIND of the object (state/channel/device/folder/meta) sits one level
+            // ABOVE `common`; the `type` in COMPARED is the VALUE type (string/number/
+            // boolean) — same name, different thing. Without this comparison a type
+            // migration that does not take on an EXISTING installation stays green: every
+            // text matches while the container is still declared wrong. For hassemu that is
+            // the channel→device move of the display containers (I22, in flight since
+            // v1.37.0) — fleet template CLAUDE_TEMPLATES.md, upgrade suite.
+            if (got.type !== obj.type) {
+              stale.push(`${id}: type still ${JSON.stringify(got.type)}, want ${JSON.stringify(obj.type)}`);
+            }
           }
           assert.deepStrictEqual(stale, [], `objects an update did not reach:\n${stale.join("\n")}`);
         });
