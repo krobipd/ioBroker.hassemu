@@ -103,6 +103,8 @@ src/lib/i18n.ts              → tName, tRaw, resolveLabel, tPage, makePageTrans
 
 ## Tests (736 unit + 58 package + 3 inventory = 797)
 
+**Objekt-Inventar in der CI (seit 2026-09-15, Gate-Job `adapter-inventory`):** `test/inventory.js` läuft bei jedem Push auf dem ubuntu-Runner. Der Runner löst `127.0.0.1` rückwärts zu `ip6-localhost` auf — asynchron nach dem Abzug, die Aufstiegs-Suite verglich umbenannte mit noch nicht umbenannten Displays. Deshalb lädt der Harness `test/inventory-dns-hook.cjs` per `NODE_OPTIONS=--require` in den Adapterprozess: jede Rückwärtsauflösung endet dort wie ohne PTR-Eintrag (der Pfad einer echten Anlage, der Adapter kennt den Haken nicht). Dazu wartet der Abzug (`waitForStableTree`), bis der Objektsatz 4×250 ms nicht mehr wächst — eine feste Pause ist am Mac kalibriert, nicht am Runner.
+
 Tests leben seit v1.1.6 neben dem Source als `src/lib/*.test.ts` und laufen direkt via **vitest** (seit v1.32.0; vorher mocha+ts-node, vitest löst den ESM-Loader-Bug strukturell und ist ~10× schneller). Seit v1.35.2 mit ehrlicher Coverage (`coverage.include: src/**` — main.ts inkludiert).
 
 ## Befehle
