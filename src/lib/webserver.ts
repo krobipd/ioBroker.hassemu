@@ -233,9 +233,9 @@ export class WebServer {
     this.setupErrorHandler();
     this.setupRoutes();
 
-    const bindAddress = this.config.bindAddress || "0.0.0.0";
+    const bind = this.config.bind || "0.0.0.0";
     try {
-      await this.app.listen({ port: this.config.port, host: bindAddress });
+      await this.app.listen({ port: this.config.port, host: bind });
     } catch (err) {
       const e = err as NodeJS.ErrnoException;
       const msg =
@@ -245,7 +245,7 @@ export class WebServer {
       this.adapter.log.error(msg);
       throw err;
     }
-    this.adapter.log.debug(`Web server listening on ${bindAddress}:${this.config.port}`);
+    this.adapter.log.debug(`Web server listening on ${bind}:${this.config.port}`);
 
     // C6 (v1.36.0): auth on but no password set → blank-password logins are now
     // rejected, so the API stays locked until a real password is configured. The
@@ -696,8 +696,8 @@ export class WebServer {
       // client-controlled und ein Angreifer könnte mit `Host: attacker.lan`
       // andere HA-Clients zur falschen URL umleiten. Stattdessen die
       // tatsächlich gebundene Adresse via resolveAdvertisedHost (konkrete
-      // bindAddress, sonst getLocalIp) — identisch zum mDNS-Advert.
-      const host = resolveAdvertisedHost(this.config.bindAddress);
+      // bind, otherwise getLocalIp) — identical to the mDNS advert.
+      const host = resolveAdvertisedHost(this.config.bind);
       const baseUrl = `http://${host}:${this.config.port}`;
       return {
         base_url: baseUrl,

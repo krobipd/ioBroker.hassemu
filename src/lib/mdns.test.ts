@@ -59,7 +59,7 @@ describe("MDNSService", () => {
   let adapter: MockAdapter;
   const config: AdapterConfig = {
     port: 8123,
-    bindAddress: "0.0.0.0",
+    bind: "0.0.0.0",
     authRequired: false,
     username: "admin",
     password: "secret",
@@ -259,7 +259,7 @@ describe("MDNSService", () => {
 
   describe("advertised host (bind-aware base_url)", () => {
     it("advertises the configured concrete bind address (matches /api/discovery_info)", async () => {
-      const boundConfig: AdapterConfig = { ...config, bindAddress: "192.168.1.50" };
+      const boundConfig: AdapterConfig = { ...config, bind: "192.168.1.50" };
       const boundService = new MDNSService(adapter as never, boundConfig, crypto.randomUUID());
       boundService.start();
       const broadcastLog = adapter._logs.find(l => l.level === "debug" && l.msg.includes("mDNS: Broadcasting"));
@@ -277,7 +277,7 @@ describe("MDNSService cross-platform", () => {
       adapter as never,
       {
         port: 8123,
-        bindAddress: "0.0.0.0",
+        bind: "0.0.0.0",
         authRequired: false,
         username: "",
         password: "",
@@ -305,7 +305,7 @@ describe("MDNSService cross-platform", () => {
         localAdapter as never,
         {
           port: 8123,
-          bindAddress: "0.0.0.0",
+          bind: "0.0.0.0",
           authRequired: false,
           username: "",
           password: "",

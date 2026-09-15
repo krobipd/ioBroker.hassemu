@@ -288,7 +288,7 @@ interface Internal {
 
 const BASE_CONFIG = {
   port: 8123,
-  bindAddress: "127.0.0.1",
+  bind: "127.0.0.1",
   authRequired: false,
   username: "admin",
   password: "secret",
@@ -1381,6 +1381,66 @@ describe("onUnload", () => {
     releaseServer();
     await vi.waitFor(() => expect(callback).toHaveBeenCalledTimes(1));
     expect(logsOf(stub, "error").some(m => m.includes("Shutdown error") && m.includes("broker gone"))).toBe(true);
+  });
+});
+
+describe("listen-address migration bindAddress → bind (fleet listen-port standard, 2026-09-15)", () => {
+  const INSTANCE_ID = "system.adapter.hassemu.0";
+
+  it("carries the user's bindAddress over to bind in ONE merge, nulls the old key and aborts the start", async () => {
+    const { internal, stub, webServer } = setup();
+    // What an update leaves behind: js-controller added `bind` with the manifest default
+    // and kept the user's old key. A read fallback `bind || bindAddress` would pick the
+    // default forever — the value has to MOVE.
+    stub.objects.set(INSTANCE_ID, {
+      type: "instance",
+      common: { name: "hassemu" },
+      native: { port: 8123, bind: "0.0.0.0", bindAddress: "192.168.1.5", mdnsEnabled: true },
+    });
+    const writes: unknown[] = [];
+    const surface = internal as unknown as { extendForeignObjectAsync: (id: string, obj: unknown) => Promise<void> };
+    const original = surface.extendForeignObjectAsync.bind(internal);
+    surface.extendForeignObjectAsync = (id: string, obj: unknown) => {
+      writes.push(obj);
+      return original(id, obj);
+    };
+
+    await internal.onReady();
+
+    expect(writes).toEqual([{ native: { bind: "192.168.1.5", bindAddress: null } }]);
+    const native = stub.objects.get(INSTANCE_ID)!.native!;
+    expect(native.bind).toBe("192.168.1.5");
+    expect(native.bindAddress).toBeNull();
+    expect(native.mdnsEnabled, "untouched keys survive the merge").toBe(true);
+    expect(webServer.start, "no port bound in a process the host is restarting").not.toHaveBeenCalled();
+    expect(logsOf(stub, "info").some(m => m.includes("restarts once"))).toBe(true);
+  });
+
+  it("an empty legacy address becomes 0.0.0.0 — an empty bind is as invisible to the admin as none", async () => {
+    const { internal, stub } = setup();
+    stub.objects.set(INSTANCE_ID, { type: "instance", native: { port: 8123, bind: "0.0.0.0", bindAddress: "" } });
+
+    await internal.onReady();
+
+    expect(stub.objects.get(INSTANCE_ID)!.native!.bind).toBe("0.0.0.0");
+    expect(stub.objects.get(INSTANCE_ID)!.native!.bindAddress).toBeNull();
+  });
+
+  it("recognises the migrated state (old key null) and starts without writing — no restart loop", async () => {
+    // An extend with `null` stores `null`, it does not delete the key (measured on the
+    // objects store): the second start after the migration sees exactly this object.
+    const { internal, stub, webServer } = setup();
+    stub.objects.set(INSTANCE_ID, {
+      type: "instance",
+      native: { port: 8123, bind: "192.168.1.5", bindAddress: null },
+    });
+    const before = JSON.stringify(stub.objects.get(INSTANCE_ID));
+
+    await internal.onReady();
+
+    expect(JSON.stringify(stub.objects.get(INSTANCE_ID))).toBe(before);
+    expect(webServer.start).toHaveBeenCalledTimes(1);
+    expect(logsOf(stub, "info").some(m => m.includes("restarts once"))).toBe(false);
   });
 });
 

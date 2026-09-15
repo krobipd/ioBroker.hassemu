@@ -194,7 +194,7 @@ function createMockAdapter(namespace = "hassemu.0"): {
 
 const baseConfig: AdapterConfig = {
   port: 0,
-  bindAddress: "127.0.0.1",
+  bind: "127.0.0.1",
   authRequired: false,
   username: "admin",
   password: "secret",
@@ -2029,18 +2029,12 @@ describe("WebServer under the new-client throttle (audit 2026-09-15 — B2, D2)"
   });
 });
 
-describe("WebServer bindAddress / start-stop", () => {
-  it("defaults to 0.0.0.0 when bindAddress is falsy", async () => {
+describe("WebServer bind / start-stop", () => {
+  it("defaults to 0.0.0.0 when bind is falsy", async () => {
     const built = createMockAdapter();
     const reg = new ClientRegistry(built.adapter as never);
     const g = await buildGlobalConfig(built.adapter, "http://x/");
-    const s = new WebServer(
-      built.adapter as never,
-      { ...baseConfig, port: 0, bindAddress: "" },
-      reg,
-      g,
-      crypto.randomUUID(),
-    );
+    const s = new WebServer(built.adapter as never, { ...baseConfig, port: 0, bind: "" }, reg, g, crypto.randomUUID());
     await s.start();
     const addr = s.boundAddress;
     expect(addr).to.not.be.null;
@@ -2054,7 +2048,7 @@ describe("WebServer bindAddress / start-stop", () => {
     const g = await buildGlobalConfig(built.adapter, "http://x/");
     const s = new WebServer(
       built.adapter as never,
-      { ...baseConfig, port: 0, bindAddress: "127.0.0.1" },
+      { ...baseConfig, port: 0, bind: "127.0.0.1" },
       reg,
       g,
       crypto.randomUUID(),
@@ -2070,7 +2064,7 @@ describe("WebServer bindAddress / start-stop", () => {
     const g = await buildGlobalConfig(built.adapter, "http://x/");
     const s = new WebServer(
       built.adapter as never,
-      { ...baseConfig, port: 0, bindAddress: "127.0.0.1", authRequired: true, password: "" },
+      { ...baseConfig, port: 0, bind: "127.0.0.1", authRequired: true, password: "" },
       reg,
       g,
       crypto.randomUUID(),
@@ -2089,7 +2083,7 @@ describe("WebServer bindAddress / start-stop", () => {
     const g = await buildGlobalConfig(built.adapter, "http://x/");
     const s = new WebServer(
       built.adapter as never,
-      { ...baseConfig, port: 0, bindAddress: "127.0.0.1", authRequired: true, password: "secret" },
+      { ...baseConfig, port: 0, bind: "127.0.0.1", authRequired: true, password: "secret" },
       reg,
       g,
       crypto.randomUUID(),
@@ -2116,7 +2110,7 @@ describe("WebServer bindAddress / start-stop", () => {
     const g = await buildGlobalConfig(built.adapter, "http://x/");
     const s = new WebServer(
       built.adapter as never,
-      { ...baseConfig, port: 0, bindAddress: "127.0.0.1" },
+      { ...baseConfig, port: 0, bind: "127.0.0.1" },
       reg,
       g,
       crypto.randomUUID(),
@@ -2223,7 +2217,7 @@ describe("WebServer /api/websocket (v1.34.0)", () => {
     const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
     s = new WebServer(
       built.adapter as never,
-      { ...baseConfig, port: 0, bindAddress: "127.0.0.1", username: "admin", serviceName: "TestServer" },
+      { ...baseConfig, port: 0, bind: "127.0.0.1", username: "admin", serviceName: "TestServer" },
       reg,
       g,
       "ws-test-uuid-0001",
@@ -2368,7 +2362,7 @@ describe("WebServer /api/websocket (v1.34.0)", () => {
     const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
     const s2 = new WebServer(
       built.adapter as never,
-      { ...baseConfig, port: 0, bindAddress: "127.0.0.1" },
+      { ...baseConfig, port: 0, bind: "127.0.0.1" },
       reg2,
       g,
       "ws-timeout-uuid",
@@ -2391,7 +2385,7 @@ describe("WebServer /api/websocket (v1.34.0)", () => {
     const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
     const s2 = new WebServer(
       built.adapter as never,
-      { ...baseConfig, port: 0, bindAddress: "127.0.0.1", authRequired: true, username: "admin", password: "secret" },
+      { ...baseConfig, port: 0, bind: "127.0.0.1", authRequired: true, username: "admin", password: "secret" },
       reg2,
       g,
       "ws-authreq-uuid",

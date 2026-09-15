@@ -9,6 +9,7 @@ import { MODE_GLOBAL, NO_CHOICE, STALE_CLIENT_TTL_MS } from "./lib/constants";
 import { GlobalConfig, parseGlobalStateId } from "./lib/global-config";
 import { tName } from "./lib/i18n";
 import { migrateLegacyDefaultVisUrl, migrateVisUrlToMode } from "./lib/legacy-migration";
+import { migrateNativeKeys } from "./lib/native-key-migration";
 import { MDNSService } from "./lib/mdns";
 import { resolveRedirect } from "./lib/redirect-resolver";
 import { type InstanceObjectSchema, repairGlobalSchemas } from "./lib/schema-repair";
@@ -20,6 +21,17 @@ import type { AdapterConfig } from "./lib/types";
 // resolveJsonModule ist im tsconfig aktiv.
 import iobrokerPackage from "../io-package.json";
 const instanceObjectsList = (iobrokerPackage as { instanceObjects: unknown[] }).instanceObjects ?? [];
+
+/**
+ * A legacy listen address on its way to `native.bind`: an empty value meant "all
+ * interfaces" and becomes the explicit "0.0.0.0" — the admin's port-conflict check skips
+ * an instance whose `bind` is empty, which is exactly the invisibility the rename ends.
+ *
+ * @param value The value stored under the old key.
+ */
+function bindOrAllInterfaces(value: unknown): string {
+  return typeof value === "string" && value.trim() ? value.trim() : "0.0.0.0";
+}
 
 /**
  * HA emulator adapter — lifecycle, migrations, state-dispatch, master switch.
@@ -114,6 +126,14 @@ export class HassEmu extends utils.Adapter {
       // First: without this the whole shutdown path stays dead on an updated install.
       // A correction means the host is restarting us — no point starting anything.
       if (await this.clearStopInstanceFlag()) {
+        return;
+      }
+      // Fleet standard "listen-port declaration" (2026-09-15): the listen address lives
+      // under `native.bind` — the key the admin's port-conflict check reads; it used to be
+      // `bindAddress`. js-controller adds the new key with its default on the update and
+      // never removes the old one, so the user's value is carried over here, once. The
+      // write restarts the instance — stop like the flag correction above does.
+      if (await migrateNativeKeys(this, [{ from: "bindAddress", to: "bind", coerce: bindOrAllInterfaces }])) {
         return;
       }
 
@@ -257,7 +277,7 @@ export class HassEmu extends utils.Adapter {
       }
 
       await this.setState("info.connection", { val: true, ack: true });
-      const bindAddr = this.config.bindAddress || "0.0.0.0";
+      const bindAddr = this.config.bind || "0.0.0.0";
       // "started" (not "active"): isActive() is read synchronously right after start(),
       // before an asynchronous bonjour publish error could fire — so the headline must
       // not over-claim; a later publish failure surfaces as its own mDNS warn. I6 (v1.38.0).

@@ -35,7 +35,7 @@ export class MDNSService {
 
   /** Start mDNS broadcasting via bonjour-service */
   start(): void {
-    const host = resolveAdvertisedHost(this.config.bindAddress);
+    const host = resolveAdvertisedHost(this.config.bind);
     const baseUrl = `http://${host}:${this.config.port}`;
     const serviceName = this.config.serviceName || DEFAULT_SERVICE_NAME;
 

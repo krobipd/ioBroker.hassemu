@@ -7,10 +7,23 @@
       "text": "header_server",
       "size": 4
     },
-    "bindAddress": {
+    "port": {
+      "type": "port",
+      "label": "port",
+      "tooltip": "portTooltip",
+      "min": 8123,
+      "max": 8123,
+      "disabled": true,
+      "xs": 12,
+      "sm": 6,
+      "md": 4,
+      "lg": 4,
+      "xl": 4
+    },
+    "bind": {
       "type": "ip",
-      "label": "bindAddress",
-      "tooltip": "bindAddressTooltip",
+      "label": "bind",
+      "tooltip": "bindTooltip",
       "listenOnAllPorts": true,
       "onlyIp4": true,
       "noInternal": false,

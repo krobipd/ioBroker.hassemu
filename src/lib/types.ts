@@ -7,7 +7,7 @@ export interface AdapterConfig {
   /** HTTP port for the web server (fixed at 8123 for HA compatibility). */
   port: number;
   /** IP address to bind the server to (0.0.0.0 = all interfaces). */
-  bindAddress: string;
+  bind: string;
   /** Whether authentication is required. */
   authRequired: boolean;
   /** Username for authentication (only used when authRequired=true). */

@@ -37,17 +37,45 @@ const COMPARED = ["name", "desc", "role", "type", "unit"];
 
 const FIXTURES = JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", "inventory", "displays.json"), "utf8"));
 
-/** Adapter-specific config the fixtures need: loopback only, no mDNS, no auth. */
+/** The port the adapter binds — fixed at the HA standard, not configurable (design decision 3). */
+const PORT = 8123;
+
+/**
+ * Adapter-specific config the fixtures need: loopback only, no mDNS, no auth. Complete —
+ * resetInstanceNative keeps exactly these keys, so every key the adapter reads is here.
+ */
 const FIXTURE_NATIVE = {
-  bindAddress: "127.0.0.1",
-  mdnsEnabled: false,
+  port: PORT,
+  bind: "127.0.0.1",
   authRequired: false,
+  username: "admin",
+  password: "",
+  mdnsEnabled: false,
   serviceName: "ioBroker",
   trustProxy: false,
 };
 
-/** The port the adapter binds — fixed at the HA standard, not configurable (design decision 3). */
-const PORT = 8123;
+/**
+ * Drop every settings key the fixture does not define from the instance object.
+ *
+ * The temp controller keeps the instance object across runs, and `changeAdapterConfig`
+ * merges into it — a key an earlier version wrote (`bindAddress` until 1.43.1) would still
+ * be there. The adapter carries such a key over on start and then waits for the host
+ * restart that follows the write; the harness never restarts it, and the run ends without
+ * a display tree. The fixture defines the config completely. (Pattern govee-smart.)
+ *
+ * @param {import("@iobroker/testing").TestHarness} harness the running harness
+ */
+async function resetInstanceNative(harness) {
+  const id = `system.adapter.${ADAPTER}.0`;
+  const obj = await harness.objects.getObjectAsync(id);
+  if (!obj) {
+    return;
+  }
+  const keep = new Set(Object.keys(FIXTURE_NATIVE));
+  obj.native = Object.fromEntries(Object.entries(obj.native ?? {}).filter(([key]) => keep.has(key)));
+  await harness.objects.setObjectAsync(id, obj);
+}
 
 /**
  * One HTTP GET against the running adapter, optionally carrying a display's cookie.
@@ -288,6 +316,7 @@ tests.integration(ADAPTER_DIR, {
       before(async function () {
         this.timeout(120000);
         harness = getHarness();
+        await resetInstanceNative(harness);
         await harness.changeAdapterConfig(ADAPTER, { native: FIXTURE_NATIVE });
         // Start once so the manifest objects exist and the DB is settled, THEN seed
         // the fixture displays and restart: the harness resets the database around
@@ -337,6 +366,7 @@ tests.integration(ADAPTER_DIR, {
           harness = getHarness();
           // The harness registers its own before() (fresh DB) ahead of this one,
           // so the seed survives and the adapter starts on top of the OLD objects.
+          await resetInstanceNative(harness);
           await harness.changeAdapterConfig(ADAPTER, { native: FIXTURE_NATIVE });
           // Seed the PREVIOUS release's objects, then start on top of them — the
           // upgrade an existing installation actually performs. The harness's own

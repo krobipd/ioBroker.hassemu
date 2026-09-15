@@ -22,5 +22,14 @@
       "global.manualUrl": "globalManualUrlDesc"
     }
   },
-  "forumThread": "https://forum.iobroker.net/topic/84711/test-adapter-hassemu-1.34"
+  "forumThread": "https://forum.iobroker.net/topic/84711/test-adapter-hassemu-1.34",
+  "_listenPorts": "The HA emulation listens on TCP 8123 — the port every HA client expects (design decision 3); the admin's port-conflict check reads native.port + native.bind.",
+  "listenPorts": [
+    {
+      "key": "port",
+      "protocol": "tcp",
+      "role": "primary",
+      "fixed": 8123
+    }
+  ]
 }

@@ -3,6 +3,19 @@
     "name": "hassemu",
     "version": "1.43.1",
     "news": {
+      "NEXT": {
+        "en": "The master switch keeps each display's own choice unless it really changes, disabled web instances add no dead dashboard entries, and the listen address setting is now in the standard place.",
+        "de": "Der Hauptschalter lässt die Wahl jedes Displays stehen, solange er sich nicht wirklich ändert, deaktivierte web-Instanzen liefern keine toten Einträge mehr, und die Bind-Adresse liegt am Standardort.",
+        "ru": "Главный переключатель сохраняет выбор каждого дисплея, пока он реально не меняется, отключённые экземпляры web не дают мёртвых записей, а адрес прослушивания хранится в стандартном месте.",
+        "pt": "O interruptor principal mantém a escolha de cada display enquanto não mudar de facto, instâncias web desativadas não geram entradas mortas, e o endereço de escuta está agora no lugar padrão.",
+        "nl": "De hoofdschakelaar laat de keuze van elk display staan zolang hij niet echt verandert, uitgeschakelde web-instanties leveren geen dode items meer, en het luisteradres staat nu op de standaardplek.",
+        "fr": "L'interrupteur principal garde le choix de chaque écran tant qu'il ne change pas vraiment, les instances web désactivées n'ajoutent plus d'entrées mortes, l'adresse d'écoute est à sa place standard.",
+        "it": "L'interruttore principale mantiene la scelta di ogni display finché non cambia davvero, le istanze web disattivate non aggiungono più voci morte, e l'indirizzo di ascolto è ora nel posto standard.",
+        "es": "El interruptor principal conserva la elección de cada pantalla si no cambia de verdad, las instancias web desactivadas no añaden entradas muertas y la dirección de escucha está en su lugar estándar.",
+        "pl": "Główny przełącznik zachowuje wybór każdego wyświetlacza, dopóki naprawdę się nie zmieni, wyłączone instancje web nie dodają martwych wpisów, a adres nasłuchu jest teraz w standardowym miejscu.",
+        "uk": "Головний перемикач зберігає вибір кожного дисплея, доки він справді не зміниться, вимкнені екземпляри web не додають мертвих записів, а адреса прослуховування тепер у стандартному місці.",
+        "zh-cn": "主开关在未真正改变时保留每个显示器自己的选择，已停用的 web 实例不再添加无效的仪表板条目，监听地址设置现在位于标准位置。"
+      },
       "1.43.1": {
         "en": "The button that removes a display now carries a description: it deletes the display's folder and all its states, and the display returns as a new entry.",
         "de": "Der Knopf zum Entfernen eines Displays trägt jetzt eine Beschreibung: Er löscht dessen Ordner samt aller Datenpunkte, das Display kehrt als neuer Eintrag zurück.",
@@ -80,19 +93,6 @@
         "pl": "Wyświetlacze pokazują teraz kartę \"Cel przekierowania nieosiągalny\" zamiast czarnego ekranu, gdy skonfigurowany panel nie odpowiada, i automatycznie przeładowują się, gdy tylko znów odpowie",
         "uk": "Дисплеї тепер показують картку «Ціль переспрямування недоступна» замість чорного екрана, коли налаштована панель недоступна, і автоматично перезавантажуються, щойно вона знову відповідає",
         "zh-cn": "当配置的仪表板不可用时，显示屏现在会显示\"转发目标无法访问\"卡片而不是黑屏，并在目标恢复响应后自动重新加载"
-      },
-      "1.38.2": {
-        "en": "Stopping or restarting the adapter was cut short — the instance stayed marked as connected and displays kept looking for a server that was already gone.",
-        "de": "Beenden oder Neustart des Adapters brach vorzeitig ab — die Instanz blieb als verbunden markiert und Displays suchten weiter einen Server, den es nicht mehr gab.",
-        "ru": "Остановка или перезапуск адаптера обрывались — экземпляр оставался помеченным как подключённый, а дисплеи продолжали искать уже отсутствующий сервер.",
-        "pt": "Parar ou reiniciar o adaptador era interrompido — a instância continuava marcada como ligada e os ecrãs continuavam à procura de um servidor que já não existia.",
-        "nl": "Stoppen of herstarten van de adapter werd afgebroken — de instantie bleef als verbonden gemarkeerd en displays bleven zoeken naar een server die er niet meer was.",
-        "fr": "L'arrêt ou le redémarrage de l'adaptateur était interrompu — l'instance restait marquée comme connectée et les écrans cherchaient un serveur qui n'existait plus.",
-        "it": "L'arresto o il riavvio dell'adattatore veniva interrotto — l'istanza restava segnata come connessa e i display continuavano a cercare un server non più presente.",
-        "es": "Detener o reiniciar el adaptador se interrumpía — la instancia seguía marcada como conectada y las pantallas seguían buscando un servidor que ya no existía.",
-        "pl": "Zatrzymanie lub restart adaptera był przerywany — instancja pozostawała oznaczona jako połączona, a wyświetlacze wciąż szukały serwera, którego już nie było.",
-        "uk": "Зупинка або перезапуск адаптера обривалися — екземпляр залишався позначеним як під'єднаний, а дисплеї далі шукали сервер, якого вже не було.",
-        "zh-cn": "停止或重启适配器时过程被中断——实例仍显示为已连接，显示设备继续寻找一台已经不存在的服务器。"
       }
     },
     "plugins": {
@@ -185,7 +185,7 @@
   ],
   "native": {
     "port": 8123,
-    "bindAddress": "0.0.0.0",
+    "bind": "0.0.0.0",
     "authRequired": false,
     "username": "admin",
     "password": "",
