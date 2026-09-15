@@ -4,7 +4,7 @@
     "version": "1.43.1",
     "news": {
       "NEXT": {
-        "en": "The master switch keeps each display's own choice unless it really changes, disabled web instances add no dead dashboard entries, and the listen address setting is now in the standard place.",
+        "en": "The master switch keeps each display's own choice unless it really changes, disabled web instances add no dead dashboard entries, and the listen address setting has moved to the standard place.",
         "de": "Der Hauptschalter lässt die Wahl jedes Displays stehen, solange er sich nicht wirklich ändert, deaktivierte web-Instanzen liefern keine toten Einträge mehr, und die Bind-Adresse liegt am Standardort.",
         "ru": "Главный переключатель сохраняет выбор каждого дисплея, пока он реально не меняется, отключённые экземпляры web не дают мёртвых записей, а адрес прослушивания хранится в стандартном месте.",
         "pt": "O interruptor principal mantém a escolha de cada display enquanto não mudar de facto, instâncias web desativadas não geram entradas mortas, e o endereço de escuta está agora no lugar padrão.",
