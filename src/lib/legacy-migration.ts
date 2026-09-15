@@ -54,9 +54,13 @@ export async function cleanupLegacyNativeUrl(adapter: MigrationAdapter): Promise
     const id = `system.adapter.${adapter.namespace}`;
     const obj = await adapter.getForeignObjectAsync(id);
     const native = obj?.native as { defaultVisUrl?: unknown; visUrl?: unknown } | undefined;
-    // Only write when a key is actually there — an unconditional write would restart
-    // the instance on every single start.
-    if (!native || (native.defaultVisUrl === undefined && native.visUrl === undefined)) {
+    // Only write when a key actually carries a value — an unconditional write would
+    // restart the instance on every single start. `null` is the state AFTER this
+    // function's own write: an extend with `null` stores `null`, it does not delete the
+    // key (measured on the objects store), so a `=== undefined` guard would see its own
+    // result as "still there" and restart forever (audit 2026-09-15, E4).
+    const present = (v: unknown): boolean => v !== undefined && v !== null;
+    if (!native || (!present(native.defaultVisUrl) && !present(native.visUrl))) {
       return false;
     }
     await adapter.extendForeignObjectAsync(id, { native: { defaultVisUrl: null, visUrl: null } });

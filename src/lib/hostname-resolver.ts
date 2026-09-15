@@ -15,7 +15,8 @@
 
 import dns from "node:dns/promises";
 import { oneLine } from "./coerce";
-import { DNS_NEGATIVE_CACHE_MS, DNS_REVERSE_TIMEOUT_MS } from "./constants";
+import { DNS_NEGATIVE_CACHE_CAP, DNS_NEGATIVE_CACHE_MS, DNS_REVERSE_TIMEOUT_MS } from "./constants";
+import { evictOldest } from "./object-utils";
 import type { AdapterInterface } from "./types";
 
 /**
@@ -131,13 +132,13 @@ export class HostnameResolver {
             this.adapter.log.debug(`resolveHostname: persist for ${target.id} failed — ${String(err)}`),
           );
         } else {
-          this.negativeCache.set(ip, Date.now()); // no PTR — remember (L6)
+          this.rememberNegative(ip); // no PTR — remember (L6)
         }
       })
       .catch(err => {
         // v1.32.0 A3: reverse DNS fails on a LAN often and legitimately → debug, but with
         // a diagnostic anchor. L6: cache the failure so it is not retried every poll.
-        this.negativeCache.set(ip, Date.now());
+        this.rememberNegative(ip);
         this.adapter.log.debug(
           `resolveHostname: ip=${ip} failed — ${err instanceof Error ? err.message : String(err)}`,
         );
@@ -148,6 +149,19 @@ export class HostnameResolver {
         }
         this.inFlight.delete(ip);
       });
+  }
+
+  /**
+   * Remember that `ip` has no PTR record. Capped like every other map of the adapter
+   * (oldest entry out) — the time-based prune alone let a device that rotates its
+   * apparent IP add one entry per request for an hour.
+   *
+   * @param ip The IP whose lookup yielded no name.
+   */
+  private rememberNegative(ip: string): void {
+    this.negativeCache.delete(ip);
+    evictOldest(this.negativeCache, DNS_NEGATIVE_CACHE_CAP);
+    this.negativeCache.set(ip, Date.now());
   }
 
   /**

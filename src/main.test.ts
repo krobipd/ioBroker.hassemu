@@ -1260,6 +1260,19 @@ describe("onObjectChange filter (H4 v1.13.0 / R2 v1.30.0)", () => {
     expect(discovery.scheduleRefresh).toHaveBeenCalledTimes(1);
   });
 
+  it("a deleted state BELOW a foreign instance does NOT schedule a refresh (only an instance id counts)", () => {
+    // Audit 2026-09-15 (D4): uninstalling influxdb deletes dozens of
+    // `system.adapter.influxdb.0.<state>` objects — each used to be an "instance removed".
+    const { internal, discovery } = setup();
+    internal.urlDiscovery = discovery;
+    internal.onObjectChange("system.adapter.influxdb.0.memRss", null);
+    internal.onObjectChange("system.adapter.influxdb.0.alive", null);
+    expect(discovery.scheduleRefresh).not.toHaveBeenCalled();
+    // The instance itself going away still does.
+    internal.onObjectChange("system.adapter.influxdb.0", null);
+    expect(discovery.scheduleRefresh).toHaveBeenCalledTimes(1);
+  });
+
   it("unrelated adapter reconfiguration does NOT schedule a refresh", () => {
     const { internal, discovery } = setup();
     internal.urlDiscovery = discovery;
@@ -1345,6 +1358,29 @@ describe("onUnload", () => {
 
     releaseServer();
     await vi.waitFor(() => expect(callback).toHaveBeenCalledTimes(1));
+  });
+
+  it("a rejected shutdown write does not call back before the goodbye and the server stop finished", async () => {
+    // Audit 2026-09-15 (B4): Promise.all rejects on the first failed member, which used
+    // to fire the callback while the mDNS goodbye and the server stop were still running.
+    const { internal, stub, webServer, mdns } = setup();
+    internal.webServer = webServer;
+    internal.mdnsService = mdns;
+    let releaseServer = (): void => {};
+    webServer.stop.mockImplementation(() => new Promise<void>(resolve => (releaseServer = resolve)));
+    mdns.stop.mockImplementation(() => Promise.resolve());
+    const adapter = internal as unknown as { setState: (...args: unknown[]) => Promise<unknown> };
+    adapter.setState = () => Promise.reject(new Error("broker gone"));
+    const callback = vi.fn();
+
+    internal.onUnload(callback);
+    await new Promise(r => setImmediate(r));
+    await new Promise(r => setImmediate(r));
+    expect(callback, "not before the server stop finished").not.toHaveBeenCalled();
+
+    releaseServer();
+    await vi.waitFor(() => expect(callback).toHaveBeenCalledTimes(1));
+    expect(logsOf(stub, "error").some(m => m.includes("Shutdown error") && m.includes("broker gone"))).toBe(true);
   });
 });
 

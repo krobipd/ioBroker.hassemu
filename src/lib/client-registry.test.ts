@@ -579,51 +579,70 @@ describe("ClientRegistry", () => {
     });
   });
 
-  describe("setRefreshToken (v1.31.0)", () => {
-    it("sets the refresh token and makes it findable", async () => {
+  describe("setTokens (v1.31.0 refresh persistence, one write since the 2026-09-15 audit)", () => {
+    it("sets access + refresh token in ONE object write and makes both findable", async () => {
       const rec = await registry.identifyOrCreate(null, null);
+      const access = crypto.randomUUID();
       const token = crypto.randomUUID();
-      await registry.setRefreshToken(rec.id, token);
+      const extendCalls = { n: 0 };
+      const original = adapter.extendObject;
+      adapter.extendObject = (...args) => {
+        extendCalls.n++;
+        return original(...args);
+      };
+      await registry.setTokens(rec.id, access, token);
+      expect(extendCalls.n).to.equal(1);
+      expect(rec.token).to.equal(access);
       expect(rec.refreshToken).to.equal(token);
+      expect(typeof rec.tokenExpiresAt).to.equal("number");
+      expect(registry.getByToken(access)).to.equal(rec);
       expect(registry.getByRefreshToken(token)).to.equal(rec);
     });
 
-    it("persists refresh token to channel.native.refreshToken", async () => {
+    it("persists both tokens and the expiry to channel.native", async () => {
       const rec = await registry.identifyOrCreate(null, null);
+      const access = crypto.randomUUID();
       const token = crypto.randomUUID();
-      await registry.setRefreshToken(rec.id, token);
+      await registry.setTokens(rec.id, access, token);
       const channel = store.objects.get(`hassemu.0.clients.${rec.id}`);
       expect(channel?.native?.refreshToken).to.equal(token);
+      expect(channel?.native?.token).to.equal(access);
+      expect(channel?.native?.tokenExpiresAt).to.equal(rec.tokenExpiresAt);
     });
 
-    it("clears refresh token on null", async () => {
+    it("clears both on null (revoke)", async () => {
       const rec = await registry.identifyOrCreate(null, null);
+      const access = crypto.randomUUID();
       const token = crypto.randomUUID();
-      await registry.setRefreshToken(rec.id, token);
-      await registry.setRefreshToken(rec.id, null);
+      await registry.setTokens(rec.id, access, token);
+      await registry.setTokens(rec.id, null, null);
+      expect(rec.token).to.be.null;
+      expect(rec.tokenExpiresAt).to.be.null;
       expect(rec.refreshToken).to.be.null;
+      expect(registry.getByToken(access)).to.be.null;
       expect(registry.getByRefreshToken(token)).to.be.null;
+      expect(store.objects.get(`hassemu.0.clients.${rec.id}`)?.native?.refreshToken).to.be.null;
     });
 
     it("replaces old refresh token when new one is set (old no longer looked up)", async () => {
       const rec = await registry.identifyOrCreate(null, null);
       const t1 = crypto.randomUUID();
       const t2 = crypto.randomUUID();
-      await registry.setRefreshToken(rec.id, t1);
-      await registry.setRefreshToken(rec.id, t2);
+      await registry.setTokens(rec.id, crypto.randomUUID(), t1);
+      await registry.setTokens(rec.id, crypto.randomUUID(), t2);
       expect(registry.getByRefreshToken(t1)).to.be.null;
       expect(registry.getByRefreshToken(t2)).to.equal(rec);
     });
 
     it("no-op when id is unknown", async () => {
-      await registry.setRefreshToken("xxxxxx", "any");
+      await registry.setTokens("xxxxxx", "any", "any");
       expect(registry.listAll().length).to.equal(0);
     });
 
     it("restore() loads refreshToken from native field", async () => {
       const rec = await registry.identifyOrCreate(null, null);
       const token = crypto.randomUUID();
-      await registry.setRefreshToken(rec.id, token);
+      await registry.setTokens(rec.id, crypto.randomUUID(), token);
 
       // Fresh registry on same store (simulates adapter restart)
       const reg2 = new ClientRegistry(adapter as never);
@@ -664,7 +683,7 @@ describe("ClientRegistry", () => {
     it("remove(id) clears byRefreshToken lookup", async () => {
       const rec = await registry.identifyOrCreate(null, null);
       const token = crypto.randomUUID();
-      await registry.setRefreshToken(rec.id, token);
+      await registry.setTokens(rec.id, crypto.randomUUID(), token);
       await registry.remove(rec.id);
       expect(registry.getByRefreshToken(token)).to.be.null;
     });
@@ -1527,6 +1546,24 @@ describe("ClientRegistry name/description reach existing clients (v1.41.0)", () 
     );
   });
 
+  it("repairs a broken .mode schema with the CURRENT name even when the revision stamp is current", async () => {
+    // Audit 2026-09-15 (E3): the schema repair used to carry the tree's name over
+    // (`preservedName`) and the text refresh only runs on an older stamp — so a `.mode`
+    // whose schema had been damaged from outside kept a stale name at the current stamp.
+    // The name of `.mode` is the adapter's own text, not the user's.
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never);
+    const rec = await reg.identifyOrCreate(null, "10.0.0.10");
+    const mode = built.store.objects.get(`hassemu.0.clients.${rec.id}.mode`)!;
+    mode.common = { ...mode.common, name: "STALE", type: "string" }; // broken schema, stamp stays current
+
+    await new ClientRegistry(built.adapter as never).restore();
+
+    const repaired = built.store.objects.get(`hassemu.0.clients.${rec.id}.mode`)!;
+    expect(repaired.common?.type).to.equal("mixed");
+    expect(textOf(repaired.common?.name)).to.equal("Redirect mode");
+  });
+
   it("no longer shields .manualUrl behind `preserve`", async () => {
     const built = createMockAdapter();
     const reg = new ClientRegistry(built.adapter as never);
@@ -1971,6 +2008,27 @@ describe("ClientRegistry start cost (audit 2026-09-15 — C1, C2, D1)", () => {
 
     expect(reg.lastSeenOf("gc0001")).to.equal(stamp);
     expect(reg.lastSeenOf("nobody")).to.be.undefined;
+  });
+
+  it("a NEW display is created with the current texts and stamp — no second name write, no stamp write (G2)", async () => {
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never);
+    const counts = count(built);
+
+    const rec = await reg.identifyOrCreate(null, "10.0.0.9");
+    await new Promise(resolve => setImmediate(resolve));
+
+    // Device + five leaves created, three values written, one lastSeen flush — and
+    // nothing else: the create path used to add a name write and a stamp write.
+    expect(counts.setObjectNotExistsAsync).to.equal(6);
+    expect(counts.setState).to.equal(3);
+    expect(counts.extendObject, JSON.stringify(counts)).to.equal(1);
+    const device = built.store.objects.get(`hassemu.0.clients.${rec.id}`)!;
+    expect(device.native?.objectsVersion).to.equal(CLIENT_OBJECTS_VERSION);
+    expect(typeof device.native?.lastSeen).to.equal("number");
+    const mode = built.store.objects.get(`hassemu.0.clients.${rec.id}.mode`)!;
+    expect((mode.common?.name as Record<string, string>).en).to.equal("Redirect mode");
+    expect((mode.common?.desc as Record<string, string>).en).to.be.a("string");
   });
 
   it("an unchanged resolvedUrl after a restart is not written again; a changed one is (C2)", async () => {

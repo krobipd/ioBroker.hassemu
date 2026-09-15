@@ -507,6 +507,36 @@ describe("UrlDiscovery", () => {
       expect(summary!.split("web.1=disabled")).to.have.lengthOf(2);
     });
 
+    it("a second collect() while one is running joins it — one broker pass, one listener call (E5)", async () => {
+      // Audit 2026-09-15: the refresh button pressed during a debounced pass started a
+      // parallel pass; both replaced the same `.mode` objects concurrently.
+      const seen: number[] = [];
+      const d = new UrlDiscovery(adapter, () => {
+        seen.push(1);
+      });
+      let passes = 0;
+      let release = (): void => {};
+      const gate = new Promise<void>(resolve => (release = resolve));
+      adapter.getForeignObjectsAsync = async () => {
+        passes++;
+        await gate;
+        return { "system.adapter.aura.0": enabledInstance({ native: { port: 8095, secure: false, customUrl: "" } }) };
+      };
+
+      const first = d.collect();
+      const second = d.collect();
+      expect(second, "the second caller gets the running pass").to.equal(first);
+      release();
+      const [a, b] = await Promise.all([first, second]);
+
+      expect(passes).to.equal(1);
+      expect(a).to.deep.equal(b);
+      expect(seen).to.have.lengthOf(1);
+      // And the next call after completion starts a fresh pass.
+      await d.collect();
+      expect(passes).to.equal(2);
+    });
+
     it("does not probe VIS at all when no vis instance exists", async () => {
       // Without an instance there is nothing to read — the old code fired a doomed
       // readDirAsync("vis-2.0") on every single discovery pass.

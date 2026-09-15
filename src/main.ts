@@ -683,7 +683,12 @@ export class HassEmu extends utils.Adapter {
       // adding a new URL-source adapter only requires updating the
       // exported `URL_SOURCE_PREFIXES` (plus `collect()`).
       const isUrlSourceAdapter = isUrlSourceAdapterEvent(id);
-      const isAddOrRemove = !obj || (obj.type === "instance" && !obj.common?.host);
+      // Only an INSTANCE id (`system.adapter.<name>.<n>`, four segments) counts as an
+      // add/remove. `!obj` alone also fired for every deleted state below a foreign
+      // instance (`system.adapter.influxdb.0.memRss` on uninstall) and scheduled a full
+      // discovery pass for nothing (audit 2026-09-15, D4).
+      const isInstanceId = id.split(".").length === 4;
+      const isAddOrRemove = isInstanceId && (!obj || (obj.type === "instance" && !obj.common?.host));
       if (isUrlSourceAdapter || isAddOrRemove) {
         this.urlDiscovery?.scheduleRefresh();
       }
@@ -733,10 +738,16 @@ export class HassEmu extends utils.Adapter {
       // Calling back first means the host tears the process down while `info.connection`
       // is still `true` and the displays keep looking for a server that is gone. No own
       // deadline needed — the host already has one (`common.stopTimeout`), and
-      // `this.setTimeout` refuses during shutdown anyway.
-      void Promise.all(pending)
-        .catch((err: unknown) => {
-          this.log.error(`Shutdown error: ${String(err)}`);
+      // `this.setTimeout` refuses during shutdown anyway. allSettled, not all: one
+      // rejected write (broker already gone) must not call back while the goodbye and
+      // the server stop are still running (audit 2026-09-15, B4).
+      void Promise.allSettled(pending)
+        .then(results => {
+          for (const r of results) {
+            if (r.status === "rejected") {
+              this.log.error(`Shutdown error: ${String(r.reason)}`);
+            }
+          }
         })
         .finally(callback);
       return;

@@ -66,7 +66,16 @@ export const DNS_REVERSE_TIMEOUT_MS = 5 * 1000;
  */
 export const DNS_NEGATIVE_CACHE_MS = 60 * 60 * 1000;
 
-/** Stale-Client-GC threshold: clients without token + lastSeen older are auto-removed. */
+/**
+ * Cap on the reverse-DNS negative cache (IPs known to have no PTR record). Time-pruned
+ * every cleanup pass, but a device rotating its apparent IP per request (trustProxy on
+ * without a sanitising proxy) would otherwise add an entry per request for an hour —
+ * the one map of the adapter that had no cap (audit 2026-09-15, D3). 500 is far above
+ * any LAN's display count and small enough to be nothing.
+ */
+export const DNS_NEGATIVE_CACHE_CAP = 500;
+
+/** Stale-Client-GC threshold: lastSeen older than this → the client is forgotten, tokens or not. */
 export const STALE_CLIENT_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 /** `native.lastSeen` is rewritten at most once per this window per client (GC input). */

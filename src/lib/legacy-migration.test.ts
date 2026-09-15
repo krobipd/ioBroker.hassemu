@@ -79,6 +79,25 @@ describe("cleanupLegacyNativeUrl", () => {
     expect(store.objects.get("system.adapter.hassemu.0")?.native).to.deep.equal({ port: 8123 });
   });
 
+  it("recognises its OWN result — both keys null — and does not write again (no restart loop)", async () => {
+    // An extend with `null` stores `null`, it does not delete the key (measured on the
+    // objects store, govee 2026-09-15). The guard must read `null` as "already cleaned"
+    // — a `=== undefined` guard sees its own result as still there and restarts the
+    // instance on every start. Audit 2026-09-15 (E4).
+    const { store, adapter } = createStub();
+    store.objects.set("system.adapter.hassemu.0", {
+      type: "instance",
+      native: { port: 8123, defaultVisUrl: null, visUrl: null },
+    });
+
+    expect(await cleanupLegacyNativeUrl(adapter)).to.equal(false);
+    expect(store.objects.get("system.adapter.hassemu.0")?.native).to.deep.equal({
+      port: 8123,
+      defaultVisUrl: null,
+      visUrl: null,
+    });
+  });
+
   it("clears both legacy keys and reports the coming restart", async () => {
     const { store, adapter } = createStub();
     store.objects.set("system.adapter.hassemu.0", {

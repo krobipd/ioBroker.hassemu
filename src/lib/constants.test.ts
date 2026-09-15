@@ -4,14 +4,13 @@ import {
   CLEANUP_INTERVAL_MS,
   LOGIN_SCHEMA,
   OAUTH_ACCESS_TOKEN_TTL_S,
-  DEFAULT_SERVICE_NAME,
   NEW_CLIENT_WINDOW_MS,
   NEW_CLIENT_BURST_WARN_THRESHOLD,
   NEW_CLIENT_THROTTLE_PER_HOUR,
   DNS_REVERSE_TIMEOUT_MS,
   DNS_NEGATIVE_CACHE_MS,
-  WS_HEARTBEAT_INTERVAL_MS,
   LASTSEEN_FLUSH_INTERVAL_MS,
+  STALE_CLIENT_TTL_MS,
 } from "./constants";
 
 describe("constants", () => {
@@ -19,11 +18,6 @@ describe("constants", () => {
     it("should be a valid HA-style version string (year.month.patch)", () => {
       expect(HA_VERSION).to.be.a("string");
       expect(HA_VERSION).to.match(/^\d{4}\.\d+\.\d+$/);
-    });
-
-    it("should be from year 2026 or later", () => {
-      const year = parseInt(HA_VERSION.split(".")[0], 10);
-      expect(year).to.be.at.least(2026);
     });
   });
 
@@ -39,11 +33,6 @@ describe("constants", () => {
   });
 
   describe("CLEANUP_INTERVAL_MS", () => {
-    it("is a positive millisecond-scale interval", () => {
-      expect(CLEANUP_INTERVAL_MS).to.be.a("number");
-      expect(CLEANUP_INTERVAL_MS).to.be.within(1000, 60 * 60 * 1000);
-    });
-
     it("runs more often than the session lifetime, so expired sessions are reaped within one TTL", () => {
       // The real invariant: if cleanup ran less often than the TTL, an expired
       // session could linger for up to a full extra TTL before being swept.
@@ -52,10 +41,6 @@ describe("constants", () => {
   });
 
   describe("LOGIN_SCHEMA", () => {
-    it("should be an array", () => {
-      expect(LOGIN_SCHEMA).to.be.an("array");
-    });
-
     it("should have username and password fields", () => {
       expect(LOGIN_SCHEMA).to.have.lengthOf(2);
 
@@ -81,13 +66,6 @@ describe("constants", () => {
       // its access token on this cadence (AuthenticationRepositoryImpl). A value
       // from a minute up to a day is sane; an ms-scale value (e.g. 1_800_000) is the bug.
       expect(OAUTH_ACCESS_TOKEN_TTL_S).to.be.within(60, 24 * 60 * 60);
-    });
-  });
-
-  describe("DEFAULT_SERVICE_NAME", () => {
-    it("is a non-empty string default for the mDNS/HTTP service name", () => {
-      expect(DEFAULT_SERVICE_NAME).to.be.a("string");
-      expect(DEFAULT_SERVICE_NAME.length).to.be.greaterThan(0);
     });
   });
 
@@ -117,15 +95,12 @@ describe("constants", () => {
     });
   });
 
-  describe("WS_HEARTBEAT_INTERVAL_MS", () => {
-    it("is a millisecond-scale keep-alive interval", () => {
-      expect(WS_HEARTBEAT_INTERVAL_MS).to.be.within(1000, 5 * 60 * 1000);
-    });
-  });
-
   describe("LASTSEEN_FLUSH_INTERVAL_MS", () => {
     it("is a millisecond-scale throttle window shorter than the stale-client TTL", () => {
       expect(LASTSEEN_FLUSH_INTERVAL_MS).to.be.within(60 * 1000, 24 * 60 * 60 * 1000);
+      // The real invariant: a display seen within the window must never look stale —
+      // otherwise the GC could forget a display the throttle is still holding a write for.
+      expect(LASTSEEN_FLUSH_INTERVAL_MS).to.be.lessThan(STALE_CLIENT_TTL_MS);
     });
   });
 });

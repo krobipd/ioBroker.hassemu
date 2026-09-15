@@ -2,6 +2,15 @@ import crypto from "node:crypto";
 import { once } from "node:events";
 import WebSocket from "ws";
 
+// No real DNS in this suite (audit 2026-09-15, F5): every `GET /` used to start a real
+// `dns.reverse` against the system resolver and rename the display asynchronously —
+// "localhost" on macOS, "ip6-localhost" on the Ubuntu runner. Answers "no PTR record"
+// unless a test hands it something else; a pending answer keeps a lookup in flight.
+const { dnsReverse } = vi.hoisted(() => ({
+  dnsReverse: vi.fn((_ip: string): Promise<string[]> => Promise.resolve([])),
+}));
+vi.mock("node:dns/promises", () => ({ default: { reverse: (ip: string) => dnsReverse(ip) } }));
+
 vi.mock("@iobroker/adapter-core", async () => {
   const { readdirSync, readFileSync } = await import("node:fs");
   const { join } = await import("node:path");
@@ -2113,15 +2122,17 @@ describe("WebServer bindAddress / start-stop", () => {
       crypto.randomUUID(),
     );
     await s.start();
-    // Drive the REAL resolver: two lookups for unroutable TEST-NET-3 addresses that will
-    // never answer, so both are genuinely in flight when stop() runs. (The bookkeeping
-    // moved into HostnameResolver in v1.43.0; the guarantee is unchanged.)
+    // Drive the REAL resolver with two lookups that never answer, so both are genuinely
+    // in flight when stop() runs. (The bookkeeping moved into HostnameResolver in
+    // v1.43.0; the guarantee is unchanged.)
+    dnsReverse.mockImplementation(() => new Promise<string[]>(() => {}));
     const resolver = (s as unknown as { hostnames: HostnameResolver }).hostnames;
     resolver.resolve({ id: "aaa111", cookie: crypto.randomUUID(), hasHostname: false }, "203.0.113.42");
     resolver.resolve({ id: "bbb222", cookie: crypto.randomUUID(), hasHostname: false }, "203.0.113.43");
     expect(resolver.inFlightCount).to.equal(2);
     await s.stop();
     expect(resolver.inFlightCount).to.equal(0);
+    dnsReverse.mockImplementation(() => Promise.resolve([]));
   });
 
   // --- D6: Request-error log cooldown (v1.9.x) ---

@@ -516,6 +516,49 @@ export class ClientRegistry {
     if (!record) {
       return;
     }
+    this.trackToken(record, token);
+    await this.adapter.extendObject(`clients.${id}`, {
+      native: { token, tokenExpiresAt: record.tokenExpiresAt },
+    });
+  }
+
+  /**
+   * Sets access AND refresh token in one object write — the onboarding grant and the
+   * revoke both change the pair, and two extendObject calls on the same object per
+   * onboarding were one too many (audit 2026-09-15, G1). The refresh token is stored
+   * plain-text in `clients.<id>.native.refreshToken` — same exposure profile as the
+   * access token (see {@link ClientRecord.refreshToken}).
+   *
+   * @param id           Client id.
+   * @param token        New bearer token, or null to clear.
+   * @param refreshToken New refresh token, or null to clear.
+   */
+  async setTokens(id: string, token: string | null, refreshToken: string | null): Promise<void> {
+    const record = this.byId.get(id);
+    if (!record) {
+      return;
+    }
+    this.trackToken(record, token);
+    if (record.refreshToken) {
+      this.byRefreshToken.delete(record.refreshToken);
+    }
+    record.refreshToken = refreshToken;
+    if (refreshToken) {
+      this.byRefreshToken.set(refreshToken, record);
+    }
+    await this.adapter.extendObject(`clients.${id}`, {
+      native: { token, tokenExpiresAt: record.tokenExpiresAt, refreshToken },
+    });
+  }
+
+  /**
+   * In-memory half of an access-token change: frees the old lookup entry, stamps the
+   * expiry and indexes the new token.
+   *
+   * @param record Tracked client record.
+   * @param token  New bearer token, or null to clear.
+   */
+  private trackToken(record: ClientRecord, token: string | null): void {
     if (record.token) {
       this.byToken.delete(record.token);
     }
@@ -526,32 +569,6 @@ export class ClientRegistry {
     if (token) {
       this.byToken.set(token, record);
     }
-    await this.adapter.extendObject(`clients.${id}`, {
-      native: { token, tokenExpiresAt: record.tokenExpiresAt },
-    });
-  }
-
-  /**
-   * Updates in-memory refresh token and persists to channel.native. Old refresh
-   * token is freed. Stored plain-text in `clients.<id>.native.refreshToken` —
-   * same exposure profile as the access token (see {@link ClientRecord.refreshToken}).
-   *
-   * @param id           Client id.
-   * @param refreshToken New refresh token, or null to clear.
-   */
-  async setRefreshToken(id: string, refreshToken: string | null): Promise<void> {
-    const record = this.byId.get(id);
-    if (!record) {
-      return;
-    }
-    if (record.refreshToken) {
-      this.byRefreshToken.delete(record.refreshToken);
-    }
-    record.refreshToken = refreshToken;
-    if (refreshToken) {
-      this.byRefreshToken.set(refreshToken, record);
-    }
-    await this.adapter.extendObject(`clients.${id}`, { native: { refreshToken } });
   }
 
   /**
@@ -1066,10 +1083,14 @@ export class ClientRegistry {
     // (core team, nut2 #15). The TEXT is unchanged — it is the display's own hostname
     // (or its IP / id); `tRaw` only offers it under every language key so the object
     // browser shows it whatever the system language is.
+    // A freshly created device carries the current text revision from the start: its
+    // objects are written with the current texts below, so the separate stamp write
+    // and the second name write of the old create path were two writes for nothing
+    // (audit 2026-09-15, G2). On restore the object exists and this is a no-op.
     await this.adapter.setObjectNotExistsAsync(`clients.${id}`, {
       type: "device",
       common: { name: tRaw(hostname ?? ip ?? id) },
-      native: { cookie, token: null },
+      native: { cookie, token: null, objectsVersion: CLIENT_OBJECTS_VERSION },
     });
 
     // States:
@@ -1125,12 +1146,11 @@ export class ClientRegistry {
       if (schemaOk && statesOk) {
         return;
       }
-      const preservedName = c?.name;
+      // The name/desc of `.mode` are the adapter's own text (tName), never the user's —
+      // a broken schema is repaired with the CURRENT text, not with whatever the tree
+      // held (audit 2026-09-15, E3; the device name is the user-owned one, not this).
       const preservedStates = refreshStates ? mergedStates : (c?.states ?? mergedStates);
       existing.common = { ...c, ...modeFullCommon, states: preservedStates };
-      if (preservedName !== undefined) {
-        existing.common.name = preservedName;
-      }
       existing.type = "state";
       await replaceObjectPreservingValue(this.adapter, path, existing);
     };
@@ -1221,7 +1241,9 @@ export class ClientRegistry {
   }
 
   private async createObjects(record: ClientRecord): Promise<void> {
-    await this.ensureObjects(record);
+    // The objects of a new display are created with the current texts — the revision
+    // is current by construction, so ensureObjects takes the existence-only path.
+    await this.ensureObjects(record, true, CLIENT_OBJECTS_VERSION);
     const { id, mode, ip } = record;
     await Promise.all([
       this.adapter.setState(`clients.${id}.ip`, { val: ip ?? "", ack: true }),

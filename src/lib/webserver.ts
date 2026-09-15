@@ -828,8 +828,7 @@ export class WebServer {
     const refresh = typeof token === "string" ? token : "";
     const owner = refresh ? this.registry.getByRefreshToken(refresh) : null;
     if (owner) {
-      await this.registry.setRefreshToken(owner.id, null);
-      await this.registry.setToken(owner.id, null);
+      await this.registry.setTokens(owner.id, null, null);
       this.adapter.log.debug(`Token revoked — client ${owner.id}`);
     } else {
       this.adapter.log.debug("Revoke: unknown/missing token — returning 200 (HA behavior)");
@@ -1114,8 +1113,7 @@ export class WebServer {
     }
     const token = crypto.randomUUID();
     const refreshToken = crypto.randomUUID();
-    await this.registry.setToken(session.clientId, token);
-    await this.registry.setRefreshToken(session.clientId, refreshToken);
+    await this.registry.setTokens(session.clientId, token, refreshToken);
     this.adapter.log.debug(`Display authenticated — client ${session.clientId}`);
     return {
       access_token: token,

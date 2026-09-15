@@ -103,6 +103,12 @@ export class UrlDiscovery {
   private readonly onChange?: UrlStatesListener;
   private cached: UrlStates = {};
   private debounceTimer: ioBroker.Timeout | null = null;
+  /**
+   * The pass currently running, if any. A second caller (the refresh button pressed
+   * while a debounced pass is running) joins it instead of starting a parallel pass —
+   * two passes replaced the same `.mode` objects concurrently (audit 2026-09-15, E5).
+   */
+  private inflight: Promise<UrlStates> | null = null;
 
   /**
    * @param adapter  Adapter instance used to read broker state.
@@ -145,7 +151,16 @@ export class UrlDiscovery {
    * states map and the {@link cached} fallback exist for the unit tests —
    * production `await`s collect() and ignores the result. v1.37.0 (L29).
    */
-  async collect(): Promise<UrlStates> {
+  collect(): Promise<UrlStates> {
+    if (!this.inflight) {
+      this.inflight = this.collectOnce().finally(() => {
+        this.inflight = null;
+      });
+    }
+    return this.inflight;
+  }
+
+  private async collectOnce(): Promise<UrlStates> {
     const result: UrlStates = {};
     const hostIp = getLocalIp();
     // v1.32.0 B2: per-Adapter-Tracking für Discovery-Summary statt N silent-skips.
