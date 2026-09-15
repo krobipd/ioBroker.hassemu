@@ -139,9 +139,43 @@ async function feedFixtures(harness, knownCookies = {}) {
     await get("/", cookie);
     await get("/api/redirect_check", cookie);
   }
-  // Give the fire-and-forget object writes (lastSeen, auto-name) a moment to land.
+  // Give the fire-and-forget object writes (lastSeen, auto-name) a moment to land, then
+  // wait for the tree to stop growing — the moment is a guess, the quiet window is not.
   await new Promise(r => setTimeout(r, 1500));
+  await waitForStableTree(harness);
   return idMap;
+}
+
+/**
+ * Wait until the object tree has stopped growing for a second. The fire-and-forget writes
+ * above have no completion signal the harness could wait on; on the GitHub runner a sibling
+ * harness (homewizard, 2026-09-15) dumped while such writes were still in flight and lost
+ * two objects. A quiet window is the settle check beszel and govee-smart already use.
+ *
+ * @param {import("@iobroker/testing").TestHarness} harness The harness.
+ */
+async function waitForStableTree(harness) {
+  const count = async () => (await harness.objects.getObjectList({ startkey: NS, endkey: `${NS}香` })).rows.length;
+  const deadline = Date.now() + 60000;
+  let previous = await count();
+  for (;;) {
+    let stable = true;
+    for (let i = 0; i < 4; i++) {
+      await new Promise(resolve => setTimeout(resolve, 250));
+      const now = await count();
+      if (now !== previous) {
+        previous = now;
+        stable = false;
+        break;
+      }
+    }
+    if (stable) {
+      return;
+    }
+    if (Date.now() > deadline) {
+      throw new Error(`object tree did not settle (last count ${previous})`);
+    }
+  }
 }
 
 /**
