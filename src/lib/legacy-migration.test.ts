@@ -53,7 +53,11 @@ function createStub(namespace = "hassemu.0"): { store: Store; adapter: Migration
       warn: (m: string) => void store.logs.push({ level: "warn", msg: m }),
       error: (m: string) => void store.logs.push({ level: "error", msg: m }),
     },
-    getForeignObjectAsync: (id: string): Promise<ObjEntry | null> => Promise.resolve(store.objects.get(id) ?? null),
+    // Copies, like the broker: only a write reaches the store.
+    getForeignObjectAsync: (id: string): Promise<ObjEntry | null> => {
+      const obj = store.objects.get(id);
+      return Promise.resolve(obj ? structuredClone(obj) : null);
+    },
     extendForeignObjectAsync: (id: string, obj: ObjEntry) => {
       const existing = store.objects.get(id) ?? {};
       store.objects.set(id, {
@@ -64,7 +68,10 @@ function createStub(namespace = "hassemu.0"): { store: Store; adapter: Migration
       });
       return Promise.resolve();
     },
-    getStateAsync: (id: string) => Promise.resolve(store.states.get(`${namespace}.${id}`) ?? null),
+    getStateAsync: (id: string) => {
+      const state = store.states.get(`${namespace}.${id}`);
+      return Promise.resolve(state ? structuredClone(state) : null);
+    },
     setState: (id: string, v: { val: unknown; ack?: boolean }) => {
       store.states.set(`${namespace}.${id}`, { val: v.val, ack: v.ack ?? false });
       return Promise.resolve();

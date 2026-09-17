@@ -28,7 +28,7 @@ function mockAdapter(objects: Record<string, ObjState>): {
       if (v === THROWS) {
         return Promise.reject(new Error("broker offline"));
       }
-      return Promise.resolve((v ?? null) as unknown);
+      return Promise.resolve((v ? structuredClone(v) : null) as unknown);
     },
     extendObject: (id: string, obj: unknown, options: unknown) => {
       extendCalls.push({ id, obj: obj as ExtendCall["obj"], options });

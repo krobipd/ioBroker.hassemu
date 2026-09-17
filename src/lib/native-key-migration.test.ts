@@ -33,7 +33,7 @@ function fakeAdapter(
       if (opts.readFails) {
         return Promise.reject(new Error("objects db unreachable"));
       }
-      return Promise.resolve(store);
+      return Promise.resolve(structuredClone(store));
     }),
     extendForeignObjectAsync: vi.fn<Merge>(
       (_id: string, obj: { native: Record<string, unknown> }): Promise<unknown> => {

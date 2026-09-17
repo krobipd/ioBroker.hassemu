@@ -132,7 +132,10 @@ function createMockAdapter(namespace = "hassemu.0"): {
         }
         return Promise.resolve(out);
       },
-      getStateAsync: (id: string) => Promise.resolve(store.states.get(`${namespace}.${id}`) ?? null),
+      getStateAsync: (id: string) => {
+        const state = store.states.get(`${namespace}.${id}`);
+        return Promise.resolve(state ? structuredClone(state) : null);
+      },
       setObjectNotExistsAsync: (id: string, obj: ObjEntry) => {
         const full = `${namespace}.${id}`;
         if (!store.objects.has(full)) {
@@ -151,8 +154,10 @@ function createMockAdapter(namespace = "hassemu.0"): {
         });
         return Promise.resolve();
       },
+      // Copies, like the broker: only a write reaches the store.
       getObjectAsync: (id: string): Promise<ObjEntry | null> => {
-        return Promise.resolve(store.objects.get(`${namespace}.${id}`) ?? null);
+        const obj = store.objects.get(`${namespace}.${id}`);
+        return Promise.resolve(obj ? structuredClone(obj) : null);
       },
       setObject: (id: string, obj: ObjEntry) => {
         store.objects.set(`${namespace}.${id}`, obj);

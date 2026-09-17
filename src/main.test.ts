@@ -58,7 +58,8 @@ vi.mock("@iobroker/adapter-core", () => {
     }
 
     getStateAsync(id: string): Promise<{ val: unknown; ack: boolean } | null> {
-      return Promise.resolve(this.states.get(this.fullId(id)) ?? null);
+      const state = this.states.get(this.fullId(id));
+      return Promise.resolve(state ? structuredClone(state) : null);
     }
 
     // A COPY, like the broker: only a write reaches the store (see client-registry.test.ts).
@@ -124,7 +125,8 @@ vi.mock("@iobroker/adapter-core", () => {
     }
 
     getForeignObjectAsync(id: string): Promise<ObjEntry | null> {
-      return Promise.resolve(this.objects.get(id) ?? null);
+      const obj = this.objects.get(id);
+      return Promise.resolve(obj ? structuredClone(obj) : null);
     }
 
     // Like the controller: the id is taken as given — no namespace prefixing.

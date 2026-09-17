@@ -110,7 +110,7 @@ src/lib/i18n.ts              → tName, tRaw, resolveLabel, tPage, makePageTrans
    3. `clients.<id>.mode = <URL>` → diese URL
    4. sonst → 200 HTML mit der Landing-Seite
 
-## Tests (824 unit + 60 package + 3 inventory + 3 upgrade = 890)
+## Tests (825 unit + 60 package + 3 inventory + 3 upgrade = 891)
 
 **Objekt-Inventar in der CI (seit 2026-09-15, Gate-Job `adapter-inventory`):** `test/inventory.js` läuft bei jedem Push auf dem ubuntu-Runner. Der Runner löst `127.0.0.1` rückwärts zu `ip6-localhost` auf — asynchron nach dem Abzug, die Aufstiegs-Suite verglich umbenannte mit noch nicht umbenannten Displays. Deshalb lädt der Harness `test/inventory-dns-hook.cjs` per `NODE_OPTIONS=--require` in den Adapterprozess: jede Rückwärtsauflösung endet dort wie ohne PTR-Eintrag (der Pfad einer echten Anlage, der Adapter kennt den Haken nicht). Dazu wartet der Abzug (`waitForStableTree`), bis der Objektsatz 4×250 ms nicht mehr wächst — eine feste Pause ist am Mac kalibriert, nicht am Runner.
 

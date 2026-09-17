@@ -83,7 +83,10 @@ function createMockAdapter(namespace = "hassemu.0"): {
       clearInterval: () => undefined,
       setTimeout: () => undefined,
       clearTimeout: () => undefined,
-      getStateAsync: (id: string) => Promise.resolve(store.states.get(`${namespace}.${id}`) ?? null),
+      getStateAsync: (id: string) => {
+        const state = store.states.get(`${namespace}.${id}`);
+        return Promise.resolve(state ? structuredClone(state) : null);
+      },
       setState: (id: string, value: { val: unknown; ack?: boolean }) => {
         store.states.set(`${namespace}.${id}`, { val: value.val, ack: value.ack ?? false });
         return Promise.resolve();
