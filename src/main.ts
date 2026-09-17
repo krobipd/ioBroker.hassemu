@@ -135,7 +135,7 @@ export class HassEmu extends utils.Adapter {
       // `bindAddress`. js-controller adds the new key with its default on the update and
       // never removes the old one, so the user's value is carried over here, once. The
       // write restarts the instance — stop like the flag correction above does.
-      if (await migrateNativeKeys(this, [{ from: "bindAddress", to: "bind", coerce: bindOrAllInterfaces }])) {
+      if (await migrateNativeKeys(this, [{ from: "bindAddress", to: "bind", coerce: bindOrAllInterfaces }], errText)) {
         return;
       }
 

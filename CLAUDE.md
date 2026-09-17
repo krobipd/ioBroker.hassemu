@@ -47,7 +47,7 @@ src/lib/object-repair.ts     → replaceObjectPreservingValue: Voll-Ersatz eines
 src/lib/enum-membership.ts   → carryEnumMembership: Raum-/Gewerkzuordnungen eines Datenpunkts wandern VOR seiner Löschung zur Nachfolger-Id (die drei Id-Umzüge in main.ts + legacy-migration.ts, 1.45.0)
 src/lib/err-text.ts          → errText: der EINE Helfer, über den jeder gefangene Wert zu Text wird (Flottenregel, Prüfpaket `caught-value-text`) — nie String(err)/`${err}`/`(err as Error).message` inline
 src/lib/legacy-migration.ts  → pre-1.2.0 visUrl → mode/manualUrl Upgrade-Migrationen (I10 v1.37.0, aus main.ts extrahiert, isoliert testbar)
-src/lib/native-key-migration.ts → Umbenennung von Instanz-Einstellungsschlüsseln beim Start (bindAddress → bind, 1.44.0); Flotten-Helfer aus hueemu (Regel 5 des Listen-Port-Standards) — nicht lokal ändern; einzige Abweichung von der Kopie seit 1.45.0: die zwei Fehlertexte laufen über `errText` (Prüfpaket-Pflicht)
+src/lib/native-key-migration.ts → Umbenennung von Instanz-Einstellungsschlüsseln beim Start (bindAddress → bind, 1.44.0); Stufe-1-Flotten-Master (`Entwicklung/.consistency-master/src/lib/`, Datei + Test byte-gleich, seit Werkzeug-Runde 12 2026-09-17) — nie lokal ändern; der Aufrufer in main.ts reicht `errText` als dritten Parameter herein
 src/lib/url-discovery.ts     → Sammelt VIS/VIS-2/Aura/Admin-URLs (collect → mode-Dropdown)
 src/lib/webserver.ts         → Fastify HTTP Server + HA-REST-Emulation + OAuth2 + Cookie-Identität + Sessions-Caps + route-config-Auth-Guard (WS/Mobile-App/DNS sind seit v1.43.0 eigene Module)
 src/lib/target-health.ts     → Erreichbarkeits-Probe fürs Weiterleitungsziel (Cache + inflight-Dedupe + terminal dispose, speist die Ziel-Down-Karte; Mutationstabelle mutations_hassemu_targethealth.py, 28/28)
@@ -110,7 +110,7 @@ src/lib/i18n.ts              → tName, tRaw, resolveLabel, tPage, makePageTrans
    3. `clients.<id>.mode = <URL>` → diese URL
    4. sonst → 200 HTML mit der Landing-Seite
 
-## Tests (825 unit + 60 package + 3 inventory + 3 upgrade = 891)
+## Tests (826 unit + 60 package + 3 inventory + 3 upgrade = 892)
 
 **Objekt-Inventar in der CI (seit 2026-09-15, Gate-Job `adapter-inventory`):** `test/inventory.js` läuft bei jedem Push auf dem ubuntu-Runner. Der Runner löst `127.0.0.1` rückwärts zu `ip6-localhost` auf — asynchron nach dem Abzug, die Aufstiegs-Suite verglich umbenannte mit noch nicht umbenannten Displays. Deshalb lädt der Harness `test/inventory-dns-hook.cjs` per `NODE_OPTIONS=--require` in den Adapterprozess: jede Rückwärtsauflösung endet dort wie ohne PTR-Eintrag (der Pfad einer echten Anlage, der Adapter kennt den Haken nicht). Dazu wartet der Abzug (`waitForStableTree`), bis der Objektsatz 4×250 ms nicht mehr wächst — eine feste Pause ist am Mac kalibriert, nicht am Runner.
 
