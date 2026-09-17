@@ -80,19 +80,6 @@
         "pl": "Wzmocnienie: przy włączonym trustProxy bez oczyszczającego reverse proxy jedno urządzenie mogło tworzyć nieograniczoną liczbę wpisów wyświetlaczy — teraz obowiązuje globalny limit.",
         "uk": "Посилення захисту: з увімкненим trustProxy без очищувального зворотного проксі один пристрій міг створювати необмежено записів дисплеїв — тепер діє загальний ліміт.",
         "zh-cn": "加固：启用 trustProxy 但前端没有净化反向代理时，单个设备可无限创建显示器条目——现在有全局上限加以限制。"
-      },
-      "1.39.0": {
-        "en": "Displays now show a \"Redirect target not reachable\" card instead of a black screen when the configured dashboard is down, and reload automatically once it answers again",
-        "de": "Displays zeigen jetzt eine Karte \"Weiterleitungsziel nicht erreichbar\" statt eines schwarzen Bildschirms, wenn das Dashboard nicht antwortet, und laden neu, sobald es wieder erreichbar ist",
-        "ru": "Дисплеи теперь показывают карточку «Цель перенаправления недоступна» вместо чёрного экрана, когда настроенная панель недоступна, и автоматически перезагружаются, как только она снова отвечает",
-        "pt": "Os ecrãs mostram um cartão \"Destino do redirecionamento inacessível\" em vez de um ecrã preto quando o painel não responde e recarregam automaticamente assim que ele volta a responder",
-        "nl": "Displays tonen nu een kaart \"Doorstuurdoel niet bereikbaar\" in plaats van een zwart scherm wanneer het geconfigureerde dashboard niet reageert, en laden automatisch opnieuw zodra het weer antwoordt",
-        "fr": "Les écrans affichent une carte « Cible de redirection injoignable » au lieu d'un écran noir quand le tableau de bord ne répond pas, et se rechargent dès qu'il répond à nouveau",
-        "it": "I display mostrano una scheda \"Destinazione del reindirizzamento non raggiungibile\" invece di uno schermo nero quando la dashboard non risponde e si ricaricano appena torna a rispondere",
-        "es": "Las pantallas muestran una tarjeta \"Destino de redirección no accesible\" en lugar de una pantalla negra cuando el panel no responde, y se recargan en cuanto vuelve a responder",
-        "pl": "Wyświetlacze pokazują teraz kartę \"Cel przekierowania nieosiągalny\" zamiast czarnego ekranu, gdy skonfigurowany panel nie odpowiada, i automatycznie przeładowują się, gdy tylko znów odpowie",
-        "uk": "Дисплеї тепер показують картку «Ціль переспрямування недоступна» замість чорного екрана, коли налаштована панель недоступна, і автоматично перезавантажуються, щойно вона знову відповідає",
-        "zh-cn": "当配置的仪表板不可用时，显示屏现在会显示\"转发目标无法访问\"卡片而不是黑屏，并在目标恢复响应后自动重新加载"
       }
     },
     "plugins": {

@@ -2284,6 +2284,33 @@ describe("WebServer bind / start-stop", () => {
       await s["app"].close();
     });
 
+    it("two different failures on one server both reach the warn level — the dedup key is the message", async () => {
+      const built = createMockAdapter();
+      const reg = new ClientRegistry(built.adapter as never);
+      const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
+      const s = new WebServer(
+        built.adapter as never,
+        baseConfig,
+        reg,
+        g,
+        crypto.randomUUID(),
+        "en",
+        (): Promise<boolean> => Promise.resolve(true),
+      );
+      s["setupErrorHandler"]();
+      s["app"].get("/boom-a", () => Promise.reject(new Error("failure A")));
+      s["app"].get("/boom-b", () => Promise.reject(new Error("failure B")));
+      await s["app"].ready();
+      try {
+        await s.inject({ method: "GET", url: "/boom-a" });
+        await s.inject({ method: "GET", url: "/boom-b" });
+        const warns = built.store.logs.filter(l => l.level === "warn" && l.msg.startsWith("Request error:"));
+        expect(warns.map(l => l.msg)).to.deep.equal(["Request error: failure A", "Request error: failure B"]);
+      } finally {
+        await s["app"].close();
+      }
+    });
+
     it("a 4xx Fastify error still answers with its own status and message", async () => {
       const err = Object.assign(new Error("body too large"), { statusCode: 413 });
       const { s, store } = await serverThrowing(err);
