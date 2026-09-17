@@ -17,6 +17,7 @@ import {
   DEFAULT_SERVICE_NAME,
 } from "./constants";
 import { coerceString, coerceUuid, isValidRedirectUri, oneLine, safeStringEqual } from "./coerce";
+import { errText } from "./err-text";
 import { evictOldest } from "./object-utils";
 import { buildRedirectUrl, renderAuthorizeError, renderAuthorizeForm, renderAuthorizeRedirect } from "./auth-page";
 import { registerHaWebSocket } from "./ha-websocket";
@@ -237,11 +238,13 @@ export class WebServer {
     try {
       await this.app.listen({ port: this.config.port, host: bind });
     } catch (err) {
-      const e = err as NodeJS.ErrnoException;
+      // `listen` rejects with a NodeJS.ErrnoException in practice — the code is still read
+      // guarded and the text goes through errText, like every other caught value.
+      const fields: { code?: unknown } = typeof err === "object" && err !== null ? err : {};
       const msg =
-        e.code === "EADDRINUSE"
+        fields.code === "EADDRINUSE"
           ? `Port ${this.config.port} is already in use — another service is bound to it`
-          : `Server error during startup: ${e.message}`;
+          : `Server error during startup: ${errText(err)}`;
       this.adapter.log.error(msg);
       throw err;
     }
@@ -273,7 +276,7 @@ export class WebServer {
       // v1.18.0 (G6+G8): debug statt error — bei intended shutdown
       // (onUnload) ist ein close-error meist ein "already-closed"-Race
       // ohne Konsequenz. Caller (main.ts onUnload) loggt nicht doppelt.
-      this.adapter.log.debug(`Web server stop error: ${String(err)}`);
+      this.adapter.log.debug(`Web server stop error: ${errText(err)}`);
     }
     this.hostnames.clear();
     // v1.39.0: drop target-health bookkeeping; an in-flight probe self-destroys
@@ -316,7 +319,7 @@ export class WebServer {
       this.adapter.log.debug(`Web server stop: terminated ${count} websocket(s) before closing`);
     } catch (err) {
       // The plugin may not be registered yet (stop() before a completed start()).
-      this.adapter.log.debug(`Web server stop: no websockets to terminate (${String(err)})`);
+      this.adapter.log.debug(`Web server stop: no websockets to terminate (${errText(err)})`);
     }
   }
 
@@ -626,29 +629,35 @@ export class WebServer {
   // --- error handling ---
 
   private setupErrorHandler(): void {
-    this.app.setErrorHandler((err, _req, reply) => {
-      const error = err as Error & { validation?: unknown; statusCode?: number };
-      if (error.validation) {
-        this.adapter.log.debug(`Validation error: ${error.message}`);
-        reply.status(400).send({ error: "Invalid request", details: error.message });
+    this.app.setErrorHandler((err: unknown, _req, reply) => {
+      // Fastify hands over whatever a handler threw or rejected with — measured at fastify
+      // 5.12.3 (`lib/wrap-thenable.js` → `reply.send(err)`): a plain object or a string
+      // arrives here as it is. So the two Fastify fields are read guarded, and the text
+      // comes from errText — a bare `.message` reads `undefined` off a thrown string and
+      // would collapse every such error onto the "unknown" dedup key below.
+      const fields: { validation?: unknown; statusCode?: unknown } = typeof err === "object" && err !== null ? err : {};
+      const message = errText(err);
+      if (fields.validation) {
+        this.adapter.log.debug(`Validation error: ${message}`);
+        reply.status(400).send({ error: "Invalid request", details: message });
         return;
       }
       // Fastify body-parsing / client errors already set statusCode in 4xx range
-      const code = typeof error.statusCode === "number" ? error.statusCode : 500;
+      const code = typeof fields.statusCode === "number" ? fields.statusCode : 500;
       if (code >= 400 && code < 500) {
-        this.adapter.log.debug(`Client error ${code}: ${error.message}`);
-        reply.status(code).send({ error: error.message });
+        this.adapter.log.debug(`Client error ${code}: ${message}`);
+        reply.status(code).send({ error: message });
         return;
       }
-      // 5xx: ein attacker kann mit malformed paths/oversized bodies viele
-      // 500er triggern. Per-Message-Dedup-Map mit 60s-Cooldown — das erste
-      // Auftreten pro unique message kommt als warn, alle Wiederholungen
-      // im 60s-Fenster auf debug. Memory `feedback_no_log_spam`.
-      const key = error.message || "unknown";
+      // 5xx: an attacker can trigger many 500s with malformed paths / oversized bodies.
+      // Per-message dedup map with a 60 s cooldown — the first occurrence of a unique
+      // message is a warn, every repeat inside the window goes to debug.
+      // Memory `feedback_no_log_spam`.
+      const key = message || "unknown";
       if (this.shouldEmitRequestErrorWarn(key, Date.now())) {
-        this.adapter.log.warn(`Request error: ${error.message}`);
+        this.adapter.log.warn(`Request error: ${message}`);
       } else {
-        this.adapter.log.debug(`Request error (repeat): ${error.message}`);
+        this.adapter.log.debug(`Request error (repeat): ${message}`);
       }
       reply.status(500).send({ error: "Internal server error" });
     });

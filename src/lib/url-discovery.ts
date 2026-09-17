@@ -9,6 +9,7 @@
  */
 
 import { coerceFiniteNumber, coerceSafeUrl, coerceString, isPlainObject } from "./coerce";
+import { errText } from "./err-text";
 import { getLocalIp, isWildcardBind } from "./network";
 import type { AdapterInterface, UrlStates } from "./types";
 
@@ -132,7 +133,7 @@ export class UrlDiscovery {
       this.adapter.setTimeout(() => {
         this.debounceTimer = null;
         this.collect().catch(err => {
-          this.adapter.log.debug(`url-discovery: refresh failed: ${String(err)}`);
+          this.adapter.log.debug(`url-discovery: refresh failed: ${errText(err)}`);
         });
       }, debounceMs) ?? null;
   }
@@ -173,7 +174,7 @@ export class UrlDiscovery {
       instances = (await this.adapter.getForeignObjectsAsync("system.adapter.*", "instance")) ?? {};
       instancesOk = true;
     } catch (err) {
-      this.adapter.log.debug(`url-discovery: getForeignObjectsAsync failed: ${String(err)}`);
+      this.adapter.log.debug(`url-discovery: getForeignObjectsAsync failed: ${errText(err)}`);
     }
 
     // v1.8.1 (D4): on a transient broker error, do NOT hand listeners an empty
@@ -316,7 +317,7 @@ export class UrlDiscovery {
       try {
         await this.onChange(result);
       } catch (err) {
-        this.adapter.log.debug(`url-discovery: onChange listener failed: ${String(err)}`);
+        this.adapter.log.debug(`url-discovery: onChange listener failed: ${errText(err)}`);
       }
     }
     return result;

@@ -65,6 +65,7 @@ function createMockAdapter(namespace = "hassemu.0"): {
     getStateAsync: (id: string) => Promise<{ val: unknown; ack: boolean } | null>;
     setState: (id: string, value: { val: unknown; ack?: boolean }) => Promise<void>;
     getObjectAsync: (id: string) => Promise<ObjEntry | null>;
+    setForeignObject: (fullId: string, obj: ObjEntry) => Promise<void>;
     setObject: (id: string, obj: ObjEntry) => Promise<void>;
     extendObject: (id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>) => Promise<void>;
     setObjectNotExistsAsync: (id: string, obj: ObjEntry) => Promise<void>;
@@ -105,9 +106,16 @@ function createMockAdapter(namespace = "hassemu.0"): {
         });
         return Promise.resolve();
       },
+      // A COPY, like the broker: only a write reaches the store (see client-registry.test.ts).
       getObjectAsync: (id: string) => {
         const fullId = id.includes(".") && id.startsWith(`${namespace}.`) ? id : `${namespace}.${id}`;
-        return Promise.resolve(store.objects.get(fullId) ?? null);
+        const obj = store.objects.get(fullId);
+        return Promise.resolve(obj ? structuredClone(obj) : null);
+      },
+      // Like the controller: the id is taken as given — no namespace prefixing.
+      setForeignObject: (fullId: string, obj: ObjEntry) => {
+        store.objects.set(fullId, structuredClone(obj));
+        return Promise.resolve();
       },
       setObject: (id: string, obj: ObjEntry) => {
         const fullId = id.includes(".") && id.startsWith(`${namespace}.`) ? id : `${namespace}.${id}`;

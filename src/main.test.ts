@@ -61,8 +61,10 @@ vi.mock("@iobroker/adapter-core", () => {
       return Promise.resolve(this.states.get(this.fullId(id)) ?? null);
     }
 
+    // A COPY, like the broker: only a write reaches the store (see client-registry.test.ts).
     getObjectAsync(id: string): Promise<ObjEntry | null> {
-      return Promise.resolve(this.objects.get(this.fullId(id)) ?? null);
+      const obj = this.objects.get(this.fullId(id));
+      return Promise.resolve(obj ? structuredClone(obj) : null);
     }
 
     setObject(id: string, obj: ObjEntry): Promise<void> {
@@ -101,6 +103,13 @@ vi.mock("@iobroker/adapter-core", () => {
     delObjectAsync(id: string, _options?: { recursive?: boolean }): Promise<void> {
       const full = this.fullId(id);
       this.objects.delete(full);
+      // Like js-controller-adapter 7.2.2 (`removeIdFromAllEnums`): the id leaves every enum.
+      for (const [enumId, obj] of this.objects) {
+        const members = obj.common?.members;
+        if (enumId.startsWith("enum.") && Array.isArray(members)) {
+          obj.common = { ...obj.common, members: members.filter(m => m !== full) };
+        }
+      }
       for (const k of [...this.objects.keys()]) {
         if (k.startsWith(`${full}.`)) {
           this.objects.delete(k);
@@ -118,8 +127,35 @@ vi.mock("@iobroker/adapter-core", () => {
       return Promise.resolve(this.objects.get(id) ?? null);
     }
 
-    setForeignObjectAsync(id: string, obj: ObjEntry): Promise<void> {
-      this.objects.set(id, obj);
+    // Like the controller: the id is taken as given — no namespace prefixing.
+    setForeignObject(fullId: string, obj: ObjEntry): Promise<void> {
+      this.objects.set(fullId, structuredClone(obj));
+      return Promise.resolve();
+    }
+
+    // The controller's enum view: every `enum.<group>.<name>` object, grouped by `enum.<group>`.
+    getEnumsAsync(): Promise<Record<string, Record<string, ObjEntry>>> {
+      const groups: Record<string, Record<string, ObjEntry>> = {};
+      for (const [id, obj] of this.objects) {
+        const parts = id.split(".", 3);
+        if (parts[0] !== "enum" || !parts[2]) {
+          continue;
+        }
+        const group = `${parts[0]}.${parts[1]}`;
+        (groups[group] ??= {})[id] = structuredClone(obj);
+      }
+      return Promise.resolve(groups);
+    }
+
+    // 7.2.2 semantics for `common.members`: the stored list is replaced wholesale.
+    extendForeignObject(id: string, obj: Partial<ObjEntry>): Promise<void> {
+      const existing = this.objects.get(id) ?? { type: "enum" };
+      this.objects.set(id, {
+        ...existing,
+        ...obj,
+        common: { ...(existing.common ?? {}), ...(obj.common ?? {}) },
+        native: { ...(existing.native ?? {}), ...(obj.native ?? {}) },
+      });
       return Promise.resolve();
     }
 
@@ -476,6 +512,19 @@ describe("HassEmu onReady", () => {
     await internal.onReady();
     expect(stub.objects.has("hassemu.0.info.refresh_urls")).toBe(false);
     expect(stub.objects.has("hassemu.0.info.refreshUrls")).toBe(true);
+  });
+
+  it("moves the room assignment of info.refresh_urls to info.refreshUrls before deleting it (v1.45.0)", async () => {
+    const { internal, stub } = setup();
+    stub.objects.set("hassemu.0.info.refresh_urls", { type: "state", common: {} });
+    stub.objects.set("hassemu.0.info.refreshUrls", { type: "state", common: {} });
+    stub.objects.set("enum.rooms.hall", {
+      type: "enum",
+      common: { members: ["hue.0.hall", "hassemu.0.info.refresh_urls"] },
+    });
+    await internal.onReady();
+    expect(stub.objects.has("hassemu.0.info.refresh_urls")).toBe(false);
+    expect(stub.objects.get("enum.rooms.hall")?.common?.members).toEqual(["hue.0.hall", "hassemu.0.info.refreshUrls"]);
   });
 
   it("info.refresh_urls cleanup is a no-op on a fresh install (state absent) (L59)", async () => {

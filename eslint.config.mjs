@@ -6,9 +6,11 @@ export default [
     languageOptions: {
       parserOptions: {
         projectService: {
-          // The vitest config is the only linted file outside tsconfig's include
-          // (`*.config.mjs` is ignored below, `test/**` is .js and ignored too).
-          allowDefaultProject: ["vitest.config.mts"],
+          // Linted files outside every tsconfig include: the vitest config and the
+          // CommonJS require-hook the inventory harness loads into the adapter process
+          // (`*.config.mjs` is ignored below, the ioBroker template files under `test/`
+          // are .js and ignored, the standards suite is covered by tsconfig.json).
+          allowDefaultProject: ["vitest.config.mts", "test/inventory-dns-hook.cjs"],
         },
         tsconfigRootDir: import.meta.dirname,
       },
@@ -27,7 +29,9 @@ export default [
       ".dev-server/",
       ".vscode/",
       "*.test.js",
-      "test/**",
+      // Only the ioBroker template files stay out — the synchronised standards suite
+      // test/standards/repo-standards.test.ts is linted like every test file.
+      "test/*.js",
       "*.config.mjs",
       "build",
       "admin",

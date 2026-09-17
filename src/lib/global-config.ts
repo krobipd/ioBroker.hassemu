@@ -20,12 +20,9 @@ import type { GlobalRedirect } from "./redirect-resolver";
 import { replaceObjectPreservingValue } from "./object-repair";
 import type { AdapterInterface, UrlStates } from "./types";
 
-/** Extended adapter interface — needs state I/O and object extend. */
+/** Extended adapter interface — needs state I/O, object read and the full-object repair write. */
 export type GlobalConfigAdapter = AdapterInterface &
-  Pick<
-    ioBroker.Adapter,
-    "getStateAsync" | "setState" | "getObjectAsync" | "setObjectNotExistsAsync" | "delObjectAsync" | "extendObject"
-  >;
+  Pick<ioBroker.Adapter, "namespace" | "getStateAsync" | "setState" | "getObjectAsync" | "setForeignObject">;
 
 /** Kinds of state IDs the GlobalConfig reacts to. */
 export type GlobalStateKind = "mode" | "manualUrl" | "enabled";

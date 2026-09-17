@@ -1,5 +1,6 @@
 import Bonjour from "bonjour-service";
 import { DEFAULT_SERVICE_NAME, HA_VERSION } from "./constants";
+import { errText } from "./err-text";
 import { resolveAdvertisedHost } from "./network";
 import type { AdapterConfig, AdapterInterface } from "./types";
 
@@ -85,9 +86,8 @@ export class MDNSService {
         `mDNS: Broadcasting ${serviceName}._home-assistant._tcp.local on ${host}:${this.config.port}`,
       );
       this.adapter.log.debug(`mDNS: UUID: ${this.uuid}`);
-    } catch (error) {
-      const err = error as Error;
-      this.adapter.log.warn(`mDNS failed to start: ${err.message}`);
+    } catch (err) {
+      this.adapter.log.warn(`mDNS failed to start: ${errText(err)}`);
       // Wichtig: bonjour-instance freigeben sonst leakt der UDP-Socket
       // über die Adapter-Lifetime. `stop()` short-circuit'd auf
       // `!this.active` und würde nichts cleanen.
@@ -158,9 +158,8 @@ export class MDNSService {
           destroy();
         }
         this.adapter.log.debug("mDNS: Service stopped");
-      } catch (error) {
-        const err = error as Error;
-        this.adapter.log.warn(`mDNS could not stop cleanly: ${err.message}`);
+      } catch (err) {
+        this.adapter.log.warn(`mDNS could not stop cleanly: ${errText(err)}`);
         destroy();
       }
     });

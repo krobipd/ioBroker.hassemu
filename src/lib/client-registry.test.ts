@@ -97,6 +97,7 @@ function createMockAdapter(namespace = "hassemu.0"): {
     getStateAsync: (id: string) => Promise<{ val: unknown; ack: boolean } | null>;
     getObjectAsync: (id: string) => Promise<ObjEntry | null>;
     setObject: (id: string, obj: ObjEntry) => Promise<void>;
+    setForeignObject: (fullId: string, obj: ObjEntry) => Promise<void>;
     setObjectNotExistsAsync: (id: string, obj: ObjEntry) => Promise<void>;
     extendObject: (id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>) => Promise<void>;
     setState: (id: string, value: { val: unknown; ack?: boolean }, _ack?: boolean) => Promise<void>;
@@ -135,13 +136,23 @@ function createMockAdapter(namespace = "hassemu.0"): {
         return Promise.resolve(out);
       },
       getStateAsync: (id: string) => Promise.resolve(store.states.get(`${namespace}.${id}`) ?? null),
+      // A COPY, like the broker (objects travel serialised): mutating what a read
+      // returned must not reach the store — only a write does. With a shared reference
+      // the repair path's write was invisible to every test (v1.45.0).
       getObjectAsync: (id: string) => {
         const fullId = id.startsWith(`${namespace}.`) ? id : `${namespace}.${id}`;
-        return Promise.resolve(store.objects.get(fullId) ?? null);
+        const obj = store.objects.get(fullId);
+        return Promise.resolve(obj ? structuredClone(obj) : null);
       },
       setObject: (id: string, obj: ObjEntry) => {
         const fullId = id.startsWith(`${namespace}.`) ? id : `${namespace}.${id}`;
         store.objects.set(fullId, obj);
+        return Promise.resolve();
+      },
+      // Like the controller: the id is taken as given — no namespace prefixing. A caller
+      // that hands over a short id writes to the wrong key, and the tests see it.
+      setForeignObject: (fullId: string, obj: ObjEntry) => {
+        store.objects.set(fullId, structuredClone(obj));
         return Promise.resolve();
       },
       setObjectNotExistsAsync: (id: string, obj: ObjEntry) => {

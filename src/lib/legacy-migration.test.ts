@@ -23,6 +23,9 @@ interface Store {
   states: Map<string, { val: unknown; ack: boolean }>;
   logs: { level: string; msg: string }[];
   deleted: string[];
+  /** Enum objects (`enum.rooms.x` → members) and every `extendForeignObject` on them. */
+  enums: Map<string, string[]>;
+  enumWrites: { id: string; members: string[] }[];
 }
 
 /**
@@ -33,7 +36,14 @@ interface Store {
  * @param namespace Adapter namespace.
  */
 function createStub(namespace = "hassemu.0"): { store: Store; adapter: MigrationAdapter } {
-  const store: Store = { objects: new Map(), states: new Map(), logs: [], deleted: [] };
+  const store: Store = {
+    objects: new Map(),
+    states: new Map(),
+    logs: [],
+    deleted: [],
+    enums: new Map(),
+    enumWrites: [],
+  };
   const adapter = {
     namespace,
     log: {
@@ -62,6 +72,27 @@ function createStub(namespace = "hassemu.0"): { store: Store; adapter: Migration
     delObjectAsync: (id: string) => {
       store.deleted.push(id);
       store.objects.delete(`${namespace}.${id}`);
+      // Like js-controller-adapter 7.2.2 (`removeIdFromAllEnums`): the deleted id leaves
+      // every enum — whatever was not carried over before this point is gone.
+      for (const [enumId, members] of store.enums) {
+        store.enums.set(
+          enumId,
+          members.filter(m => m !== `${namespace}.${id}`),
+        );
+      }
+      return Promise.resolve();
+    },
+    getEnumsAsync: () => {
+      const rooms: Record<string, { common: { members: string[] } }> = {};
+      for (const [enumId, members] of store.enums) {
+        rooms[enumId] = { common: { members: [...members] } };
+      }
+      return Promise.resolve({ "enum.rooms": rooms });
+    },
+    extendForeignObject: (id: string, part: { common?: { members?: string[] } }) => {
+      const members = part.common?.members ?? [];
+      store.enumWrites.push({ id, members });
+      store.enums.set(id, [...members]);
       return Promise.resolve();
     },
   };
@@ -265,5 +296,44 @@ describe("migrateVisUrlToMode", () => {
 
     expect(calls).to.deep.equal([{ mode: MODE_MANUAL, manualUrl: "http://old.global/" }]);
     expect(store.deleted).to.include("global.visUrl");
+  });
+
+  it("carries the room assignment of global.visUrl to global.manualUrl before the delete (v1.45.0)", async () => {
+    const { store, adapter } = createStub();
+    const { config } = fakeGlobal();
+    store.states.set("hassemu.0.global.visUrl", { val: "http://old.global/", ack: true });
+    store.enums.set("enum.rooms.living", ["hue.0.light", "hassemu.0.global.visUrl"]);
+
+    await migrateVisUrlToMode(adapter, config, fakeRegistry({}, []));
+
+    expect(store.deleted).to.include("global.visUrl");
+    // The successor sits where the legacy datapoint sat; the delete found nothing to strike.
+    expect(store.enums.get("enum.rooms.living")).to.deep.equal(["hue.0.light", "hassemu.0.global.manualUrl"]);
+    expect(store.enumWrites).to.deep.equal([
+      { id: "enum.rooms.living", members: ["hue.0.light", "hassemu.0.global.manualUrl"] },
+    ]);
+  });
+
+  it("carries a client's room assignment from visUrl to manualUrl before the delete (v1.45.0)", async () => {
+    const { store, adapter } = createStub();
+    const { config } = fakeGlobal();
+    const record = { id: "abc123", mode: "", manualUrl: null as string | null };
+    store.enums.set("enum.functions.displays", ["hassemu.0.clients.abc123.visUrl"]);
+
+    await migrateVisUrlToMode(adapter, config, fakeRegistry({ abc123: "http://old.local/" }, [record]));
+
+    expect(store.deleted).to.include("clients.abc123.visUrl");
+    expect(store.enums.get("enum.functions.displays")).to.deep.equal(["hassemu.0.clients.abc123.manualUrl"]);
+  });
+
+  it("touches no enum when the legacy datapoint was assigned nowhere (v1.45.0)", async () => {
+    const { store, adapter } = createStub();
+    const { config } = fakeGlobal();
+    store.states.set("hassemu.0.global.visUrl", { val: "http://old.global/", ack: true });
+    store.enums.set("enum.rooms.living", ["hue.0.light"]);
+
+    await migrateVisUrlToMode(adapter, config, fakeRegistry({}, []));
+
+    expect(store.enumWrites).to.deep.equal([]);
   });
 });

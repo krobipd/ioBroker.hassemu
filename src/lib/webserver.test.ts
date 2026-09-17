@@ -2058,6 +2058,59 @@ describe("WebServer bind / start-stop", () => {
     await s.stop();
   });
 
+  it("a port already in use is named as such, and the start still fails (v1.45.0)", async () => {
+    const first = createMockAdapter();
+    const s1 = new WebServer(
+      first.adapter as never,
+      { ...baseConfig, port: 0, bind: "127.0.0.1" },
+      new ClientRegistry(first.adapter as never),
+      await buildGlobalConfig(first.adapter, "http://x/"),
+      crypto.randomUUID(),
+    );
+    await s1.start();
+    const port = s1.boundAddress!.port;
+    const second = createMockAdapter();
+    const s2 = new WebServer(
+      second.adapter as never,
+      { ...baseConfig, port, bind: "127.0.0.1" },
+      new ClientRegistry(second.adapter as never),
+      await buildGlobalConfig(second.adapter, "http://x/"),
+      crypto.randomUUID(),
+    );
+    try {
+      await expect(s2.start()).rejects.toThrow();
+      expect(
+        second.store.logs.some(
+          l => l.level === "error" && l.msg === `Port ${port} is already in use — another service is bound to it`,
+        ),
+      ).to.be.true;
+    } finally {
+      await s2["app"].close();
+      await s1.stop();
+    }
+  });
+
+  it("any other listen failure names its cause readably — even a rejected plain object (v1.45.0)", async () => {
+    const built = createMockAdapter();
+    const s = new WebServer(
+      built.adapter as never,
+      { ...baseConfig, port: 0, bind: "127.0.0.1" },
+      new ClientRegistry(built.adapter as never),
+      await buildGlobalConfig(built.adapter, "http://x/"),
+      crypto.randomUUID(),
+    );
+    // The type says Error, the runtime value is a plain object — the mismatch errText is for.
+    const rejection = { code: "EACCES", syscall: "listen" } as unknown as Error;
+    (s["app"] as unknown as { listen: () => Promise<never> }).listen = () => Promise.reject(rejection);
+    try {
+      await expect(s.start()).rejects.toBe(rejection);
+      expect(built.store.logs.some(l => l.msg === 'Server error during startup: {"code":"EACCES","syscall":"listen"}'))
+        .to.be.true;
+    } finally {
+      await s["app"].close();
+    }
+  });
+
   it("start() with authRequired and no password warns the operator (C6, L50)", async () => {
     const built = createMockAdapter();
     const reg = new ClientRegistry(built.adapter as never);
@@ -2173,6 +2226,72 @@ describe("WebServer bind / start-stop", () => {
       expect(cooldown.has("err-49")).to.be.false;
       expect(cooldown.has("err-50")).to.be.true;
       expect(cooldown.has("err-249")).to.be.true;
+    });
+  });
+
+  // --- the error handler receives whatever a route threw (fastify 5.12.3, wrap-thenable.js) ---
+
+  describe("setErrorHandler — non-Error rejections (v1.45.0)", () => {
+    /**
+     * A server whose routes reject with the given value — registered BEFORE ready(),
+     * which buildServer() has already passed.
+     *
+     * @param thrown What the route rejects with.
+     */
+    async function serverThrowing(thrown: unknown): Promise<{ s: WebServer; store: MockStore }> {
+      const built = createMockAdapter();
+      const reg = new ClientRegistry(built.adapter as never);
+      const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
+      const s = new WebServer(
+        built.adapter as never,
+        baseConfig,
+        reg,
+        g,
+        crypto.randomUUID(),
+        "en",
+        (): Promise<boolean> => Promise.resolve(true),
+      );
+      s["setupErrorHandler"]();
+      s["app"].get("/boom", () => Promise.reject(thrown as Error));
+      await s["app"].ready();
+      return { s, store: built.store };
+    }
+
+    it("a rejected plain object is a 500 with a readable warn, not `undefined` on the 'unknown' key", async () => {
+      const { s, store } = await serverThrowing({ code: "ECONNRESET", syscall: "read" });
+      const res = await s.inject({ method: "GET", url: "/boom" });
+      expect(res.statusCode).to.equal(500);
+      expect(res.json()).to.deep.equal({ error: "Internal server error" });
+      const warn = store.logs.find(l => l.level === "warn" && l.msg.startsWith("Request error:"));
+      expect(warn?.msg).to.equal('Request error: {"code":"ECONNRESET","syscall":"read"}');
+      await s["app"].close();
+    });
+
+    it("a rejected string keeps its text and Fastify's fields are read guarded", async () => {
+      const { s, store } = await serverThrowing("plain text failure");
+      const res = await s.inject({ method: "GET", url: "/boom" });
+      expect(res.statusCode).to.equal(500);
+      expect(store.logs.some(l => l.msg === "Request error: plain text failure")).to.be.true;
+      await s["app"].close();
+    });
+
+    it("a null rejection does not crash the handler itself", async () => {
+      const { s, store } = await serverThrowing(null);
+      const res = await s.inject({ method: "GET", url: "/boom" });
+      expect(res.statusCode).to.equal(500);
+      expect(res.json()).to.deep.equal({ error: "Internal server error" });
+      expect(store.logs.some(l => l.msg === "Request error: null")).to.be.true;
+      await s["app"].close();
+    });
+
+    it("a 4xx Fastify error still answers with its own status and message", async () => {
+      const err = Object.assign(new Error("body too large"), { statusCode: 413 });
+      const { s, store } = await serverThrowing(err);
+      const res = await s.inject({ method: "GET", url: "/boom" });
+      expect(res.statusCode).to.equal(413);
+      expect(res.json()).to.deep.equal({ error: "body too large" });
+      expect(store.logs.some(l => l.msg === "Client error 413: body too large")).to.be.true;
+      await s["app"].close();
     });
   });
 });

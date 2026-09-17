@@ -1,6 +1,8 @@
 import { coerceSafeUrl } from "./coerce";
 import { decideLegacyVisMigration } from "./state-write-rules";
 import { MODE_MANUAL } from "./constants";
+import { carryEnumMembership } from "./enum-membership";
+import { errText } from "./err-text";
 import type { ClientRegistry } from "./client-registry";
 import type { GlobalConfig } from "./global-config";
 import type { AdapterConfig } from "./types";
@@ -26,6 +28,8 @@ export type MigrationAdapter = Pick<
   | "getStateAsync"
   | "setState"
   | "delObjectAsync"
+  | "getEnumsAsync"
+  | "extendForeignObject"
 >;
 
 /**
@@ -67,7 +71,7 @@ export async function cleanupLegacyNativeUrl(adapter: MigrationAdapter): Promise
     adapter.log.info("Removed the legacy URL from the instance configuration — this instance restarts once");
     return true;
   } catch (err) {
-    adapter.log.warn(`Legacy config cleanup failed: ${String(err)}`);
+    adapter.log.warn(`Legacy config cleanup failed: ${errText(err)}`);
     return false;
   }
 }
@@ -127,7 +131,7 @@ export async function migrateLegacyDefaultVisUrl(
         stateWritten = true;
       }
     } catch (err) {
-      adapter.log.debug(`Legacy URL migration fallback failed: ${String(err)}`);
+      adapter.log.debug(`Legacy URL migration fallback failed: ${errText(err)}`);
     }
   }
 
@@ -176,12 +180,15 @@ export async function migrateVisUrlToMode(
     // write failure, or the user's URL is lost silently: keep global.visUrl as a
     // recovery anchor + warn once. Mirrors migrateLegacyDefaultVisUrl. v1.36.0 (C5).
     globalMigrated = false;
-    adapter.log.warn(`Migration: global URL move failed — legacy global.visUrl preserved (${String(err)})`);
+    adapter.log.warn(`Migration: global URL move failed — legacy global.visUrl preserved (${errText(err)})`);
   }
   // I5: only attempt the delete when a legacy value was actually present — on an
   // already-migrated install `decision` is "empty" and this delObject round-trip
   // (per start) was a wasted no-op.
   if (globalMigrated && globalHadLegacy) {
+    // The delete strikes the id from every room/function enum — move the memberships to
+    // the successor first (v1.45.0).
+    await carryEnumMembership(adapter, `${adapter.namespace}.global.visUrl`, `${adapter.namespace}.global.manualUrl`);
     try {
       await adapter.delObjectAsync("global.visUrl");
     } catch {
@@ -227,9 +234,14 @@ export async function migrateVisUrlToMode(
         // Same as the global block: a write failure must not delete the legacy
         // source — keep clients.<id>.visUrl as a recovery anchor + warn. v1.36.0 (C5).
         clientMigrated = false;
-        adapter.log.warn(`Migration: client ${id} URL move failed — legacy visUrl preserved (${String(err)})`);
+        adapter.log.warn(`Migration: client ${id} URL move failed — legacy visUrl preserved (${errText(err)})`);
       }
       if (clientMigrated) {
+        await carryEnumMembership(
+          adapter,
+          `${adapter.namespace}.clients.${id}.visUrl`,
+          `${adapter.namespace}.clients.${id}.manualUrl`,
+        );
         try {
           await adapter.delObjectAsync(`clients.${id}.visUrl`);
         } catch {

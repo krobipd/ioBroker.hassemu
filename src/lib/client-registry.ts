@@ -33,6 +33,7 @@ import {
   NEW_CLIENT_WINDOW_MS,
   OAUTH_ACCESS_TOKEN_TTL_S,
 } from "./constants";
+import { errText } from "./err-text";
 import { resolveLabel, tName, tRaw } from "./i18n";
 import { generateClientId } from "./network";
 import { replaceObjectPreservingValue } from "./object-repair";
@@ -51,6 +52,7 @@ export type RegistryAdapter = AdapterInterface &
     | "setState"
     | "setStateChangedAsync"
     | "delObjectAsync"
+    | "setForeignObject"
   >;
 
 const CLIENTS_PREFIX = "clients.";
@@ -154,7 +156,7 @@ export class ClientRegistry {
       // the operator needs the anchor when "New client connected" lines pile up
       // for long-known displays. v1.37.0 (L4).
       this.adapter.log.warn(
-        `client-registry: restore failed — known displays will be re-created as new clients: ${String(err)}`,
+        `client-registry: restore failed — known displays will be re-created as new clients: ${errText(err)}`,
       );
       return;
     }
@@ -195,7 +197,7 @@ export class ClientRegistry {
         try {
           await this.adapter.delObjectAsync(`clients.${id}`, { recursive: true });
         } catch (err) {
-          this.adapter.log.debug(`client-registry: orphan cleanup failed for ${id}: ${String(err)}`);
+          this.adapter.log.debug(`client-registry: orphan cleanup failed for ${id}: ${errText(err)}`);
         }
         return;
       }
@@ -206,7 +208,7 @@ export class ClientRegistry {
         try {
           await this.adapter.extendObject(`clients.${id}`, { type: "device" });
         } catch (err) {
-          this.adapter.log.debug(`client-registry: channel→device migration failed for ${id}: ${String(err)}`);
+          this.adapter.log.debug(`client-registry: channel→device migration failed for ${id}: ${errText(err)}`);
         }
       }
       // v1.9.0 (D8): the reads of one display run in parallel; since the audit of
@@ -310,7 +312,7 @@ export class ClientRegistry {
         await this.adapter.setState(`clients.${id}.mode`, { val: NO_CHOICE, ack: true });
       }
     } catch (err) {
-      this.adapter.log.debug(`client-registry: skipping ${id} during restore — ${String(err)}`);
+      this.adapter.log.debug(`client-registry: skipping ${id} during restore — ${errText(err)}`);
     }
   }
 
@@ -390,7 +392,7 @@ export class ClientRegistry {
         // machen. catch+rethrow sorgt für ein einzelnes log statt
         // unhandled-rejection im fastify-error-handler.
         return pending.catch(err => {
-          this.adapter.log.debug(`client-registry: pending createClient for ${bucketKey} rejected: ${String(err)}`);
+          this.adapter.log.debug(`client-registry: pending createClient for ${bucketKey} rejected: ${errText(err)}`);
           throw err;
         });
       }
@@ -400,9 +402,7 @@ export class ClientRegistry {
         return await promise;
       } catch (err) {
         // Tech-Diagnose mit Stack-Detail — bleibt debug (Maintainer-only).
-        this.adapter.log.debug(
-          `client-registry: createClient failed for IP ${ip}: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        this.adapter.log.debug(`client-registry: createClient failed for IP ${ip}: ${errText(err)}`);
         throw err;
       } finally {
         this.pendingByIp.delete(bucketKey);
@@ -486,7 +486,7 @@ export class ClientRegistry {
     // compares against the stored state and writes nothing when it is equal.
     await this.adapter
       .setStateChangedAsync(`clients.${id}.resolvedUrl`, { val: url ?? "", ack: true })
-      .catch(err => this.adapter.log.debug(`setResolvedUrl failed for ${id}: ${String(err)}`));
+      .catch(err => this.adapter.log.debug(`setResolvedUrl failed for ${id}: ${errText(err)}`));
   }
 
   /**
@@ -722,7 +722,7 @@ export class ClientRegistry {
     } catch (err) {
       objectRemoved = false;
       // Stack-trace level — Maintainer-Diagnose, EN bleibt.
-      this.adapter.log.debug(`client-registry: delObject failed for ${id}: ${String(err)}`);
+      this.adapter.log.debug(`client-registry: delObject failed for ${id}: ${errText(err)}`);
     }
     if (objectRemoved) {
       this.adapter.log.info(`Client forgotten: ${id}`);
@@ -991,7 +991,7 @@ export class ClientRegistry {
     this.lastSeenFlushedAt.set(record.id, now);
     this.adapter
       .extendObject(`clients.${record.id}`, { native: { lastSeen: now } })
-      .catch(err => this.adapter.log.debug(`touchLastSeen failed for ${record.id}: ${String(err)}`));
+      .catch(err => this.adapter.log.debug(`touchLastSeen failed for ${record.id}: ${errText(err)}`));
   }
 
   /**
@@ -1009,7 +1009,7 @@ export class ClientRegistry {
     try {
       await this.adapter.extendObject(`clients.${id}`, { native: { lastSeen: now } });
     } catch (err) {
-      this.adapter.log.debug(`seedLastSeen failed for ${id}: ${String(err)}`);
+      this.adapter.log.debug(`seedLastSeen failed for ${id}: ${errText(err)}`);
     }
   }
 
@@ -1236,7 +1236,7 @@ export class ClientRegistry {
     if (!textsCurrent) {
       await this.adapter
         .extendObject(`clients.${id}`, { native: { objectsVersion: CLIENT_OBJECTS_VERSION } })
-        .catch(err => this.adapter.log.debug(`client-registry: version stamp failed for ${id}: ${String(err)}`));
+        .catch(err => this.adapter.log.debug(`client-registry: version stamp failed for ${id}: ${errText(err)}`));
     }
   }
 

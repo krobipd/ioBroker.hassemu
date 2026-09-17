@@ -16,6 +16,7 @@
 import dns from "node:dns/promises";
 import { oneLine } from "./coerce";
 import { DNS_NEGATIVE_CACHE_CAP, DNS_NEGATIVE_CACHE_MS, DNS_REVERSE_TIMEOUT_MS } from "./constants";
+import { errText } from "./err-text";
 import { evictOldest } from "./object-utils";
 import type { AdapterInterface } from "./types";
 
@@ -129,7 +130,7 @@ export class HostnameResolver {
           // have hostname Y?". L1(a): a PTR label is attacker-influenceable — flatten it.
           this.adapter.log.debug(`resolveHostname: ip=${ip} → hostname=${oneLine(name)}`);
           this.sink(target.cookie, name).catch(err =>
-            this.adapter.log.debug(`resolveHostname: persist for ${target.id} failed — ${String(err)}`),
+            this.adapter.log.debug(`resolveHostname: persist for ${target.id} failed — ${errText(err)}`),
           );
         } else {
           this.rememberNegative(ip); // no PTR — remember (L6)
@@ -139,9 +140,7 @@ export class HostnameResolver {
         // v1.32.0 A3: reverse DNS fails on a LAN often and legitimately → debug, but with
         // a diagnostic anchor. L6: cache the failure so it is not retried every poll.
         this.rememberNegative(ip);
-        this.adapter.log.debug(
-          `resolveHostname: ip=${ip} failed — ${err instanceof Error ? err.message : String(err)}`,
-        );
+        this.adapter.log.debug(`resolveHostname: ip=${ip} failed — ${errText(err)}`);
       })
       .finally(() => {
         if (timeoutHandle) {

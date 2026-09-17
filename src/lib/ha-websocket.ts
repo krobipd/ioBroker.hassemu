@@ -17,6 +17,7 @@ import type { FastifyInstance } from "fastify";
 import type { WebSocket } from "ws";
 import { isPlainObject } from "./coerce";
 import { HA_VERSION, WS_AUTH_TIMEOUT_MS, WS_HEARTBEAT_INTERVAL_MS } from "./constants";
+import { errText } from "./err-text";
 import type { AdapterInterface, ClientRecord } from "./types";
 
 /** Public route marker — the WS authenticates in-band, so the HTTP guard must let it through. */
@@ -236,7 +237,7 @@ export function registerHaWebSocket(app: FastifyInstance, deps: HaWebSocketDeps)
         }
         handleWsCommand(socket, msg, deps);
       } catch (err) {
-        deps.adapter.log.debug(`WS message handler error: ${String(err)}`);
+        deps.adapter.log.debug(`WS message handler error: ${errText(err)}`);
       }
     });
 

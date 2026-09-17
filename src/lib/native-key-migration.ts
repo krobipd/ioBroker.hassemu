@@ -25,6 +25,8 @@
  *   start when this reports a write, instead of binding a port in a process about to go down.
  */
 
+import { errText } from "./err-text";
+
 /** Rename: the old value wins over the freshly added default; the old key is nulled. */
 export interface NativeKeyRename {
   /** The key the value used to live under. */
@@ -167,7 +169,7 @@ export async function migrateNativeKeys(
     const obj = (await adapter.getForeignObjectAsync(id)) as { native?: Record<string, unknown> } | null | undefined;
     native = obj?.native;
   } catch (err) {
-    adapter.log.warn(`Settings migration skipped — could not read ${id}: ${String(err)}`);
+    adapter.log.warn(`Settings migration skipped — could not read ${id}: ${errText(err)}`);
     return false;
   }
   if (!native) {
@@ -187,7 +189,7 @@ export async function migrateNativeKeys(
     adapter.log.info(`Settings migrated to the standard keys (${summary}) — this instance restarts once`);
     return true;
   } catch (err) {
-    adapter.log.warn(`Settings migration could not be stored (${String(err)}) — using ${summary} for this run`);
+    adapter.log.warn(`Settings migration could not be stored (${errText(err)}) — using ${summary} for this run`);
     const config = adapter.config as Record<string, unknown>;
     for (const k of touched) {
       if (patch[k] === null) {

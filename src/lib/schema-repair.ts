@@ -1,3 +1,4 @@
+import { errText } from "./err-text";
 import type { AdapterInterface } from "./types";
 
 /** Adapter surface schema-repair needs — object I/O + namespace + logging. */
@@ -93,6 +94,6 @@ async function repairOne(
     } as unknown as ioBroker.PartialObject);
     adapter.log.debug(`Schema repair applied: ${id} (common.type was missing, restored from instanceObjects)`);
   } catch (err) {
-    adapter.log.debug(`repair ${id} failed: ${String(err)}`);
+    adapter.log.debug(`repair ${id} failed: ${errText(err)}`);
   }
 }

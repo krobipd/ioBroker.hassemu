@@ -4,6 +4,8 @@ import { I18n } from "@iobroker/adapter-core";
 import * as utils from "@iobroker/adapter-core";
 import { ClientRegistry, parseClientStateId } from "./lib/client-registry";
 import { coerceUuid } from "./lib/coerce";
+import { carryEnumMembership } from "./lib/enum-membership";
+import { errText } from "./lib/err-text";
 import { decideGcAction } from "./lib/state-write-rules";
 import { MODE_GLOBAL, NO_CHOICE, STALE_CLIENT_TTL_MS } from "./lib/constants";
 import { GlobalConfig, parseGlobalStateId } from "./lib/global-config";
@@ -116,7 +118,7 @@ export class HassEmu extends utils.Adapter {
       return true;
     } catch (err: unknown) {
       // Objects DB unreachable — not worth failing the start over; the next start retries.
-      this.log.debug(`Could not check the instance object ${id}: ${String(err)}`);
+      this.log.debug(`Could not check the instance object ${id}: ${errText(err)}`);
       return false;
     }
   }
@@ -196,8 +198,10 @@ export class HassEmu extends utils.Adapter {
       // info.refreshUrls. Delete the old state once on upgrade so it doesn't linger
       // as an orphan beside the new one — js-controller does not auto-remove states
       // dropped from instanceObjects. Guarded like the visUrl cleanups (I5): no
-      // wasted delObject round-trip once it's gone.
+      // wasted delObject round-trip once it's gone. The room/function assignments
+      // travel to the new id first — the delete would strike them (v1.45.0).
       if (await this.getObjectAsync("info.refresh_urls")) {
+        await carryEnumMembership(this, `${this.namespace}.info.refresh_urls`, `${this.namespace}.info.refreshUrls`);
         await this.delObjectAsync("info.refresh_urls").catch(() => {
           /* raced with another delete — already gone */
         });
@@ -234,7 +238,7 @@ export class HassEmu extends utils.Adapter {
         // webServer.start() already logged a friendly, actionable error (EADDRINUSE /
         // generic startup) at error level, so keep only a debug echo of the raw error
         // here — otherwise the same failure prints two error lines. I5 (v1.38.0).
-        this.log.debug(`Web server failed to start: ${String(err)}`);
+        this.log.debug(`Web server failed to start: ${errText(err)}`);
         // v1.10.0 (B4): nicht stumm zurückkehren — der Adapter wäre sonst
         // zombie (info.connection=false, kein Server, keine Subscriptions,
         // kein Restart-Signal an js-controller). terminate() signalisiert
@@ -288,7 +292,7 @@ export class HassEmu extends utils.Adapter {
       // no state subscriptions, no restart signal) if any onReady step other than
       // webServer.start() throws. Mirror the B4 server-start-fail path: stop a
       // partially-started server and terminate so js-controller restarts with backoff.
-      this.log.error(`onReady failed: ${String(err)}`);
+      this.log.error(`onReady failed: ${errText(err)}`);
       await this.webServer?.stop().catch(() => {});
       this.terminate(11);
     }
@@ -331,7 +335,7 @@ export class HassEmu extends utils.Adapter {
       try {
         await write;
       } catch (err: unknown) {
-        this.log.debug(`Could not refresh the object ${id}: ${String(err)}`);
+        this.log.debug(`Could not refresh the object ${id}: ${errText(err)}`);
       }
     };
 
@@ -472,7 +476,7 @@ export class HassEmu extends utils.Adapter {
       // info.serverUuid is an instanceObject — should always exist. Falls
       // doch nicht: log + fortfahren mit der frischen UUID, sie wird beim
       // nächsten Start erneut generiert (kein bleibender Schaden).
-      this.log.warn(`Could not save server UUID: ${String(err)}`);
+      this.log.warn(`Could not save server UUID: ${errText(err)}`);
     });
     this.log.info(`Server UUID generated and saved: ${fresh}`);
     return fresh;
@@ -557,7 +561,7 @@ export class HassEmu extends utils.Adapter {
           }
           return 0;
         } catch (err) {
-          this.log.debug(`Stale-GC: failed for ${record.id}: ${String(err)}`);
+          this.log.debug(`Stale-GC: failed for ${record.id}: ${errText(err)}`);
           return 0;
         }
       }),
@@ -654,7 +658,7 @@ export class HassEmu extends utils.Adapter {
         await this.handleRefreshUrlsWrite();
       }
     } catch (err: unknown) {
-      this.log.error(`stateChange failed: ${String(err)}`);
+      this.log.error(`stateChange failed: ${errText(err)}`);
     }
   }
 
@@ -677,12 +681,12 @@ export class HassEmu extends utils.Adapter {
       // the re-armed button, so no "success" line belongs on info.
       this.log.debug(`URL list refreshed on user request`);
     } catch (err) {
-      this.log.warn(`URL refresh failed: ${err instanceof Error ? err.message : String(err)}`);
+      this.log.warn(`URL refresh failed: ${errText(err)}`);
     } finally {
       // I2: log a re-arm failure instead of swallowing it — a failed re-arm leaves
       // the admin button visually "pressed" (val=true) with no trace of why.
       await this.setState("info.refreshUrls", { val: false, ack: true }).catch(err =>
-        this.log.debug(`refreshUrls re-arm failed: ${String(err)}`),
+        this.log.debug(`refreshUrls re-arm failed: ${errText(err)}`),
       );
     }
   }
@@ -713,7 +717,7 @@ export class HassEmu extends utils.Adapter {
         this.urlDiscovery?.scheduleRefresh();
       }
     } catch (err: unknown) {
-      this.log.error(`objectChange failed: ${String(err)}`);
+      this.log.error(`objectChange failed: ${errText(err)}`);
     }
   }
 
@@ -765,15 +769,14 @@ export class HassEmu extends utils.Adapter {
         .then(results => {
           for (const r of results) {
             if (r.status === "rejected") {
-              this.log.error(`Shutdown error: ${String(r.reason)}`);
+              this.log.error(`Shutdown error: ${errText(r.reason)}`);
             }
           }
         })
         .finally(callback);
       return;
-    } catch (error) {
-      const err = error as Error;
-      this.log.error(`Shutdown error: ${err.message}`);
+    } catch (err) {
+      this.log.error(`Shutdown error: ${errText(err)}`);
     }
     callback();
   }
