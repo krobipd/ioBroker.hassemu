@@ -189,7 +189,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     ### **WORK IN PROGRESS**
 -->
 
-### **WORK IN PROGRESS**
+### 1.45.0 (2026-09-17)
 
 - Fixed: refreshing the dashboard list no longer removes a display's mode datapoint from its rooms and functions, and the datapoint no longer disappears for a moment while it is rewritten
 - Fixed: a failed request or migration now names its cause instead of "[object Object]", and an unexpected error inside the web server no longer breaks its own error answer to the display
@@ -220,13 +220,6 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 ### 1.42.0 (2026-09-04)
 
 - Fixed: a leftover setting from older versions is now removed from the instance completely instead of only being switched off — switched off, it stayed behind for good
-
-### 1.41.0 (2026-09-03)
-
-- Fixed: renamed datapoints now reach installations that already exist — until now a changed name or description only ever showed up on a fresh install
-- Fixed: the object tree kept outdated labels ("Known display clients", "Client IP", "Forget this client") and showed a developer note in the global manual URL name
-- Changed: datapoint names now appear in your ioBroker language throughout the object tree, including the names the displays report for themselves
-- New: full user documentation in English and German covering setup, the object tree and troubleshooting, shown by the ioBroker documentation portal
 
 [Older changelogs can be found there](CHANGELOG_OLD.md)
 

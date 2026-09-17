@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.44.0",
+    "version": "1.45.0",
     "news": {
+      "1.45.0": {
+        "en": "Refreshing the dashboard list keeps each display's mode datapoint in its rooms and functions, and a failed request or migration now names its cause instead of [object Object].",
+        "de": "Beim Auffrischen der Dashboard-Liste bleibt der Modus-Datenpunkt jedes Displays in seinen Räumen und Gewerken, und eine gescheiterte Anfrage oder Migration nennt ihre Ursache statt [object Object].",
+        "ru": "При обновлении списка панелей точка данных режима каждого дисплея остаётся в своих комнатах и функциях, а неудачный запрос или миграция теперь называет причину вместо [object Object].",
+        "pt": "Ao atualizar a lista de painéis, o ponto de dados de modo de cada display mantém-se nas suas divisões e funções, e um pedido ou migração falhado indica agora a causa em vez de [object Object].",
+        "nl": "Bij het verversen van de dashboardlijst blijft het modus-datapunt van elk display in zijn ruimtes en functies, en een mislukte aanvraag of migratie noemt nu de oorzaak in plaats van [object Object].",
+        "fr": "Au rafraîchissement de la liste des tableaux de bord, le point de mode de chaque écran reste dans ses pièces et fonctions, et une requête ou migration échouée nomme sa cause et non [object Object].",
+        "it": "All'aggiornamento dell'elenco dei dashboard il punto di modalità di ogni display resta nelle sue stanze e funzioni, e una richiesta o migrazione fallita indica la causa invece di [object Object].",
+        "es": "Al actualizar la lista de paneles, el punto de modo de cada pantalla se mantiene en sus habitaciones y funciones, y una petición o migración fallida indica su causa en vez de [object Object].",
+        "pl": "Przy odświeżaniu listy pulpitów punkt danych trybu każdego wyświetlacza pozostaje w swoich pomieszczeniach i funkcjach, a nieudane żądanie lub migracja podaje teraz przyczynę zamiast [object Object].",
+        "uk": "Під час оновлення списку панелей точка даних режиму кожного дисплея лишається у своїх кімнатах і функціях, а невдалий запит чи міграція тепер називає причину замість [object Object].",
+        "zh-cn": "刷新仪表板列表时，每个显示器的模式数据点会保留在其房间和功能中；失败的请求或迁移现在会说明原因，而不再显示 [object Object]。"
+      },
       "1.44.0": {
         "en": "The master switch keeps each display's own choice unless it really changes, disabled web instances add no dead dashboard entries, and the listen address setting has moved to the standard place.",
         "de": "Der Hauptschalter lässt die Wahl jedes Displays stehen, solange er sich nicht wirklich ändert, deaktivierte web-Instanzen liefern keine toten Einträge mehr, und die Bind-Adresse liegt am Standardort.",

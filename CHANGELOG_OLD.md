@@ -1,5 +1,12 @@
 # Older Changes
 
+## 1.41.0 (2026-09-03)
+
+- Fixed: renamed datapoints now reach installations that already exist — until now a changed name or description only ever showed up on a fresh install
+- Fixed: the object tree kept outdated labels ("Known display clients", "Client IP", "Forget this client") and showed a developer note in the global manual URL name
+- Changed: datapoint names now appear in your ioBroker language throughout the object tree, including the names the displays report for themselves
+- New: full user documentation in English and German covering setup, the object tree and troubleshooting, shown by the ioBroker documentation portal
+
 ## 1.40.0 (2026-09-02)
 
 - Fixed: with trustProxy enabled but no sanitising reverse proxy in front, a single device could create unlimited display entries — a global ceiling now caps this
