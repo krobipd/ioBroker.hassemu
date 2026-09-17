@@ -196,9 +196,9 @@ export class GlobalConfig {
     // object: Admin renders common.states VALUES directly as a React child and
     // crashes on translation objects with React Error #31.
     const merged = buildDropdownStates({ [MODE_MANUAL]: resolveLabel("manualUrl") }, states);
-    // v1.27.2: extendObject mergt `common.states` tief — alte
-    // URL-Schlüssel bleiben drin nach Format-Wechsel (z.B. v1.26→v1.27).
-    // Object lesen, common.states ersetzen, setObject.
+    // v1.27.2: extendObject deep-merges `common.states` — old URL keys survive a
+    // format change (e.g. v1.26→v1.27). Read the object, replace common.states, then
+    // ONE full write via replaceObjectPreservingValue (setForeignObject since v1.45.0).
     const existing = await this.adapter.getObjectAsync("global.mode");
     if (!existing) {
       return;

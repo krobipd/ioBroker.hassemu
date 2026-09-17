@@ -746,14 +746,15 @@ export class ClientRegistry {
   async syncUrlDropdown(states: UrlStates): Promise<void> {
     this.currentUrlStates = states;
     const merged = this.buildModeStates();
-    // v1.27.2: extendObject mergt `common.states` tief — alte
-    // URL-Schlüssel die nicht mehr discovered werden, blieben sonst im
-    // Dropdown stehen (sichtbar nach v1.26→v1.27 URL-Format-Wechsel:
-    // alte `vis-2.0/main/index.html`-Keys neben neuen `vis-2/index.html?main`).
-    // Object lesen, common.states komplett ersetzen, dann setObject.
-    // v1.30.0 (R4): pro-Client get+set parallel statt sequentiell. Analog
-    // gcStaleClients in main.ts (v1.28.3 M5). Spürbar bei Display-Farmen
-    // mit 30+ Clients — vorher 2×N Broker-Round-Trips sequenziell.
+    // v1.27.2: extendObject deep-merges `common.states` — URL keys that are no longer
+    // discovered would stay in the dropdown (seen after the v1.26→v1.27 URL format
+    // change: old `vis-2.0/main/index.html` keys beside new `vis-2/index.html?main`).
+    // Read the object, replace common.states wholesale, then ONE full write via
+    // replaceObjectPreservingValue (setForeignObject since v1.45.0 — the earlier
+    // delete + recreate pair struck the datapoint from every enum).
+    // v1.30.0 (R4): get+write per client in parallel instead of sequentially, like
+    // gcStaleClients in main.ts (v1.28.3 M5) — noticeable on display farms with 30+
+    // clients, which used to cost 2×N broker round-trips in sequence.
     await Promise.all(
       Array.from(this.byId.keys()).map(async id => {
         const stateId = `clients.${id}.mode`;
@@ -761,8 +762,8 @@ export class ClientRegistry {
         if (!existing) {
           return;
         }
-        // Skip the write when the dropdown is already identical — avoids a
-        // setObject (jsonl churn + objectChange fan-out) per client on every
+        // Skip the write when the dropdown is already identical — avoids a full
+        // object write (jsonl churn + objectChange fan-out) per client on every
         // discovery run that changed nothing. v1.37.0 (I4).
         if (shallowStatesEqual(existing.common.states, merged)) {
           return;
@@ -1094,12 +1095,12 @@ export class ClientRegistry {
     });
 
     // States:
-    //   - `clients.<id>.mode` uses get+setObject (analog `global-config.ts`
-    //     v1.27.2-Fix): extendObject deep-merges common.states, weshalb
-    //     alte i18n-Object-Keys aus pre-v1.28.4-Installs unter den gleichen
-    //     keys hängen blieben → React Error #31 beim Admin-Dropdown-Open.
-    //     setObject ersetzt common komplett (custom-Custom-Subscriptions
-    //     wie influxdb.0 bleiben via spread aus existing erhalten).
+    //   - `clients.<id>.mode` uses get + one full write (replaceObjectPreservingValue,
+    //     like the `global-config.ts` v1.27.2 fix): extendObject deep-merges
+    //     common.states, so old i18n-object keys from pre-v1.28.4 installs stayed
+    //     under the same keys → React error #31 when the admin opened the dropdown.
+    //     The full write replaces common wholesale (custom subscriptions such as
+    //     influxdb.0 survive via the spread of `existing`).
     //   - Repair-Pfad für partial-formed Objects (v1.2.0-Migration-Bug, common
     //     ohne top-level type/name/role) ist auch abgedeckt: existing-fields
     //     werden von der full schema common komplett überschrieben.
