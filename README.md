@@ -189,7 +189,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     ### **WORK IN PROGRESS**
 -->
 
-### 1.45.0 (2026-09-17)
+### 1.45.0 (2026-09-17) — stable
 
 - Fixed: refreshing the dashboard list no longer removes a display's mode datapoint from its rooms and functions, and the datapoint no longer disappears for a moment while it is rewritten
 - Fixed: a failed request or migration now names its cause instead of "[object Object]", and an unexpected error inside the web server no longer breaks its own error answer to the display
