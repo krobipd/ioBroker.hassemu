@@ -39,7 +39,7 @@ function bindOrAllInterfaces(value: unknown): string {
  * HA emulator adapter — lifecycle, migrations, state-dispatch, master switch.
  * Exported so the orchestration unit tests can drive its handlers directly.
  */
-export class HassEmu extends utils.Adapter {
+class HassEmu extends utils.Adapter {
   /**
    * ioBroker system language used to render the user-facing landing page (HTML)
    * in the user's language. Adapter logs themselves stay English by ioBroker
@@ -836,7 +836,12 @@ export class HassEmu extends utils.Adapter {
 }
 
 if (require.main !== module) {
-  module.exports = (options: Partial<utils.AdapterOptions> | undefined) => new HassEmu(options);
+  // The class rides on the factory instead of a named export: `export class` next to a
+  // `module.exports` assignment makes esbuild warn (commonjs-variable-in-esm) and leaves a
+  // module shape the js-controller never reads. Tests take the class from here.
+  module.exports = Object.assign((options: Partial<utils.AdapterOptions> | undefined) => new HassEmu(options), {
+    HassEmu,
+  });
 } else {
   (() => new HassEmu())();
 }

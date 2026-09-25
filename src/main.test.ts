@@ -222,7 +222,7 @@ vi.mock("@iobroker/adapter-core", async () => {
   };
 });
 
-import { HassEmu } from "./main";
+import * as mainModule from "./main";
 import type { ClientRegistry } from "./lib/client-registry";
 import type { GlobalConfig } from "./lib/global-config";
 import { CLIENT_OBJECTS_VERSION, MODE_GLOBAL, MODE_MANUAL } from "./lib/constants";
@@ -268,6 +268,13 @@ interface FakeDiscovery {
   scheduleRefresh: ReturnType<typeof vi.fn>;
   cancelRefresh: ReturnType<typeof vi.fn>;
 }
+
+/**
+ * The adapter class. main.ts hands it out on its factory (`module.exports.HassEmu`), not as
+ * a named export — an `export` next to the `module.exports` assignment makes esbuild warn.
+ * vitest's module runner exposes the factory's own properties on the namespace.
+ */
+const { HassEmu } = mainModule as unknown as { HassEmu: new () => ioBroker.Adapter };
 
 /** Typed access to HassEmu's private members the orchestration tests drive. */
 interface Internal {
@@ -319,7 +326,7 @@ function makeFakeDiscovery(): FakeDiscovery {
 }
 
 interface Setup {
-  adapter: HassEmu;
+  adapter: ioBroker.Adapter;
   internal: Internal;
   stub: StubSurface;
   webServer: FakeWebServer;
