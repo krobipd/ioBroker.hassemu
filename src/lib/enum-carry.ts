@@ -13,7 +13,7 @@
  * The order here: (1) read the enums that hold the old id, fresh from the object store, (2) let the
  * caller delete the old object, (3) only then write the new id into exactly those enums, each read
  * fresh and written back as a copy with `setForeignObject` (a merge would keep a stale array tail) —
- * the Promise form without a callback; its `…Async` twin is `@deprecated` in @iobroker/types 7.2.2.
+ * the Promise form without a callback; its `…Async` twin is `@deprecated` in `@iobroker/types` 7.2.2.
  *
  * Fleet master: `Entwicklung/.consistency-master/src/lib/enum-carry.ts`. Every adapter that moves
  * objects between ids carries this file and its test byte for byte — the release run (consistency
