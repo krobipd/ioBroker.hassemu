@@ -1,8 +1,17 @@
-import { buildNativeKeyPatch, migrateNativeKeys, type NativeKeyMigration } from "./native-key-migration";
+import {
+  buildCommonKeyPatch,
+  buildNativeKeyPatch,
+  KEPT_COMMON_KEYS,
+  migrateNativeKeys,
+  type NativeKeyMigration,
+} from "./native-key-migration";
 
 type Log = (msg: string) => void;
 type Read = (id: string) => Promise<unknown>;
-type Merge = (id: string, obj: { native: Record<string, unknown> }) => Promise<unknown>;
+type Merge = (
+  id: string,
+  obj: { native?: Record<string, unknown>; common?: Record<string, unknown> },
+) => Promise<unknown>;
 
 interface FakeAdapter {
   namespace: string;
@@ -16,15 +25,22 @@ interface FakeAdapter {
  * A fake adapter whose object store applies every merge, so a second run sees the first.
  *
  * @param native the instance's native settings (undefined = no instance object)
- * @param opts failure switches for the read and the write
+ * @param opts failure switches for the read and the write, and the instance's common part
  * @param opts.readFails reject the object read
  * @param opts.writeFails reject the merge
+ * @param opts.common the instance's common part (absent = none)
  */
 function fakeAdapter(
   native: Record<string, unknown> | undefined,
-  opts: { readFails?: boolean; writeFails?: boolean } = {},
-): { adapter: FakeAdapter; store: { native?: Record<string, unknown> } | null } {
-  const store: { native?: Record<string, unknown> } | null = native ? { native: { ...native } } : null;
+  opts: { readFails?: boolean; writeFails?: boolean; common?: Record<string, unknown> } = {},
+): {
+  adapter: FakeAdapter;
+  store: { native?: Record<string, unknown>; common?: Record<string, unknown> } | null;
+} {
+  const store: { native?: Record<string, unknown>; common?: Record<string, unknown> } | null =
+    native || opts.common
+      ? { ...(native ? { native: { ...native } } : {}), ...(opts.common ? { common: { ...opts.common } } : {}) }
+      : null;
   const adapter: FakeAdapter = {
     namespace: "adapter.0",
     log: { info: vi.fn<Log>(), warn: vi.fn<Log>() },
@@ -37,12 +53,15 @@ function fakeAdapter(
       return Promise.resolve(structuredClone(store));
     }),
     extendForeignObjectAsync: vi.fn<Merge>(
-      (_id: string, obj: { native: Record<string, unknown> }): Promise<unknown> => {
+      (_id: string, obj: { native?: Record<string, unknown>; common?: Record<string, unknown> }): Promise<unknown> => {
         if (opts.writeFails) {
           return Promise.reject(new Error("write refused"));
         }
-        if (store) {
-          Object.assign(store.native!, obj.native);
+        if (store && obj.native) {
+          store.native = { ...store.native, ...obj.native };
+        }
+        if (store && obj.common) {
+          store.common = { ...store.common, ...obj.common };
         }
         return Promise.resolve({});
       },
@@ -72,7 +91,18 @@ const IFACE_AND_BIND: NativeKeyMigration[] = [
   { from: "BIND", to: "bind" },
 ];
 
+const DROP_OLD: NativeKeyMigration[] = [{ drop: "pollInterval" }, { drop: "password" }];
+
 describe("buildNativeKeyPatch", () => {
+  it("nulls a dropped key that still holds a value, and only that", () => {
+    expect(buildNativeKeyPatch({ pollInterval: 30, password: "", bind: "0.0.0.0" }, DROP_OLD)).toEqual({
+      pollInterval: null,
+      password: null,
+    });
+    expect(buildNativeKeyPatch({ pollInterval: null, bind: "0.0.0.0" }, DROP_OLD)).toEqual({});
+    expect(buildNativeKeyPatch({}, DROP_OLD)).toEqual({});
+  });
+
   it("moves the old value to the new key and nulls the old key", () => {
     expect(buildNativeKeyPatch({ host: "192.168.1.10", bind: "0.0.0.0", port: 8080 }, HOST_TO_BIND)).toEqual({
       bind: "192.168.1.10",
@@ -143,7 +173,61 @@ describe("buildNativeKeyPatch", () => {
   });
 });
 
+describe("buildCommonKeyPatch", () => {
+  it("nulls an obsolete common key that still holds a value, and only that", () => {
+    const table: NativeKeyMigration[] = [
+      { commonDrop: "nondeletable" },
+      { commonDrop: "materialize" },
+      { drop: "old" },
+    ];
+    expect(buildCommonKeyPatch({ nondeletable: true, name: "x", materialize: null }, table)).toEqual({
+      nondeletable: null,
+    });
+  });
+
+  it("never touches a key js-controller keeps for the user or maintains itself", () => {
+    const table: NativeKeyMigration[] = KEPT_COMMON_KEYS.map(k => ({ commonDrop: k }));
+    const common = Object.fromEntries(KEPT_COMMON_KEYS.map(k => [k, "user value"]));
+    expect(buildCommonKeyPatch(common, table)).toEqual({});
+    expect(KEPT_COMMON_KEYS).toEqual(expect.arrayContaining(["title", "enabled", "custom", "supportedMessages"]));
+  });
+
+  it("takes a key literally, even one with a trailing space", () => {
+    expect(buildCommonKeyPatch({ "connectionType ": "local" }, [{ commonDrop: "connectionType " }])).toEqual({
+      "connectionType ": null,
+    });
+  });
+
+  it("is ignored by the native patch", () => {
+    expect(buildNativeKeyPatch({ nondeletable: true }, [{ commonDrop: "nondeletable" }])).toEqual({});
+  });
+});
+
 describe("migrateNativeKeys", () => {
+  it("nulls obsolete common keys in the same single write as the native changes", async () => {
+    const table: NativeKeyMigration[] = [...DROP_OLD, { commonDrop: "nondeletable" }];
+    const { adapter, store } = fakeAdapter({ pollInterval: 30 }, { common: { nondeletable: true, title: "Mine" } });
+    await expect(migrateNativeKeys(adapter, table, errText)).resolves.toBe(true);
+    expect(adapter.extendForeignObjectAsync).toHaveBeenCalledTimes(1);
+    expect(adapter.extendForeignObjectAsync).toHaveBeenCalledWith("system.adapter.adapter.0", {
+      native: { pollInterval: null },
+      common: { nondeletable: null },
+    });
+    expect(store?.common).toEqual({ nondeletable: null, title: "Mine" });
+    expect(adapter.log.info.mock.calls[0][0]).toBe(
+      "Obsolete settings removed (pollInterval, common.nondeletable) — this instance restarts once",
+    );
+    await expect(migrateNativeKeys(adapter, table, errText)).resolves.toBe(false);
+  });
+
+  it("writes only common when no native key needs a change", async () => {
+    const { adapter } = fakeAdapter(undefined, { common: { singletonHost: true } });
+    await expect(migrateNativeKeys(adapter, [{ commonDrop: "singletonHost" }], errText)).resolves.toBe(true);
+    expect(adapter.extendForeignObjectAsync).toHaveBeenCalledWith("system.adapter.adapter.0", {
+      common: { singletonHost: null },
+    });
+  });
+
   it("merges only the touched keys in one write and reports the restart", async () => {
     const { adapter, store } = fakeAdapter({ host: "192.168.1.10", bind: "0.0.0.0", port: "8080", udn: "u" });
     await expect(migrateNativeKeys(adapter, HOST_TO_BIND, errText)).resolves.toBe(true);
@@ -156,6 +240,20 @@ describe("migrateNativeKeys", () => {
     expect(adapter.log.info.mock.calls[0][0]).toContain('bind = "192.168.1.10", port = 8080');
     expect(adapter.log.info.mock.calls[0][0]).toContain("restarts once");
     expect(adapter.log.warn).not.toHaveBeenCalled();
+  });
+
+  it("removes obsolete keys in one write, says so, and does it once", async () => {
+    const { adapter, store } = fakeAdapter({ pollInterval: 30, bind: "0.0.0.0" });
+    await expect(migrateNativeKeys(adapter, DROP_OLD, errText)).resolves.toBe(true);
+    expect(adapter.extendForeignObjectAsync).toHaveBeenCalledWith("system.adapter.adapter.0", {
+      native: { pollInterval: null },
+    });
+    expect(store?.native).toEqual({ pollInterval: null, bind: "0.0.0.0" });
+    expect(adapter.log.info.mock.calls[0][0]).toBe(
+      "Obsolete settings removed (pollInterval) — this instance restarts once",
+    );
+    await expect(migrateNativeKeys(adapter, DROP_OLD, errText)).resolves.toBe(false);
+    expect(adapter.extendForeignObjectAsync).toHaveBeenCalledTimes(1);
   });
 
   it("is idempotent — the second start writes nothing", async () => {

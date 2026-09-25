@@ -199,4 +199,12 @@ describe("landing-page", () => {
       });
     });
   });
+
+  it("pads the page by the app's safe-area insets, with a static value first (U2)", () => {
+    const html = renderLandingPage("a1b2c3", "hassemu.0", "en", "10.0.0.5");
+    expect(html).to.match(/padding: 1\.5rem;\s+padding: calc\(1\.5rem \+ var\(--app-safe-area-inset-top, 0px\)\)/);
+    expect(html).to.include("calc(1.5rem + var(--app-safe-area-inset-bottom, 0px))");
+    expect(html).to.not.include("env(");
+    expect(html).to.not.include("viewport-fit");
+  });
 });

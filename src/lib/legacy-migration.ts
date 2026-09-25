@@ -1,8 +1,9 @@
 import { coerceSafeUrl } from "./coerce";
 import { decideLegacyVisMigration } from "./state-write-rules";
 import { MODE_MANUAL } from "./constants";
-import { carryEnumMembership } from "./enum-membership";
+import { moveWithEnums } from "./enum-carry";
 import { errText } from "./err-text";
+import { migrateNativeKeys, type NativeKeyMigration } from "./native-key-migration";
 import type { ClientRegistry } from "./client-registry";
 import type { GlobalConfig } from "./global-config";
 import type { AdapterConfig } from "./types";
@@ -24,15 +25,25 @@ export type MigrationAdapter = Pick<
   ioBroker.Adapter,
   | "log"
   | "namespace"
+  | "config"
   | "getForeignObjectAsync"
+  | "getForeignObjectsAsync"
+  | "setForeignObject"
   | "extendForeignObjectAsync"
   | "getStateAsync"
   | "setState"
   | "delObjectAsync"
   | "delStateAsync"
-  | "getEnumsAsync"
-  | "extendForeignObject"
 >;
+
+/**
+ * The instance settings of 1.0.x (`visUrl`) and 1.1.0 (`defaultVisUrl`). js-controller never
+ * deletes a native key, so an installation from then carries them for good — including the
+ * empty manifest default `""` when no URL was ever entered. Dropped (nulled) ONLY after their
+ * value was read and carried over: in onReady's rename table the drop would null a real URL
+ * before this migration sees it (audit 2026-09-25, K3).
+ */
+const LEGACY_URL_DROPS: NativeKeyMigration[] = [{ drop: "defaultVisUrl" }, { drop: "visUrl" }];
 
 /**
  * Remove a legacy datapoint for good. `delObject` removes a value only together with its
@@ -57,50 +68,6 @@ async function deleteLegacyDatapoint(adapter: MigrationAdapter, id: string): Pro
 }
 
 /**
- * Drops the legacy `defaultVisUrl`/`visUrl` keys from the instance native config.
- * Shared by both exits of {@link migrateLegacyDefaultVisUrl} — the unsafe-rejected
- * path and the successfully-migrated path clean up identically. Best-effort:
- * failures only warn.
- *
- * Two rules this obeys, both learned elsewhere in this adapter:
- * - **Merge, never write the whole object.** Reading `system.adapter.<ns>` and writing it
- *   back wholesale loses every change made to it in between (the admin saving the config
- *   in the same second, another migration step). `extendForeignObjectAsync` touches only
- *   the two keys; `null` is copied by the merge (`undefined` would be skipped) and makes
- *   both keys falsy, which is all the migration reads them for.
- * - **A write here restarts the instance.** Any change to the adapter's own instance object
- *   makes js-controller restart it — the same mechanic `getOrCreateServerUuid` avoids by
- *   using a state and `clearStopInstanceFlag` handles by aborting the start. So this
- *   reports back whether it wrote, and `onReady` stops instead of binding a port in a
- *   process that is going down.
- *
- * @param adapter Adapter surface for object I/O + logging.
- * @returns true when the instance object was changed — the caller must abort the start.
- */
-export async function cleanupLegacyNativeUrl(adapter: MigrationAdapter): Promise<boolean> {
-  try {
-    const id = `system.adapter.${adapter.namespace}`;
-    const obj = await adapter.getForeignObjectAsync(id);
-    const native = obj?.native as { defaultVisUrl?: unknown; visUrl?: unknown } | undefined;
-    // Only write when a key actually carries a value — an unconditional write would
-    // restart the instance on every single start. `null` is the state AFTER this
-    // function's own write: an extend with `null` stores `null`, it does not delete the
-    // key (measured on the objects store), so a `=== undefined` guard would see its own
-    // result as "still there" and restart forever (audit 2026-09-15, E4).
-    const present = (v: unknown): boolean => v !== undefined && v !== null;
-    if (!native || (!present(native.defaultVisUrl) && !present(native.visUrl))) {
-      return false;
-    }
-    await adapter.extendForeignObjectAsync(id, { native: { defaultVisUrl: null, visUrl: null } });
-    adapter.log.info("Removed the legacy URL from the instance configuration — this instance restarts once");
-    return true;
-  } catch (err) {
-    adapter.log.warn(`Legacy config cleanup failed: ${errText(err)}`);
-    return false;
-  }
-}
-
-/**
  * 1.0.x / 1.1.0 migration — move the legacy `defaultVisUrl`/`visUrl` from instance native
  * straight into `global.mode = manual` + `global.manualUrl`, switch the master switch on
  * (as 1.1.1 did, so new displays follow it) and drop the keys from native.
@@ -109,7 +76,7 @@ export async function cleanupLegacyNativeUrl(adapter: MigrationAdapter): Promise
  * @param config       Instance config (read for the legacy `defaultVisUrl`/`visUrl`).
  * @param globalConfig Global config collaborator (constructed and restored before this runs).
  * @returns true when the instance object was rewritten and a restart is coming — the
- *   caller must abort the start (see {@link cleanupLegacyNativeUrl}).
+ *   caller must abort the start (a write to the own instance object restarts it).
  */
 export async function migrateLegacyDefaultVisUrl(
   adapter: MigrationAdapter,
@@ -119,13 +86,16 @@ export async function migrateLegacyDefaultVisUrl(
   const legacy = config as AdapterConfig & { defaultVisUrl?: string; visUrl?: string };
   const url = legacy.defaultVisUrl || legacy.visUrl;
   if (!url) {
-    return false;
+    // Nothing to carry over, but the empty default may still sit in the settings — drop it.
+    // Only when a key is there at all: no instance-object read on an installation without them.
+    const leftover = [legacy.defaultVisUrl, legacy.visUrl].some(v => v !== undefined && v !== null);
+    return leftover ? await migrateNativeKeys(adapter, LEGACY_URL_DROPS, errText) : false;
   }
   // An unsafe legacy value (`javascript:`, `data:`) never reaches a datapoint.
   const safe = coerceSafeUrl(url);
   if (!safe) {
     adapter.log.warn(`Migration: legacy global URL rejected as unsafe — please set global.manualUrl manually`);
-    return await cleanupLegacyNativeUrl(adapter);
+    return await migrateNativeKeys(adapter, LEGACY_URL_DROPS, errText);
   }
 
   adapter.log.info(`Migrating legacy URL configuration to the new model`);
@@ -143,7 +113,8 @@ export async function migrateLegacyDefaultVisUrl(
     return false;
   }
 
-  return await cleanupLegacyNativeUrl(adapter);
+  // Taken over — only now may the keys go.
+  return await migrateNativeKeys(adapter, LEGACY_URL_DROPS, errText);
 }
 
 /**
@@ -189,13 +160,14 @@ export async function migrateVisUrlToMode(
   // (per start) was a wasted no-op.
   if (globalMigrated && globalHadLegacy) {
     // The delete strikes the id from every room/function enum — the memberships move to the
-    // successor around it (v1.45.0; order: enum-membership.ts). The delete also takes a value
-    // without an object, or this would migrate again on every start (L2).
-    await carryEnumMembership(
+    // successor around it (v1.45.0; order: the fleet master enum-carry.ts). The delete also
+    // takes a value without an object, or this would migrate again on every start (L2).
+    await moveWithEnums(
       adapter,
       `${adapter.namespace}.global.visUrl`,
       `${adapter.namespace}.global.manualUrl`,
       () => deleteLegacyDatapoint(adapter, "global.visUrl"),
+      errText,
     );
   }
 
@@ -240,11 +212,12 @@ export async function migrateVisUrlToMode(
         adapter.log.warn(`Migration: client ${id} URL move failed — legacy visUrl preserved (${errText(err)})`);
       }
       if (clientMigrated) {
-        await carryEnumMembership(
+        await moveWithEnums(
           adapter,
           `${adapter.namespace}.clients.${id}.visUrl`,
           `${adapter.namespace}.clients.${id}.manualUrl`,
           () => deleteLegacyDatapoint(adapter, `clients.${id}.visUrl`),
+          errText,
         );
       }
     }),

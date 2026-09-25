@@ -7,7 +7,7 @@
 // The edges that matter here are all about NOT losing a user's configured URL: a failed
 // write must never be followed by deleting the source it came from.
 
-import { cleanupLegacyNativeUrl, migrateVisUrlToMode, type MigrationAdapter } from "./legacy-migration";
+import { migrateLegacyDefaultVisUrl, migrateVisUrlToMode, type MigrationAdapter } from "./legacy-migration";
 import { MODE_MANUAL } from "./constants";
 import type { ClientRegistry } from "./client-registry";
 import type { GlobalConfig } from "./global-config";
@@ -120,94 +120,27 @@ function createStub(namespace = "hassemu.0"): { store: Store; adapter: Migration
       }
       return Promise.resolve();
     },
-    getEnumsAsync: () => {
-      const rooms: Record<string, { common: { members: string[] } }> = {};
-      for (const [enumId, members] of store.enums) {
-        rooms[enumId] = { common: { members: [...members] } };
+    // The enum view the fleet carrier reads (getForeignObjectsAsync("enum.*", "enum")).
+    getForeignObjectsAsync: (_pattern: string, type?: string) => {
+      const out: Record<string, ObjEntry> = {};
+      if (type === "enum") {
+        for (const [enumId, members] of store.enums) {
+          out[enumId] = { type: "enum", common: { members: [...members] } };
+        }
       }
-      return Promise.resolve({ "enum.rooms": rooms });
+      return Promise.resolve(out);
     },
-    extendForeignObject: (id: string, part: { common?: { members?: string[] } }) => {
-      const members = part.common?.members ?? [];
-      store.enumWrites.push({ id, members });
+    // The carrier writes an enum back whole.
+    setForeignObject: (id: string, obj: ObjEntry) => {
+      const members = (obj.common?.members as string[] | undefined) ?? [];
+      store.enumWrites.push({ id, members: [...members] });
       store.enums.set(id, [...members]);
       return Promise.resolve();
     },
+    config: {},
   };
   return { store, adapter: adapter as unknown as MigrationAdapter, freezeEnumCache };
 }
-
-describe("cleanupLegacyNativeUrl", () => {
-  it("does nothing — and asks for no restart — when the legacy keys are absent", async () => {
-    const { store, adapter } = createStub();
-    store.objects.set("system.adapter.hassemu.0", { type: "instance", native: { port: 8123 } });
-
-    expect(await cleanupLegacyNativeUrl(adapter)).to.equal(false);
-    // Any write to the instance object restarts the instance — doing it unconditionally
-    // would be a restart on every single start.
-    expect(store.objects.get("system.adapter.hassemu.0")?.native).to.deep.equal({ port: 8123 });
-  });
-
-  it("recognises its OWN result — both keys null — and does not write again (no restart loop)", async () => {
-    // An extend with `null` stores `null`, it does not delete the key (measured on the
-    // objects store, govee 2026-09-15). The guard must read `null` as "already cleaned"
-    // — a `=== undefined` guard sees its own result as still there and restarts the
-    // instance on every start. Audit 2026-09-15 (E4).
-    const { store, adapter } = createStub();
-    store.objects.set("system.adapter.hassemu.0", {
-      type: "instance",
-      native: { port: 8123, defaultVisUrl: null, visUrl: null },
-    });
-
-    expect(await cleanupLegacyNativeUrl(adapter)).to.equal(false);
-    expect(store.objects.get("system.adapter.hassemu.0")?.native).to.deep.equal({
-      port: 8123,
-      defaultVisUrl: null,
-      visUrl: null,
-    });
-  });
-
-  it("clears both legacy keys and reports the coming restart", async () => {
-    const { store, adapter } = createStub();
-    store.objects.set("system.adapter.hassemu.0", {
-      type: "instance",
-      native: { port: 8123, defaultVisUrl: "http://old/", visUrl: "http://older/" },
-    });
-
-    expect(await cleanupLegacyNativeUrl(adapter)).to.equal(true);
-    const native = store.objects.get("system.adapter.hassemu.0")!.native!;
-    expect(native.defaultVisUrl).to.be.null;
-    expect(native.visUrl).to.be.null;
-    expect(native.port).to.equal(8123);
-  });
-
-  it("MERGES — a field added between read and write survives", async () => {
-    const { store, adapter } = createStub();
-    store.objects.set("system.adapter.hassemu.0", { type: "instance", native: { defaultVisUrl: "http://old/" } });
-    const surface = adapter as unknown as { getForeignObjectAsync: (id: string) => Promise<ObjEntry | null> };
-    const original = surface.getForeignObjectAsync.bind(adapter);
-    surface.getForeignObjectAsync = async (id: string) => {
-      const obj = await original(id);
-      // The admin saves the config in the same second. A read-modify-write of the WHOLE
-      // object would drop this silently.
-      store.objects.set(id, { type: "instance", native: { ...obj!.native, password: "set meanwhile" } });
-      return obj;
-    };
-
-    await cleanupLegacyNativeUrl(adapter);
-
-    expect(store.objects.get("system.adapter.hassemu.0")!.native!.password).to.equal("set meanwhile");
-  });
-
-  it("warns instead of throwing when the objects DB is unreachable", async () => {
-    const { store, adapter } = createStub();
-    (adapter as unknown as { getForeignObjectAsync: () => Promise<never> }).getForeignObjectAsync = () =>
-      Promise.reject(new Error("objects db down"));
-
-    expect(await cleanupLegacyNativeUrl(adapter)).to.equal(false);
-    expect(store.logs.some(l => l.level === "warn" && l.msg.includes("cleanup failed"))).to.equal(true);
-  });
-});
 
 describe("migrateVisUrlToMode", () => {
   /**
@@ -385,10 +318,11 @@ describe("migrateVisUrlToMode", () => {
 
     await migrateVisUrlToMode(adapter, config, fakeRegistry({}, []));
 
+    // The fleet carrier (enum-carry.ts) appends the successor after the delete.
     expect(store.enums.get("enum.rooms.living")).to.deep.equal([
       "hue.0.light",
-      "hassemu.0.global.manualUrl",
       "sonos.0.play",
+      "hassemu.0.global.manualUrl",
     ]);
   });
 
@@ -416,5 +350,78 @@ describe("migrateVisUrlToMode", () => {
     await migrateVisUrlToMode(adapter, config, fakeRegistry({}, []));
 
     expect(store.enumWrites).to.deep.equal([]);
+  });
+});
+
+describe("migrateLegacyDefaultVisUrl — the legacy settings are dropped after the takeover (K3)", () => {
+  const INSTANCE = "system.adapter.hassemu.0";
+  /**
+   * A GlobalConfig stand-in.
+   *
+   * @param failing When true, writing the global URL rejects.
+   */
+  const fakeGlobal = (failing = false): { writes: unknown[][]; config: GlobalConfig } => {
+    const writes: unknown[][] = [];
+    const config = {
+      migrationSet: (mode: string, url: string | null): Promise<void> => {
+        writes.push(["migrationSet", mode, url]);
+        return failing ? Promise.reject(new Error("broker down")) : Promise.resolve();
+      },
+      handleEnabledWrite: (v: unknown): Promise<void> => {
+        writes.push(["enabled", v]);
+        return Promise.resolve();
+      },
+    };
+    return { writes, config: config as unknown as GlobalConfig };
+  };
+
+  it("an empty default left by 1.0/1.1 is dropped — once, with a restart (K3)", async () => {
+    const { store, adapter } = createStub();
+    store.objects.set(INSTANCE, { type: "instance", common: {}, native: { visUrl: "", port: 8123 } });
+    const { writes, config } = fakeGlobal();
+
+    const restarting = await migrateLegacyDefaultVisUrl(adapter, { visUrl: "" } as never, config);
+
+    expect(restarting).to.equal(true);
+    expect(store.objects.get(INSTANCE)?.native).to.deep.equal({ visUrl: null, port: 8123 });
+    expect(writes, "nothing to carry over").to.deep.equal([]);
+  });
+
+  it("a key that is gone or already nulled costs no read of the instance object", async () => {
+    const { adapter } = createStub();
+    let reads = 0;
+    const read = adapter.getForeignObjectAsync.bind(adapter);
+    (adapter as unknown as { getForeignObjectAsync: (id: string) => Promise<unknown> }).getForeignObjectAsync = id => {
+      reads++;
+      return read(id);
+    };
+    expect(await migrateLegacyDefaultVisUrl(adapter, { visUrl: null } as never, fakeGlobal().config)).to.equal(false);
+    expect(await migrateLegacyDefaultVisUrl(adapter, {} as never, fakeGlobal().config)).to.equal(false);
+    expect(reads).to.equal(0);
+  });
+
+  it("a real URL is taken over first and only then dropped", async () => {
+    const { store, adapter } = createStub();
+    store.objects.set(INSTANCE, { type: "instance", common: {}, native: { defaultVisUrl: "http://old.local/vis" } });
+    const { writes, config } = fakeGlobal();
+
+    expect(
+      await migrateLegacyDefaultVisUrl(adapter, { defaultVisUrl: "http://old.local/vis" } as never, config),
+    ).to.equal(true);
+    expect(writes).to.deep.equal([
+      ["migrationSet", MODE_MANUAL, "http://old.local/vis"],
+      ["enabled", true],
+    ]);
+    expect(store.objects.get(INSTANCE)?.native?.defaultVisUrl).to.equal(null);
+  });
+
+  it("a failed takeover keeps the settings as the recovery anchor — no drop", async () => {
+    const { store, adapter } = createStub();
+    store.objects.set(INSTANCE, { type: "instance", common: {}, native: { visUrl: "http://precious.local/" } });
+
+    expect(
+      await migrateLegacyDefaultVisUrl(adapter, { visUrl: "http://precious.local/" } as never, fakeGlobal(true).config),
+    ).to.equal(false);
+    expect(store.objects.get(INSTANCE)?.native?.visUrl).to.equal("http://precious.local/");
   });
 });

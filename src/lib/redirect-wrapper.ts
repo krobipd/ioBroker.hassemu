@@ -170,10 +170,10 @@ export function renderRedirectWrapper(
 <title>${escapeHtml(t("pageConnectedTitle"))}</title>
 <style>
 html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden;}
-iframe{display:block;border:0;margin:0;padding:0;position:fixed;top:0;left:0;width:100vw;height:100vh;background:#000;z-index:1;}
-#hassemu-down{display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:#0f172a;color:#f1f5f9;font:16px/1.5 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;align-items:center;justify-content:center;padding:1.5rem;box-sizing:border-box;z-index:10;}
+iframe{display:block;border:0;margin:0;padding:0;position:fixed;top:0;left:0;width:100vw;height:100vh;top:var(--app-safe-area-inset-top,0px);left:var(--app-safe-area-inset-left,0px);width:calc(100vw - var(--app-safe-area-inset-left,0px) - var(--app-safe-area-inset-right,0px));height:calc(100vh - var(--app-safe-area-inset-top,0px) - var(--app-safe-area-inset-bottom,0px));background:#000;z-index:1;}
+#hassemu-down{display:none;position:fixed;top:0;left:0;right:0;bottom:0;top:var(--app-safe-area-inset-top,0px);left:var(--app-safe-area-inset-left,0px);right:var(--app-safe-area-inset-right,0px);bottom:var(--app-safe-area-inset-bottom,0px);background:#0f172a;color:#f1f5f9;font:16px/1.5 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;align-items:center;justify-content:center;padding:1.5rem;box-sizing:border-box;z-index:10;}
 #hassemu-down.visible{display:flex;}
-#hassemu-target-down{display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:#0f172a;color:#f1f5f9;font:16px/1.5 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;align-items:center;justify-content:center;padding:1.5rem;box-sizing:border-box;z-index:9;}
+#hassemu-target-down{display:none;position:fixed;top:0;left:0;right:0;bottom:0;top:var(--app-safe-area-inset-top,0px);left:var(--app-safe-area-inset-left,0px);right:var(--app-safe-area-inset-right,0px);bottom:var(--app-safe-area-inset-bottom,0px);background:#0f172a;color:#f1f5f9;font:16px/1.5 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;align-items:center;justify-content:center;padding:1.5rem;box-sizing:border-box;z-index:9;}
 #hassemu-target-down.visible{display:flex;}
 ${cardTableCss(
   {

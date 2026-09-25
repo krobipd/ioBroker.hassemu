@@ -3,9 +3,16 @@
  */
 
 /**
- * Emulated Home Assistant version reported to clients. HA dashboards / wall
- * displays are tolerant about the value — bumping is mostly cosmetic and not
- * tied to specific monthly HA releases.
+ * Emulated Home Assistant version — a BEHAVIOUR SWITCH of the Companion apps, not cosmetic
+ * (audit 2026-09-25, U3; sources at android tag 2026.9.0 and iOS release/2026.9.2):
+ * - ≥ 2026.2.0 Android draws edge to edge and injects `--app-safe-area-inset-*`
+ *   (FrontendViewModel.kt:1204-1206) — the wrapper and landing page honour those (U2);
+ * - ≥ 2026.4.2 Android registers only the V2 bridge (FrontendJsBridge.kt:351) — the bridge
+ *   script serves both;
+ * - ≥ 2026.8.0 Android AND iOS keep their loader up until the page sends `frontend/loaded`
+ *   (FrontendViewModel.kt:1221-1223, iOS AppConstants.swift:462), which the wrapper does not
+ *   send: every page load would stall for 10 s. Raising the value past 2026.8.0 requires
+ *   sending `frontend/loaded` from external-bridge.ts first; a unit test guards the limit.
  */
 export const HA_VERSION = "2026.4.0";
 

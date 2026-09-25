@@ -4,7 +4,7 @@ import { I18n } from "@iobroker/adapter-core";
 import * as utils from "@iobroker/adapter-core";
 import { ClientRegistry, parseClientStateId } from "./lib/client-registry";
 import { coerceUuid } from "./lib/coerce";
-import { carryEnumMembership } from "./lib/enum-membership";
+import { moveWithEnums } from "./lib/enum-carry";
 import { errText } from "./lib/err-text";
 import { decideGcAction } from "./lib/state-write-rules";
 import { MODE_GLOBAL, NO_CHOICE, STALE_CLIENT_TTL_MS } from "./lib/constants";
@@ -197,7 +197,7 @@ export class HassEmu extends utils.Adapter {
       // wasted delObject round-trip once it's gone. The room/function assignments
       // travel to the new id first — the delete would strike them (v1.45.0).
       if (await this.getObjectAsync("info.refresh_urls")) {
-        await carryEnumMembership(
+        await moveWithEnums(
           this,
           `${this.namespace}.info.refresh_urls`,
           `${this.namespace}.info.refreshUrls`,
@@ -205,6 +205,7 @@ export class HassEmu extends utils.Adapter {
             this.delObjectAsync("info.refresh_urls").catch(() => {
               /* raced with another delete — already gone */
             }),
+          errText,
         );
       }
 

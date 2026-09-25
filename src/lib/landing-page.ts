@@ -102,6 +102,8 @@ body {
     align-items: center;
     justify-content: center;
     padding: 1.5rem;
+    padding: calc(1.5rem + var(--app-safe-area-inset-top, 0px)) calc(1.5rem + var(--app-safe-area-inset-right, 0px))
+        calc(1.5rem + var(--app-safe-area-inset-bottom, 0px)) calc(1.5rem + var(--app-safe-area-inset-left, 0px));
 }
 ${cardTableCss(
   { card: "main", content: ".content", table: ".info", cell: ".info" },
@@ -198,7 +200,11 @@ footer .brand {
 }
 footer .brand svg { width: 0.95rem; height: 0.95rem; display: block; }
 @media (max-width: 30rem) {
-    body { padding: 0; }
+    body {
+        padding: 0;
+        padding: var(--app-safe-area-inset-top, 0px) var(--app-safe-area-inset-right, 0px)
+            var(--app-safe-area-inset-bottom, 0px) var(--app-safe-area-inset-left, 0px);
+    }
     main { border-radius: 0; box-shadow: none; height: 100%; }
     .banner { padding: 1.1rem 1.2rem; }
     .banner h1 { font-size: 1.2rem; }

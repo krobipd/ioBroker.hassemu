@@ -103,4 +103,10 @@ describe("constants", () => {
       expect(LASTSEEN_FLUSH_INTERVAL_MS).to.be.lessThan(STALE_CLIENT_TTL_MS);
     });
   });
+
+  it("HA_VERSION stays below 2026.8.0 — from there both Companion apps wait for `frontend/loaded`, which the wrapper never sends (U3)", () => {
+    const [major, minor, patch] = HA_VERSION.split(".").map(Number);
+    const cmp = major - 2026 || minor - 8 || patch - 0;
+    expect(cmp).to.be.lessThan(0);
+  });
 });

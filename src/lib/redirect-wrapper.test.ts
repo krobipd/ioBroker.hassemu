@@ -47,7 +47,28 @@ describe("redirect-wrapper", () => {
       expect(html).to.include("max-width: 44rem;");
       expect(html).to.include("#hassemu-down th, #hassemu-down td {");
       expect(html).to.include("border-bottom: 1px solid #334155;");
-      expect(html).to.not.include("var(--"); // down page uses literal colors, no landing tokens
+      // Down page uses literal colors, no landing tokens — the app's safe-area insets are the
+      // only custom properties it reads (U2).
+      expect(html).to.not.match(/var\(--(?!app-safe-area-inset-)/);
+    });
+
+    it("keeps the dashboard and both cards inside the app's safe area — static first, 0px fallback (U2)", () => {
+      const html = renderRedirectWrapper("https://x.test/", "a1b2c3", "en");
+      const iframe = /iframe\{[^}]*\}/.exec(html)![0];
+      for (const side of ["top", "left", "right", "bottom"]) {
+        expect(iframe, side).to.include(`var(--app-safe-area-inset-${side},0px)`);
+      }
+      // A browser without var() drops the second declaration and keeps the static one.
+      expect(iframe.indexOf("width:100vw")).to.be.below(iframe.indexOf("width:calc("));
+      for (const card of ["#hassemu-down", "#hassemu-target-down"]) {
+        const rule = new RegExp(`${card}\\{[^}]*\\}`).exec(html)![0];
+        expect(rule, card).to.include("bottom:var(--app-safe-area-inset-bottom,0px)");
+        expect(rule, card).to.not.include("width:100vw");
+      }
+      // No env() — on the Android 7 WebViews of the legacy Shelly models an unknown env()
+      // makes the declaration invalid at computed-value time; no viewport-fit either.
+      expect(html).to.not.include("env(");
+      expect(html).to.not.include("viewport-fit");
     });
 
     it("includes 30s polling JS with consecutive-fail threshold", () => {
