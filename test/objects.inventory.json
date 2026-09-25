@@ -23,17 +23,17 @@
     "type": "device",
     "common": {
       "name": {
-        "en": "127.0.0.1",
-        "de": "127.0.0.1",
-        "ru": "127.0.0.1",
-        "pt": "127.0.0.1",
-        "nl": "127.0.0.1",
-        "fr": "127.0.0.1",
-        "it": "127.0.0.1",
-        "es": "127.0.0.1",
-        "pl": "127.0.0.1",
-        "uk": "127.0.0.1",
-        "zh-cn": "127.0.0.1"
+        "en": "192.0.2.31",
+        "de": "192.0.2.31",
+        "ru": "192.0.2.31",
+        "pt": "192.0.2.31",
+        "nl": "192.0.2.31",
+        "fr": "192.0.2.31",
+        "it": "192.0.2.31",
+        "es": "192.0.2.31",
+        "pl": "192.0.2.31",
+        "uk": "192.0.2.31",
+        "zh-cn": "192.0.2.31"
       }
     },
     "native": {
@@ -144,7 +144,11 @@
       "states": {
         "0": "---",
         "global": "Global URL",
-        "manual": "Manual URL"
+        "manual": "Manual URL",
+        "http://192.0.2.10:8081": "admin.0",
+        "http://192.0.2.10:8082/vis-2/index.html?main": "VIS-2: main",
+        "http://192.0.2.10:8082/vis-2/index.html?main#Kitchen": "VIS-2: main / Kitchen",
+        "http://192.0.2.10:8095/": "Aura"
       }
     },
     "native": {},
@@ -230,17 +234,17 @@
     "type": "device",
     "common": {
       "name": {
-        "en": "127.0.0.1",
-        "de": "127.0.0.1",
-        "ru": "127.0.0.1",
-        "pt": "127.0.0.1",
-        "nl": "127.0.0.1",
-        "fr": "127.0.0.1",
-        "it": "127.0.0.1",
-        "es": "127.0.0.1",
-        "pl": "127.0.0.1",
-        "uk": "127.0.0.1",
-        "zh-cn": "127.0.0.1"
+        "en": "wall-display-kitchen.lan",
+        "de": "wall-display-kitchen.lan",
+        "ru": "wall-display-kitchen.lan",
+        "pt": "wall-display-kitchen.lan",
+        "nl": "wall-display-kitchen.lan",
+        "fr": "wall-display-kitchen.lan",
+        "it": "wall-display-kitchen.lan",
+        "es": "wall-display-kitchen.lan",
+        "pl": "wall-display-kitchen.lan",
+        "uk": "wall-display-kitchen.lan",
+        "zh-cn": "wall-display-kitchen.lan"
       }
     },
     "native": {
@@ -351,7 +355,11 @@
       "states": {
         "0": "---",
         "global": "Global URL",
-        "manual": "Manual URL"
+        "manual": "Manual URL",
+        "http://192.0.2.10:8081": "admin.0",
+        "http://192.0.2.10:8082/vis-2/index.html?main": "VIS-2: main",
+        "http://192.0.2.10:8082/vis-2/index.html?main#Kitchen": "VIS-2: main / Kitchen",
+        "http://192.0.2.10:8095/": "Aura"
       }
     },
     "native": {},
@@ -437,17 +445,17 @@
     "type": "device",
     "common": {
       "name": {
-        "en": "127.0.0.1",
-        "de": "127.0.0.1",
-        "ru": "127.0.0.1",
-        "pt": "127.0.0.1",
-        "nl": "127.0.0.1",
-        "fr": "127.0.0.1",
-        "it": "127.0.0.1",
-        "es": "127.0.0.1",
-        "pl": "127.0.0.1",
-        "uk": "127.0.0.1",
-        "zh-cn": "127.0.0.1"
+        "en": "192.0.2.44",
+        "de": "192.0.2.44",
+        "ru": "192.0.2.44",
+        "pt": "192.0.2.44",
+        "nl": "192.0.2.44",
+        "fr": "192.0.2.44",
+        "it": "192.0.2.44",
+        "es": "192.0.2.44",
+        "pl": "192.0.2.44",
+        "uk": "192.0.2.44",
+        "zh-cn": "192.0.2.44"
       }
     },
     "native": {
@@ -558,7 +566,11 @@
       "states": {
         "0": "---",
         "global": "Global URL",
-        "manual": "Manual URL"
+        "manual": "Manual URL",
+        "http://192.0.2.10:8081": "admin.0",
+        "http://192.0.2.10:8082/vis-2/index.html?main": "VIS-2: main",
+        "http://192.0.2.10:8082/vis-2/index.html?main#Kitchen": "VIS-2: main / Kitchen",
+        "http://192.0.2.10:8095/": "Aura"
       }
     },
     "native": {},
@@ -639,6 +651,640 @@
     },
     "native": {},
     "_id": "hassemu.0.clients.display-3.resolvedUrl"
+  },
+  "hassemu.0.clients.display-4": {
+    "type": "device",
+    "common": {
+      "name": {
+        "en": "192.0.2.45",
+        "de": "192.0.2.45",
+        "ru": "192.0.2.45",
+        "pt": "192.0.2.45",
+        "nl": "192.0.2.45",
+        "fr": "192.0.2.45",
+        "it": "192.0.2.45",
+        "es": "192.0.2.45",
+        "pl": "192.0.2.45",
+        "uk": "192.0.2.45",
+        "zh-cn": "192.0.2.45"
+      }
+    },
+    "native": {
+      "cookie": "00000000-0000-4000-8000-000000000000",
+      "token": null,
+      "objectsVersion": 3,
+      "lastSeen": 1700000000000
+    },
+    "_id": "hassemu.0.clients.display-4"
+  },
+  "hassemu.0.clients.display-4.ip": {
+    "type": "state",
+    "common": {
+      "name": {
+        "de": "Display-IP",
+        "en": "Display IP",
+        "es": "IP de la pantalla",
+        "fr": "IP de l'écran",
+        "it": "IP del display",
+        "nl": "Display-IP",
+        "pl": "IP wyświetlacza",
+        "pt": "IP do display",
+        "ru": "IP дисплея",
+        "uk": "IP дисплея",
+        "zh-cn": "显示器 IP"
+      },
+      "type": "string",
+      "role": "info.ip",
+      "read": true,
+      "write": false,
+      "def": ""
+    },
+    "native": {},
+    "_id": "hassemu.0.clients.display-4.ip"
+  },
+  "hassemu.0.clients.display-4.manualUrl": {
+    "type": "state",
+    "common": {
+      "name": {
+        "de": "Manuelle URL",
+        "en": "Manual URL",
+        "es": "URL manual",
+        "fr": "URL manuelle",
+        "it": "URL manuale",
+        "nl": "Handmatige URL",
+        "pl": "Ręczny URL",
+        "pt": "URL manual",
+        "ru": "Ручной URL",
+        "uk": "Ручний URL",
+        "zh-cn": "手动 URL"
+      },
+      "desc": {
+        "de": "Die URL, die dieses Display öffnet, wenn sein Weiterleitungs-Modus auf Manuelle URL steht.",
+        "en": "The URL this display opens when its redirect mode is set to Manual URL.",
+        "es": "La URL que abre esta pantalla cuando su modo de redirección está en URL manual.",
+        "fr": "L'URL que cet écran ouvre lorsque son mode de redirection est réglé sur URL manuelle.",
+        "it": "L'URL che questo display apre quando il suo modo di reindirizzamento è impostato su URL manuale.",
+        "nl": "De URL die dit display opent wanneer de doorstuurmodus op Handmatige URL staat.",
+        "pl": "URL, który otwiera ten wyświetlacz, gdy jego tryb przekierowania jest ustawiony na Ręczny URL.",
+        "pt": "A URL que este display abre quando o seu modo de redirecionamento está definido como URL manual.",
+        "ru": "URL, который открывает этот дисплей, когда его режим перенаправления установлен на Ручной URL.",
+        "uk": "URL, який відкриває цей дисплей, коли його режим перенаправлення встановлено на Ручний URL.",
+        "zh-cn": "当此显示器的重定向模式设为“手动 URL”时打开的 URL。"
+      },
+      "type": "string",
+      "role": "url",
+      "read": true,
+      "write": true,
+      "def": ""
+    },
+    "native": {},
+    "_id": "hassemu.0.clients.display-4.manualUrl"
+  },
+  "hassemu.0.clients.display-4.mode": {
+    "type": "state",
+    "common": {
+      "name": {
+        "de": "Weiterleitungs-Modus",
+        "en": "Redirect mode",
+        "es": "Modo de redirección",
+        "fr": "Mode de redirection",
+        "it": "Modalità redirect",
+        "nl": "Redirect-modus",
+        "pl": "Tryb redirect",
+        "pt": "Modo de redireccionamento",
+        "ru": "Режим redirect",
+        "uk": "Режим redirect",
+        "zh-cn": "重定向模式"
+      },
+      "desc": {
+        "de": "Wohin dieses Display weiterleitet: ein erkanntes Dashboard, Globale URL um der globalen Einstellung zu folgen, Manuelle URL um den manualUrl-Datenpunkt zu nutzen, oder --- für die Startseite.",
+        "en": "Where this display redirects: a discovered dashboard, Global URL to follow the global setting, Manual URL to use the manualUrl datapoint, or --- to show the landing page.",
+        "es": "A dónde redirige esta pantalla: un panel detectado, URL global para seguir el ajuste global, URL manual para usar el datapoint manualUrl, o --- para mostrar la página de inicio.",
+        "fr": "Vers où cet écran redirige : un tableau de bord détecté, URL globale pour suivre le réglage global, URL manuelle pour utiliser le point de données manualUrl, ou --- pour afficher la page d'accueil.",
+        "it": "Dove reindirizza questo display: una dashboard rilevata, URL globale per seguire l'impostazione globale, URL manuale per usare il datapoint manualUrl, oppure --- per la pagina iniziale.",
+        "nl": "Waar dit display naartoe doorstuurt: een gevonden dashboard, Globale URL om de globale instelling te volgen, Handmatige URL om het manualUrl-datapunt te gebruiken, of --- voor de startpagina.",
+        "pl": "Dokąd przekierowuje ten wyświetlacz: wykryty pulpit, Globalny URL aby podążać za ustawieniem globalnym, Ręczny URL aby użyć datapointu manualUrl, lub --- aby pokazać stronę startową.",
+        "pt": "Para onde este display redireciona: um dashboard detectado, URL global para seguir a definição global, URL manual para usar o datapoint manualUrl, ou --- para mostrar a página inicial.",
+        "ru": "Куда перенаправляет этот дисплей: обнаруженная панель, Глобальный URL для следования глобальной настройке, Ручной URL для использования датапоинта manualUrl или --- для стартовой страницы.",
+        "uk": "Куди перенаправляє цей дисплей: виявлена панель, Глобальний URL щоб слідувати глобальному налаштуванню, Ручний URL щоб використати датапоінт manualUrl, або --- щоб показати стартову сторінку.",
+        "zh-cn": "此显示器重定向到哪里：已发现的仪表板、“全局 URL”跟随全局设置、“手动 URL”使用 manualUrl 数据点，或“---”显示落地页。"
+      },
+      "type": "mixed",
+      "role": "state",
+      "read": true,
+      "write": true,
+      "def": "0",
+      "states": {
+        "0": "---",
+        "global": "Global URL",
+        "manual": "Manual URL",
+        "http://192.0.2.10:8081": "admin.0",
+        "http://192.0.2.10:8082/vis-2/index.html?main": "VIS-2: main",
+        "http://192.0.2.10:8082/vis-2/index.html?main#Kitchen": "VIS-2: main / Kitchen",
+        "http://192.0.2.10:8095/": "Aura"
+      }
+    },
+    "native": {},
+    "_id": "hassemu.0.clients.display-4.mode"
+  },
+  "hassemu.0.clients.display-4.remove": {
+    "type": "state",
+    "common": {
+      "name": {
+        "de": "Dieses Display entfernen",
+        "en": "Forget this display",
+        "es": "Olvidar esta pantalla",
+        "fr": "Oublier cet écran",
+        "it": "Dimentica questo display",
+        "nl": "Dit display vergeten",
+        "pl": "Zapomnij ten wyświetlacz",
+        "pt": "Esquecer este display",
+        "ru": "Забыть этот дисплей",
+        "uk": "Забути цей дисплей",
+        "zh-cn": "忘记此显示器"
+      },
+      "desc": {
+        "de": "Auf true setzen, um den Ordner dieses Displays samt aller Datenpunkte zu löschen — bei der nächsten Anfrage taucht es als neuer Eintrag mit der Startseite wieder auf.",
+        "en": "Write true to delete this display's folder and all its states — on its next request it reappears as a new entry showing the landing page.",
+        "es": "Escribe true para eliminar la carpeta de esta pantalla y todos sus estados — en su siguiente petición reaparece como una entrada nueva con la página de inicio.",
+        "fr": "Écrivez true pour supprimer le dossier de cet écran et tous ses états — à sa prochaine requête, il réapparaît comme une nouvelle entrée affichant la page d'accueil.",
+        "it": "Scrivi true per eliminare la cartella di questo display e tutti i suoi stati — alla richiesta successiva ricompare come nuova voce con la pagina iniziale.",
+        "nl": "Schrijf true om de map van dit display en al zijn datapunten te verwijderen — bij het volgende verzoek verschijnt het weer als een nieuw item met de startpagina.",
+        "pl": "Wpisz true, aby usunąć folder tego wyświetlacza wraz ze wszystkimi stanami — przy następnym żądaniu pojawi się ponownie jako nowy wpis ze stroną startową.",
+        "pt": "Escreve true para eliminar a pasta deste display e todos os seus estados — no pedido seguinte volta a aparecer como uma nova entrada com a página inicial.",
+        "ru": "Запишите true, чтобы удалить папку этого дисплея со всеми его состояниями — при следующем запросе он снова появится как новая запись со стартовой страницей.",
+        "uk": "Запишіть true, щоб видалити теку цього дисплея з усіма його станами — при наступному запиті він знову з'явиться як новий запис зі стартовою сторінкою.",
+        "zh-cn": "写入 true 以删除此显示器的文件夹及其所有数据点 — 在下次请求时它会作为新条目重新出现并显示起始页。"
+      },
+      "type": "boolean",
+      "role": "button",
+      "read": false,
+      "write": true,
+      "def": false
+    },
+    "native": {},
+    "_id": "hassemu.0.clients.display-4.remove"
+  },
+  "hassemu.0.clients.display-4.resolvedUrl": {
+    "type": "state",
+    "common": {
+      "name": {
+        "de": "Aktuell angezeigte URL",
+        "en": "Currently shown URL",
+        "es": "URL mostrada actualmente",
+        "fr": "URL actuellement affichée",
+        "it": "URL attualmente mostrato",
+        "nl": "Momenteel getoonde URL",
+        "pl": "Aktualnie wyświetlany URL",
+        "pt": "URL exibida atualmente",
+        "ru": "Текущий отображаемый URL",
+        "uk": "Поточний показаний URL",
+        "zh-cn": "当前显示的 URL"
+      },
+      "desc": {
+        "de": "Die URL, zu der dieses Display zuletzt geschickt wurde. Leer heißt: es zeigt die Startseite.",
+        "en": "The URL this display was last sent to. Empty means it shows the landing page.",
+        "es": "La URL a la que se envió esta pantalla por última vez. Vacío significa que muestra la página de inicio.",
+        "fr": "L'URL vers laquelle cet écran a été envoyé en dernier. Vide signifie qu'il affiche la page d'accueil.",
+        "it": "L'URL a cui questo display è stato inviato per ultimo. Vuoto significa che mostra la pagina iniziale.",
+        "nl": "De URL waarheen dit display het laatst is gestuurd. Leeg betekent dat het de startpagina toont.",
+        "pl": "URL, do którego ten wyświetlacz został ostatnio wysłany. Puste oznacza stronę startową.",
+        "pt": "A URL para onde este display foi enviado pela última vez. Vazio significa que mostra a página inicial.",
+        "ru": "URL, на который этот дисплей был отправлен последним. Пусто — показывается стартовая страница.",
+        "uk": "URL, на який цей дисплей був відправлений востаннє. Порожньо — показується стартова сторінка.",
+        "zh-cn": "此显示器最后被送往的 URL。为空表示显示起始页。"
+      },
+      "type": "string",
+      "role": "url",
+      "read": true,
+      "write": false,
+      "def": ""
+    },
+    "native": {},
+    "_id": "hassemu.0.clients.display-4.resolvedUrl"
+  },
+  "hassemu.0.clients.display-5": {
+    "type": "device",
+    "common": {
+      "name": {
+        "en": "192.0.2.46",
+        "de": "192.0.2.46",
+        "ru": "192.0.2.46",
+        "pt": "192.0.2.46",
+        "nl": "192.0.2.46",
+        "fr": "192.0.2.46",
+        "it": "192.0.2.46",
+        "es": "192.0.2.46",
+        "pl": "192.0.2.46",
+        "uk": "192.0.2.46",
+        "zh-cn": "192.0.2.46"
+      }
+    },
+    "native": {
+      "cookie": "00000000-0000-4000-8000-000000000000",
+      "token": "00000000-0000-4000-8000-00000000000f",
+      "objectsVersion": 3,
+      "lastSeen": 1700000000000,
+      "tokenExpiresAt": 1700000000000,
+      "refreshToken": "00000000-0000-4000-8000-00000000000f"
+    },
+    "_id": "hassemu.0.clients.display-5"
+  },
+  "hassemu.0.clients.display-5.ip": {
+    "type": "state",
+    "common": {
+      "name": {
+        "de": "Display-IP",
+        "en": "Display IP",
+        "es": "IP de la pantalla",
+        "fr": "IP de l'écran",
+        "it": "IP del display",
+        "nl": "Display-IP",
+        "pl": "IP wyświetlacza",
+        "pt": "IP do display",
+        "ru": "IP дисплея",
+        "uk": "IP дисплея",
+        "zh-cn": "显示器 IP"
+      },
+      "type": "string",
+      "role": "info.ip",
+      "read": true,
+      "write": false,
+      "def": ""
+    },
+    "native": {},
+    "_id": "hassemu.0.clients.display-5.ip"
+  },
+  "hassemu.0.clients.display-5.manualUrl": {
+    "type": "state",
+    "common": {
+      "name": {
+        "de": "Manuelle URL",
+        "en": "Manual URL",
+        "es": "URL manual",
+        "fr": "URL manuelle",
+        "it": "URL manuale",
+        "nl": "Handmatige URL",
+        "pl": "Ręczny URL",
+        "pt": "URL manual",
+        "ru": "Ручной URL",
+        "uk": "Ручний URL",
+        "zh-cn": "手动 URL"
+      },
+      "desc": {
+        "de": "Die URL, die dieses Display öffnet, wenn sein Weiterleitungs-Modus auf Manuelle URL steht.",
+        "en": "The URL this display opens when its redirect mode is set to Manual URL.",
+        "es": "La URL que abre esta pantalla cuando su modo de redirección está en URL manual.",
+        "fr": "L'URL que cet écran ouvre lorsque son mode de redirection est réglé sur URL manuelle.",
+        "it": "L'URL che questo display apre quando il suo modo di reindirizzamento è impostato su URL manuale.",
+        "nl": "De URL die dit display opent wanneer de doorstuurmodus op Handmatige URL staat.",
+        "pl": "URL, który otwiera ten wyświetlacz, gdy jego tryb przekierowania jest ustawiony na Ręczny URL.",
+        "pt": "A URL que este display abre quando o seu modo de redirecionamento está definido como URL manual.",
+        "ru": "URL, который открывает этот дисплей, когда его режим перенаправления установлен на Ручной URL.",
+        "uk": "URL, який відкриває цей дисплей, коли його режим перенаправлення встановлено на Ручний URL.",
+        "zh-cn": "当此显示器的重定向模式设为“手动 URL”时打开的 URL。"
+      },
+      "type": "string",
+      "role": "url",
+      "read": true,
+      "write": true,
+      "def": ""
+    },
+    "native": {},
+    "_id": "hassemu.0.clients.display-5.manualUrl"
+  },
+  "hassemu.0.clients.display-5.mode": {
+    "type": "state",
+    "common": {
+      "name": {
+        "de": "Weiterleitungs-Modus",
+        "en": "Redirect mode",
+        "es": "Modo de redirección",
+        "fr": "Mode de redirection",
+        "it": "Modalità redirect",
+        "nl": "Redirect-modus",
+        "pl": "Tryb redirect",
+        "pt": "Modo de redireccionamento",
+        "ru": "Режим redirect",
+        "uk": "Режим redirect",
+        "zh-cn": "重定向模式"
+      },
+      "desc": {
+        "de": "Wohin dieses Display weiterleitet: ein erkanntes Dashboard, Globale URL um der globalen Einstellung zu folgen, Manuelle URL um den manualUrl-Datenpunkt zu nutzen, oder --- für die Startseite.",
+        "en": "Where this display redirects: a discovered dashboard, Global URL to follow the global setting, Manual URL to use the manualUrl datapoint, or --- to show the landing page.",
+        "es": "A dónde redirige esta pantalla: un panel detectado, URL global para seguir el ajuste global, URL manual para usar el datapoint manualUrl, o --- para mostrar la página de inicio.",
+        "fr": "Vers où cet écran redirige : un tableau de bord détecté, URL globale pour suivre le réglage global, URL manuelle pour utiliser le point de données manualUrl, ou --- pour afficher la page d'accueil.",
+        "it": "Dove reindirizza questo display: una dashboard rilevata, URL globale per seguire l'impostazione globale, URL manuale per usare il datapoint manualUrl, oppure --- per la pagina iniziale.",
+        "nl": "Waar dit display naartoe doorstuurt: een gevonden dashboard, Globale URL om de globale instelling te volgen, Handmatige URL om het manualUrl-datapunt te gebruiken, of --- voor de startpagina.",
+        "pl": "Dokąd przekierowuje ten wyświetlacz: wykryty pulpit, Globalny URL aby podążać za ustawieniem globalnym, Ręczny URL aby użyć datapointu manualUrl, lub --- aby pokazać stronę startową.",
+        "pt": "Para onde este display redireciona: um dashboard detectado, URL global para seguir a definição global, URL manual para usar o datapoint manualUrl, ou --- para mostrar a página inicial.",
+        "ru": "Куда перенаправляет этот дисплей: обнаруженная панель, Глобальный URL для следования глобальной настройке, Ручной URL для использования датапоинта manualUrl или --- для стартовой страницы.",
+        "uk": "Куди перенаправляє цей дисплей: виявлена панель, Глобальний URL щоб слідувати глобальному налаштуванню, Ручний URL щоб використати датапоінт manualUrl, або --- щоб показати стартову сторінку.",
+        "zh-cn": "此显示器重定向到哪里：已发现的仪表板、“全局 URL”跟随全局设置、“手动 URL”使用 manualUrl 数据点，或“---”显示落地页。"
+      },
+      "type": "mixed",
+      "role": "state",
+      "read": true,
+      "write": true,
+      "def": "0",
+      "states": {
+        "0": "---",
+        "global": "Global URL",
+        "manual": "Manual URL",
+        "http://192.0.2.10:8081": "admin.0",
+        "http://192.0.2.10:8082/vis-2/index.html?main": "VIS-2: main",
+        "http://192.0.2.10:8082/vis-2/index.html?main#Kitchen": "VIS-2: main / Kitchen",
+        "http://192.0.2.10:8095/": "Aura"
+      }
+    },
+    "native": {},
+    "_id": "hassemu.0.clients.display-5.mode"
+  },
+  "hassemu.0.clients.display-5.remove": {
+    "type": "state",
+    "common": {
+      "name": {
+        "de": "Dieses Display entfernen",
+        "en": "Forget this display",
+        "es": "Olvidar esta pantalla",
+        "fr": "Oublier cet écran",
+        "it": "Dimentica questo display",
+        "nl": "Dit display vergeten",
+        "pl": "Zapomnij ten wyświetlacz",
+        "pt": "Esquecer este display",
+        "ru": "Забыть этот дисплей",
+        "uk": "Забути цей дисплей",
+        "zh-cn": "忘记此显示器"
+      },
+      "desc": {
+        "de": "Auf true setzen, um den Ordner dieses Displays samt aller Datenpunkte zu löschen — bei der nächsten Anfrage taucht es als neuer Eintrag mit der Startseite wieder auf.",
+        "en": "Write true to delete this display's folder and all its states — on its next request it reappears as a new entry showing the landing page.",
+        "es": "Escribe true para eliminar la carpeta de esta pantalla y todos sus estados — en su siguiente petición reaparece como una entrada nueva con la página de inicio.",
+        "fr": "Écrivez true pour supprimer le dossier de cet écran et tous ses états — à sa prochaine requête, il réapparaît comme une nouvelle entrée affichant la page d'accueil.",
+        "it": "Scrivi true per eliminare la cartella di questo display e tutti i suoi stati — alla richiesta successiva ricompare come nuova voce con la pagina iniziale.",
+        "nl": "Schrijf true om de map van dit display en al zijn datapunten te verwijderen — bij het volgende verzoek verschijnt het weer als een nieuw item met de startpagina.",
+        "pl": "Wpisz true, aby usunąć folder tego wyświetlacza wraz ze wszystkimi stanami — przy następnym żądaniu pojawi się ponownie jako nowy wpis ze stroną startową.",
+        "pt": "Escreve true para eliminar a pasta deste display e todos os seus estados — no pedido seguinte volta a aparecer como uma nova entrada com a página inicial.",
+        "ru": "Запишите true, чтобы удалить папку этого дисплея со всеми его состояниями — при следующем запросе он снова появится как новая запись со стартовой страницей.",
+        "uk": "Запишіть true, щоб видалити теку цього дисплея з усіма його станами — при наступному запиті він знову з'явиться як новий запис зі стартовою сторінкою.",
+        "zh-cn": "写入 true 以删除此显示器的文件夹及其所有数据点 — 在下次请求时它会作为新条目重新出现并显示起始页。"
+      },
+      "type": "boolean",
+      "role": "button",
+      "read": false,
+      "write": true,
+      "def": false
+    },
+    "native": {},
+    "_id": "hassemu.0.clients.display-5.remove"
+  },
+  "hassemu.0.clients.display-5.resolvedUrl": {
+    "type": "state",
+    "common": {
+      "name": {
+        "de": "Aktuell angezeigte URL",
+        "en": "Currently shown URL",
+        "es": "URL mostrada actualmente",
+        "fr": "URL actuellement affichée",
+        "it": "URL attualmente mostrato",
+        "nl": "Momenteel getoonde URL",
+        "pl": "Aktualnie wyświetlany URL",
+        "pt": "URL exibida atualmente",
+        "ru": "Текущий отображаемый URL",
+        "uk": "Поточний показаний URL",
+        "zh-cn": "当前显示的 URL"
+      },
+      "desc": {
+        "de": "Die URL, zu der dieses Display zuletzt geschickt wurde. Leer heißt: es zeigt die Startseite.",
+        "en": "The URL this display was last sent to. Empty means it shows the landing page.",
+        "es": "La URL a la que se envió esta pantalla por última vez. Vacío significa que muestra la página de inicio.",
+        "fr": "L'URL vers laquelle cet écran a été envoyé en dernier. Vide signifie qu'il affiche la page d'accueil.",
+        "it": "L'URL a cui questo display è stato inviato per ultimo. Vuoto significa che mostra la pagina iniziale.",
+        "nl": "De URL waarheen dit display het laatst is gestuurd. Leeg betekent dat het de startpagina toont.",
+        "pl": "URL, do którego ten wyświetlacz został ostatnio wysłany. Puste oznacza stronę startową.",
+        "pt": "A URL para onde este display foi enviado pela última vez. Vazio significa que mostra a página inicial.",
+        "ru": "URL, на который этот дисплей был отправлен последним. Пусто — показывается стартовая страница.",
+        "uk": "URL, на який цей дисплей був відправлений востаннє. Порожньо — показується стартова сторінка.",
+        "zh-cn": "此显示器最后被送往的 URL。为空表示显示起始页。"
+      },
+      "type": "string",
+      "role": "url",
+      "read": true,
+      "write": false,
+      "def": ""
+    },
+    "native": {},
+    "_id": "hassemu.0.clients.display-5.resolvedUrl"
+  },
+  "hassemu.0.clients.display-legacy": {
+    "_id": "hassemu.0.clients.display-legacy",
+    "type": "device",
+    "common": {
+      "name": {
+        "en": "192.0.2.50",
+        "de": "192.0.2.50",
+        "ru": "192.0.2.50",
+        "pt": "192.0.2.50",
+        "nl": "192.0.2.50",
+        "fr": "192.0.2.50",
+        "it": "192.0.2.50",
+        "es": "192.0.2.50",
+        "pl": "192.0.2.50",
+        "uk": "192.0.2.50",
+        "zh-cn": "192.0.2.50"
+      }
+    },
+    "native": {
+      "cookie": "00000000-0000-4000-8000-000000000000",
+      "lastSeen": 1700000000000,
+      "objectsVersion": 3
+    }
+  },
+  "hassemu.0.clients.display-legacy.ip": {
+    "type": "state",
+    "common": {
+      "name": {
+        "de": "Display-IP",
+        "en": "Display IP",
+        "es": "IP de la pantalla",
+        "fr": "IP de l'écran",
+        "it": "IP del display",
+        "nl": "Display-IP",
+        "pl": "IP wyświetlacza",
+        "pt": "IP do display",
+        "ru": "IP дисплея",
+        "uk": "IP дисплея",
+        "zh-cn": "显示器 IP"
+      },
+      "type": "string",
+      "role": "info.ip",
+      "read": true,
+      "write": false,
+      "def": ""
+    },
+    "native": {},
+    "_id": "hassemu.0.clients.display-legacy.ip"
+  },
+  "hassemu.0.clients.display-legacy.manualUrl": {
+    "type": "state",
+    "common": {
+      "name": {
+        "de": "Manuelle URL",
+        "en": "Manual URL",
+        "es": "URL manual",
+        "fr": "URL manuelle",
+        "it": "URL manuale",
+        "nl": "Handmatige URL",
+        "pl": "Ręczny URL",
+        "pt": "URL manual",
+        "ru": "Ручной URL",
+        "uk": "Ручний URL",
+        "zh-cn": "手动 URL"
+      },
+      "desc": {
+        "de": "Die URL, die dieses Display öffnet, wenn sein Weiterleitungs-Modus auf Manuelle URL steht.",
+        "en": "The URL this display opens when its redirect mode is set to Manual URL.",
+        "es": "La URL que abre esta pantalla cuando su modo de redirección está en URL manual.",
+        "fr": "L'URL que cet écran ouvre lorsque son mode de redirection est réglé sur URL manuelle.",
+        "it": "L'URL che questo display apre quando il suo modo di reindirizzamento è impostato su URL manuale.",
+        "nl": "De URL die dit display opent wanneer de doorstuurmodus op Handmatige URL staat.",
+        "pl": "URL, który otwiera ten wyświetlacz, gdy jego tryb przekierowania jest ustawiony na Ręczny URL.",
+        "pt": "A URL que este display abre quando o seu modo de redirecionamento está definido como URL manual.",
+        "ru": "URL, который открывает этот дисплей, когда его режим перенаправления установлен на Ручной URL.",
+        "uk": "URL, який відкриває цей дисплей, коли його режим перенаправлення встановлено на Ручний URL.",
+        "zh-cn": "当此显示器的重定向模式设为“手动 URL”时打开的 URL。"
+      },
+      "type": "string",
+      "role": "url",
+      "read": true,
+      "write": true,
+      "def": ""
+    },
+    "native": {},
+    "_id": "hassemu.0.clients.display-legacy.manualUrl"
+  },
+  "hassemu.0.clients.display-legacy.mode": {
+    "_id": "hassemu.0.clients.display-legacy.mode",
+    "type": "state",
+    "common": {
+      "name": {
+        "de": "Weiterleitungs-Modus",
+        "en": "Redirect mode",
+        "es": "Modo de redirección",
+        "fr": "Mode de redirection",
+        "it": "Modalità redirect",
+        "nl": "Redirect-modus",
+        "pl": "Tryb redirect",
+        "pt": "Modo de redireccionamento",
+        "ru": "Режим redirect",
+        "uk": "Режим redirect",
+        "zh-cn": "重定向模式"
+      },
+      "type": "mixed",
+      "role": "state",
+      "read": true,
+      "write": true,
+      "desc": {
+        "de": "Wohin dieses Display weiterleitet: ein erkanntes Dashboard, Globale URL um der globalen Einstellung zu folgen, Manuelle URL um den manualUrl-Datenpunkt zu nutzen, oder --- für die Startseite.",
+        "en": "Where this display redirects: a discovered dashboard, Global URL to follow the global setting, Manual URL to use the manualUrl datapoint, or --- to show the landing page.",
+        "es": "A dónde redirige esta pantalla: un panel detectado, URL global para seguir el ajuste global, URL manual para usar el datapoint manualUrl, o --- para mostrar la página de inicio.",
+        "fr": "Vers où cet écran redirige : un tableau de bord détecté, URL globale pour suivre le réglage global, URL manuelle pour utiliser le point de données manualUrl, ou --- pour afficher la page d'accueil.",
+        "it": "Dove reindirizza questo display: una dashboard rilevata, URL globale per seguire l'impostazione globale, URL manuale per usare il datapoint manualUrl, oppure --- per la pagina iniziale.",
+        "nl": "Waar dit display naartoe doorstuurt: een gevonden dashboard, Globale URL om de globale instelling te volgen, Handmatige URL om het manualUrl-datapunt te gebruiken, of --- voor de startpagina.",
+        "pl": "Dokąd przekierowuje ten wyświetlacz: wykryty pulpit, Globalny URL aby podążać za ustawieniem globalnym, Ręczny URL aby użyć datapointu manualUrl, lub --- aby pokazać stronę startową.",
+        "pt": "Para onde este display redireciona: um dashboard detectado, URL global para seguir a definição global, URL manual para usar o datapoint manualUrl, ou --- para mostrar a página inicial.",
+        "ru": "Куда перенаправляет этот дисплей: обнаруженная панель, Глобальный URL для следования глобальной настройке, Ручной URL для использования датапоинта manualUrl или --- для стартовой страницы.",
+        "uk": "Куди перенаправляє цей дисплей: виявлена панель, Глобальний URL щоб слідувати глобальному налаштуванню, Ручний URL щоб використати датапоінт manualUrl, або --- щоб показати стартову сторінку.",
+        "zh-cn": "此显示器重定向到哪里：已发现的仪表板、“全局 URL”跟随全局设置、“手动 URL”使用 manualUrl 数据点，或“---”显示落地页。"
+      },
+      "def": "0",
+      "states": {
+        "0": "---",
+        "global": "Global URL",
+        "manual": "Manual URL",
+        "http://192.0.2.10:8081": "admin.0",
+        "http://192.0.2.10:8082/vis-2/index.html?main": "VIS-2: main",
+        "http://192.0.2.10:8082/vis-2/index.html?main#Kitchen": "VIS-2: main / Kitchen",
+        "http://192.0.2.10:8095/": "Aura"
+      }
+    },
+    "native": {}
+  },
+  "hassemu.0.clients.display-legacy.remove": {
+    "type": "state",
+    "common": {
+      "name": {
+        "de": "Dieses Display entfernen",
+        "en": "Forget this display",
+        "es": "Olvidar esta pantalla",
+        "fr": "Oublier cet écran",
+        "it": "Dimentica questo display",
+        "nl": "Dit display vergeten",
+        "pl": "Zapomnij ten wyświetlacz",
+        "pt": "Esquecer este display",
+        "ru": "Забыть этот дисплей",
+        "uk": "Забути цей дисплей",
+        "zh-cn": "忘记此显示器"
+      },
+      "desc": {
+        "de": "Auf true setzen, um den Ordner dieses Displays samt aller Datenpunkte zu löschen — bei der nächsten Anfrage taucht es als neuer Eintrag mit der Startseite wieder auf.",
+        "en": "Write true to delete this display's folder and all its states — on its next request it reappears as a new entry showing the landing page.",
+        "es": "Escribe true para eliminar la carpeta de esta pantalla y todos sus estados — en su siguiente petición reaparece como una entrada nueva con la página de inicio.",
+        "fr": "Écrivez true pour supprimer le dossier de cet écran et tous ses états — à sa prochaine requête, il réapparaît comme une nouvelle entrée affichant la page d'accueil.",
+        "it": "Scrivi true per eliminare la cartella di questo display e tutti i suoi stati — alla richiesta successiva ricompare come nuova voce con la pagina iniziale.",
+        "nl": "Schrijf true om de map van dit display en al zijn datapunten te verwijderen — bij het volgende verzoek verschijnt het weer als een nieuw item met de startpagina.",
+        "pl": "Wpisz true, aby usunąć folder tego wyświetlacza wraz ze wszystkimi stanami — przy następnym żądaniu pojawi się ponownie jako nowy wpis ze stroną startową.",
+        "pt": "Escreve true para eliminar a pasta deste display e todos os seus estados — no pedido seguinte volta a aparecer como uma nova entrada com a página inicial.",
+        "ru": "Запишите true, чтобы удалить папку этого дисплея со всеми его состояниями — при следующем запросе он снова появится как новая запись со стартовой страницей.",
+        "uk": "Запишіть true, щоб видалити теку цього дисплея з усіма його станами — при наступному запиті він знову з'явиться як новий запис зі стартовою сторінкою.",
+        "zh-cn": "写入 true 以删除此显示器的文件夹及其所有数据点 — 在下次请求时它会作为新条目重新出现并显示起始页。"
+      },
+      "type": "boolean",
+      "role": "button",
+      "read": false,
+      "write": true,
+      "def": false
+    },
+    "native": {},
+    "_id": "hassemu.0.clients.display-legacy.remove"
+  },
+  "hassemu.0.clients.display-legacy.resolvedUrl": {
+    "type": "state",
+    "common": {
+      "name": {
+        "de": "Aktuell angezeigte URL",
+        "en": "Currently shown URL",
+        "es": "URL mostrada actualmente",
+        "fr": "URL actuellement affichée",
+        "it": "URL attualmente mostrato",
+        "nl": "Momenteel getoonde URL",
+        "pl": "Aktualnie wyświetlany URL",
+        "pt": "URL exibida atualmente",
+        "ru": "Текущий отображаемый URL",
+        "uk": "Поточний показаний URL",
+        "zh-cn": "当前显示的 URL"
+      },
+      "desc": {
+        "de": "Die URL, zu der dieses Display zuletzt geschickt wurde. Leer heißt: es zeigt die Startseite.",
+        "en": "The URL this display was last sent to. Empty means it shows the landing page.",
+        "es": "La URL a la que se envió esta pantalla por última vez. Vacío significa que muestra la página de inicio.",
+        "fr": "L'URL vers laquelle cet écran a été envoyé en dernier. Vide signifie qu'il affiche la page d'accueil.",
+        "it": "L'URL a cui questo display è stato inviato per ultimo. Vuoto significa che mostra la pagina iniziale.",
+        "nl": "De URL waarheen dit display het laatst is gestuurd. Leeg betekent dat het de startpagina toont.",
+        "pl": "URL, do którego ten wyświetlacz został ostatnio wysłany. Puste oznacza stronę startową.",
+        "pt": "A URL para onde este display foi enviado pela última vez. Vazio significa que mostra a página inicial.",
+        "ru": "URL, на который этот дисплей был отправлен последним. Пусто — показывается стартовая страница.",
+        "uk": "URL, на який цей дисплей був відправлений востаннє. Порожньо — показується стартова сторінка.",
+        "zh-cn": "此显示器最后被送往的 URL。为空表示显示起始页。"
+      },
+      "type": "string",
+      "role": "url",
+      "read": true,
+      "write": false,
+      "def": ""
+    },
+    "native": {},
+    "_id": "hassemu.0.clients.display-legacy.resolvedUrl"
   },
   "hassemu.0.global": {
     "_id": "hassemu.0.global",
@@ -773,7 +1419,11 @@
       },
       "states": {
         "0": "---",
-        "manual": "Manual URL"
+        "manual": "Manual URL",
+        "http://192.0.2.10:8081": "admin.0",
+        "http://192.0.2.10:8082/vis-2/index.html?main": "VIS-2: main",
+        "http://192.0.2.10:8082/vis-2/index.html?main#Kitchen": "VIS-2: main / Kitchen",
+        "http://192.0.2.10:8095/": "Aura"
       }
     },
     "native": {}

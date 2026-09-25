@@ -1,27 +1,47 @@
 {
   "_comment": [
-    "Display fixtures for the object inventory. hassemu creates one `device` plus four",
+    "Display fixtures for the object inventory. hassemu creates one `device` plus five",
     "states per display, so what varies between displays is not a device TYPE but the",
-    "SHAPE of what the adapter knows about them — which is what the object texts and",
-    "the auto-naming depend on. The adapter mints a random id per display; the inventory",
-    "maps those to stable `display-N` keys, so two runs stay byte-identical."
+    "SHAPE of what the adapter knows about them — which is what the object texts, the",
+    "auto-naming and the stored tokens depend on. Each display reaches the adapter from its",
+    "own address (X-Forwarded-For with trustProxy on — the only way to give a loopback",
+    "harness several source addresses); `ptr` is its reverse-DNS answer, served by",
+    "test/inventory-dns-hook.cjs. The adapter mints a random id per display; the inventory",
+    "maps those to stable `display-N` keys, so two runs stay byte-identical.",
+    "Not here on purpose: authRequired — it changes no object (only the auth guard), and a",
+    "second controller run for it would add nothing the unit tests do not cover.",
+    "Every address is from 192.0.2.0/24 (RFC 5737, never routed): the adapter probes the",
+    "dashboard host, and a real private address could reach a real device on the machine",
+    "running the suite."
   ],
   "displays": [
     {
-      "name": "192.168.178.31",
+      "ip": "192.0.2.31",
       "comment": "Auto-named after its IP — a display whose reverse DNS yields nothing (the LAN norm for a DHCP client without a PTR record).",
       "mode": "global"
     },
     {
-      "name": "wall-display-kitchen.lan",
+      "ip": "192.0.2.32",
+      "ptr": "wall-display-kitchen.lan",
       "comment": "Auto-named after its reverse-DNS hostname.",
       "mode": "manual",
-      "manualUrl": "http://192.168.178.10:8082/vis-2/index.html?kitchen"
+      "manualUrl": "http://192.0.2.10:8082/vis-2/index.html?kitchen"
     },
     {
-      "name": "192.168.178.44",
+      "ip": "192.0.2.44",
       "comment": "No choice made — the display sits on the landing page. Its name is adapter-assigned like every other, because a name the USER typed in the admin is not adapter output and has no place in an inventory of what the adapter creates (the guarantee that such a name survives is unit-tested instead).",
       "mode": "0"
+    },
+    {
+      "ip": "192.0.2.45",
+      "comment": "A discovered dashboard picked directly from the dropdown (the third step of the resolver chain).",
+      "mode": "http://192.0.2.10:8082/vis-2/index.html?main"
+    },
+    {
+      "ip": "192.0.2.46",
+      "comment": "A Companion app that went through the sign-in — its tokens are stored on the device object.",
+      "mode": "global",
+      "onboard": true
     }
   ]
 }

@@ -24,6 +24,9 @@ vi.mock("@iobroker/adapter-core", async () => {
   };
 });
 
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { runInThisContext } from "node:vm";
 import { decidePollAction, renderRedirectWrapper } from "./redirect-wrapper";
 
 describe("redirect-wrapper", () => {
@@ -216,11 +219,39 @@ describe("redirect-wrapper", () => {
   // constant or helper compiles, passes tsc and the module half of this table, and
   // throws a ReferenceError on the display (audit 2026-09-15, B1/F1: measured, such a
   // mutant survived 30/30 tests). The serialised half is the only thing that sees it.
-  const serialisedCopy = new Function(`return (${decidePollAction.toString()})`)() as typeof decidePollAction;
-  describe.each([
+  const serialise = (fn: typeof decidePollAction): typeof decidePollAction =>
+    new Function(`return (${fn.toString()})`)() as typeof decidePollAction;
+  const serialisedCopy = serialise(decidePollAction);
+  // The display does not get the copy above: it gets the text of the PRODUCTION build,
+  // which esbuild compiles with its own settings — a helper it injects into the function
+  // body (`__name(...)` under keepNames, a down-levelled `??`) would throw on the display
+  // while the vitest-compiled copy stays clean (audit 2026-09-25, T9). The shipped text is
+  // checked whenever the build is current; a missing or stale build skips that row visibly.
+  const builtPath = join(__dirname, "../../build/lib/redirect-wrapper.js");
+  const builtIsCurrent =
+    existsSync(builtPath) && statSync(builtPath).mtimeMs >= statSync(join(__dirname, "redirect-wrapper.ts")).mtimeMs;
+  // Loaded in a bare module wrapper: its imports (i18n → adapter-core, which exits the
+  // process without a js-controller) are only called at render time, never by the decision.
+  const loadShipped = (): typeof decidePollAction => {
+    const mod = { exports: {} as Record<string, unknown> };
+    const wrapper = runInThisContext(`(function (exports, require, module) {${readFileSync(builtPath, "utf8")}\n})`, {
+      filename: builtPath,
+    }) as (exports: unknown, require: () => unknown, module: typeof mod) => void;
+    wrapper(mod.exports, () => ({}), mod);
+    return mod.exports.decidePollAction as typeof decidePollAction;
+  };
+  const shippedCopy = builtIsCurrent ? serialise(loadShipped()) : null;
+  const forms: Array<[string, typeof decidePollAction]> = [
     ["module function", decidePollAction],
     ["serialised copy", serialisedCopy],
-  ])("decidePollAction (%s)", (_form, decide) => {
+  ];
+  if (shippedCopy) {
+    forms.push(["serialised copy of the shipped build", shippedCopy]);
+  }
+  it.skipIf(!shippedCopy)("runs the table against the shipped build's copy too", () => {
+    expect(forms.map(([form]) => form)).to.include("serialised copy of the shipped build");
+  });
+  describe.each(forms)("decidePollAction (%s)", (_form, decide) => {
     const base = {
       current: "https://a.test/",
       body: {} as unknown,
