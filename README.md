@@ -196,6 +196,10 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     ### **WORK IN PROGRESS**
 -->
 
+### **WORK IN PROGRESS**
+
+- Improved: switching the master switch and refreshing the dashboard list now log their result — how many displays changed and how many dashboards were found
+
 ### 1.46.0 (2026-09-25)
 
 - Fixed: a start that fails (port briefly in use, database not up yet) now restarts after 30 seconds instead of leaving the instance off until someone starts it by hand

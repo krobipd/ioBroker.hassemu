@@ -575,16 +575,18 @@ class HassEmu extends utils.Adapter {
     if (!this.registry) {
       return;
     }
+    // A user action reports its result on info (fleet logging rule, 2026-09-22): the switch
+    // changes every display, and only the log says how many it reached.
     if (enabled) {
-      this.log.debug(`applyMasterSwitch: enabled=true → propagating mode='global' to all clients`);
-      await this.registry.bulkSetMode(MODE_GLOBAL);
+      const changed = await this.registry.bulkSetMode(MODE_GLOBAL);
+      this.log.info(`Master switch on — ${changed} display(s) now follow the global URL`);
       return;
     }
     // Master off → every client to no choice. Without an explicit choice by the user,
     // every display shows the landing page (instead of switching automatically to some
     // discovered URL the user may never have meant).
-    this.log.debug(`applyMasterSwitch: enabled=false → propagating mode='0' (no-choice) to all clients`);
-    await this.registry.bulkSetMode(NO_CHOICE);
+    const changed = await this.registry.bulkSetMode(NO_CHOICE);
+    this.log.info(`Master switch off — ${changed} display(s) back to their landing page`);
   }
 
   private async onStateChange(id: string, state: ioBroker.State | null | undefined): Promise<void> {
@@ -666,10 +668,10 @@ class HassEmu extends utils.Adapter {
     // scan fires a second full broker scan ~2s after this immediate one. L3 (v1.38.0).
     this.urlDiscovery.cancelRefresh();
     try {
-      await this.urlDiscovery.collect();
-      // I3: success on debug — the visible feedback is the refreshed dropdown +
-      // the re-armed button, so no "success" line belongs on info.
-      this.log.debug(`URL list refreshed on user request`);
+      const found = await this.urlDiscovery.collect();
+      // A user action reports its result on info (fleet logging rule, 2026-09-22) — the
+      // count tells whether the new VIS view or project was actually found.
+      this.log.info(`URL list refreshed on request — ${Object.keys(found).length} dashboard(s) found`);
     } catch (err) {
       this.log.warn(`URL refresh failed: ${errText(err)}`);
     } finally {

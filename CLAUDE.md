@@ -70,7 +70,7 @@ _Je Nummer der Regel-Satz. Wortlaut und Beleg von DD 1–26 bis 1.45.0: `.claude
 4. **Kein HTTPS** — HA-Clients erwarten HTTP auf 8123; der Port gehört ins LAN.
 5. **Cookie-Identifikation** — `hassemu_client` (UUID v4, 10 Jahre, HttpOnly, SameSite=Lax) identifiziert das Display; Tokens kommen nur per API-Header und reichen dafür nicht.
 6. **Ein eigenes Gerät (`device`) je Display** — `clients.<id>` mit `mode`, `manualUrl`, `resolvedUrl`, `ip`, `remove`; der Hostname lebt im Gerätenamen, kein eigener Datenpunkt.
-7. **Master-Switch als Bulk-Sync** — nur ein ÜBERGANG von `global.enabled` setzt alle Displays per `bulkSetMode` auf `global` bzw. `---`; dieselbe Schreibung zweimal ändert nichts.
+7. **Master-Switch als Bulk-Sync** — nur ein ÜBERGANG von `global.enabled` setzt alle Displays per `bulkSetMode` auf `global` bzw. `---`; dieselbe Schreibung zweimal ändert nichts; das Ergebnis (Zahl umgestellter Displays) steht auf info, wie bei jeder Nutzer-Aktion (auch der Knopf `info.refreshUrls` meldet die Zahl gefundener Dashboards auf info).
 8. **Resolver-Delegate** — `global` → `global.mode`, `manual` → `manualUrl`, eine URL → diese URL, sonst Landing-Seite; `global.mode` darf nie `global` sein.
 9. **Landing-Seite statt Fehler** — ohne URL liefert der Server eine kleine Seite mit der Device-ID, die sich alle 15 s neu lädt; die Anleitung steht in der README.
 10. **Mode-Dropdown** — `common.states` aus Intro-Kacheln, VIS/VIS-2-Projekten und Aura (`url-discovery.ts`), `type: 'mixed'`, Werte der Einträge immer Klartext.

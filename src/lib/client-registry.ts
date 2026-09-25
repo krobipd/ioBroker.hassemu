@@ -688,7 +688,7 @@ export class ClientRegistry {
    *
    * @param value New mode value (sentinel or URL).
    */
-  async bulkSetMode(value: string): Promise<void> {
+  async bulkSetMode(value: string): Promise<number> {
     // v1.8.1 (D7): parallel setState instead of sequential — with 50 displays that
     // used to be 50 sequential broker round trips. setState is broker-internal, running
     // them in parallel is safe.
@@ -708,6 +708,7 @@ export class ClientRegistry {
     if (changed > 0) {
       this.adapter.log.debug(`bulkSetMode applied to ${changed} client(s)`);
     }
+    return changed;
   }
 
   /**
