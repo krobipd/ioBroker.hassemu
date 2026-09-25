@@ -1,5 +1,9 @@
 # Older Changes
 
+## 1.42.0 (2026-09-04)
+
+- Fixed: a leftover setting from older versions is now removed from the instance completely instead of only being switched off — switched off, it stayed behind for good
+
 ## 1.41.0 (2026-09-03)
 
 - Fixed: renamed datapoints now reach installations that already exist — until now a changed name or description only ever showed up on a fresh install

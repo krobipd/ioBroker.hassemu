@@ -196,7 +196,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     ### **WORK IN PROGRESS**
 -->
 
-### **WORK IN PROGRESS**
+### 1.46.0 (2026-09-25)
 
 - Fixed: a start that fails (port briefly in use, database not up yet) now restarts after 30 seconds instead of leaving the instance off until someone starts it by hand
 - Fixed: displays are no longer all removed after the adapter or its host was off for more than 30 days — the cleanup now counts from the most recently seen display
@@ -236,10 +236,6 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 - Fixed: upgrading from a pre-1.1.1 version no longer overwrites the whole instance configuration while removing the old URL setting
 - New: every display now shows the address it was actually sent to, so you can see at a glance where a display landed without walking through the global and per-display settings yourself
 - Changed: `info.serverUuid` and `global.enabled` carry clearer labels, and the per-display manual URL now has a description
-
-### 1.42.0 (2026-09-04)
-
-- Fixed: a leftover setting from older versions is now removed from the instance completely instead of only being switched off — switched off, it stayed behind for good
 
 [Older changelogs can be found there](CHANGELOG_OLD.md)
 
