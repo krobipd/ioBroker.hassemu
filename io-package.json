@@ -80,19 +80,6 @@
         "pl": "Zmienione nazwy punktów danych docierają teraz do istniejących instalacji — nieaktualne etykiety w drzewie są poprawiane i pokazywane w Twoim języku. Dodano dokumentację użytkownika.",
         "uk": "Перейменовані точки даних тепер доходять і до наявних установок — застарілі підписи в дереві виправляються та показуються вашою мовою. Додано документацію користувача.",
         "zh-cn": "重命名的数据点现在也能到达已有安装——对象树中过时的标签会被更正，并以你的 ioBroker 语言显示。新增完整的用户文档。"
-      },
-      "1.40.0": {
-        "en": "Hardening: with trustProxy enabled but no sanitising reverse proxy in front, a single device could create unlimited display entries — a global ceiling now caps this.",
-        "de": "Härtung: Mit aktiviertem trustProxy ohne bereinigenden Reverse-Proxy konnte ein einzelnes Gerät unbegrenzt Display-Einträge anlegen — eine globale Obergrenze deckelt das jetzt.",
-        "ru": "Усиление защиты: при включённом trustProxy без очищающего обратного прокси одно устройство могло создавать неограниченно записей дисплеев — теперь действует общий предел.",
-        "pt": "Reforço: com trustProxy ativo mas sem proxy reverso de saneamento, um único dispositivo podia criar entradas de ecrã ilimitadas — um limite global agora impede isso.",
-        "nl": "Verharding: met trustProxy ingeschakeld maar zonder opschonende reverse proxy kon één apparaat onbeperkt display-vermeldingen aanmaken — een globaal plafond begrenst dit nu.",
-        "fr": "Renforcement : avec trustProxy activé sans proxy inverse assainissant, un seul appareil pouvait créer des entrées d'écran illimitées — un plafond global l'empêche désormais.",
-        "it": "Irrobustimento: con trustProxy attivo ma senza reverse proxy di sanificazione, un singolo dispositivo poteva creare voci display illimitate — ora un limite globale lo impedisce.",
-        "es": "Refuerzo: con trustProxy activado pero sin proxy inverso saneador, un solo dispositivo podía crear entradas de pantalla ilimitadas — ahora un límite global lo impide.",
-        "pl": "Wzmocnienie: przy włączonym trustProxy bez oczyszczającego reverse proxy jedno urządzenie mogło tworzyć nieograniczoną liczbę wpisów wyświetlaczy — teraz obowiązuje globalny limit.",
-        "uk": "Посилення захисту: з увімкненим trustProxy без очищувального зворотного проксі один пристрій міг створювати необмежено записів дисплеїв — тепер діє загальний ліміт.",
-        "zh-cn": "加固：启用 trustProxy 但前端没有净化反向代理时，单个设备可无限创建显示器条目——现在有全局上限加以限制。"
       }
     },
     "plugins": {
