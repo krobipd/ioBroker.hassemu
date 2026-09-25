@@ -361,6 +361,9 @@ class HassEmu extends utils.Adapter {
    * `scripts/sync-iopackage-from-i18n.py` fills the manifest from, so the runtime and
    * the manifest cannot drift apart.
    *
+   * Only name and description are written; the rest of the shape is the manifest's (see
+   * the note at the writes below).
+   *
    * Two things are deliberately NOT written: `common.states` (the mode dropdown belongs
    * to `syncUrlDropdown`, and `extendObject` deep-merges it — a copy here would resurrect
    * stale URL keys) and a `desc` on the four objects that have nothing to explain
@@ -383,110 +386,44 @@ class HassEmu extends utils.Adapter {
       }
     };
 
+    // Name and description only (iobroker-adapter-checks 0.19.0, instance-objects-refresh): the
+    // object's shape — kind, value type, role, read/write, default, native — is the manifest's,
+    // which js-controller applies on every start. A runtime copy of it is a second source that
+    // drifts: a role or type changed in the manifest would be written back here on every start.
     await Promise.all([
-      tolerate("info", this.extendObject("info", { type: "channel", common: { name: tName("info") }, native: {} })),
-      tolerate(
-        "info.connection",
-        this.extendObject("info.connection", {
-          type: "state",
-          common: {
-            name: tName("connection"),
-            type: "boolean",
-            role: "indicator.connected",
-            read: true,
-            write: false,
-            def: false,
-          },
-          native: {},
-        }),
-      ),
+      tolerate("info", this.extendObject("info", { common: { name: tName("info") } })),
+      tolerate("info.connection", this.extendObject("info.connection", { common: { name: tName("connection") } })),
       tolerate(
         "info.serverUuid",
         this.extendObject("info.serverUuid", {
-          type: "state",
-          common: {
-            name: tName("serverUuid"),
-            desc: tName("serverUuidDesc"),
-            type: "string",
-            role: "text",
-            read: true,
-            write: false,
-            def: "",
-          },
-          native: {},
+          common: { name: tName("serverUuid"), desc: tName("serverUuidDesc") },
         }),
       ),
       tolerate(
         "info.refreshUrls",
         this.extendObject("info.refreshUrls", {
-          type: "state",
-          common: {
-            name: tName("refreshUrls"),
-            desc: tName("refreshUrlsDesc"),
-            type: "boolean",
-            role: "button",
-            read: false,
-            write: true,
-            def: false,
-          },
-          native: {},
+          common: { name: tName("refreshUrls"), desc: tName("refreshUrlsDesc") },
         }),
       ),
-      tolerate(
-        "clients",
-        this.extendObject("clients", { type: "folder", common: { name: tName("clients") }, native: {} }),
-      ),
-      tolerate(
-        "global",
-        this.extendObject("global", { type: "channel", common: { name: tName("global") }, native: {} }),
-      ),
+      tolerate("clients", this.extendObject("clients", { common: { name: tName("clients") } })),
+      tolerate("global", this.extendObject("global", { common: { name: tName("global") } })),
       tolerate(
         "global.enabled",
         this.extendObject("global.enabled", {
-          type: "state",
-          common: {
-            name: tName("globalEnabled"),
-            desc: tName("globalEnabledDesc"),
-            type: "boolean",
-            role: "switch.enable",
-            read: true,
-            write: true,
-            def: false,
-          },
-          native: {},
+          common: { name: tName("globalEnabled"), desc: tName("globalEnabledDesc") },
         }),
       ),
       // No `states` here — syncUrlDropdown is the single authority for the dropdown.
       tolerate(
         "global.mode",
         this.extendObject("global.mode", {
-          type: "state",
-          common: {
-            name: tName("globalMode"),
-            desc: tName("globalModeDesc"),
-            type: "mixed",
-            role: "state",
-            read: true,
-            write: true,
-            def: NO_CHOICE,
-          },
-          native: {},
+          common: { name: tName("globalMode"), desc: tName("globalModeDesc") },
         }),
       ),
       tolerate(
         "global.manualUrl",
         this.extendObject("global.manualUrl", {
-          type: "state",
-          common: {
-            name: tName("globalManualUrl"),
-            desc: tName("globalManualUrlDesc"),
-            type: "string",
-            role: "url",
-            read: true,
-            write: true,
-            def: "",
-          },
-          native: {},
+          common: { name: tName("globalManualUrl"), desc: tName("globalManualUrlDesc") },
         }),
       ),
     ]);
