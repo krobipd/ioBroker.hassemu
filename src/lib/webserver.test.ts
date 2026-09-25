@@ -3115,6 +3115,30 @@ describe("WebServer /api/websocket (v1.34.0)", () => {
     expect(code).to.equal(1009); // 1009 = message too big
   });
 
+  it("a socket ws is already closing with a reason is left to ws; any other socket error drops the socket", async () => {
+    const ws = new WebSocket(wsUrl);
+    const col = wsCollector(ws);
+    await col.next(); // auth_required
+    const server = (s["app"] as unknown as { websocketServer: { clients: Set<WebSocket> } }).websocketServer;
+    const [peer] = [...server.clients];
+    const terminate = vi.spyOn(peer, "terminate");
+    // ws rejected a frame: it closes with the reason first, then emits the error.
+    peer.close(1009);
+    peer.emit("error", new Error("Max payload size exceeded"));
+    expect(terminate, "ws finishes its own close").not.toHaveBeenCalled();
+    const [code] = (await once(ws, "close")) as [number, Buffer];
+    expect(code).to.equal(1009);
+
+    const ws2 = new WebSocket(wsUrl);
+    const col2 = wsCollector(ws2);
+    await col2.next(); // auth_required
+    const peer2 = [...server.clients].find(c => c !== peer)!;
+    const terminate2 = vi.spyOn(peer2, "terminate");
+    peer2.emit("error", new Error("handler failed"));
+    expect(terminate2, "an open socket with an error is dropped").toHaveBeenCalledTimes(1);
+    await once(ws2, "close");
+  });
+
   it("stops promptly even when a display no longer answers the close handshake", async () => {
     // A display that lost power keeps the TCP connection but answers nothing. The
     // plugin's preClose only SENDS a close frame and then waits — measured at 30 s

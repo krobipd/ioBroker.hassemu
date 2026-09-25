@@ -291,7 +291,21 @@ export class WebServer {
     // `registerDevice` makes a best-effort `auth/current_user` WS call after the
     // REST registration; without a WS endpoint that fails (and the username is
     // not stored). Registered before the routes so `{ websocket: true }` works.
-    await this.app.register(fastifyWebsocket, { options: { maxPayload: WS_MAX_PAYLOAD_BYTES } });
+    await this.app.register(fastifyWebsocket, {
+      options: { maxPayload: WS_MAX_PAYLOAD_BYTES },
+      // @fastify/websocket 11.3.1 routes every socket error here, and its default handler
+      // terminates at once. For a frame ws itself rejects (1009 message too big) ws has already
+      // started the close with its reason — terminating right after it lost that close frame to
+      // a connection reset (Windows CI saw 1006). A socket ws is closing is left to ws; anything
+      // else (a throwing route handler) is dropped as before.
+      errorHandler: (err, socket) => {
+        this.adapter.log.debug(`WS error: ${errText(err)}`);
+        if (socket.readyState === socket.CLOSING || socket.readyState === socket.CLOSED) {
+          return;
+        }
+        socket.terminate();
+      },
+    });
     this.setupAuthGuard();
     this.setupErrorHandler();
     this.setupRoutes();

@@ -84,7 +84,7 @@ _Je Nummer der Regel-Satz. Wortlaut und Beleg von DD 1–26 bis 1.45.0: `.claude
 18. **Globale Client-Obergrenze** — 100 persistente Neuanlagen je Stunde über alle Adressen neben der Drossel je Adresse; darüber transient ohne Besitz; ein Adresswechsel wird höchstens einmal je Minute geschrieben, und aus `X-Forwarded-For` zählt nur eine echte IP.
 19. **Namen erreichen Bestandsanlagen** — js-controller wendet `instanceObjects` bei jedem Start an, schützt aber `common.name`; `refreshInstanceObjects()` schreibt deshalb jeden Manifest-Namen per `extendObject`, ausgeschrieben je Id.
 20. **Die Reload-Entscheidung ist eine Funktion** — `decidePollAction` läuft in den Tests als Modul, als serialisierte Kopie und als Kopie aus dem gebauten Paket und wird per `toString()` in die Seite gelegt.
-21. **Vor `app.close()` werden WebSockets hart beendet** — und der Server zerstört beim Schließen jeden Socket (`forceCloseConnections`); `common.stopTimeout` 2000.
+21. **Vor `app.close()` werden WebSockets hart beendet** — und der Server zerstört beim Schließen jeden Socket (`forceCloseConnections`); `common.stopTimeout` 2000; ein Socket-Fehler trennt nur einen OFFENEN Socket, einen, den ws selbst mit Grund schließt (1009), überlässt der eigene `errorHandler` ws.
 22. **Text-Auffrischung der Client-Objekte hängt an einer Revision** — wer Name, Beschreibung, Rolle, Typ, Default oder Lese-/Schreibrecht eines Client-Objekts ändert, erhöht `CLIENT_OBJECTS_VERSION`; die Aufstiegs-Suite vergleicht auch `def`/`read`/`write`/`states` und `native`.
 23. **`clients.<id>.resolvedUrl`** — read-only, die zuletzt geschickte URL, geschrieben nur bei Änderung (`setStateChangedAsync`).
 24. **Listen-Port-Standard** — `native.port` (8123 fest) und `native.bind`, deklariert in `fleet.json listenPorts`; die Umbenennung `bindAddress` → `bind` läuft über den Flotten-Master `native-key-migration.ts`.
@@ -113,7 +113,7 @@ _Je Nummer der Regel-Satz. Wortlaut und Beleg von DD 1–26 bis 1.45.0: `.claude
    3. `clients.<id>.mode = <URL>` → diese URL
    4. sonst → 200 HTML mit der Landing-Seite
 
-## Tests (943 unit + 61 package + 5 inventory + 3 upgrade = 1012)
+## Tests (944 unit + 61 package + 5 inventory + 3 upgrade = 1013)
 
 **Objekt-Inventar in der CI (seit 2026-09-15, Gate-Job `adapter-inventory`, seit 1.46.0 rot bei veraltetem `test/objects.inventory.json`):** `test/inventory.js` läuft bei jedem Push auf dem ubuntu-Runner. Fünf Fixture-Displays (`test/fixtures/inventory/displays.json`) kommen je von einer eigenen Adresse aus 192.0.2.0/24 (`X-Forwarded-For`, `trustProxy` an) — Auto-Name nach Adresse und nach PTR, Modus global/manual/`---`/direkte URL, eins mit Anmeldung; dazu ein 1.x-Display als `channel` mit `visUrl` und die Umgebung einer echten Anlage (web, VIS-2-Projekt mit View, aura mit `customUrl`, admin mit `%bind%`), sodass das Dropdown im Inventar steht. `test/inventory-dns-hook.cjs` (per `NODE_OPTIONS=--require` im Adapterprozess) beantwortet jede Rückwärtsauflösung aus `INVENTORY_PTR`, alles andere wie ohne PTR-Eintrag — der Runner löst sonst selbst auf, asynchron nach dem Abzug. Der Abzug wartet auf die Umbenennung und darauf (`waitForStableTree`), dass der Objektsatz 4×250 ms nicht mehr wächst. Die Aufstiegs-Suite sät das Vorgänger-Inventar samt `.ip`-Wert (sonst gilt der alte Name als Hostname) und prüft den Wächter nur für Displays, die der Vorgänger hatte.
 
