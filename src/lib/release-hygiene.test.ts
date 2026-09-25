@@ -70,6 +70,13 @@ describe("release hygiene guards", () => {
     expect(main, "process-level handler re-introduced").to.not.include("process.on(");
   });
 
+  // Design decision 21: the shutdown chain has a named budget instead of the 500 ms default —
+  // onUnload waits for the state write, the mDNS goodbye and the server stop.
+  it("io-package common.stopTimeout stays at 2000 ms", () => {
+    const iopkg = JSON.parse(read("io-package.json")) as { common: { stopTimeout?: number } };
+    expect(iopkg.common.stopTimeout).to.equal(2000);
+  });
+
   // I25: moved here from webserver.test.ts — a manifest pin, not an HTTP test.
   it("io-package info.refreshUrls is a button with read:false (W1134)", () => {
     const iopkg = JSON.parse(read("io-package.json")) as {

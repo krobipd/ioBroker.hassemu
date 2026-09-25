@@ -113,7 +113,9 @@ export class GlobalConfig {
         return;
       case "sentinel":
         if (result.value === MODE_MANUAL && !this.manualUrl) {
-          this.adapter.log.warn(
+          // debug, not warn: writing the mode before the URL is a normal order (a script, two
+          // clicks); the landing page shows the outcome (audit 2026-09-25, Z1).
+          this.adapter.log.debug(
             `global.mode is "manual" but global.manualUrl is empty — fill global.manualUrl to redirect`,
           );
         }
@@ -152,7 +154,8 @@ export class GlobalConfig {
     await this.adapter.setState("global.manualUrl", { val: result.safe ?? "", ack: true });
     this.adapter.log.debug(`global.manualUrl → ${result.safe ?? "cleared"}`);
     if (this.mode === MODE_MANUAL && !result.safe) {
-      this.adapter.log.warn(
+      // debug, not warn: clearing the URL before switching the mode is a normal order (N8).
+      this.adapter.log.debug(
         `global.manualUrl cleared while global.mode is "manual" — clients delegating to global will see the setup page`,
       );
     }

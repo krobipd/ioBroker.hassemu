@@ -126,13 +126,13 @@ describe("schema-repair", () => {
     });
 
     it("swallows extendObject errors (best-effort, no throw)", async () => {
-      const { adapter } = mockAdapter({ "global.mode": { type: "state", common: {} } });
+      const { adapter, logs } = mockAdapter({ "global.mode": { type: "state", common: {} } });
       // Override extendObject to throw — repair must not propagate it.
       (adapter as unknown as { extendObject: unknown }).extendObject = () => {
         return Promise.reject(new Error("write failed"));
       };
-      await repairGlobalSchemas(adapter, INSTANCE_OBJECTS, [["global.mode", "mixed"]]);
-      // no throw = pass
+      await expect(repairGlobalSchemas(adapter, INSTANCE_OBJECTS, [["global.mode", "mixed"]])).resolves.toBeUndefined();
+      expect(logs.some(l => l === "repair global.mode failed: write failed")).to.be.true;
     });
   });
 });

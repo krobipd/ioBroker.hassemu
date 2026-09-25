@@ -13,6 +13,8 @@ import { join } from "node:path";
 vi.mock("@iobroker/adapter-core", async () => {
   // The factory is hoisted above the imports — the shared broker semantics come in here.
   const { brokerExtend, brokerDelObject } = await import("../test/unit/broker-stub.js");
+  // The real exit codes (the value js-controller reads), not a copy that could drift.
+  const { EXIT_CODES } = await import("@iobroker/adapter-core/exitCodes");
   interface ObjEntry {
     type: string;
     common?: Record<string, unknown>;
@@ -186,8 +188,9 @@ vi.mock("@iobroker/adapter-core", async () => {
 
     clearTimeout(_handle: unknown): void {}
 
-    terminate(code?: number): void {
-      this.terminations.push(code ?? 0);
+    // adapter-core: terminate(reason?, exitCode?) — also accepts the code alone.
+    terminate(reasonOrCode?: string | number, code?: number): void {
+      this.terminations.push(typeof reasonOrCode === "number" ? reasonOrCode : (code ?? 0));
     }
   }
 
@@ -202,6 +205,7 @@ vi.mock("@iobroker/adapter-core", async () => {
 
   return {
     Adapter: StubAdapter,
+    EXIT_CODES,
     I18n: {
       init: vi.fn(async () => {}),
       getTranslatedObject: vi.fn((key: string) => {
@@ -372,6 +376,12 @@ describe("HassEmu refreshInstanceObjects (v1.41.0)", () => {
   it("onReady REACHES the refresh — every manifest object is extended", async () => {
     // The point of this test: a refresh method nobody calls passes lint and tsc.
     const { internal, stub } = setup();
+    // Seed the manifest objects well-formed, as an existing installation has them. In an
+    // empty store the schema repair extends global.mode/global.manualUrl itself, and the
+    // assertion below could not tell the refresh from the repair (audit 2026-09-25, T10).
+    for (const o of (iobrokerPackage as { instanceObjects: (ObjEntry & { _id: string })[] }).instanceObjects) {
+      stub.objects.set(`hassemu.0.${o._id}`, { type: o.type, common: structuredClone(o.common), native: {} });
+    }
     await internal.onReady();
     const extended = stub.extendCalls.map(c => c.id);
     for (const id of MANIFEST_IDS) {
@@ -504,12 +514,14 @@ describe("HassEmu onReady", () => {
     expect(logsOf(stub, "error")).toEqual([]);
   });
 
-  it("webserver start failure → terminate(11), no subscriptions, no connection=true", async () => {
+  it("webserver start failure → a restarting exit code (6, never 11), no subscriptions, no connection=true", async () => {
     const { internal, stub, webServer } = setup();
     webServer.start.mockRejectedValue(new Error("EADDRINUSE"));
     await internal.onReady();
 
-    expect(stub.terminations).toEqual([11]);
+    // 11 = ADAPTER_REQUESTED_TERMINATION: js-controller 7.2.2 never restarts it (controller
+    // main.ts 4231/4305); 6 = UNCAUGHT_EXCEPTION restarts after 30 s (audit 2026-09-25, L1).
+    expect(stub.terminations).toEqual([6]);
     expect(stub.stateSubscriptions).toEqual([]);
     expect(stub.states.get("hassemu.0.info.connection")).toEqual({ val: false, ack: true });
     // I5 (v1.38.0): the raw error echo moved to debug — webServer.start() already logged
@@ -556,7 +568,7 @@ describe("HassEmu onReady", () => {
     expect(oldDiscovery.cancelRefresh).toHaveBeenCalledTimes(1);
   });
 
-  it("catches an unexpected onReady error, logs it and terminates(11) (M2)", async () => {
+  it("catches an unexpected onReady error, logs it and ends with a restarting exit code (M2, L1)", async () => {
     const { internal, stub } = setup();
     internal.makeGlobalConfig = () => {
       throw new Error("boom in factory");
@@ -564,8 +576,117 @@ describe("HassEmu onReady", () => {
     await internal.onReady();
     expect(logsOf(stub, "error").some(m => m.includes("onReady failed"))).toBe(true);
     // M2: an error in any onReady step (not just webServer.start) must not leave a
-    // zombie — terminate so js-controller restarts with backoff, like the B4 path.
-    expect(stub.terminations).toEqual([11]);
+    // zombie; the code must be one js-controller restarts (6), not 11 (L1).
+    expect(stub.terminations).toEqual([6]);
+  });
+
+  it("a failed start stops the mDNS announcement too, not only the web server (L7)", async () => {
+    const { internal, stub, webServer, mdns } = setup({ mdnsEnabled: true });
+    const original = stub.setState.bind(stub);
+    stub.setState = async (id, state) => {
+      if (id === "info.connection" && state.val === true) {
+        throw new Error("write refused");
+      }
+      return original(id, state);
+    };
+    await internal.onReady();
+
+    expect(webServer.stop).toHaveBeenCalledTimes(1);
+    expect(mdns.stop).toHaveBeenCalledTimes(1);
+    expect(stub.terminations).toEqual([6]);
+  });
+});
+
+describe("a stop that arrives while onReady is still running (L4)", () => {
+  // js-controller 7.2.2 marks the adapter ready right after emitting `ready` (adapter.ts
+  // 11801/11805), so onUnload can run in the middle of an async onReady.
+  function hold(): { promise: Promise<void>; release: () => void } {
+    let release = (): void => {};
+    const promise = new Promise<void>(resolve => (release = resolve));
+    return { promise, release };
+  }
+
+  it("during URL discovery: nothing is started afterwards", async () => {
+    const { internal, stub, webServer, discovery } = setup();
+    const gate = hold();
+    discovery.collect.mockImplementation(() => gate.promise.then(() => ({})));
+    const ready = internal.onReady();
+    await vi.waitFor(() => expect(discovery.collect).toHaveBeenCalled());
+    const callback = vi.fn();
+    internal.onUnload(callback);
+    await vi.waitFor(() => expect(callback).toHaveBeenCalledTimes(1));
+
+    gate.release();
+    await ready;
+
+    expect(webServer.start).not.toHaveBeenCalled();
+    expect(stub.stateSubscriptions).toEqual([]);
+    expect(stub.states.get("hassemu.0.info.connection")).toEqual({ val: false, ack: true });
+    expect(stub.terminations).toEqual([]);
+  });
+
+  it("while the listener opens: the server is closed again once it listens", async () => {
+    const { internal, stub, webServer } = setup();
+    const gate = hold();
+    webServer.start.mockImplementation(() => gate.promise);
+    const ready = internal.onReady();
+    await vi.waitFor(() => expect(webServer.start).toHaveBeenCalled());
+    internal.onUnload(vi.fn());
+
+    gate.release();
+    await ready;
+
+    // Once by onUnload (too early — not listening yet), once by the start itself.
+    expect(webServer.stop).toHaveBeenCalledTimes(2);
+    expect(stub.stateSubscriptions).toEqual([]);
+    expect(stub.states.get("hassemu.0.info.connection")).toEqual({ val: false, ack: true });
+  });
+
+  it("while subscribing: what started after the stop is taken back, connection stays false", async () => {
+    const { internal, stub, webServer, mdns } = setup({ mdnsEnabled: true });
+    const gate = hold();
+    const adapter = internal as unknown as { subscribeStatesAsync: (p: string) => Promise<void> };
+    const original = adapter.subscribeStatesAsync.bind(adapter);
+    adapter.subscribeStatesAsync = async (pattern: string) => {
+      if (pattern === "info.refreshUrls") {
+        await gate.promise;
+      }
+      return original(pattern);
+    };
+    const ready = internal.onReady();
+    await vi.waitFor(() => expect(stub.stateSubscriptions).toContain("global.*"));
+    internal.onUnload(vi.fn());
+
+    gate.release();
+    await ready;
+
+    expect(mdns.stop).toHaveBeenCalledWith(true);
+    expect(webServer.stop).toHaveBeenCalled();
+    expect(stub.states.get("hassemu.0.info.connection")).toEqual({ val: false, ack: true });
+    expect(logsOf(stub, "info").some(m => m.startsWith("HA emulation running"))).toBe(false);
+  });
+
+  it("a start that fails BECAUSE of the stop logs no error and asks for no restart (N3)", async () => {
+    const { internal, stub } = setup();
+    const gate = hold();
+    // The registry restore is held; onUnload nulls the collaborators meanwhile, so the start
+    // then trips over a null registry — the failure is a consequence of the stop.
+    const realMake = internal.makeRegistry;
+    internal.makeRegistry = () => {
+      const r = realMake();
+      (r as unknown as { restore: () => Promise<void> }).restore = () => gate.promise;
+      return r;
+    };
+    const ready = internal.onReady();
+    await new Promise(r => setImmediate(r));
+    internal.onUnload(vi.fn());
+
+    gate.release();
+    await ready;
+
+    expect(logsOf(stub, "error")).toEqual([]);
+    expect(stub.terminations).toEqual([]);
+    expect(logsOf(stub, "debug").some(m => m.startsWith("Start abandoned during shutdown"))).toBe(true);
   });
 });
 
@@ -605,6 +726,17 @@ describe("getOrCreateServerUuid", () => {
     const uuid = await internal.getOrCreateServerUuid();
     expect(uuid).toMatch(/^[0-9a-f-]{36}$/);
     expect(logsOf(stub, "warn").some(m => m.includes("Could not save server UUID"))).toBe(true);
+    // No line claiming a save that did not happen (audit 2026-09-25, L8).
+    expect(logsOf(stub, "info").some(m => m.includes("generated and saved"))).toBe(false);
+  });
+
+  it("a READ error is not a fresh install: it propagates and no new identity is written (N4)", async () => {
+    const { internal, stub } = setup();
+    const adapter = internal as unknown as { getStateAsync: (id: string) => Promise<unknown> };
+    adapter.getStateAsync = () => Promise.reject(new Error("states db not ready"));
+
+    await expect(internal.getOrCreateServerUuid()).rejects.toThrow("states db not ready");
+    expect(stub.states.has("hassemu.0.info.serverUuid")).toBe(false);
   });
 });
 
@@ -649,7 +781,7 @@ describe("migrateLegacyDefaultVisUrl", () => {
     expect(stub.states.has("hassemu.0.global.visUrl")).toBe(false);
   });
 
-  it("safe legacy URL → written to global.visUrl + native keys dropped", async () => {
+  it("safe legacy URL → straight to global.mode/manualUrl + master switch on + native keys dropped (L2)", async () => {
     const { internal, stub } = setup();
     internal.globalConfig = internal.makeGlobalConfig();
     stub.config.defaultVisUrl = "http://legacy.local/vis";
@@ -661,7 +793,13 @@ describe("migrateLegacyDefaultVisUrl", () => {
       internal.globalConfig,
     );
 
-    expect(stub.states.get("hassemu.0.global.visUrl")).toEqual({ val: "http://legacy.local/vis", ack: true });
+    // No detour through a `global.visUrl` state: it would be a value without an object that
+    // no delObject removes, migrated again on every start (audit 2026-09-25, L2).
+    expect(stub.states.has("hassemu.0.global.visUrl")).toBe(false);
+    expect(stub.states.get("hassemu.0.global.mode")).toEqual({ val: MODE_MANUAL, ack: true });
+    expect(stub.states.get("hassemu.0.global.manualUrl")).toEqual({ val: "http://legacy.local/vis", ack: true });
+    // L2b: the master switch goes on as 1.1.1 did, so new displays follow the old URL.
+    expect(stub.states.get("hassemu.0.global.enabled")).toEqual({ val: true, ack: true });
     const native = stub.objects.get("system.adapter.hassemu.0")!.native!;
     // Cleared via the merge (`null`, not a whole-object rewrite) — falsy is all the
     // migration ever reads them for.
@@ -750,33 +888,7 @@ describe("migrateLegacyDefaultVisUrl", () => {
     expect(stub.objects.get("system.adapter.hassemu.0")!.native!.defaultVisUrl).toBeFalsy();
   });
 
-  it("global.visUrl write fails → falls back to globalConfig.migrationSet (URL not lost)", async () => {
-    const { internal, stub } = setup();
-    internal.globalConfig = internal.makeGlobalConfig();
-    stub.config.visUrl = "http://fallback.local/";
-    seedInstanceNative(stub, { visUrl: "http://fallback.local/" });
-    const original = stub.setState.bind(stub);
-    stub.setState = async (id, state) => {
-      if (id === "global.visUrl") {
-        throw new Error("object gone in v1.2.0+");
-      }
-      return original(id, state);
-    };
-
-    await migrateLegacyDefaultVisUrl(
-      internal as unknown as MigrationAdapter,
-      stub.config as unknown as AdapterConfig,
-      internal.globalConfig,
-    );
-
-    // Fallback wrote straight to the migration target.
-    expect(stub.states.get("hassemu.0.global.mode")).toEqual({ val: MODE_MANUAL, ack: true });
-    expect(stub.states.get("hassemu.0.global.manualUrl")).toEqual({ val: "http://fallback.local/", ack: true });
-    // Native was cleaned because the value is safely persisted.
-    expect(stub.objects.get("system.adapter.hassemu.0")!.native!.visUrl).toBeFalsy();
-  });
-
-  it("BOTH write paths fail → native values preserved as recovery anchor + warn", async () => {
+  it("the global write fails → native values preserved as recovery anchor + warn", async () => {
     const { internal, stub } = setup();
     internal.globalConfig = internal.makeGlobalConfig();
     stub.config.visUrl = "http://precious.local/";
@@ -785,15 +897,36 @@ describe("migrateLegacyDefaultVisUrl", () => {
       return Promise.reject(new Error("broker down"));
     };
 
-    await migrateLegacyDefaultVisUrl(
+    const restarting = await migrateLegacyDefaultVisUrl(
       internal as unknown as MigrationAdapter,
       stub.config as unknown as AdapterConfig,
       internal.globalConfig,
     );
 
+    expect(restarting).toBe(false);
     expect(logsOf(stub, "warn").some(m => m.includes("Legacy URL preserved"))).toBe(true);
     // The recovery anchor MUST survive — this is the data-loss guard.
     expect(stub.objects.get("system.adapter.hassemu.0")!.native!.visUrl).toBe("http://precious.local/");
+  });
+
+  it("a whole 1.1.0 upgrade: first start moves the URL and restarts, the second start keeps the user's later choice (L2)", async () => {
+    // First start: legacy native → global, native dropped, restart requested.
+    const first = setup();
+    first.stub.config.defaultVisUrl = "http://legacy.local/vis";
+    seedInstanceNative(first.stub, { defaultVisUrl: "http://legacy.local/vis" });
+    await first.internal.onReady();
+    expect(first.webServer.start, "the start aborts for the restart").not.toHaveBeenCalled();
+    expect(first.stub.states.get("hassemu.0.global.manualUrl")?.val).toBe("http://legacy.local/vis");
+
+    // The user picks a VIS URL; the next start must not reset it.
+    await first.internal.globalConfig!.handleModeWrite("http://vis.local/vis-2/index.html?main");
+    const second = setup();
+    second.stub.objects = first.stub.objects;
+    second.stub.states = first.stub.states;
+    await second.internal.onReady();
+
+    expect(second.stub.states.get("hassemu.0.global.mode")?.val).toBe("http://vis.local/vis-2/index.html?main");
+    expect(logsOf(second.stub, "info").some(m => m.startsWith("Migration: global URL"))).toBe(false);
   });
 });
 
@@ -975,8 +1108,14 @@ describe("gcStaleClients", () => {
    * @param stub Object store of the stub adapter
    * @param id Display id
    * @param lastSeen Persisted stamp, or undefined for a pre-1.2.0 display without one
+   * @param extraNative Further native fields (tokens) for the display
    */
-  function seedDisplay(stub: StubSurface, id: string, lastSeen: number | undefined): void {
+  function seedDisplay(
+    stub: StubSurface,
+    id: string,
+    lastSeen: number | undefined,
+    extraNative: Record<string, unknown> = {},
+  ): void {
     stub.objects.set(`hassemu.0.clients.${id}`, {
       type: "device",
       common: { name: { en: `10.0.0.${id.length}` } },
@@ -985,6 +1124,7 @@ describe("gcStaleClients", () => {
         token: null,
         objectsVersion: CLIENT_OBJECTS_VERSION,
         ...(lastSeen === undefined ? {} : { lastSeen }),
+        ...extraNative,
       },
     });
     for (const leaf of ["mode", "manualUrl", "ip", "resolvedUrl", "remove"]) {
@@ -1005,9 +1145,10 @@ describe("gcStaleClients", () => {
     expect(typeof stub.objects.get("hassemu.0.clients.a1")!.native!.lastSeen).toBe("number");
   });
 
-  it("stale client (lastSeen older than 30d) is removed with an info log", async () => {
+  it("stale client (30d behind the most recently seen display) is removed with an info log", async () => {
     const { internal, stub } = setup();
     seedDisplay(stub, "b2", Date.now() - 31 * 24 * 60 * 60 * 1000);
+    seedDisplay(stub, "f0", Date.now() - 1000);
     internal.registry = internal.makeRegistry();
     await internal.registry.restore();
 
@@ -1043,6 +1184,7 @@ describe("gcStaleClients", () => {
     const { internal, stub } = setup();
     seedDisplay(stub, "d4", Date.now() - 31 * 24 * 60 * 60 * 1000);
     seedDisplay(stub, "e5", Date.now() - 31 * 24 * 60 * 60 * 1000);
+    seedDisplay(stub, "f0", Date.now() - 1000);
     internal.registry = internal.makeRegistry();
     await internal.registry.restore();
     const adapter = internal as unknown as { delObjectAsync: (id: string, o?: unknown) => Promise<unknown> };
@@ -1058,6 +1200,59 @@ describe("gcStaleClients", () => {
 
     expect(stub.objects.has("hassemu.0.clients.e5")).toBe(false);
     expect(internal.registry.getById("e5")).toBeNull();
+  });
+
+  it("an adapter that was OFF for 40 days keeps every display (L3)", async () => {
+    // Nobody could be seen while the adapter was off — measured against the clock, one
+    // start removed the whole installation with its settings, rooms and tokens.
+    const { internal, stub } = setup();
+    const day = 24 * 60 * 60 * 1000;
+    seedDisplay(stub, "m1", Date.now() - 39 * day, { refreshToken: crypto.randomUUID() });
+    seedDisplay(stub, "m2", Date.now() - 40 * day, { refreshToken: crypto.randomUUID() });
+    seedDisplay(stub, "m3", Date.now() - 41 * day, { refreshToken: crypto.randomUUID() });
+    internal.registry = internal.makeRegistry();
+    await internal.registry.restore();
+
+    await internal.gcStaleClients();
+
+    for (const id of ["m1", "m2", "m3"]) {
+      expect(internal.registry.getById(id), id).not.toBeNull();
+    }
+    expect(logsOf(stub, "info").some(m => m.includes("Removed"))).toBe(false);
+  });
+
+  it("a stamp from a clock that ran ahead does not age every other display (L3)", async () => {
+    const { internal, stub } = setup();
+    const day = 24 * 60 * 60 * 1000;
+    seedDisplay(stub, "ahead", Date.now() + 365 * day);
+    seedDisplay(stub, "today", Date.now() - day);
+    internal.registry = internal.makeRegistry();
+    await internal.registry.restore();
+
+    await internal.gcStaleClients();
+
+    expect(internal.registry.getById("ahead")).not.toBeNull();
+    expect(internal.registry.getById("today")).not.toBeNull();
+  });
+
+  it("a stale display is removed even though it holds a token and a refresh token (DD14, T4)", async () => {
+    const { internal, stub } = setup();
+    const day = 24 * 60 * 60 * 1000;
+    const refreshToken = crypto.randomUUID();
+    seedDisplay(stub, "tok", Date.now() - 31 * day, {
+      token: crypto.randomUUID(),
+      refreshToken,
+      tokenExpiresAt: Date.now() + 60_000,
+    });
+    seedDisplay(stub, "f0", Date.now() - 1000);
+    internal.registry = internal.makeRegistry();
+    await internal.registry.restore();
+    expect(internal.registry.getByRefreshToken(refreshToken), "restored with its token").not.toBeNull();
+
+    await internal.gcStaleClients();
+
+    expect(internal.registry.getById("tok")).toBeNull();
+    expect(internal.registry.getByRefreshToken(refreshToken)).toBeNull();
   });
 });
 
@@ -1088,9 +1283,10 @@ describe("applyMasterSwitch", () => {
   });
 
   it("is a safe no-op without a registry", async () => {
-    const { internal } = setup();
+    const { internal, stub } = setup();
     internal.registry = null;
-    await internal.applyMasterSwitch(true);
+    await expect(internal.applyMasterSwitch(true)).resolves.toBeUndefined();
+    expect(logsOf(stub, "debug").some(m => m.startsWith("applyMasterSwitch"))).toBe(false);
   });
 });
 
@@ -1119,11 +1315,12 @@ describe("onStateChange routing", () => {
     expect(rec.mode).toBe("http://picked.local/");
   });
 
-  it("warns once when mode='global' but global has no resolvable URL (B4)", async () => {
+  it("names mode='global' without a resolvable global URL on debug, never warn (B4, N8)", async () => {
     const s = await readySetup();
     const rec = await s.internal.registry!.identifyOrCreate(null, "10.0.0.1");
     await s.internal.onStateChange(`hassemu.0.clients.${rec.id}.mode`, { val: MODE_GLOBAL, ack: false });
-    expect(logsOf(s.stub, "warn").some(m => m.includes("global has no resolvable URL"))).toBe(true);
+    expect(logsOf(s.stub, "debug").some(m => m.includes("global has no resolvable URL"))).toBe(true);
+    expect(logsOf(s.stub, "warn")).toEqual([]);
   });
 
   it("no B4 warning when global resolves to a URL", async () => {
@@ -1131,7 +1328,7 @@ describe("onStateChange routing", () => {
     await s.internal.globalConfig!.handleModeWrite("http://global.local/");
     const rec = await s.internal.registry!.identifyOrCreate(null, "10.0.0.1");
     await s.internal.onStateChange(`hassemu.0.clients.${rec.id}.mode`, { val: MODE_GLOBAL, ack: false });
-    expect(logsOf(s.stub, "warn").some(m => m.includes("global has no resolvable URL"))).toBe(false);
+    expect(logsOf(s.stub, "debug").some(m => m.includes("global has no resolvable URL"))).toBe(false);
   });
 
   it("routes clients.<id>.manualUrl writes to handleManualUrlWrite", async () => {
@@ -1337,6 +1534,45 @@ describe("onUnload", () => {
     expect(internal.mdnsService).toBeNull();
     expect(internal.registry).toBeNull();
     expect(internal.globalConfig).toBeNull();
+  });
+
+  it("writes info.connection=false BEFORE any other teardown step (H10)", async () => {
+    // If a later step throws, the state must already be false instead of staying true.
+    const { internal, stub, webServer, mdns, discovery } = setup();
+    internal.webServer = webServer;
+    internal.mdnsService = mdns;
+    internal.urlDiscovery = discovery;
+    const order: string[] = [];
+    const original = stub.setState.bind(stub);
+    stub.setState = async (id, state) => {
+      order.push(`${id}=${String(state.val)}`);
+      return original(id, state);
+    };
+    const adapter = internal as unknown as Record<string, (...args: unknown[]) => Promise<void>>;
+    for (const name of ["unsubscribeStatesAsync", "unsubscribeForeignObjectsAsync"]) {
+      const fn = adapter[name].bind(adapter);
+      adapter[name] = (...args: unknown[]) => {
+        order.push(name);
+        return fn(...args);
+      };
+    }
+    discovery.cancelRefresh.mockImplementation(() => void order.push("cancelRefresh"));
+    mdns.stop.mockImplementation(() => {
+      order.push("mdns.stop");
+      return Promise.resolve();
+    });
+    webServer.stop.mockImplementation(() => {
+      order.push("web.stop");
+      return Promise.resolve();
+    });
+    const callback = vi.fn();
+
+    internal.onUnload(callback);
+    await vi.waitFor(() => expect(callback).toHaveBeenCalledTimes(1));
+
+    expect(order[0]).toBe("info.connection=false");
+    expect(order).toContain("mdns.stop");
+    expect(order).toContain("web.stop");
   });
 
   it("calls the callback even when a teardown step throws", () => {

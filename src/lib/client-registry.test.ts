@@ -711,10 +711,10 @@ describe("ClientRegistry", () => {
       expect(rec.mode).to.equal(MODE_MANUAL);
     });
 
-    it("warns when 'manual' is set but manualUrl is empty", async () => {
+    it("names an empty manualUrl on debug — never warn, the URL may simply come next (Z1)", async () => {
       await registry.handleModeWrite(rec.id, MODE_MANUAL);
-      const warn = store.logs.find(l => l.level === "warn" && l.msg.includes("manualUrl is empty"));
-      expect(warn).to.not.be.undefined;
+      expect(store.logs.some(l => l.level === "debug" && l.msg.includes("manualUrl is empty"))).to.be.true;
+      expect(store.logs.some(l => l.level === "warn")).to.be.false;
     });
 
     it("accepts a safe URL string", async () => {
@@ -761,6 +761,7 @@ describe("ClientRegistry", () => {
 
     it("no-op when id is unknown", async () => {
       await registry.handleModeWrite("xxxxxx", "http://ok/");
+      expect(store.states.has("hassemu.0.clients.xxxxxx.mode")).to.be.false;
     });
   });
 
@@ -791,12 +792,14 @@ describe("ClientRegistry", () => {
       rec.mode = MODE_MANUAL;
       rec.manualUrl = "http://x/";
       await registry.handleManualUrlWrite(rec.id, "");
-      const warn = store.logs.find(l => l.level === "warn" && l.msg.includes("manualUrl cleared"));
-      expect(warn).to.not.be.undefined;
+      // debug, never warn: clearing the URL before switching the mode is a normal order (N8).
+      expect(store.logs.some(l => l.level === "debug" && l.msg.includes("manualUrl cleared"))).to.be.true;
+      expect(store.logs.some(l => l.level === "warn")).to.be.false;
     });
 
     it("no-op when id is unknown", async () => {
       await registry.handleManualUrlWrite("xxxxxx", "http://ok/");
+      expect(store.states.has("hassemu.0.clients.xxxxxx.manualUrl")).to.be.false;
     });
   });
 
@@ -846,6 +849,8 @@ describe("ClientRegistry", () => {
 
     it("is a no-op with no clients", async () => {
       await registry.bulkSetMode(MODE_GLOBAL);
+      expect(store.logs.some(l => l.msg.includes("bulkSetMode applied"))).to.be.false;
+      expect(store.states.size).to.equal(0);
     });
   });
 
@@ -890,7 +895,11 @@ describe("ClientRegistry", () => {
     });
 
     it("no-op when id is unknown", async () => {
+      // A foreign object under the same id is not the registry's to delete.
+      store.objects.set("hassemu.0.clients.xxxxxx", { type: "device", native: {} });
       await registry.remove("xxxxxx");
+      expect(store.objects.has("hassemu.0.clients.xxxxxx")).to.be.true;
+      expect(store.logs.some(l => l.msg.includes("forgotten"))).to.be.false;
     });
   });
 
@@ -934,6 +943,8 @@ describe("ClientRegistry", () => {
 
     it("is a no-op when there are no clients", async () => {
       await registry.syncUrlDropdown({ "http://a/": "A" });
+      expect(store.writes).to.have.length(0);
+      expect(store.objects.size).to.equal(0);
     });
 
     it("drops a stale URL key in ONE full write — never an extendObject that would merge it back (T1)", async () => {
@@ -2137,13 +2148,17 @@ describe("ClientRegistry transient records own nothing (audit 2026-09-15 — B3,
     expect(rec.persistent).to.be.true;
   });
 
-  it("a transient id never collides with a live display (B3)", async () => {
+  it("a transient id never collides with a live display — through the throttled path (B3, T3)", async () => {
     const built = createMockAdapter();
     const reg = new ClientRegistry(built.adapter as never);
-    const live = await reg.identifyOrCreate(null, "10.0.0.1");
-    // Force the generator to offer the live id first, then a free one — the transient
-    // path must skip the taken id exactly like createClient does.
-    const priv = reg as unknown as { freshClientId: () => string };
+    const live = await reg.identifyOrCreate(null, "10.0.0.2");
+    // Exhaust the per-IP throttle of 10.0.0.1 — the next cookieless request is transient.
+    for (let i = 0; i < NEW_CLIENT_THROTTLE_PER_HOUR; i++) {
+      await reg.identifyOrCreate(null, "10.0.0.1", { userAgent: `UA-${i}` });
+    }
+    // The generator offers the live display's id first: the TRANSIENT path must skip it
+    // exactly like createClient does. Driven through identifyOrCreate, not the helper — a
+    // transient path that called generateClientId() directly stayed green before.
     const offered = [live.id, "fresh1"];
     const generator = vi.spyOn(network, "generateClientId").mockImplementation(() => {
       const next = offered.shift();
@@ -2153,9 +2168,24 @@ describe("ClientRegistry transient records own nothing (audit 2026-09-15 — B3,
       return next;
     });
     try {
-      expect(priv.freshClientId()).to.equal("fresh1");
+      const transient = await reg.identifyOrCreate(null, "10.0.0.1", { userAgent: "UA-extra" });
+      expect(transient.persistent).to.be.false;
+      expect(transient.id).to.equal("fresh1");
     } finally {
       generator.mockRestore();
     }
+  });
+
+  it("a display whose objects could not be written leaves no record behind (L6)", async () => {
+    const built = createMockAdapter();
+    built.adapter.setObjectNotExistsAsync = () => Promise.reject(new Error("objects db hiccup"));
+    const reg = new ClientRegistry(built.adapter as never);
+
+    for (let i = 0; i < 3; i++) {
+      await reg.identifyOrCreate(null, "10.0.0.1", { userAgent: `UA-${i}` }).catch(() => undefined);
+    }
+
+    // Before: three ghosts in the lookup maps, no object behind any of them.
+    expect(reg.listAll()).to.have.length(0);
   });
 });

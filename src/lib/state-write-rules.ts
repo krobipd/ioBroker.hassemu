@@ -101,24 +101,22 @@ export function parseModeWrite(rawValue: unknown, allowedSentinels: readonly str
 }
 
 /**
- * v1.25.0 (J1): pure decision-helper für `gcStaleClients` (main.ts).
- * Drei Outcomes:
- *  - `'seed'` — kein lastSeen vorhanden, Timestamp setzen, GC wartet einen Cycle
- *  - `'stale'` — lastSeen älter als TTL → entfernen
- *  - `'keep'` — lastSeen neu genug → keep
+ * v1.25.0 (J1): pure decision helper for `gcStaleClients` (main.ts). Three outcomes:
+ *  - `'seed'` — no lastSeen yet: stamp it, the GC waits one cycle
+ *  - `'stale'` — lastSeen more than the TTL behind the reference → remove
+ *  - `'keep'` — recent enough
  *
- * Vorher war diese Logik inline in main.ts → nicht direkt unit-testbar.
- *
- * @param lastSeen Untyped value (kommt aus broker `native.lastSeen`).
- * @param now      Aktuelle Zeit in ms.
- * @param ttlMs    Stale-TTL in ms.
+ * @param lastSeen  Untyped value (the broker's `native.lastSeen`).
+ * @param reference The time the age is measured against: the most recently seen display, not
+ *   the clock — while the adapter was off nobody could be seen (audit 2026-09-25, L3).
+ * @param ttlMs     Stale TTL in ms.
  */
-export function decideGcAction(lastSeen: unknown, now: number, ttlMs: number): "seed" | "stale" | "keep" {
+export function decideGcAction(lastSeen: unknown, reference: number, ttlMs: number): "seed" | "stale" | "keep" {
   const ls = typeof lastSeen === "number" && Number.isFinite(lastSeen) ? lastSeen : 0;
   if (ls === 0) {
     return "seed";
   }
-  if (now - ls > ttlMs) {
+  if (reference - ls > ttlMs) {
     return "stale";
   }
   return "keep";

@@ -22,20 +22,28 @@ interface Store {
   objects: Map<string, ObjEntry>;
   states: Map<string, { val: unknown; ack: boolean }>;
   logs: { level: string; msg: string }[];
+  /** Every id a delObject or delState actually removed something for. */
   deleted: string[];
   /** Enum objects (`enum.rooms.x` → members) and every `extendForeignObject` on them. */
   enums: Map<string, string[]>;
   enumWrites: { id: string; members: string[] }[];
+  /**
+   * The adapter's cached `this.enums` (js-controller 7.2.2): taken by {@link freezeEnumCache},
+   * i.e. when the adapter started — a later write does not reach it.
+   */
+  enumCache: Map<string, string[]> | null;
 }
 
 /**
- * Minimal broker stub — objects, states, a log and a record of what was deleted. Small on
- * purpose: these functions touch four APIs, and a bigger stub would hide which one a test
- * actually exercises.
+ * Minimal broker stub — objects, states, enums, a log and a record of what was removed.
+ * Faithful where the migrations depend on it (js-controller 7.2.2): `delObject` on a
+ * missing object deletes nothing (not even a value stored without one); on an existing
+ * one it takes the value of a state object and strikes the id from every enum — writing
+ * each enum back from the CACHED list (`removeIdFromAllEnums`).
  *
  * @param namespace Adapter namespace.
  */
-function createStub(namespace = "hassemu.0"): { store: Store; adapter: MigrationAdapter } {
+function createStub(namespace = "hassemu.0"): { store: Store; adapter: MigrationAdapter; freezeEnumCache: () => void } {
   const store: Store = {
     objects: new Map(),
     states: new Map(),
@@ -43,6 +51,10 @@ function createStub(namespace = "hassemu.0"): { store: Store; adapter: Migration
     deleted: [],
     enums: new Map(),
     enumWrites: [],
+    enumCache: null,
+  };
+  const freezeEnumCache = (): void => {
+    store.enumCache = new Map([...store.enums].map(([id, members]) => [id, [...members]]));
   };
   const adapter = {
     namespace,
@@ -55,6 +67,10 @@ function createStub(namespace = "hassemu.0"): { store: Store; adapter: Migration
     },
     // Copies, like the broker: only a write reaches the store.
     getForeignObjectAsync: (id: string): Promise<ObjEntry | null> => {
+      const members = store.enums.get(id);
+      if (members) {
+        return Promise.resolve({ type: "enum", common: { members: [...members] } });
+      }
       const obj = store.objects.get(id);
       return Promise.resolve(obj ? structuredClone(obj) : null);
     },
@@ -77,15 +93,30 @@ function createStub(namespace = "hassemu.0"): { store: Store; adapter: Migration
       return Promise.resolve();
     },
     delObjectAsync: (id: string) => {
+      const fullId = `${namespace}.${id}`;
+      const obj = store.objects.get(fullId);
+      if (!obj) {
+        return Promise.resolve(); // 7.2.2: a missing object deletes nothing
+      }
       store.deleted.push(id);
-      store.objects.delete(`${namespace}.${id}`);
-      // Like js-controller-adapter 7.2.2 (`removeIdFromAllEnums`): the deleted id leaves
-      // every enum — whatever was not carried over before this point is gone.
-      for (const [enumId, members] of store.enums) {
-        store.enums.set(
-          enumId,
-          members.filter(m => m !== `${namespace}.${id}`),
-        );
+      store.objects.delete(fullId);
+      if (obj.type === "state") {
+        store.states.delete(fullId);
+      }
+      // removeIdFromAllEnums: every enum that carries the id is written back from the CACHE.
+      for (const [enumId, members] of store.enumCache ?? store.enums) {
+        if (members.includes(fullId)) {
+          store.enums.set(
+            enumId,
+            members.filter(m => m !== fullId),
+          );
+        }
+      }
+      return Promise.resolve();
+    },
+    delStateAsync: (id: string) => {
+      if (store.states.delete(`${namespace}.${id}`)) {
+        store.deleted.push(id);
       }
       return Promise.resolve();
     },
@@ -103,7 +134,7 @@ function createStub(namespace = "hassemu.0"): { store: Store; adapter: Migration
       return Promise.resolve();
     },
   };
-  return { store, adapter: adapter as unknown as MigrationAdapter };
+  return { store, adapter: adapter as unknown as MigrationAdapter, freezeEnumCache };
 }
 
 describe("cleanupLegacyNativeUrl", () => {
@@ -239,6 +270,9 @@ describe("migrateVisUrlToMode", () => {
     const { store, adapter } = createStub();
     const { config } = fakeGlobal();
     const record = { id: "abc123", mode: "", manualUrl: null as string | null };
+    // A 1.x installation: the legacy datapoint has its object and its value.
+    store.objects.set("hassemu.0.clients.abc123.visUrl", { type: "state", common: {}, native: {} });
+    store.states.set("hassemu.0.clients.abc123.visUrl", { val: "http://old.local/", ack: true });
 
     await migrateVisUrlToMode(adapter, config, fakeRegistry({ abc123: "http://old.local/" }, [record]));
 
@@ -252,6 +286,9 @@ describe("migrateVisUrlToMode", () => {
     const { store, adapter } = createStub();
     const { config } = fakeGlobal();
     const record = { id: "abc123", mode: "", manualUrl: null as string | null };
+    // A 1.x installation: the legacy datapoint has its object and its value.
+    store.objects.set("hassemu.0.clients.abc123.visUrl", { type: "state", common: {}, native: {} });
+    store.states.set("hassemu.0.clients.abc123.visUrl", { val: "http://old.local/", ack: true });
 
     await migrateVisUrlToMode(adapter, config, fakeRegistry({ abc123: "javascript:alert(1)" }, [record]));
 
@@ -325,12 +362,49 @@ describe("migrateVisUrlToMode", () => {
     const { store, adapter } = createStub();
     const { config } = fakeGlobal();
     const record = { id: "abc123", mode: "", manualUrl: null as string | null };
+    // A 1.x installation: the legacy datapoint has its object and its value.
+    store.objects.set("hassemu.0.clients.abc123.visUrl", { type: "state", common: {}, native: {} });
+    store.states.set("hassemu.0.clients.abc123.visUrl", { val: "http://old.local/", ack: true });
     store.enums.set("enum.functions.displays", ["hassemu.0.clients.abc123.visUrl"]);
 
     await migrateVisUrlToMode(adapter, config, fakeRegistry({ abc123: "http://old.local/" }, [record]));
 
     expect(store.deleted).to.include("clients.abc123.visUrl");
     expect(store.enums.get("enum.functions.displays")).to.deep.equal(["hassemu.0.clients.abc123.manualUrl"]);
+  });
+
+  it("the successor survives the delete writing the CACHED enum back (L5)", async () => {
+    // js-controller 7.2.2 strikes the old id from its cached this.enums and writes that list
+    // back: a successor written BEFORE the delete was overwritten.
+    const { store, adapter, freezeEnumCache } = createStub();
+    const { config } = fakeGlobal();
+    store.objects.set("hassemu.0.global.visUrl", { type: "state", common: {}, native: {} });
+    store.states.set("hassemu.0.global.visUrl", { val: "http://old.global/", ack: true });
+    store.enums.set("enum.rooms.living", ["hue.0.light", "hassemu.0.global.visUrl", "sonos.0.play"]);
+    freezeEnumCache();
+
+    await migrateVisUrlToMode(adapter, config, fakeRegistry({}, []));
+
+    expect(store.enums.get("enum.rooms.living")).to.deep.equal([
+      "hue.0.light",
+      "hassemu.0.global.manualUrl",
+      "sonos.0.play",
+    ]);
+  });
+
+  it("removes an object-less global.visUrl value — the migration runs once, not on every start (L2, N6)", async () => {
+    // What ≤1.45.0 left on a 1.0/1.1 upgrade: setState on an id without an object stores the
+    // value anyway, and delObject never removed it — so this migrated again on every start
+    // and reset whatever the user had chosen meanwhile.
+    const { store, adapter } = createStub();
+    const { calls, config } = fakeGlobal();
+    store.states.set("hassemu.0.global.visUrl", { val: "http://old.global/", ack: true });
+
+    await migrateVisUrlToMode(adapter, config, fakeRegistry({}, []));
+    await migrateVisUrlToMode(adapter, config, fakeRegistry({}, []));
+
+    expect(store.states.has("hassemu.0.global.visUrl")).to.equal(false);
+    expect(calls).to.have.length(1);
   });
 
   it("touches no enum when the legacy datapoint was assigned nowhere (v1.45.0)", async () => {

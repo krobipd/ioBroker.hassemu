@@ -269,10 +269,10 @@ describe("GlobalConfig", () => {
       expect(modeVal()).to.equal(MODE_MANUAL);
     });
 
-    it("warns when 'manual' is set but global.manualUrl is empty", async () => {
+    it("names an empty global.manualUrl on debug — never warn, the URL may simply come next (Z1)", async () => {
       await g.handleModeWrite(MODE_MANUAL);
-      const warn = store.logs.find(l => l.level === "warn" && l.msg.includes("manualUrl is empty"));
-      expect(warn).to.not.be.undefined;
+      expect(store.logs.some(l => l.level === "debug" && l.msg.includes("manualUrl is empty"))).to.be.true;
+      expect(store.logs.some(l => l.level === "warn")).to.be.false;
     });
 
     it("rejects 'global' (self-referential)", async () => {
@@ -365,8 +365,9 @@ describe("GlobalConfig", () => {
       await g.handleModeWrite(MODE_MANUAL);
       store.logs.length = 0;
       await g.handleManualUrlWrite("");
-      const warn = store.logs.find(l => l.level === "warn" && l.msg.includes("manualUrl cleared"));
-      expect(warn).to.not.be.undefined;
+      // debug, never warn: clearing the URL before switching the mode is a normal order (N8).
+      expect(store.logs.some(l => l.level === "debug" && l.msg.includes("manualUrl cleared"))).to.be.true;
+      expect(store.logs.some(l => l.level === "warn")).to.be.false;
     });
   });
 

@@ -10,14 +10,15 @@ import type { AdapterConfig } from "./types";
 /**
  * The adapter surface the one-shot legacy migrations need. Extracted from main.ts
  * (I10 v1.37.0) so the data-loss-sensitive upgrade paths are unit-testable in
- * isolation instead of only through the full onReady harness. Behaviour is
- * unchanged — these are still called once from onReady.
+ * isolation instead of only through the full onReady harness.
  *
  * These migrations exist only for pre-1.2.0 installs where the legacy `visUrl`
- * still lives in instance-native / legacy states. They run once, are idempotent
- * (cheap no-op on already-migrated installs), and are removable in a future major
- * once such upgrades are no longer plausible — until then dropping them would
- * silently lose those users' configured URLs.
+ * still lives in instance-native / legacy states. They run once and do nothing on an
+ * already-migrated install — which holds only because every legacy state they read is
+ * REMOVED after the move, including one without an object (audit 2026-09-25, L2: an
+ * object-less `global.visUrl` reset the global URL choice on every start). Removable in a
+ * future major once such upgrades are no longer plausible — until then dropping them
+ * would silently lose those users' configured URLs.
  */
 export type MigrationAdapter = Pick<
   ioBroker.Adapter,
@@ -28,9 +29,32 @@ export type MigrationAdapter = Pick<
   | "getStateAsync"
   | "setState"
   | "delObjectAsync"
+  | "delStateAsync"
   | "getEnumsAsync"
   | "extendForeignObject"
 >;
+
+/**
+ * Remove a legacy datapoint for good. `delObject` removes a value only together with its
+ * object (js-controller 7.2.2 `_delForeignObject`: a missing object deletes nothing), and a
+ * `setState` on an id without an object only warns and stores the value anyway
+ * (`performStrictObjectCheck`) — so a legacy value can exist WITHOUT an object, and only
+ * `delState` gets rid of it (audit 2026-09-25, L2 and N12). Best effort: the next start retries.
+ *
+ * @param adapter Adapter surface for object/state I/O.
+ * @param id      The id relative to the adapter namespace.
+ */
+async function deleteLegacyDatapoint(adapter: MigrationAdapter, id: string): Promise<void> {
+  try {
+    if (await adapter.getForeignObjectAsync(`${adapter.namespace}.${id}`)) {
+      await adapter.delObjectAsync(id);
+    } else {
+      await adapter.delStateAsync(id);
+    }
+  } catch {
+    /* best effort — the next start retries */
+  }
+}
 
 /**
  * Drops the legacy `defaultVisUrl`/`visUrl` keys from the instance native config.
@@ -77,32 +101,27 @@ export async function cleanupLegacyNativeUrl(adapter: MigrationAdapter): Promise
 }
 
 /**
- * 1.0.x / 1.1.0 → 1.1.1 migration — move the legacy `defaultVisUrl` from instance
- * native into `global.visUrl` (+ `global.enabled=true`) and drop it from native.
- * The follow-up {@link migrateVisUrlToMode} then moves `global.visUrl` into the
- * mode/manualUrl model.
+ * 1.0.x / 1.1.0 migration — move the legacy `defaultVisUrl`/`visUrl` from instance native
+ * straight into `global.mode = manual` + `global.manualUrl`, switch the master switch on
+ * (as 1.1.1 did, so new displays follow it) and drop the keys from native.
  *
  * @param adapter      Adapter surface for state/object I/O + logging.
  * @param config       Instance config (read for the legacy `defaultVisUrl`/`visUrl`).
- * @param globalConfig Global config collaborator, or null if not yet constructed.
+ * @param globalConfig Global config collaborator (constructed and restored before this runs).
  * @returns true when the instance object was rewritten and a restart is coming — the
  *   caller must abort the start (see {@link cleanupLegacyNativeUrl}).
  */
 export async function migrateLegacyDefaultVisUrl(
   adapter: MigrationAdapter,
   config: AdapterConfig,
-  globalConfig: GlobalConfig | null,
+  globalConfig: GlobalConfig,
 ): Promise<boolean> {
   const legacy = config as AdapterConfig & { defaultVisUrl?: string; visUrl?: string };
   const url = legacy.defaultVisUrl || legacy.visUrl;
   if (!url) {
     return false;
   }
-  // Defensive: validiere die legacy-URL bevor wir sie nach `global.visUrl`
-  // schreiben. Malicious-Werte (`javascript:`, `data:`) sollen nicht durch
-  // die Migration durchrutschen — `migrateVisUrlToMode` validiert zwar
-  // nochmal, aber zwischen den Migrations-Schritten würde unsafe-Wert
-  // sichtbar sein, und die native-Cleanup ist unbedingt.
+  // An unsafe legacy value (`javascript:`, `data:`) never reaches a datapoint.
   const safe = coerceSafeUrl(url);
   if (!safe) {
     adapter.log.warn(`Migration: legacy global URL rejected as unsafe — please set global.manualUrl manually`);
@@ -110,34 +129,17 @@ export async function migrateLegacyDefaultVisUrl(
   }
 
   adapter.log.info(`Migrating legacy URL configuration to the new model`);
-  // We cannot call globalConfig.handleVisUrlWrite — that method is gone in
-  // v1.2.0. Write the legacy state directly so migrateVisUrlToMode picks it up.
-  // Wichtig: wenn der State-Write FEHLSCHLÄGT (z.B. weil global.visUrl-Object
-  // in v1.2.0+ schon weg ist), dürfen wir die native-Werte NICHT löschen —
-  // sonst ist die User-URL silent verloren. Stattdessen direkt nach
-  // global.mode/manualUrl schreiben (das Ziel wo migrateVisUrlToMode
-  // sie sonst hingeschrieben hätte).
-  let stateWritten = false;
   try {
-    await adapter.setState("global.visUrl", { val: safe, ack: true });
-    stateWritten = true;
-  } catch {
-    // global.visUrl-Object existiert nicht mehr → direkt ins Ziel schreiben
-    try {
-      if (globalConfig) {
-        await globalConfig.migrationSet(MODE_MANUAL, safe);
-        // Tech-Internal-Pfad: shortcut wenn global.visUrl-state fehlt — debug-only.
-        adapter.log.debug(`Migration shortcut: global.visUrl-state missing — wrote directly to manualUrl=${safe}`);
-        stateWritten = true;
-      }
-    } catch (err) {
-      adapter.log.debug(`Legacy URL migration fallback failed: ${errText(err)}`);
-    }
-  }
-
-  if (!stateWritten) {
-    // Both paths failed — keep native values as a recovery anchor for the user.
-    adapter.log.warn(`Legacy URL preserved in instance config — neither global URL write succeeded`);
+    // Straight into the target, like 1.1.1: the global URL, and the master switch on so new
+    // displays follow it (without bulkSetMode — existing displays keep their mode). The
+    // detour through a `global.visUrl` state wrote a value without an object (the object is
+    // gone since 1.2.0) that delObject can never remove, and migrateVisUrlToMode then reset
+    // global.mode on every single start (audit 2026-09-25, L2).
+    await globalConfig.migrationSet(MODE_MANUAL, safe);
+    await globalConfig.handleEnabledWrite(true);
+  } catch (err) {
+    // The instance settings stay the recovery anchor — the user's URL must not be lost.
+    adapter.log.warn(`Legacy URL preserved in instance config — writing global.manualUrl failed (${errText(err)})`);
     return false;
   }
 
@@ -186,14 +188,15 @@ export async function migrateVisUrlToMode(
   // already-migrated install `decision` is "empty" and this delObject round-trip
   // (per start) was a wasted no-op.
   if (globalMigrated && globalHadLegacy) {
-    // The delete strikes the id from every room/function enum — move the memberships to
-    // the successor first (v1.45.0).
-    await carryEnumMembership(adapter, `${adapter.namespace}.global.visUrl`, `${adapter.namespace}.global.manualUrl`);
-    try {
-      await adapter.delObjectAsync("global.visUrl");
-    } catch {
-      /* didn't exist */
-    }
+    // The delete strikes the id from every room/function enum — the memberships move to the
+    // successor around it (v1.45.0; order: enum-membership.ts). The delete also takes a value
+    // without an object, or this would migrate again on every start (L2).
+    await carryEnumMembership(
+      adapter,
+      `${adapter.namespace}.global.visUrl`,
+      `${adapter.namespace}.global.manualUrl`,
+      () => deleteLegacyDatapoint(adapter, "global.visUrl"),
+    );
   }
 
   // 2) Per-client visUrl → mode='manual' + manualUrl
@@ -241,12 +244,8 @@ export async function migrateVisUrlToMode(
           adapter,
           `${adapter.namespace}.clients.${id}.visUrl`,
           `${adapter.namespace}.clients.${id}.manualUrl`,
+          () => deleteLegacyDatapoint(adapter, `clients.${id}.visUrl`),
         );
-        try {
-          await adapter.delObjectAsync(`clients.${id}.visUrl`);
-        } catch {
-          /* didn't exist */
-        }
       }
     }),
   );

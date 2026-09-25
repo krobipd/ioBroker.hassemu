@@ -607,7 +607,10 @@ export class ClientRegistry {
         return;
       case "sentinel":
         if (result.value === MODE_MANUAL && !record.manualUrl) {
-          this.adapter.log.warn(
+          // debug, not warn: writing the mode before the URL is a normal order (a script, two
+          // clicks); the landing page and clients.<id>.resolvedUrl show the outcome
+          // (audit 2026-09-25, Z1).
+          this.adapter.log.debug(
             `Client ${id}: mode set to "manual" but manualUrl is empty — fill clients.${id}.manualUrl to redirect`,
           );
         }
@@ -658,7 +661,10 @@ export class ClientRegistry {
     await this.adapter.setState(`clients.${id}.manualUrl`, { val: result.safe ?? "", ack: true });
     this.adapter.log.debug(`Client ${id}: manualUrl → ${result.safe ?? "cleared"}`);
     if (record.mode === MODE_MANUAL && !result.safe) {
-      this.adapter.log.warn(`Client ${id}: manualUrl cleared while mode is "manual" — display will see the setup page`);
+      // debug, not warn: clearing the URL before switching the mode is a normal order (N8).
+      this.adapter.log.debug(
+        `Client ${id}: manualUrl cleared while mode is "manual" — display will see the setup page`,
+      );
     }
   }
 
@@ -703,19 +709,7 @@ export class ClientRegistry {
     if (!record) {
       return;
     }
-    this.byId.delete(id);
-    this.byCookie.delete(record.cookie);
-    if (record.token) {
-      this.byToken.delete(record.token);
-    }
-    if (record.refreshToken) {
-      this.byRefreshToken.delete(record.refreshToken);
-    }
-    // v1.8.1 (D2): lastSeenFlushedAt war früher nicht aufgeräumt — bei
-    // ID-Reuse (16M-Space, möglich nach 100+ Clients über Jahre) hätte
-    // die alte Throttle-Entry den ersten lastSeen-Write des neuen Clients
-    // inhibiert. Plus minimal Memory-Leak.
-    this.lastSeenFlushedAt.delete(id);
+    this.untrack(record);
     let objectRemoved = true;
     try {
       await this.adapter.delObjectAsync(`clients.${id}`, { recursive: true });
@@ -776,6 +770,25 @@ export class ClientRegistry {
 
   // --- internal ---
 
+  /**
+   * Drop a record from every lookup map — the inverse of {@link trackInMemory}.
+   *
+   * @param record The record to forget in memory.
+   */
+  private untrack(record: ClientRecord): void {
+    this.byId.delete(record.id);
+    this.byCookie.delete(record.cookie);
+    if (record.token) {
+      this.byToken.delete(record.token);
+    }
+    if (record.refreshToken) {
+      this.byRefreshToken.delete(record.refreshToken);
+    }
+    // v1.8.1 (D2): the lastSeen throttle entry goes too — on an id reuse (16M space, possible
+    // after years) it would suppress the new display's first lastSeen write; plus a small leak.
+    this.lastSeenFlushedAt.delete(record.id);
+  }
+
   private trackInMemory(record: ClientRecord): void {
     this.byId.set(record.id, record);
     this.byCookie.set(record.cookie, record);
@@ -803,8 +816,18 @@ export class ClientRegistry {
   private async createClient(ip: string | null, hostname: string | null): Promise<ClientRecord> {
     const record = this.buildRecord(this.freshClientId(), ip, hostname, true);
     const { id } = record;
+    // Tracked BEFORE the objects are written: freshClientId() checks byId, so a second
+    // display arriving meanwhile cannot draw the same id.
     this.trackInMemory(record);
-    await this.createObjects(record);
+    try {
+      await this.createObjects(record);
+    } catch (err) {
+      // A display whose objects could not be written must not stay in the lookup maps: it
+      // would answer byId/byCookie with no object behind it, grow the maps with every retry,
+      // and neither throttle would count it (audit 2026-09-25, L6).
+      this.untrack(record);
+      throw err;
+    }
     this.touchLastSeen(record);
     this.adapter.log.info(
       ip ? `New client connected: ${id} (${oneLine(hostname ?? ip)})` : `New client connected: ${id}`,

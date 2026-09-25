@@ -53,6 +53,12 @@ export class HassEmu extends utils.Adapter {
   private registry: ClientRegistry | null = null;
   private globalConfig: GlobalConfig | null = null;
   private urlDiscovery: UrlDiscovery | null = null;
+  /**
+   * Set first thing in `onUnload`. js-controller 7.2.2 marks the adapter ready right after
+   * emitting `ready` (adapter.ts 11801/11805), so a stop can arrive while `onReady` is still
+   * running — the start checks this flag before it binds anything else (audit 2026-09-25, L4).
+   */
+  private unloading = false;
 
   // Factory seams — production builds the real collaborators; the orchestration
   // unit tests (src/main.test.ts) override these fields with fakes so onReady &
@@ -139,19 +145,9 @@ export class HassEmu extends utils.Adapter {
         return;
       }
 
-      // v1.14.0 (H7): defensive bei onReady-Re-Run ohne unload (sollte nicht
-      // passieren, aber js-controller-Edge-Cases). Vorhandene Refs sauber
-      // entsorgen, sonst orphaned Server + Listeners.
-      if (this.webServer) {
-        await this.webServer.stop().catch(() => {});
-        this.webServer = null;
-      }
-      if (this.mdnsService) {
-        await this.mdnsService.stop();
-        this.mdnsService = null;
-      }
-      this.urlDiscovery?.cancelRefresh();
-      this.urlDiscovery = null;
+      // v1.14.0 (H7): a second onReady without an unload in between (a js-controller edge
+      // case) must not orphan a server or its listeners from the first run.
+      await this.stopStartedServices();
 
       await I18n.init(join(this.adapterDir, "admin"), this);
 
@@ -201,13 +197,19 @@ export class HassEmu extends utils.Adapter {
       // wasted delObject round-trip once it's gone. The room/function assignments
       // travel to the new id first — the delete would strike them (v1.45.0).
       if (await this.getObjectAsync("info.refresh_urls")) {
-        await carryEnumMembership(this, `${this.namespace}.info.refresh_urls`, `${this.namespace}.info.refreshUrls`);
-        await this.delObjectAsync("info.refresh_urls").catch(() => {
-          /* raced with another delete — already gone */
-        });
+        await carryEnumMembership(
+          this,
+          `${this.namespace}.info.refresh_urls`,
+          `${this.namespace}.info.refreshUrls`,
+          () =>
+            this.delObjectAsync("info.refresh_urls").catch(() => {
+              /* raced with another delete — already gone */
+            }),
+        );
       }
 
-      // Garbage-collect stale clients (no token + lastSeen older than 30 days).
+      // Garbage-collect stale displays: lastSeen more than 30 days behind the most recently
+      // seen display — tokens do not matter (design decision 14).
       await this.gcStaleClients();
 
       // HA-Server-UUID stabil über Restarts halten — sonst behandeln HA-Clients
@@ -230,25 +232,40 @@ export class HassEmu extends utils.Adapter {
       // der nicht den Resolver-Output für neue Clients widerspiegelt.
       this.registry.setNewClientModeProvider(() => this.computeNewClientMode());
       await this.urlDiscovery.collect();
+      // A stop arrived during the start (see `unloading`). Nothing is bound yet.
+      if (this.unloading) {
+        return;
+      }
 
+      // Kept in a local: onUnload nulls the field, and the check below must still reach
+      // the server that is opening its listener right now (audit 2026-09-25, N7).
+      let webServer: WebServer;
       try {
-        this.webServer = this.makeWebServer(instanceUuid);
-        await this.webServer.start();
+        webServer = this.makeWebServer(instanceUuid);
+        this.webServer = webServer;
+        await webServer.start();
       } catch (err) {
         // webServer.start() already logged a friendly, actionable error (EADDRINUSE /
         // generic startup) at error level, so keep only a debug echo of the raw error
         // here — otherwise the same failure prints two error lines. I5 (v1.38.0).
         this.log.debug(`Web server failed to start: ${errText(err)}`);
-        // v1.10.0 (B4): nicht stumm zurückkehren — der Adapter wäre sonst
-        // zombie (info.connection=false, kein Server, keine Subscriptions,
-        // kein Restart-Signal an js-controller). terminate() signalisiert
-        // explizit Failure mit code 11 → js-controller restartet nach
-        // Backoff. Bei EADDRINUSE (Port belegt) ist das die einzig sinnvolle
-        // Reaktion: warten + retry, statt unsichtbar idle zu sitzen.
-        // v1.13.0 (H6): subscriptions waren noch nicht angelegt (jetzt nach
-        // diesem Block) — daher kein cleanup nötig. Falls ein Refactor
-        // subscriptions VORZIEHT: hier explizit unsubscribe.
-        this.terminate(11);
+        if (this.unloading) {
+          return;
+        }
+        // v1.10.0 (B4): never sit idle as a zombie (no server, no subscriptions). The exit
+        // code matters: 11 (ADAPTER_REQUESTED_TERMINATION) means "do not restart" to
+        // js-controller 7.2.2 (controller main.ts 4231/4305) — the instance stayed off until
+        // someone started it by hand. UNCAUGHT_EXCEPTION restarts after 30 s and stops with a
+        // restart-loop notice after three failures in ten minutes, so a port that is briefly
+        // in use heals itself (audit 2026-09-25, L1). Subscriptions come after this block, so
+        // there is nothing to undo here.
+        this.terminate("Web server failed to start", utils.EXIT_CODES.UNCAUGHT_EXCEPTION);
+        return;
+      }
+      // The stop came while the listener was opening: onUnload closed a server that was not
+      // listening yet — close it again.
+      if (this.unloading) {
+        await webServer.stop().catch(() => {});
         return;
       }
 
@@ -280,6 +297,11 @@ export class HassEmu extends utils.Adapter {
         this.log.debug("mDNS disabled — clients must enter the URL manually.");
       }
 
+      // The stop came while subscribing and announcing: take back what started after it.
+      if (this.unloading) {
+        await this.stopStartedServices();
+        return;
+      }
       await this.setState("info.connection", { val: true, ack: true });
       const bindAddr = this.config.bind || "0.0.0.0";
       // "started" (not "active"): isActive() is read synchronously right after start(),
@@ -288,14 +310,37 @@ export class HassEmu extends utils.Adapter {
       const mdnsSuffix = this.config.mdnsEnabled ? (mdnsActive ? ", mDNS started" : ", mDNS FAILED") : "";
       this.log.info(`HA emulation running on ${bindAddr}:${this.config.port}${mdnsSuffix}`);
     } catch (err: unknown) {
-      // M2: don't sit idle as a zombie (info.connection=false, server maybe up but
-      // no state subscriptions, no restart signal) if any onReady step other than
-      // webServer.start() throws. Mirror the B4 server-start-fail path: stop a
-      // partially-started server and terminate so js-controller restarts with backoff.
+      // M2: never sit idle as a zombie when any other step fails. A failed start must not keep
+      // the port or the mDNS announcement either — in compact mode the process lives on
+      // (audit 2026-09-25, L7).
+      await this.stopStartedServices();
+      // A stop during the start nulls the collaborators, so the start then fails as a
+      // CONSEQUENCE of the stop — no error line and no crash code for an ordinary shutdown
+      // (audit 2026-09-25, N3).
+      if (this.unloading) {
+        this.log.debug(`Start abandoned during shutdown: ${errText(err)}`);
+        return;
+      }
       this.log.error(`onReady failed: ${errText(err)}`);
-      await this.webServer?.stop().catch(() => {});
-      this.terminate(11);
+      // UNCAUGHT_EXCEPTION, not 11: see the web-server branch above (L1).
+      this.terminate("onReady failed", utils.EXIT_CODES.UNCAUGHT_EXCEPTION);
     }
+  }
+
+  /**
+   * Stop whatever this start (or an earlier one) brought up: URL discovery, web server, mDNS.
+   * The fields are cleared first, so a concurrent `onUnload` cannot stop the same object twice.
+   */
+  private async stopStartedServices(): Promise<void> {
+    this.urlDiscovery?.cancelRefresh();
+    this.urlDiscovery = null;
+    const webServer = this.webServer;
+    const mdns = this.mdnsService;
+    this.webServer = null;
+    this.mdnsService = null;
+    // While unloading, adapter-core refuses managed timers — mDNS then sends its goodbye
+    // without the fallback timer.
+    await Promise.allSettled([webServer?.stop(), mdns?.stop(this.unloading)]);
   }
 
   /**
@@ -460,25 +505,27 @@ export class HassEmu extends utils.Adapter {
    * auf state-based persistence migrieren.
    */
   private async getOrCreateServerUuid(): Promise<string> {
-    try {
-      const existing = await this.getStateAsync("info.serverUuid");
-      // L19: reuse the shared coerceUuid instead of an inline copy of the regex.
-      const reused = coerceUuid(existing?.val);
-      if (reused) {
-        this.log.debug(`Server UUID reused from info.serverUuid: ${reused}`);
-        return reused;
-      }
-    } catch {
-      /* state didn't exist yet — fresh install */
+    // A READ ERROR propagates: onReady then ends with a crash code and the host restarts the
+    // instance. Treating it as a fresh install wrote a NEW identity, and every display saw a
+    // new server and onboarded again (design decision 2; audit 2026-09-25, N4). A state that
+    // does not exist yet reads as null — that is the fresh install.
+    const existing = await this.getStateAsync("info.serverUuid");
+    // L19: reuse the shared coerceUuid instead of an inline copy of the regex.
+    const reused = coerceUuid(existing?.val);
+    if (reused) {
+      this.log.debug(`Server UUID reused from info.serverUuid: ${reused}`);
+      return reused;
     }
     const fresh = crypto.randomUUID();
-    await this.setState("info.serverUuid", { val: fresh, ack: true }).catch(err => {
-      // info.serverUuid is an instanceObject — should always exist. Falls
-      // doch nicht: log + fortfahren mit der frischen UUID, sie wird beim
-      // nächsten Start erneut generiert (kein bleibender Schaden).
+    try {
+      await this.setState("info.serverUuid", { val: fresh, ack: true });
+      this.log.info(`Server UUID generated and saved: ${fresh}`);
+    } catch (err) {
+      // info.serverUuid is an instanceObject and should always exist. If the write fails, run
+      // with the fresh UUID; the next start generates one again (no lasting damage) — and the
+      // info line above is not printed, it would claim a save that did not happen (L8).
       this.log.warn(`Could not save server UUID: ${errText(err)}`);
-    });
-    this.log.info(`Server UUID generated and saved: ${fresh}`);
+    }
     return fresh;
   }
 
@@ -532,10 +579,18 @@ export class HassEmu extends utils.Adapter {
    *
    * Reads the stamps the registry restored with the client objects — no second object
    * read per display (audit 2026-09-15, D1).
+   *
+   * The age is measured against the most recently seen display, not the clock: while the
+   * adapter or its host was off, nobody could be seen, and `now` counted that downtime as
+   * absence — one start after 30+ days off removed every display with its settings, room
+   * assignments and tokens (audit 2026-09-25, L3). The most recently seen display is thus
+   * never removed automatically; `remove` is the tool for that. Capped at `now`, so one
+   * stamp from a clock that ran ahead cannot age all the others.
    */
   private async gcStaleClients(): Promise<void> {
     const now = Date.now();
     const records = this.registry?.listAll() ?? [];
+    const newestSeen = Math.min(now, Math.max(0, ...records.map(r => this.registry!.lastSeenOf(r.id) ?? 0)));
     if (records.length > 0) {
       const ttlDays = Math.round(STALE_CLIENT_TTL_MS / (24 * 60 * 60 * 1000));
       this.log.debug(`gcStaleClients: scanning ${records.length} client(s) for staleness (TTL=${ttlDays}d)`);
@@ -548,9 +603,9 @@ export class HassEmu extends utils.Adapter {
     const results: number[] = await Promise.all(
       records.map(async (record): Promise<number> => {
         try {
-          // v1.25.0 (J1): Decision-Logik in pure helper coerce.decideGcAction
-          // (testbar). Hier nur das I/O zum Broker.
-          const action = decideGcAction(this.registry!.lastSeenOf(record.id), now, STALE_CLIENT_TTL_MS);
+          // v1.25.0 (J1): the decision lives in the pure helper decideGcAction
+          // (state-write-rules.ts); only the broker I/O is here.
+          const action = decideGcAction(this.registry!.lastSeenOf(record.id), newestSeen, STALE_CLIENT_TTL_MS);
           if (action === "seed") {
             await this.registry!.seedLastSeen(record.id, now);
             return 0;
@@ -568,7 +623,7 @@ export class HassEmu extends utils.Adapter {
     );
     const removed = results.reduce((acc, n) => acc + n, 0);
     if (removed > 0) {
-      this.log.info(`Removed ${removed} inactive client(s) (idle longer than 30 days)`);
+      this.log.info(`Removed ${removed} inactive client(s) (30 days behind the most recently seen display)`);
     }
   }
 
@@ -611,12 +666,12 @@ export class HassEmu extends utils.Adapter {
       if (clientParsed && registry) {
         if (clientParsed.kind === "mode") {
           await registry.handleModeWrite(clientParsed.id, state.val);
-          // B4: if the user picked 'global' but global resolves to nothing,
-          // give them a one-shot heads-up so the cause of the empty redirect
-          // is obvious without digging through the resolver code.
+          // B4: if the user picked 'global' but global resolves to nothing, name the cause of
+          // the empty redirect. On debug, not warn: picking 'global' before filling the global
+          // URL is a normal order; clients.<id>.resolvedUrl shows the outcome (N8).
           const record = registry.getById(clientParsed.id);
           if (record?.mode === MODE_GLOBAL && globalConfig && resolveRedirect(record, globalConfig.redirect) === null) {
-            this.log.warn(
+            this.log.debug(
               `Client ${record.id}: mode is "global" but global has no resolvable URL — fill global.mode/manualUrl, or pick a different mode`,
             );
           }
@@ -723,9 +778,10 @@ export class HassEmu extends utils.Adapter {
 
   private onUnload(callback: () => void): void {
     try {
-      // v1.13.0 (H10): info.connection=false zuerst, vor jedem cleanup —
-      // wenn ein cleanup-Step throws, bleibt der State mindestens als
-      // false ack'd statt als true hängen.
+      // First: a start that is still running checks this before it binds anything else (L4).
+      this.unloading = true;
+      // v1.13.0 (H10): info.connection=false first, before any cleanup — if a cleanup step
+      // throws, the state still ends up false instead of staying true.
       const pending: Promise<unknown>[] = [this.setState("info.connection", { val: false, ack: true })];
 
       // v1.10.0 (H2): subscriptions explizit lösen bevor Refs nullen.
