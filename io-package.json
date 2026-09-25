@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "hassemu",
-    "version": "1.46.0",
+    "version": "1.46.1",
     "news": {
+      "1.46.1": {
+        "en": "The master switch and the refresh button for the dashboard list now report their result in the log: how many displays changed and how many dashboards were found.",
+        "de": "Hauptschalter und Auffrischen-Knopf der Dashboard-Liste melden ihr Ergebnis jetzt im Log: wie viele Displays umgestellt und wie viele Dashboards gefunden wurden.",
+        "ru": "Главный переключатель и кнопка обновления списка панелей теперь пишут в журнал результат: сколько дисплеев переключено и сколько панелей найдено.",
+        "pt": "O interruptor principal e o botão de atualizar a lista de painéis registam agora o resultado: quantos displays mudaram e quantos painéis foram encontrados.",
+        "nl": "De hoofdschakelaar en de vernieuwknop van de dashboardlijst melden nu hun resultaat in het log: hoeveel displays zijn omgezet en hoeveel dashboards gevonden.",
+        "fr": "L'interrupteur principal et le bouton d'actualisation des tableaux de bord indiquent leur résultat dans le journal : écrans changés et tableaux trouvés.",
+        "it": "L'interruttore principale e il pulsante di aggiornamento delle dashboard riportano ora il risultato nel log: quanti display cambiati e quante dashboard trovate.",
+        "es": "El interruptor principal y el botón de actualizar la lista de paneles informan ahora del resultado en el registro: pantallas cambiadas y paneles encontrados.",
+        "pl": "Główny przełącznik i przycisk odświeżania listy pulpitów podają teraz wynik w logu: ile wyświetlaczy przełączono i ile pulpitów znaleziono.",
+        "uk": "Головний перемикач і кнопка оновлення списку панелей тепер пишуть у журнал результат: скільки дисплеїв перемкнуто і скільки панелей знайдено.",
+        "zh-cn": "主开关和仪表板列表的刷新按钮现在会在日志中报告结果：切换了多少显示器、找到了多少仪表板。"
+      },
       "1.46.0": {
         "en": "A start that fails now restarts by itself after 30 seconds, and displays are no longer removed after a long downtime of the adapter or its host.\nUpdates from 1.0/1.1 keep the global URL, the iOS app no longer hangs on its loader, and Android keeps the dashboard clear of the navigation bar.\nUptime monitors create no display entries, the sign-in asks before handing its code to an unknown address, and mDNS announces a reachable address.",
         "de": "Ein gescheiterter Start startet nach 30 Sekunden von selbst neu, und Displays werden nach einer langen Pause des Adapters oder Hosts nicht mehr entfernt.\nUpdates von 1.0/1.1 behalten die globale URL, die iOS-App hängt nicht mehr beim Laden, und Android hält das Dashboard frei von der Navigationsleiste.\nUptime-Monitore legen keine Displays an, die Anmeldung fragt vor der Code-Übergabe an eine fremde Adresse, und mDNS kündigt eine erreichbare Adresse an.",
@@ -80,19 +93,6 @@
         "pl": "Pozostała po starszych wersjach opcja jest teraz całkowicie usuwana z instancji, a nie tylko wyłączana — wyłączona zostawała tam na zawsze.",
         "uk": "Залишкове налаштування з попередніх версій тепер повністю видаляється з екземпляра, а не лише вимикається — вимкненим воно лишалося назавжди.",
         "zh-cn": "旧版本遗留的设置现在会从实例中彻底移除，而不再只是关闭——仅关闭时它会永远留在那里。"
-      },
-      "1.41.0": {
-        "en": "Renamed datapoints now reach installations that already exist — outdated labels in the object tree are corrected and shown in your ioBroker language. Full user documentation added.",
-        "de": "Umbenannte Datenpunkte erreichen jetzt auch bestehende Anlagen — veraltete Bezeichnungen im Objektbaum werden korrigiert und in deiner ioBroker-Sprache gezeigt. Nutzerdoku ergänzt.",
-        "ru": "Переименованные точки данных теперь доходят и до существующих установок — устаревшие подписи в дереве объектов исправляются и показываются на вашем языке. Добавлена документация.",
-        "pt": "Os pontos de dados renomeados chegam agora às instalações existentes — rótulos desatualizados na árvore são corrigidos e mostrados no seu idioma. Documentação de utilizador incluída.",
-        "nl": "Hernoemde datapunten bereiken nu ook bestaande installaties — verouderde labels in de objectboom worden gecorrigeerd en in jouw taal getoond. Gebruikersdocumentatie toegevoegd.",
-        "fr": "Les points de données renommés atteignent les installations existantes — les libellés obsolètes de l'arbre sont corrigés et affichés dans votre langue. Documentation utilisateur ajoutée.",
-        "it": "I punti dati rinominati raggiungono ora le installazioni esistenti — le etichette obsolete nell'albero vengono corrette e mostrate nella tua lingua. Aggiunta la documentazione utente.",
-        "es": "Los puntos de datos renombrados llegan ahora a las instalaciones existentes — las etiquetas obsoletas del árbol se corrigen y se muestran en tu idioma. Documentación de usuario añadida.",
-        "pl": "Zmienione nazwy punktów danych docierają teraz do istniejących instalacji — nieaktualne etykiety w drzewie są poprawiane i pokazywane w Twoim języku. Dodano dokumentację użytkownika.",
-        "uk": "Перейменовані точки даних тепер доходять і до наявних установок — застарілі підписи в дереві виправляються та показуються вашою мовою. Додано документацію користувача.",
-        "zh-cn": "重命名的数据点现在也能到达已有安装——对象树中过时的标签会被更正，并以你的 ioBroker 语言显示。新增完整的用户文档。"
       }
     },
     "plugins": {

@@ -1,5 +1,14 @@
 # Older Changes
 
+## 1.43.0 (2026-09-06)
+
+- Fixed: taking a display's choice back (mode `---`, or turning the master switch off) now reaches the display — until now it kept the dashboard it had until someone reloaded it by hand
+- Fixed: a display that lost power no longer holds up the adapter's shutdown for 30 seconds
+- Fixed: VIS projects are found on every VIS instance, not only on `vis.0` / `vis-2.0`
+- Fixed: upgrading from a pre-1.1.1 version no longer overwrites the whole instance configuration while removing the old URL setting
+- New: every display now shows the address it was actually sent to, so you can see at a glance where a display landed without walking through the global and per-display settings yourself
+- Changed: `info.serverUuid` and `global.enabled` carry clearer labels, and the per-display manual URL now has a description
+
 ## 1.42.0 (2026-09-04)
 
 - Fixed: a leftover setting from older versions is now removed from the instance completely instead of only being switched off — switched off, it stayed behind for good

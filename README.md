@@ -196,7 +196,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     ### **WORK IN PROGRESS**
 -->
 
-### **WORK IN PROGRESS**
+### 1.46.1 (2026-09-25)
 
 - Improved: switching the master switch and refreshing the dashboard list now log their result — how many displays changed and how many dashboards were found
 
@@ -231,15 +231,6 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 ### 1.43.1 (2026-09-07)
 
 - Changed: the button that removes a display now carries a description — it deletes the display's folder and all its states, and the display returns as a new entry on its next request
-
-### 1.43.0 (2026-09-06)
-
-- Fixed: taking a display's choice back (mode `---`, or turning the master switch off) now reaches the display — until now it kept the dashboard it had until someone reloaded it by hand
-- Fixed: a display that lost power no longer holds up the adapter's shutdown for 30 seconds
-- Fixed: VIS projects are found on every VIS instance, not only on `vis.0` / `vis-2.0`
-- Fixed: upgrading from a pre-1.1.1 version no longer overwrites the whole instance configuration while removing the old URL setting
-- New: every display now shows the address it was actually sent to, so you can see at a glance where a display landed without walking through the global and per-display settings yourself
-- Changed: `info.serverUuid` and `global.enabled` carry clearer labels, and the per-display manual URL now has a description
 
 [Older changelogs can be found there](CHANGELOG_OLD.md)
 
