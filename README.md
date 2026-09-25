@@ -200,14 +200,14 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 
 - Fixed: a start that fails (port briefly in use, database not up yet) now restarts after 30 seconds instead of leaving the instance off until someone starts it by hand
 - Fixed: displays are no longer all removed after the adapter or its host was off for more than 30 days — the cleanup now counts from the most recently seen display
-- Fixed: an update from 1.0 or 1.1 no longer resets the global URL choice on every start, and old URL settings are removed once their value has been taken over
+- Fixed: an update from 1.0 or 1.1 no longer resets the global URL choice on every start — the URL you had set before the update stays in place for good
 - Fixed: on iOS the Home Assistant app no longer keeps its loading screen over the dashboard, and on Android the bottom of the dashboard no longer hides behind the navigation bar
-- Fixed: uptime monitors and HEAD requests no longer create display entries, and the adapter settings point monitors at the /health address, which creates nothing
+- Fixed: uptime monitors and container health checks no longer create display entries, and the adapter settings name the /health address meant for them
 - Fixed: stopping the adapter no longer waits on open connections or hangs while a display is mid-request, and a stop during the start no longer brings the server up
 - Fixed: room and function assignments move along reliably when an old datapoint is replaced, and a read error no longer gives the server a new identity
 - Changed: the sign-in hands its code to an unknown address only after a click on Continue, and a signed-in app is disconnected when its display is removed
 - Improved: mDNS announces an address the displays can reach — no link-local, container or VPN address — and announces again when the host's address changes
-- Improved: the proxy option and the offline card explain themselves in all languages, and writing the mode before its URL no longer logs a misleading warning
+- Improved: the reverse proxy option in the settings and the offline card on the display explain themselves in plain words, in all eleven languages
 
 ### 1.45.0 (2026-09-17) — stable
 
