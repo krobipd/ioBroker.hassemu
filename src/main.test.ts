@@ -10,7 +10,9 @@ import crypto from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-vi.mock("@iobroker/adapter-core", () => {
+vi.mock("@iobroker/adapter-core", async () => {
+  // The factory is hoisted above the imports — the shared broker semantics come in here.
+  const { brokerExtend, brokerDelObject } = await import("../test/unit/broker-stub.js");
   interface ObjEntry {
     type: string;
     common?: Record<string, unknown>;
@@ -81,46 +83,23 @@ vi.mock("@iobroker/adapter-core", () => {
       return Promise.resolve();
     }
 
+    // js-controller 7.2.2 semantics (deep merge, preserve, emptied lists) — test/unit/broker-stub.ts.
     extendObject(id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>): Promise<void> {
       const full = this.fullId(id);
       this.extendCalls.push({ id, common: obj.common ?? {}, options });
-      const existing = this.objects.get(full) ?? { type: "state" };
-      const preserve = (options?.preserve as { common?: string[] } | undefined)?.common ?? [];
-      const mergedCommon: Record<string, unknown> = { ...(existing.common ?? {}), ...(obj.common ?? {}) };
-      for (const field of preserve) {
-        if (existing.common?.[field] !== undefined) {
-          mergedCommon[field] = existing.common[field];
-        }
-      }
-      this.objects.set(full, {
-        ...existing,
-        ...obj,
-        common: mergedCommon,
-        native: { ...(existing.native ?? {}), ...(obj.native ?? {}) },
-      });
+      this.objects.set(full, brokerExtend(this.objects.get(full), obj, options));
       return Promise.resolve();
     }
 
-    delObjectAsync(id: string, _options?: { recursive?: boolean }): Promise<void> {
-      const full = this.fullId(id);
-      this.objects.delete(full);
-      // Like js-controller-adapter 7.2.2 (`removeIdFromAllEnums`): the id leaves every enum.
-      for (const [enumId, obj] of this.objects) {
-        const members = obj.common?.members;
-        if (enumId.startsWith("enum.") && Array.isArray(members)) {
-          obj.common = { ...obj.common, members: members.filter(m => m !== full) };
-        }
-      }
-      for (const k of [...this.objects.keys()]) {
-        if (k.startsWith(`${full}.`)) {
-          this.objects.delete(k);
-        }
-      }
-      for (const k of [...this.states.keys()]) {
-        if (k === full || k.startsWith(`${full}.`)) {
-          this.states.delete(k);
-        }
-      }
+    // Like 7.2.2: a missing object deletes nothing, the value goes only with a state object,
+    // every deleted id leaves every enum (test/unit/broker-stub.ts).
+    delObjectAsync(id: string, options?: { recursive?: boolean }): Promise<void> {
+      brokerDelObject(this.objects, this.states, this.fullId(id), options?.recursive === true);
+      return Promise.resolve();
+    }
+
+    delStateAsync(id: string): Promise<void> {
+      this.states.delete(this.fullId(id));
       return Promise.resolve();
     }
 
@@ -149,26 +128,14 @@ vi.mock("@iobroker/adapter-core", () => {
       return Promise.resolve(groups);
     }
 
-    // 7.2.2 semantics for `common.members`: the stored list is replaced wholesale.
+    // 7.2.2 semantics: `common.members` is emptied before the merge, so the list is replaced.
     extendForeignObject(id: string, obj: Partial<ObjEntry>): Promise<void> {
-      const existing = this.objects.get(id) ?? { type: "enum" };
-      this.objects.set(id, {
-        ...existing,
-        ...obj,
-        common: { ...(existing.common ?? {}), ...(obj.common ?? {}) },
-        native: { ...(existing.native ?? {}), ...(obj.native ?? {}) },
-      });
+      this.objects.set(id, brokerExtend(this.objects.get(id), obj, undefined, "enum"));
       return Promise.resolve();
     }
 
     extendForeignObjectAsync(id: string, obj: Partial<ObjEntry>): Promise<void> {
-      const existing = this.objects.get(id) ?? { type: "instance" };
-      this.objects.set(id, {
-        ...existing,
-        ...obj,
-        common: { ...(existing.common ?? {}), ...(obj.common ?? {}) },
-        native: { ...(existing.native ?? {}), ...(obj.native ?? {}) },
-      });
+      this.objects.set(id, brokerExtend(this.objects.get(id), obj, undefined, "instance"));
       return Promise.resolve();
     }
 
@@ -180,7 +147,8 @@ vi.mock("@iobroker/adapter-core", () => {
       const wanted = type ?? "state";
       for (const [id, obj] of this.objects) {
         if (id.startsWith(prefix) && obj.type === wanted) {
-          out[id] = obj;
+          // A copy per object, like the broker — the stored object must not travel out.
+          out[id] = structuredClone(obj);
         }
       }
       return Promise.resolve(out);

@@ -42,6 +42,7 @@ import { GlobalConfig } from "./global-config";
 import { COOKIE_MAX_AGE_S, MODE_MANUAL, HA_VERSION } from "./constants";
 import type { TargetProbe } from "./target-health";
 import type { AdapterConfig } from "./types";
+import { brokerDelObject, brokerExtend } from "../../test/unit/broker-stub";
 
 interface ObjEntry {
   type: string;
@@ -74,12 +75,13 @@ interface MockAdapterApi {
   getForeignObjectsAsync(pattern: string, type?: string): Promise<Record<string, ObjEntry>>;
   getStateAsync(id: string): Promise<{ val: unknown; ack: boolean } | null>;
   setObjectNotExistsAsync(id: string, obj: ObjEntry): Promise<void>;
-  extendObject(id: string, obj: Partial<ObjEntry>): Promise<void>;
+  extendObject(id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>): Promise<void>;
   getObjectAsync(id: string): Promise<ObjEntry | null>;
   setObject(id: string, obj: ObjEntry): Promise<void>;
   setState(id: string, val: { val: unknown; ack?: boolean }): Promise<void>;
   setStateChangedAsync(id: string, val: { val: unknown; ack?: boolean }): Promise<{ id: string; notChanged: boolean }>;
-  delObjectAsync(id: string): Promise<void>;
+  delObjectAsync(id: string, options?: { recursive?: boolean }): Promise<void>;
+  delStateAsync(id: string): Promise<void>;
 }
 
 function createMockAdapter(namespace = "hassemu.0"): {
@@ -127,7 +129,8 @@ function createMockAdapter(namespace = "hassemu.0"): {
         const wanted = type ?? "state";
         for (const [id, obj] of store.objects) {
           if (id.startsWith(prefix) && obj.type === wanted) {
-            out[id] = obj;
+            // A copy per object, like the broker — the stored object must not travel out.
+            out[id] = structuredClone(obj);
           }
         }
         return Promise.resolve(out);
@@ -143,15 +146,10 @@ function createMockAdapter(namespace = "hassemu.0"): {
         }
         return Promise.resolve();
       },
-      extendObject: (id: string, obj: Partial<ObjEntry>) => {
+      // js-controller 7.2.2 semantics: deep merge, preserve, emptied lists (test/unit/broker-stub.ts).
+      extendObject: (id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>) => {
         const full = `${namespace}.${id}`;
-        const ex = store.objects.get(full) ?? { type: "state" };
-        store.objects.set(full, {
-          ...ex,
-          ...obj,
-          common: { ...(ex.common ?? {}), ...(obj.common ?? {}) },
-          native: { ...(ex.native ?? {}), ...(obj.native ?? {}) },
-        });
+        store.objects.set(full, brokerExtend(store.objects.get(full), obj, options));
         return Promise.resolve();
       },
       // Copies, like the broker: only a write reaches the store.
@@ -176,19 +174,13 @@ function createMockAdapter(namespace = "hassemu.0"): {
         store.states.set(`${namespace}.${id}`, { val: val.val, ack: val.ack ?? false });
         return Promise.resolve({ id, notChanged: false });
       },
-      delObjectAsync: (id: string) => {
-        const full = `${namespace}.${id}`;
-        store.objects.delete(full);
-        for (const k of [...store.objects.keys()]) {
-          if (k.startsWith(`${full}.`)) {
-            store.objects.delete(k);
-          }
-        }
-        for (const k of [...store.states.keys()]) {
-          if (k === full || k.startsWith(`${full}.`)) {
-            store.states.delete(k);
-          }
-        }
+      // Like 7.2.2: a missing object deletes nothing, the value goes only with a state object.
+      delObjectAsync: (id: string, options?: { recursive?: boolean }) => {
+        brokerDelObject(store.objects, store.states, `${namespace}.${id}`, options?.recursive === true);
+        return Promise.resolve();
+      },
+      delStateAsync: (id: string) => {
+        store.states.delete(`${namespace}.${id}`);
         return Promise.resolve();
       },
     };

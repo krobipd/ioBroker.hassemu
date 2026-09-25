@@ -26,6 +26,7 @@ import { GlobalConfig, parseGlobalStateId } from "./global-config";
 import { resolveRedirect } from "./redirect-resolver";
 import { MODE_GLOBAL, MODE_MANUAL } from "./constants";
 import type { ClientRecord } from "./types";
+import { brokerDelObject, brokerExtend } from "../../test/unit/broker-stub";
 
 interface ObjEntry {
   type: string;
@@ -42,13 +43,15 @@ interface MockStore {
   objects: Map<string, ObjEntry>;
   states: Map<string, { val: unknown; ack: boolean }>;
   logs: LogEntry[];
+  /** Every object write, in order — a test can assert HOW an object was written. */
+  writes: { method: "extendObject" | "setForeignObject"; id: string; obj: Partial<ObjEntry> }[];
 }
 
 function createMockAdapter(namespace = "hassemu.0"): {
   store: MockStore;
   adapter: ReturnType<typeof build>;
 } {
-  const store: MockStore = { objects: new Map(), states: new Map(), logs: [] };
+  const store: MockStore = { objects: new Map(), states: new Map(), logs: [], writes: [] };
 
   function build(): {
     namespace: string;
@@ -91,22 +94,11 @@ function createMockAdapter(namespace = "hassemu.0"): {
         store.states.set(`${namespace}.${id}`, { val: value.val, ack: value.ack ?? false });
         return Promise.resolve();
       },
+      // js-controller 7.2.2 semantics: deep merge, preserve, emptied lists (test/unit/broker-stub.ts).
       extendObject: (id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>) => {
         const fullId = `${namespace}.${id}`;
-        const existing = store.objects.get(fullId) ?? { type: "state" };
-        const preserve = (options?.preserve as { common?: string[] })?.common ?? [];
-        const mergedCommon = { ...(existing.common ?? {}), ...(obj.common ?? {}) };
-        for (const field of preserve) {
-          if ((existing.common as Record<string, unknown>)?.[field] !== undefined) {
-            (mergedCommon as Record<string, unknown>)[field] = (existing.common as Record<string, unknown>)[field];
-          }
-        }
-        store.objects.set(fullId, {
-          ...existing,
-          ...obj,
-          common: mergedCommon,
-          native: { ...(existing.native ?? {}), ...(obj.native ?? {}) },
-        });
+        store.writes.push({ method: "extendObject", id: fullId, obj: structuredClone(obj) });
+        store.objects.set(fullId, brokerExtend(store.objects.get(fullId), obj, options));
         return Promise.resolve();
       },
       // A COPY, like the broker: only a write reaches the store (see client-registry.test.ts).
@@ -117,6 +109,7 @@ function createMockAdapter(namespace = "hassemu.0"): {
       },
       // Like the controller: the id is taken as given — no namespace prefixing.
       setForeignObject: (fullId: string, obj: ObjEntry) => {
+        store.writes.push({ method: "setForeignObject", id: fullId, obj: structuredClone(obj) });
         store.objects.set(fullId, structuredClone(obj));
         return Promise.resolve();
       },
@@ -132,10 +125,10 @@ function createMockAdapter(namespace = "hassemu.0"): {
         }
         return Promise.resolve();
       },
-      delObjectAsync: (id: string) => {
+      // Like 7.2.2: a missing object deletes nothing, the value goes only with a state object.
+      delObjectAsync: (id: string, options?: { recursive?: boolean }) => {
         const fullId = id.includes(".") && id.startsWith(`${namespace}.`) ? id : `${namespace}.${id}`;
-        store.objects.delete(fullId);
-        store.states.delete(fullId);
+        brokerDelObject(store.objects, store.states, fullId, options?.recursive === true);
         return Promise.resolve();
       },
     };
@@ -497,11 +490,16 @@ describe("GlobalConfig", () => {
         },
         native: {},
       });
+      const before = store.writes.length;
       await g.syncUrlDropdown({ "http://new.local/vis-2/index.html?main": "VIS-2: main" });
       const states = store.objects.get("hassemu.0.global.mode")?.common?.states as Record<string, string>;
       // Old URL must be gone, new URL present
       expect(states["http://old.local/vis-2.0/main/index.html#X"]).to.be.undefined;
       expect(states["http://new.local/vis-2/index.html?main"]).to.equal("VIS-2: main");
+      // HOW it was written: one full write. The stub merges like 7.2.2 (deeply), so an
+      // extendObject carrying `states` would have kept the stale key (audit 2026-09-25, T1).
+      const writes = store.writes.slice(before).filter(w => w.id === "hassemu.0.global.mode");
+      expect(writes.map(w => w.method)).to.deep.equal(["setForeignObject"]);
     });
   });
 });

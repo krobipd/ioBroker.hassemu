@@ -38,6 +38,7 @@ import {
   OAUTH_ACCESS_TOKEN_TTL_S,
 } from "./constants";
 import type { ClientRecord } from "./types";
+import { brokerDelObject, brokerExtend } from "../../test/unit/broker-stub";
 
 /**
  * Resolve a `common.name` to its plain text, whichever form it carries.
@@ -68,6 +69,8 @@ interface MockStore {
   objects: Map<string, ObjEntry>;
   states: Map<string, { val: unknown; ack: boolean }>;
   logs: LogEntry[];
+  /** Every object write, in order — a test can assert HOW an object was written. */
+  writes: { method: "extendObject" | "setForeignObject"; id: string; obj: Partial<ObjEntry> }[];
 }
 
 function createMockAdapter(namespace = "hassemu.0"): {
@@ -79,6 +82,7 @@ function createMockAdapter(namespace = "hassemu.0"): {
     objects: new Map(),
     states: new Map(),
     logs: [],
+    writes: [],
   };
 
   function buildAdapter(): {
@@ -106,6 +110,7 @@ function createMockAdapter(namespace = "hassemu.0"): {
       value: { val: unknown; ack?: boolean },
     ) => Promise<{ id: string; notChanged: boolean }>;
     delObjectAsync: (id: string, options?: { recursive?: boolean }) => Promise<void>;
+    delStateAsync: (id: string) => Promise<void>;
   } {
     return {
       namespace,
@@ -130,7 +135,8 @@ function createMockAdapter(namespace = "hassemu.0"): {
         const wanted = type ?? "state";
         for (const [id, obj] of store.objects) {
           if (id.startsWith(prefix) && obj.type === wanted) {
-            out[id] = obj;
+            // A copy per object, like the broker — the stored object must not travel out.
+            out[id] = structuredClone(obj);
           }
         }
         return Promise.resolve(out);
@@ -155,6 +161,7 @@ function createMockAdapter(namespace = "hassemu.0"): {
       // Like the controller: the id is taken as given — no namespace prefixing. A caller
       // that hands over a short id writes to the wrong key, and the tests see it.
       setForeignObject: (fullId: string, obj: ObjEntry) => {
+        store.writes.push({ method: "setForeignObject", id: fullId, obj: structuredClone(obj) });
         store.objects.set(fullId, structuredClone(obj));
         return Promise.resolve();
       },
@@ -165,22 +172,11 @@ function createMockAdapter(namespace = "hassemu.0"): {
         }
         return Promise.resolve();
       },
+      // js-controller 7.2.2 semantics: deep merge, preserve, emptied lists (test/unit/broker-stub.ts).
       extendObject: (id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>) => {
         const fullId = `${namespace}.${id}`;
-        const existing = store.objects.get(fullId) ?? { type: "state" };
-        const preserve = (options?.preserve as { common?: string[] })?.common ?? [];
-        const mergedCommon = { ...(existing.common ?? {}), ...(obj.common ?? {}) };
-        for (const field of preserve) {
-          if ((existing.common as Record<string, unknown>)?.[field] !== undefined) {
-            (mergedCommon as Record<string, unknown>)[field] = (existing.common as Record<string, unknown>)[field];
-          }
-        }
-        store.objects.set(fullId, {
-          ...existing,
-          ...obj,
-          common: mergedCommon,
-          native: { ...(existing.native ?? {}), ...(obj.native ?? {}) },
-        });
+        store.writes.push({ method: "extendObject", id: fullId, obj: structuredClone(obj) });
+        store.objects.set(fullId, brokerExtend(store.objects.get(fullId), obj, options));
         return Promise.resolve();
       },
       setState: (id: string, value: { val: unknown; ack?: boolean }) => {
@@ -197,19 +193,13 @@ function createMockAdapter(namespace = "hassemu.0"): {
         store.states.set(`${namespace}.${id}`, { val: value.val, ack: value.ack ?? false });
         return Promise.resolve({ id, notChanged: false });
       },
-      delObjectAsync: (id: string) => {
-        const fullId = `${namespace}.${id}`;
-        store.objects.delete(fullId);
-        for (const k of [...store.states.keys()]) {
-          if (k === fullId || k.startsWith(`${fullId}.`)) {
-            store.states.delete(k);
-          }
-        }
-        for (const k of [...store.objects.keys()]) {
-          if (k.startsWith(`${fullId}.`)) {
-            store.objects.delete(k);
-          }
-        }
+      // Like 7.2.2: a missing object deletes nothing, the value goes only with a state object.
+      delObjectAsync: (id: string, options?: { recursive?: boolean }) => {
+        brokerDelObject(store.objects, store.states, `${namespace}.${id}`, options?.recursive === true);
+        return Promise.resolve();
+      },
+      delStateAsync: (id: string) => {
+        store.states.delete(`${namespace}.${id}`);
         return Promise.resolve();
       },
     };
@@ -945,9 +935,55 @@ describe("ClientRegistry", () => {
     it("is a no-op when there are no clients", async () => {
       await registry.syncUrlDropdown({ "http://a/": "A" });
     });
+
+    it("drops a stale URL key in ONE full write — never an extendObject that would merge it back (T1)", async () => {
+      // The stub merges like js-controller 7.2.2 (deeply): an `extendObject` carrying
+      // `common.states` keeps every stale key, only a full write gets rid of one.
+      const rec = await registry.identifyOrCreate(null, null);
+      const modeId = `hassemu.0.clients.${rec.id}.mode`;
+      const seeded = store.objects.get(modeId)!;
+      seeded.common = {
+        ...seeded.common,
+        states: {
+          0: "---",
+          "http://old.local/vis-2.0/main/index.html#X": { en: "VIS-2: main / X", de: "VIS-2: main / X" },
+        },
+      };
+      const before = store.writes.length;
+
+      await registry.syncUrlDropdown({ "http://a.local/": "A" });
+
+      const states = store.objects.get(modeId)?.common?.states as Record<string, unknown>;
+      expect(states).to.not.have.property("http://old.local/vis-2.0/main/index.html#X");
+      expect(states["http://a.local/"]).to.equal("A");
+      const writes = store.writes.slice(before).filter(w => w.id === modeId);
+      expect(writes.map(w => w.method)).to.deep.equal(["setForeignObject"]);
+    });
   });
 
   describe("restore", () => {
+    it("repairs a broken mode schema in ONE full write — no extendObject carries `states` (T1)", async () => {
+      const id = "broken1";
+      const cookie = crypto.randomUUID();
+      store.objects.set(`hassemu.0.clients.${id}`, { type: "device", native: { cookie } });
+      const modeId = `hassemu.0.clients.${id}.mode`;
+      store.objects.set(modeId, {
+        type: "state",
+        common: { type: "string", role: "value", states: { "http://old.local/": "Old" } },
+        native: {},
+      });
+
+      await registry.restore();
+
+      const modeWrites = store.writes.filter(w => w.id === modeId);
+      expect(modeWrites.filter(w => w.method === "setForeignObject")).to.have.length(1);
+      const extendsWithStates = modeWrites.filter(
+        w => w.method === "extendObject" && w.obj.common !== undefined && "states" in w.obj.common,
+      );
+      expect(extendsWithStates).to.have.length(0);
+      expect(store.objects.get(modeId)?.common?.type).to.equal("mixed");
+    });
+
     it("loads existing clients with mode + manualUrl from state", async () => {
       const id = "abc123";
       const cookie = crypto.randomUUID();

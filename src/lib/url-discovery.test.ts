@@ -58,7 +58,7 @@ function createMockAdapter(): MockAdapter & DiscoveryAdapter {
     clearTimeout: (id: unknown) => {
       timers.delete(id as number);
     },
-    getForeignObjectsAsync: (): Promise<Record<string, unknown>> => {
+    getForeignObjectsAsync: (pattern: string, type?: string): Promise<Record<string, unknown>> => {
       // Discovery reads WHICH VIS instances exist from the instance list — `vis-2.0` /
       // `vis.0` are no longer assumed. A fixture that puts files under `vis-2.0` is
       // describing an installation that HAS that instance, so the mock reports it,
@@ -70,7 +70,17 @@ function createMockAdapter(): MockAdapter & DiscoveryAdapter {
           derived[`system.adapter.${adapterName}`] = { common: { enabled: true }, native: {} };
         }
       }
-      return Promise.resolve({ ...derived, ...mock._instances });
+      // Like the broker: the pattern selects the ids, the type selects the object view
+      // (no type = the 'state' view, where no instance lives), and every read is a copy.
+      const prefix = pattern.replace("*", "");
+      const out: Record<string, unknown> = {};
+      for (const [id, obj] of Object.entries({ ...derived, ...mock._instances })) {
+        const objType = (obj as { type?: unknown } | null)?.type ?? "instance";
+        if (id.startsWith(prefix) && objType === (type ?? "state")) {
+          out[id] = obj;
+        }
+      }
+      return Promise.resolve(structuredClone(out));
     },
     readDirAsync: (adapterName: string): Promise<unknown[]> => {
       const d = mock._dirs[adapterName];
@@ -483,6 +493,20 @@ describe("UrlDiscovery", () => {
 
       expect(result["http://192.168.1.10:8082/vis-2/index.html?main"]).to.equal("VIS-2 (vis-2.0): main");
       expect(result["http://192.168.1.10:8082/vis-2/index.html?attic"]).to.equal("VIS-2 (vis-2.1): attic");
+    });
+
+    it("keeps the projects of a DISABLED vis-2 instance — the web instance serves them, not vis", async () => {
+      // visInstances() deliberately does not filter by `enabled` (url-discovery.ts): the
+      // runtime pages are files the web server hands out; the vis instance itself may be off.
+      adapter._instances = {
+        "system.adapter.web.0": enabledInstance({ native: { bind: "192.168.1.10", port: 8082 } }),
+        "system.adapter.vis-2.0": { common: { enabled: false }, native: {} },
+      };
+      adapter._dirs["vis-2.0"] = [{ file: "main", isDir: true }];
+
+      const result = await discovery.collect();
+
+      expect(result["http://192.168.1.10:8082/vis-2/index.html?main"]).to.equal("VIS-2: main");
     });
 
     it("ignores a DISABLED web instance: no entries on its port, no (web.N) suffix, named in the skip list", async () => {

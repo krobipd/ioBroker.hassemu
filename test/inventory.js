@@ -1,3 +1,4 @@
+/* global describe, it, before, after */
 "use strict";
 // Generates the adapter's complete object inventory from fixtures and proves that
 // an update reaches every object of an existing installation.
@@ -64,7 +65,7 @@ const FIXTURE_NATIVE = {
  * restart that follows the write; the harness never restarts it, and the run ends without
  * a display tree. The fixture defines the config completely. (Pattern govee-smart.)
  *
- * @param {import("@iobroker/testing").TestHarness} harness the running harness
+ * @param {import("@iobroker/testing").IntegrationTestHarness} harness the running harness
  */
 async function resetInstanceNative(harness) {
   const id = `system.adapter.${ADAPTER}.0`;
@@ -138,7 +139,7 @@ async function waitForServer(timeoutMs) {
  * each display comes back as the display that is already in the tree — the only way the
  * run reaches the "objects already exist" path the revision stamp gates.
  *
- * @param {import("@iobroker/testing").TestHarness} harness
+ * @param {import("@iobroker/testing").IntegrationTestHarness} harness
  * @param {Record<string, string>} knownCookies stable inventory id → cookie to come back with
  * @returns {Promise<Record<string, string>>} adapter-minted id → stable inventory id
  */
@@ -180,7 +181,7 @@ async function feedFixtures(harness, knownCookies = {}) {
  * harness (homewizard, 2026-09-15) dumped while such writes were still in flight and lost
  * two objects. A quiet window is the settle check beszel and govee-smart already use.
  *
- * @param {import("@iobroker/testing").TestHarness} harness The harness.
+ * @param {import("@iobroker/testing").IntegrationTestHarness} harness The harness.
  */
 async function waitForStableTree(harness) {
   const count = async () => (await harness.objects.getObjectList({ startkey: NS, endkey: `${NS}香` })).rows.length;
@@ -209,7 +210,7 @@ async function waitForStableTree(harness) {
 /**
  * Find which `clients.<id>` object carries `cookie`.
  *
- * @param {import("@iobroker/testing").TestHarness} harness
+ * @param {import("@iobroker/testing").IntegrationTestHarness} harness
  * @param {string} cookie The cookie the adapter just handed out.
  * @returns {Promise<string>} The short client id.
  */
@@ -267,7 +268,7 @@ function seededCookie(index) {
 /**
  * Dump every object below the adapter's namespace in the bot's format.
  *
- * @param {import("@iobroker/testing").TestHarness} harness
+ * @param {import("@iobroker/testing").IntegrationTestHarness} harness
  */
 async function dumpObjects(harness, idMap = {}) {
   // The range starts at "<adapter>.0." — the instance root object itself is not part of the tree.
