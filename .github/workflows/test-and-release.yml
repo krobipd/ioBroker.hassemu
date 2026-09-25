@@ -193,6 +193,16 @@ jobs:
             exit 1
           fi
 
+  ci-passed:
+    # The one required check of the automerge ruleset: green only when every job that deploy waits for
+    # is green (every matrix leg, every gate job); a job skipped because of a red dependency fails it.
+    if: ${{ !cancelled() }}
+    needs: [check-and-lint, adapter-tests, repochecker-version-gate, workflow-lint, adapter-inventory]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job deploy waits for passed
+        run: echo '${{ toJSON(needs.*.result) }}' | jq -e 'all(. == "success")'
+
   deploy:
     needs: [check-and-lint, adapter-tests, repochecker-version-gate, workflow-lint, adapter-inventory]
     if: |
