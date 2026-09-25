@@ -374,11 +374,11 @@ export class ClientRegistry {
     // parallel request of the same display's initial burst will get the
     // same cookie + client, no more duplicate "New client" log entries.
     //
-    // v1.17.0 (C8): Bucket-Key kombiniert IP + User-Agent-Hash, sodass
-    // zwei verschiedene Displays hinter derselben NAT-IP NICHT in denselben
-    // Pending-Lock fallen (vorher: gleicher Cookie/Token/Mode → Cookie-
-    // Klau-Vektor). UA-Hash truncated auf 12 Hex-Chars um Memory-Footprint
-    // klein zu halten. Bei UA=null fällt der Bucket auf reines IP zurück.
+    // v1.17.0 (C8): the bucket key combines the IP and a hash of the User-Agent, so
+    // two different displays behind the same NAT address do NOT fall into the same
+    // pending lock (before: same cookie/token/mode — a way to steal a cookie). The UA
+    // hash is cut to 12 hex characters to keep the memory footprint small. With no
+    // UA the bucket falls back to the IP alone.
     if (ip) {
       // Refuse to mint a new *persistent* client for an IP spraying cookieless
       // requests — hand out a transient (non-persisted, no object) record so the
@@ -397,12 +397,11 @@ export class ClientRegistry {
         : ip;
       const pending = this.pendingByIp.get(bucketKey);
       if (pending) {
-        // v1.21.0 (D3): pending-promise kann rejecten — z.B. wenn
-        // createClient async failed (broker-disconnect, object-create-
-        // error). Wir können nicht recover'n (der erste Caller hat eh
-        // schon gefailt), aber wir wollen den Fehler diagnostizierbar
-        // machen. catch+rethrow sorgt für ein einzelnes log statt
-        // unhandled-rejection im fastify-error-handler.
+        // v1.21.0 (D3): the pending promise can reject — e.g. when createClient
+        // fails asynchronously (broker disconnect, object create error). There is
+        // nothing to recover (the first caller has failed already), but the error
+        // must stay diagnosable: catch + rethrow gives one log line instead of an
+        // unhandled rejection in the fastify error handler.
         return pending.catch(err => {
           this.adapter.log.debug(`client-registry: pending createClient for ${bucketKey} rejected: ${errText(err)}`);
           throw err;
@@ -413,7 +412,7 @@ export class ClientRegistry {
       try {
         return await promise;
       } catch (err) {
-        // Tech-Diagnose mit Stack-Detail — bleibt debug (Maintainer-only).
+        // Technical diagnosis with stack detail — stays debug (maintainers only).
         this.adapter.log.debug(`client-registry: createClient failed for IP ${ip}: ${errText(err)}`);
         throw err;
       } finally {
@@ -597,9 +596,9 @@ export class ClientRegistry {
     if (!record) {
       return;
     }
-    // v1.23.0 (F2): zentralisierte Validierung via parseModeWrite. Vorher
-    // hatten client-registry und global-config ~80% identische Logik
-    // (no-choice, non-string, sentinel, URL-coerce) dupliziert.
+    // v1.23.0 (F2): central validation through parseModeWrite. client-registry and
+    // global-config used to duplicate ~80% of the logic (no choice, non-string,
+    // sentinel, URL coercion).
     const result = parseModeWrite(rawValue, [MODE_GLOBAL, MODE_MANUAL]);
     switch (result.kind) {
       case "no-choice":
@@ -612,8 +611,8 @@ export class ClientRegistry {
         this.adapter.log.debug(`Client ${id}: mode → cleared (no-choice)`);
         return;
       case "rejected-non-string":
-        // v1.18.0 (G7): debug statt warn — nicht-string mode-Schreibungen
-        // sind UI-Echo, kein Server-Concern.
+        // v1.18.0 (G7): debug instead of warn — non-string mode writes are a UI
+        // echo, not a server concern.
         this.adapter.log.debug(`client-registry: rejected non-string mode for ${id}`);
         await this.adapter.setState(`clients.${id}.mode`, { val: record.mode || NO_CHOICE, ack: true });
         return;
@@ -644,8 +643,8 @@ export class ClientRegistry {
         await this.adapter.setState(`clients.${id}.mode`, { val: result.value, ack: true });
         this.adapter.log.debug(`Client ${id}: mode → ${result.value} (direct URL)`);
         return;
-      // 'rejected-disallowed-sentinel' kommt hier nicht vor weil beide
-      // Sentinels (global/manual) erlaubt sind. Defensive: revert.
+      // 'rejected-disallowed-sentinel' cannot occur here, because both sentinels
+      // (global/manual) are allowed. Defensive: revert.
       default:
         await this.adapter.setState(`clients.${id}.mode`, { val: record.mode || NO_CHOICE, ack: true });
     }
@@ -690,9 +689,9 @@ export class ClientRegistry {
    * @param value New mode value (sentinel or URL).
    */
   async bulkSetMode(value: string): Promise<void> {
-    // v1.8.1 (D7): parallele setState statt sequenziell. Mit 50 Displays
-    // war das vorher 50 Broker-Round-Trips. setState ist Broker-internal,
-    // Parallelism ist safe.
+    // v1.8.1 (D7): parallel setState instead of sequential — with 50 displays that
+    // used to be 50 sequential broker round trips. setState is broker-internal, running
+    // them in parallel is safe.
     const writes: Array<Promise<unknown>> = [];
     let changed = 0;
     for (const record of this.byId.values()) {
@@ -1032,14 +1031,14 @@ export class ClientRegistry {
   }
 
   /**
-   * v1.19.0 (F11): zentraler lastSeen-Seed-Pfad. Vorher hatte main.ts
-   * gcStaleClients seinen eigenen extendObject-Call mit identischem
-   * native-Format — DRY-Violation und gefährlich wenn das Format mal ändert.
-   * Jetzt nutzen beide Pfade diese Methode. Throttle-Map wird auch upgedated,
-   * damit der nächste touchLastSeen den seed nicht direkt überschreibt.
+   * v1.19.0 (F11): the one path that seeds lastSeen. main.ts gcStaleClients used to
+   * carry its own extendObject call with the same native format — a duplicate that
+   * would break the day the format changes. Both paths use this method now. The
+   * throttle map is updated too, so the next touchLastSeen does not overwrite the
+   * seed right away.
    *
-   * @param id  Client id (short segment, ohne `clients.`-Prefix).
-   * @param now Optionaler Timestamp für tests; default Date.now().
+   * @param id  Client id (short segment, without the `clients.` prefix).
+   * @param now Optional timestamp for tests; default Date.now().
    */
   async seedLastSeen(id: string, now: number = Date.now()): Promise<void> {
     this.lastSeenFlushedAt.set(id, now);
@@ -1068,9 +1067,9 @@ export class ClientRegistry {
    * `'global'` + `'manual'` sentinels, and all currently discovered URLs.
    */
   private buildModeStates(): UrlStates {
-    // v1.20.0 (F4): Helper aus coerce.ts. Vorher dupliziert mit global-config
-    // (bis auf den zusätzlichen `global`-Sentinel hier, weil clients per
-    // `mode='global'` an global delegieren können — global selbst nicht).
+    // v1.20.0 (F4): the shared helper (state-write-rules.ts). global-config used to
+    // duplicate it — except for the extra `global` sentinel here: a client can delegate
+    // to global with `mode='global'`, global itself cannot.
     // resolveLabel() returns a plain string (I18n.translate, resolved in the
     // system language loaded at I18n.init) — NOT a translation object: Admin
     // renders common.states VALUES directly as a React child and crashes on
@@ -1137,11 +1136,11 @@ export class ClientRegistry {
     //     under the same keys → React error #31 when the admin opened the dropdown.
     //     The full write replaces common wholesale (custom subscriptions such as
     //     influxdb.0 survive via the spread of `existing`).
-    //   - Repair-Pfad für partial-formed Objects (v1.2.0-Migration-Bug, common
-    //     ohne top-level type/name/role) ist auch abgedeckt: existing-fields
-    //     werden von der full schema common komplett überschrieben.
-    //   - `clients.<id>.manualUrl` bleibt extendObject — kein states-Feld,
-    //     daher kein i18n-Object-Risiko.
+    //   - The repair path for partially formed objects (v1.2.0 migration bug: common
+    //     without top-level type/name/role) is covered too: the existing fields are
+    //     overwritten completely by the full schema common.
+    //   - `clients.<id>.manualUrl` stays extendObject — it has no states field, so
+    //     no risk of an i18n object there.
     const modeFullCommon: ioBroker.StateCommon = {
       // tName returns StringOrTranslated, which common.name/desc accept directly.
       name: tName("clientMode"),
@@ -1398,9 +1397,9 @@ export class ClientRegistry {
   }
 
   private async readState(subId: string): Promise<unknown> {
-    // v1.20.0 (F10): Helper aus coerce.ts — vorher dupliziert mit
-    // global-config.safeGetState (gleicher try/catch-+-null-Fallback,
-    // nur Pfad-Prefix anders).
+    // v1.20.0 (F10): the shared helper (object-utils.ts) — global-config.safeGetState
+    // used to duplicate it (same try/catch + null fallback, only the path prefix
+    // differed).
     const s = await safeGetState(this.adapter, `clients.${subId}`);
     return s?.val ?? null;
   }
@@ -1416,9 +1415,8 @@ export function parseClientStateId(
   fullId: string,
   namespace: string,
 ): { id: string; kind: "mode" | "manualUrl" | "remove" } | null {
-  // v1.20.0 (F9): generischer parseAdapterStateId-Helper. Vorher hatte
-  // client-registry seine eigene Prefix-+-Tail-Validierung dupliziert mit
-  // global-config.parseGlobalStateId.
+  // v1.20.0 (F9): the generic parseAdapterStateId helper. client-registry used to
+  // duplicate the prefix + tail validation of global-config.parseGlobalStateId.
   const parts = parseAdapterStateId(fullId, namespace, CLIENTS_PREFIX, 2);
   if (!parts) {
     return null;

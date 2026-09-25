@@ -124,8 +124,9 @@ export class WebServer {
    *
    * Reused for Shelly Wall Display FW 2.6.0+ onboarding — the on-device HA
    * Companion App requires this endpoint to complete device registration
-   * after the OAuth2 sign-in. Without it the App refuses to proceed with a
-   * "Mobile-App-Integration nicht verfügbar" error.
+   * after the OAuth2 sign-in. Without it the App refuses to proceed with "The
+   * 'Mobile App' integration is required to use the app, but it is not available
+   * on your Home Assistant server."
    *
    * **Design — in-memory only, by intent.** The map is NOT persisted across
    * adapter restarts. Restart-recovery relies on the
@@ -220,15 +221,14 @@ export class WebServer {
     // while the lookup ran, and minting one here would create a ghost with a cookie no
     // display owns.
     this.hostnames = new HostnameResolver(adapter, (cookie, hostname) => registry.updateHostname(cookie, hostname));
-    // v1.25.0 (C11): trustProxy ist Opt-In über config — nur aktivieren
-    // wenn der Adapter HINTER einem trusted Reverse-Proxy mit TLS-
-    // Termination läuft. Mit trustProxy=true holt Fastify `req.ip` aus
-    // `X-Forwarded-For` (statt aus dem Socket), `req.protocol` aus
-    // `X-Forwarded-Proto` etc. — Voraussetzung: der Proxy bereinigt diese
-    // Header (sonst kann jeder Client seine sichtbare IP fälschen → verfälscht
-    // Logs + die per-IP-Burst-Erkennung defekter Cookies und hebelt die per-IP-
-    // Drossel neuer Clients aus; die IP-unabhängige globale Obergrenze der
-    // Registry deckelt diesen Schaden — GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW).
+    // v1.25.0 (C11): trustProxy is opt-in through the config — enable it only when the
+    // adapter runs BEHIND a trusted reverse proxy that terminates TLS. With
+    // trustProxy=true Fastify takes `req.ip` from `X-Forwarded-For` (instead of the
+    // socket), `req.protocol` from `X-Forwarded-Proto` etc. — provided the proxy cleans
+    // these headers (otherwise any client can fake its visible address → falsified logs
+    // and per-IP burst detection of broken cookies, and the per-IP throttle for new
+    // clients is defeated; the registry's global cap, independent of the address,
+    // limits that damage — GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW).
     // HTTP limits (audit 2026-09-25, H1). fastify's defaults leave every limit at 0: a request
     // running during the stop kept `app.close()` waiting on a keep-alive socket (measured
     // > 20 s against `common.stopTimeout` 2 s), and a stalled header or body held a socket
@@ -252,7 +252,7 @@ export class WebServer {
         return server;
       },
     });
-    // v1.14.0 (H8): inject einmal binden, nicht pro Getter-Access.
+    // v1.14.0 (H8): bind inject once, not on every getter access.
     (this as { inject: WebserverInject }).inject = this.app.inject.bind(this.app);
   }
 
@@ -274,20 +274,18 @@ export class WebServer {
 
   /** Registers plugins and starts the HTTP listener. */
   async start(): Promise<void> {
-    // v1.14.0 (H9): defensive — wenn start() jemals doppelt gerufen wird
-    // (Refactor, Test-Setup-Bug), Timer aus dem Vorlauf clearen statt zu
-    // leaken.
+    // v1.14.0 (H9): defensive — should start() ever be called twice (a refactor, a
+    // test setup bug), clear the timer of the previous run instead of leaking it.
     if (this.cleanupTimer) {
       this.adapter.clearInterval(this.cleanupTimer);
       this.cleanupTimer = null;
     }
     await this.app.register(fastifyCookie);
-    // OAuth2-Spec verlangt `application/x-www-form-urlencoded` für `/auth/token`.
-    // Echte HA-Reference-Clients (frontend/Wall Display SDK) folgen dem.
-    // Fastify hat by-default nur einen JSON-Bodyparser — ohne diesen Plugin
-    // beantwortet `/auth/token` mit form-Body 415 und der Login bleibt komplett
-    // hängen. Tests via `app.inject({payload:{...}})` serialisieren zu JSON
-    // und maskieren das.
+    // The OAuth2 spec requires `application/x-www-form-urlencoded` for `/auth/token`,
+    // and real HA reference clients (frontend / Wall Display SDK) follow it. Fastify
+    // only has a JSON body parser by default — without this plugin `/auth/token`
+    // answers a form body with 415 and the sign-in hangs completely. Tests through
+    // `app.inject({payload:{...}})` serialise to JSON and hide that.
     await this.app.register(fastifyFormbody);
     // v1.34.0: minimal read-only WebSocket for the HA Companion App. Its
     // `registerDevice` makes a best-effort `auth/current_user` WS call after the
@@ -337,9 +335,9 @@ export class WebServer {
       await this.app.close();
       this.adapter.log.debug("Web server stopped");
     } catch (err) {
-      // v1.18.0 (G6+G8): debug statt error — bei intended shutdown
-      // (onUnload) ist ein close-error meist ein "already-closed"-Race
-      // ohne Konsequenz. Caller (main.ts onUnload) loggt nicht doppelt.
+      // v1.18.0 (G6+G8): debug instead of error — during an intended shutdown
+      // (onUnload) a close error is mostly an "already closed" race without
+      // consequence. The caller (main.ts onUnload) does not log it twice.
       this.adapter.log.debug(`Web server stop error: ${errText(err)}`);
     }
     this.hostnames.dispose();
@@ -387,9 +385,8 @@ export class WebServer {
     }
   }
 
-  // v1.14.0 (H8): `inject` ist jetzt ein readonly Field (oben deklariert,
-  // im Constructor einmalig gebunden). Der frühere Getter allokierte bei
-  // jedem Access eine neue Funktion.
+  // v1.14.0 (H8): `inject` is a readonly field now (declared above, bound once in the
+  // constructor). The former getter allocated a new function on every access.
 
   /**
    * Deletes every entry of `map` for which `shouldDelete` returns true and
@@ -473,13 +470,13 @@ export class WebServer {
   }
 
   /**
-   * Cooldown-Decision für 5xx-Error-Logging. Liefert `true` für die erste
-   * Beobachtung pro `key` innerhalb {@link REQUEST_ERROR_COOLDOWN_MS} und
-   * markiert den Eintrag — Wiederholungen liefern `false` bis das Fenster
-   * abgelaufen ist. Map ist FIFO-gedeckelt auf {@link REQUEST_ERROR_COOLDOWN_CAP}.
+   * Cooldown decision for logging 5xx errors. Returns `true` for the first sighting of
+   * a `key` within {@link REQUEST_ERROR_COOLDOWN_MS} and marks the entry — repeats
+   * return `false` until the window has passed. The map is FIFO-capped at
+   * {@link REQUEST_ERROR_COOLDOWN_CAP}.
    *
-   * @param key Eindeutiger Error-Identifier (üblicherweise `error.message`).
-   * @param now Aktuelle Zeit in ms (testbar).
+   * @param key Unique error identifier (usually `error.message`).
+   * @param now Current time in ms (testable).
    */
   public shouldEmitRequestErrorWarn(key: string, now: number): boolean {
     return this.emitOncePerWindow(this.errorLogCooldown, key, now);
@@ -581,8 +578,8 @@ export class WebServer {
   // --- client identification ---
 
   /**
-   * v1.15.0 (F6): zentraler Extract `req.ip → coerced string|null`. Vorher
-   * 3× inline `coerceString(req.ip)` in identify/login/token-Handlern.
+   * v1.15.0 (F6): the one place that turns `req.ip` into a coerced string|null. Before,
+   * `coerceString(req.ip)` was inlined three times in the identify/login/token handlers.
    *
    * @param req Fastify request (uses `req.ip`).
    */
@@ -623,8 +620,8 @@ export class WebServer {
   private async identify(req: FastifyRequest, reply: FastifyReply): Promise<ClientRecord> {
     const cookie = coerceUuid(req.cookies?.[CLIENT_COOKIE]);
     const ip = WebServer.getClientIp(req);
-    // v1.17.0 (C8): UA durchreichen damit NAT-Co-Located Displays nicht
-    // im selben Pending-Lock landen (siehe identifyOrCreate-Kommentar).
+    // v1.17.0 (C8): pass the UA on so displays behind the same NAT do not end up in
+    // the same pending lock (see the identifyOrCreate comment).
     const userAgent = coerceString(req.headers["user-agent"]);
     // HEAD never mints a display: uptime monitors, scanners and both Companion apps'
     // connectivity checks (android DefaultConnectivityChecker.kt:100-104, iOS
@@ -644,14 +641,14 @@ export class WebServer {
     } else if (record.persistent) {
       const reason = cookie ? "cookie-stale (unknown)" : "no-cookie";
       this.adapter.log.debug(`identify: ${reason}, new client=${record.id} ip=${ip ?? "?"}`);
-      // v1.25.0 (C11): Cookie `secure: true` wenn TLS — Browser sendet
-      // den Cookie dann nur über HTTPS. Bei trustProxy=true kommt
-      // `req.protocol` aus `X-Forwarded-Proto`-Header. Default ohne
-      // trustProxy: `req.protocol === 'http'` (Adapter ist HTTP only),
-      // also Cookie nicht-secure — sonst würde der Browser ihn nie senden.
+      // v1.25.0 (C11): cookie `secure: true` under TLS — the browser then sends the
+      // cookie over HTTPS only. With trustProxy=true `req.protocol` comes from the
+      // `X-Forwarded-Proto` header. Default without trustProxy: `req.protocol === 'http'`
+      // (the adapter is HTTP only), so the cookie is not secure — otherwise the browser
+      // would never send it.
       const useSecure = req.protocol === "https";
-      // v1.32.0 A2: Cookie-Secure-Decision tracen — wenn trustProxy-config
-      // falsch ist, kriegt Display den Cookie evtl. nie zurück.
+      // v1.32.0 A2: trace the cookie secure decision — with a wrong trustProxy setting
+      // the display may never send the cookie back.
       this.adapter.log.debug(`identify: setting cookie secure=${useSecure} (req.protocol=${req.protocol})`);
       reply.setCookie(CLIENT_COOKIE, record.cookie, {
         path: "/",
@@ -1027,7 +1024,7 @@ export class WebServer {
       // A repeated `state` parameter arrives as an array — a string or nothing (H7).
       const state = coerceString(req.query?.state) ?? undefined;
 
-      // v1.32.0 D2: rejection-Pfade traced — Triage „warum bricht OAuth ab"
+      // v1.32.0 D2: rejection paths are traced — triage for "why does OAuth abort"
       const v = this.validateAuthorizeRequest(reply, "GET", response_type, client_id, redirect_uri);
       if (!v.ok) {
         return v.html;
@@ -1131,8 +1128,8 @@ export class WebServer {
         const flowId = req.params.flowId;
         const session = WebServer.takeFresh(this.sessions, flowId, SESSION_TTL_MS);
         if (!session) {
-          // v1.8.0: nach Session-TTL (10 min) feuert das bei jedem
-          // legit returning user — nicht actionable. debug, nicht warn.
+          // v1.8.0: after the session TTL (10 min) this fires for every legitimate
+          // returning user — nothing to act on. debug, not warn.
           this.adapter.log.debug(`Unknown flow_id: ${oneLine(flowId)}`);
           reply.status(400);
           return { type: "abort", flow_id: flowId, reason: "unknown_flow" };
@@ -1208,8 +1205,8 @@ export class WebServer {
         return this.handleRefreshGrant(refresh_token, reply);
       }
 
-      // „wrong grant_type" ist ein Client-Format-Fehler, kein Server-Concern
-      // — daher nur debug (legitime Client-Bugs sollen das Log nicht fluten).
+      // A wrong grant_type is a client format error, not a server concern — hence
+      // debug only (legitimate client bugs must not flood the log).
       this.adapter.log.debug(`Token exchange failed: grant_type=${describeUntrusted(grant_type)}`);
       reply.status(400);
       return { error: "invalid_request", error_description: "Invalid or expired code" };
@@ -1323,9 +1320,9 @@ export class WebServer {
   private setupMiscRoutes(): void {
     // Liveness only — no config leak. Earlier versions exposed the global
     // redirect URL via /health which is unauthenticated; removed in v1.2.0.
-    // v1.5.0: auch der `config: { mdns, auth }`-Block raus — Auth-Status leakte
-    // unauthenticated und ließ sich von einem Network-Attacker zur Reconnaissance
-    // nutzen (auth-disabled Instances quickly mappen).
+    // v1.5.0: the `config: { mdns, auth }` block went too — it leaked the auth state
+    // without authentication, which an attacker on the network could use for
+    // reconnaissance (quickly mapping instances with auth disabled).
     this.app.get("/health", PUBLIC_ROUTE, () => ({
       status: "ok",
       adapter: "hassemu",
@@ -1337,8 +1334,8 @@ export class WebServer {
       // verifies the server identity by parsing this field. Source:
       // home-assistant/android DefaultConnectivityChecker.kt:isHomeAssistant
       // checks `name === "Home Assistant"`. Anything else (e.g. `serviceName`
-      // = "ioBroker") fails the onboarding probe with "Server ist nicht
-      // Home Assistant".
+      // = "ioBroker") fails the onboarding probe with "Server is not Home
+      // Assistant".
       name: "Home Assistant",
       short_name: "Home Assistant",
       start_url: "/",
@@ -1347,23 +1344,21 @@ export class WebServer {
       theme_color: "#03a9f4",
     }));
 
-    // Root — HTML-Wrapper (iframe + auto-reload), oder Landing-Page wenn keine URL.
+    // Root — HTML wrapper (iframe + auto reload), or the landing page when there is no URL.
     //
-    // v1.7.0 (A3): statt 302 liefern wir ein iframe-HTML + 30s-poll auf
-    // /api/redirect_check. Wenn die Mode-/URL-Config sich ändert (User edit
-    // im Adapter), pollt das Display den Wechsel und macht `location.reload()`
-    // — ohne Soft-Reboot des Displays. Vorher musste der User das Display
-    // manuell rebooten.
+    // v1.7.0 (A3): instead of a 302 we serve an iframe page that polls /api/redirect_check
+    // every 30 s. When the mode/URL setting changes (a user edit in the adapter), the
+    // display picks the change up and calls `location.reload()` — without a soft reboot
+    // of the display. Before, the user had to reboot the display by hand.
     //
-    // WebViews wie Shelly Wall Display rendern iframes + JavaScript korrekt.
-    // Falls ein User direkten 302-Redirect will (Browser-Test, Bookmarklet
-    // etc.), kann er die Target-URL direkt eingeben — der Wrapper läuft nur
-    // beim Aufruf von `/`.
+    // WebViews such as the Shelly Wall Display render iframes and JavaScript correctly.
+    // Whoever wants a plain 302 (a browser test, a bookmarklet, …) can enter the target
+    // URL directly — the wrapper only runs for `/`.
     this.app.get("/", PUBLIC_ROUTE, async (req, reply) => {
       const client = await this.identify(req, reply);
-      // v1.32.0 B1: Resolver-Chain als Triage-Anker. Ohne Chain musste der
-      // Maintainer den Resolver-Code lesen um zu verstehen warum genau
-      // diese URL für diesen Client gewählt wurde.
+      // v1.32.0 B1: the resolver chain as a triage anchor. Without it a maintainer had
+      // to read the resolver code to understand why exactly this URL was picked for
+      // this client.
       const { url, chain } = resolveRedirectWithChain(client, this.globalConfig.redirect);
       // Only-on-change, the same discipline `/api/redirect_check` has had since v1.32.0
       // (F1) — and needed more here, because the landing page reloads every 15 s (twice
@@ -1392,16 +1387,15 @@ export class WebServer {
         .send(renderRedirectWrapper(url, client.id, this.systemLanguage, client.ip, targetReachable));
     });
 
-    // /api/redirect_check — Display polled das alle 30s; wenn der target
-    // sich geändert hat (User edit), gibt der Wrapper `location.reload()`
-    // ab. Cookie-basiert — Display schickt seinen `hassemu_client`-Cookie
-    // automatisch mit.
+    // /api/redirect_check — the display polls it every 30 s; when the target has changed
+    // (a user edit) the wrapper calls `location.reload()`. Cookie-based — the display
+    // sends its `hassemu_client` cookie by itself.
     this.app.get("/api/redirect_check", PUBLIC_ROUTE, async (req, reply) => {
       const client = await this.identify(req, reply);
       const url = resolveRedirect(client, this.globalConfig.redirect);
-      // v1.32.0 F1: only-on-change-Trace. Jeder Poll (alle 30s × N Displays)
-      // wäre Flood — diagnostisch wertvoll ist nur der Target-Wechsel.
-      // First-time-poll-pro-restart wird auch geloggt weil Map leer ist.
+      // v1.32.0 F1: trace on change only. Every poll (every 30 s × N displays) would
+      // flood the log — only a change of target is worth a line. The first poll after
+      // a restart is logged too, because the map is empty.
       const prev = this.lastRedirectTargetByClient.get(client.id);
       const next = url ?? null;
       if (this.noteRedirectTarget(client, next)) {

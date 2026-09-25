@@ -661,7 +661,7 @@ describe("UrlDiscovery", () => {
         "system.adapter.web.0": enabledInstance({ native: { bind: "192.168.1.10", port: 8082 } }),
       };
       adapter._dirs["vis-2.0"] = [{ file: "home", isDir: true }];
-      // VIS-2 hat den `views`-Wrapper über die Versionen variiert — beide Layouts unterstützen
+      // VIS-2 has varied the `views` wrapper across versions — support both layouts
       adapter._files["vis-2.0:home/vis-views.json"] = JSON.stringify({
         MainView: { widgets: {} },
         BedRoom: { widgets: {} },

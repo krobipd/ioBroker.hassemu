@@ -428,7 +428,7 @@ describe("ClientRegistry", () => {
     });
 
     // v1.17.0 (C8) — different User-Agents on the same IP (NAT) get separate
-    // ClientRecords statt cookie/token zu teilen.
+    // ClientRecords instead of sharing cookie/token.
     it("parallel cookieless requests with different UAs on same IP get distinct clients (C8 v1.17.0)", async () => {
       const promises = [
         registry.identifyOrCreate(null, "10.0.0.1", { userAgent: "Display-A/1.0" }),
@@ -440,7 +440,7 @@ describe("ClientRegistry", () => {
       expect(registry.listAll()).to.have.lengthOf(2);
     });
 
-    // v1.17.0 (C8) — same UA on same IP behaves wie vorher: Bursts kollabieren.
+    // v1.17.0 (C8) — same UA on the same IP behaves as before: bursts collapse.
     it("parallel cookieless requests with same UA on same IP collapse to one client", async () => {
       const promises = [
         registry.identifyOrCreate(null, "10.0.0.2", { userAgent: "Display-A/1.0" }),
@@ -756,7 +756,7 @@ describe("ClientRegistry", () => {
     it("rejects non-string values (logs debug, G7 v1.18.0)", async () => {
       await registry.handleModeWrite(rec.id, 42);
       expect(rec.mode).to.equal(MODE_GLOBAL);
-      // v1.18.0 (G7): downgrade warn→debug — das war UI-echo, kein Server-Concern.
+      // v1.18.0 (G7): downgraded warn→debug — it was a UI echo, not a server concern.
       const debug = store.logs.find(l => l.level === "debug" && l.msg.includes("non-string"));
       expect(debug).to.not.be.undefined;
     });
@@ -838,9 +838,9 @@ describe("ClientRegistry", () => {
     });
 
     it("logs debug with count on actual changes", async () => {
-      // bulkSetMode-Trigger ist Tech-Internal — auf debug seit v1.27.0
-      // (User wollte mode-Werte aus dem User-Log raus). Test prüft den
-      // debug-Output mit Count statt info.
+      // The bulkSetMode trigger is internal — debug since v1.27.0 (mode values
+      // were not wanted in the user log). The test checks the debug output
+      // with its count instead of info.
       await registry.identifyOrCreate(null, "1.1.1.1");
       await registry.identifyOrCreate(null, "1.1.1.2");
       store.logs.length = 0;
@@ -907,8 +907,8 @@ describe("ClientRegistry", () => {
 
   describe("syncUrlDropdown", () => {
     it("updates common.states on existing mode datapoints with sentinels + URLs (plain-string labels, EN fallback)", async () => {
-      // v1.28.4: Sentinel-labels sind plain-strings (system-language resolved),
-      // nicht mehr Translation-Objects. Admin crasht sonst mit React Error #31.
+      // v1.28.4: sentinel labels are plain strings (resolved to the system language),
+      // no longer translation objects — the admin crashes on those with React error #31.
       const rec = await registry.identifyOrCreate(null, null);
       await registry.syncUrlDropdown({ "http://a.local/": "A", "http://b.local/": "B" });
       const obj = store.objects.get(`hassemu.0.clients.${rec.id}.mode`);
@@ -1562,7 +1562,7 @@ describe("ClientRegistry name/description reach existing clients (v1.41.0)", () 
   // setObjectNotExists on .ip/.remove, `preserve` on .manualUrl, and the name-preserving
   // early return in ensureModeObject. Measured on the live tree 2026-09-03: `.ip` still
   // read "Client IP" and `.remove` "Forget this client" — both renamed in admin/i18n
-  // versions earlier. (`reference_iobroker_bestehende_objekte_erreichen`)
+  // versions earlier.
   const textOf = (name: unknown): unknown =>
     name !== null && typeof name === "object" ? (name as Record<string, string>).en : name;
 

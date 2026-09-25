@@ -27,15 +27,15 @@ export type ModeWriteResult =
 export type LegacyVisMigration = { kind: "empty" } | { kind: "safe-url"; safe: string } | { kind: "unsafe-rejected" };
 
 /**
- * „No-choice"-Marker: User hat den Default-Eintrag `0='---'` (oder eine seiner
- * Repräsentationen) gewählt. Behandelt sowohl die numerische `0` (Admin-UI
- * mit `type: mixed` Dropdowns), die String-Variante `'0'` und den leeren String.
+ * "No choice" marker: the user picked the default entry `0='---'` (or one of its
+ * representations). Covers the numeric `0` (admin UI with `type: mixed` dropdowns),
+ * the string `'0'` and the empty string.
  *
- * Wird in beiden Mode-Handlers (client-registry, global-config) gleich behandelt
- * — vor v1.8.0 war die Logik 4× dupliziert. Jeder andere Wert ist ein „echter"
- * User-Input und muss validiert werden.
+ * Both mode handlers (client-registry, global-config) treat it the same way — before
+ * v1.8.0 the logic existed four times. Any other value is "real" user input and has
+ * to be validated.
  *
- * @param value Untrusted input vom Mode-State (numeric 0 / string '0' / '' / URL / sentinel).
+ * @param value Untrusted input from the mode state (numeric 0 / string '0' / '' / URL / sentinel).
  */
 export function isNoChoice(value: unknown): boolean {
   return value === 0 || value === NO_CHOICE || value === "";
@@ -63,18 +63,17 @@ export function parseManualUrlWrite(rawValue: unknown): ManualUrlWriteResult {
 }
 
 /**
- * v1.23.0 (F2): zentralisierte Validierung für Mode-Writes. Vorher hatten
- * `ClientRegistry.handleModeWrite` und `GlobalConfig.handleModeWrite` ~80%
- * der Logik dupliziert (no-choice, non-string-reject, sentinel-check, URL-
- * coerce). Beide nutzen jetzt diesen Helper und steuern nur ihre eigenen
- * State-IDs / Logging-Prefixes / erlaubte Sentinels.
+ * v1.23.0 (F2): central validation for mode writes. `ClientRegistry.handleModeWrite`
+ * and `GlobalConfig.handleModeWrite` used to duplicate ~80% of the logic (no choice,
+ * non-string rejection, sentinel check, URL coercion). Both use this helper now and
+ * only supply their own state ids, log prefixes and allowed sentinels.
  *
- * `allowedSentinels` ist die Liste der zulässigen non-URL Mode-Werte —
- * client-registry erlaubt z.B. `[MODE_GLOBAL, MODE_MANUAL]`, global-config
- * nur `[MODE_MANUAL]` (MODE_GLOBAL wäre self-referential).
+ * `allowedSentinels` lists the non-URL mode values that are allowed — client-registry
+ * allows `[MODE_GLOBAL, MODE_MANUAL]`, global-config only `[MODE_MANUAL]` (MODE_GLOBAL
+ * would refer to itself).
  *
- * @param rawValue         Wert vom State-Write.
- * @param allowedSentinels Erlaubte Non-URL-Sentinels.
+ * @param rawValue         Value of the state write.
+ * @param allowedSentinels Allowed non-URL sentinels.
  */
 export function parseModeWrite(rawValue: unknown, allowedSentinels: readonly string[]): ModeWriteResult {
   if (isNoChoice(rawValue)) {
@@ -83,13 +82,12 @@ export function parseModeWrite(rawValue: unknown, allowedSentinels: readonly str
   if (typeof rawValue !== "string") {
     return { kind: "rejected-non-string" };
   }
-  // String-Sentinels haben Vorrang vor URL-Coerce.
+  // String sentinels take precedence over URL coercion.
   if (allowedSentinels.includes(rawValue)) {
     return { kind: "sentinel", value: rawValue };
   }
-  // Disallowed-Sentinel-Detection: wenn der Caller MODE_GLOBAL/MODE_MANUAL
-  // als known-strings hat, aber sie nicht in allowedSentinels sind, melden
-  // wir das explizit (für Self-Referential-Check in global-config).
+  // Disallowed sentinel: MODE_GLOBAL/MODE_MANUAL is a known string, but not in
+  // allowedSentinels — reported explicitly (the self-reference check in global-config).
   if (rawValue === MODE_GLOBAL || rawValue === MODE_MANUAL) {
     return { kind: "rejected-disallowed-sentinel", value: rawValue };
   }
@@ -123,15 +121,15 @@ export function decideGcAction(lastSeen: unknown, reference: number, ttlMs: numb
 }
 
 /**
- * v1.25.0 (J2): pure decision-helper für die `migrateVisUrlToMode`-Logik
- * (main.ts). Behandelt drei Fälle:
- *  - leer/undefined/null → `'empty'` (keine Migration nötig)
- *  - safe-URL → `'safe-url'` (legacy-URL übernehmen)
- *  - unsafe (`javascript:`/Credentials/etc.) → `'unsafe-rejected'` (Manual-Mode setzen, URL verwerfen)
+ * v1.25.0 (J2): pure decision helper for `migrateVisUrlToMode` (legacy-migration.ts).
+ * Three cases:
+ *  - empty/undefined/null → `'empty'` (nothing to migrate)
+ *  - safe URL → `'safe-url'` (take the legacy URL over)
+ *  - unsafe (`javascript:`, credentials, …) → `'unsafe-rejected'` (set manual mode, drop the URL)
  *
- * Vorher war diese Logik inline in main.ts → nicht direkt unit-testbar.
+ * The logic used to sit inline in main.ts, where no unit test could reach it directly.
  *
- * @param rawValue Untyped value (aus dem legacy `*.visUrl`-State).
+ * @param rawValue Untyped value (from the legacy `*.visUrl` state).
  */
 export function decideLegacyVisMigration(rawValue: unknown): LegacyVisMigration {
   if (isEmptyValue(rawValue)) {
@@ -145,11 +143,11 @@ export function decideLegacyVisMigration(rawValue: unknown): LegacyVisMigration 
 }
 
 /**
- * v1.20.0 (F4): composed `0='---' + sentinels + url-states` — Grundgerüst
- * der Mode-Dropdowns. Vorher hatten `client-registry.buildModeStates` und
- * `global-config.syncUrlDropdown` identische Composition.
+ * v1.20.0 (F4): composes `0='---' + sentinels + url states` — the skeleton of the mode
+ * dropdowns. `client-registry.buildModeStates` and `global-config.syncUrlDropdown`
+ * used to compose it identically.
  *
- * @param sentinels Zusätzliche Sentinel-Einträge (z.B. `{ global: 'Follow master', manual: 'Manual URL' }`).
+ * @param sentinels Extra sentinel entries (e.g. `{ global: 'Global URL', manual: 'Manual URL' }`).
  * @param urlStates Discovered URLs (`{ 'http://x/': 'X', ... }`).
  */
 export function buildDropdownStates(

@@ -144,7 +144,7 @@ describe("redirect-wrapper", () => {
       expect(html).to.include("&lt;script&gt;alert(1)&lt;/script&gt;");
     });
 
-    // v1.39.0: target-down card ("hassemu läuft, Ziel antwortet nicht").
+    // v1.39.0: target-down card ("hassemu runs, the target does not answer").
     describe("target-down card", () => {
       it("renders the card hidden by default when the target is reachable", () => {
         const html = renderRedirectWrapper("https://x.test/", "a1b2c3", "en");

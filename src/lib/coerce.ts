@@ -105,14 +105,14 @@ export function isValidRedirectUri(clientId: string, redirectUri: string): boole
 }
 
 /**
- * v1.22.0 (F5): vormals in webserver.ts. Constant-time string comparison
- * for credential checks. Length-leak-resistant via SHA-256-Digest-Vergleich:
- * beide Inputs werden auf eine fixe 32-Byte-Länge gehasht, dann timing-safe
- * verglichen.
+ * v1.22.0 (F5): formerly in webserver.ts. Constant-time string comparison
+ * for credential checks, resistant to length leaks through a SHA-256 digest
+ * comparison: both inputs are hashed to a fixed 32-byte length, then compared
+ * timing-safe.
  *
- * v1.16.0 (C6): vorher `if (ab.length !== bb.length) return false` VOR
- * timingSafeEqual — die Längen-Differenz war über Response-Timing
- * erschnüffelbar.
+ * v1.16.0 (C6): before, `if (ab.length !== bb.length) return false` ran BEFORE
+ * timingSafeEqual — the length difference could be sniffed from the response
+ * timing.
  *
  * @param a First string to compare.
  * @param b Second string to compare.
@@ -139,9 +139,9 @@ export function isEmptyValue(value: unknown): boolean {
  *
  * @param value Untrusted input.
  */
-// v1.9.0 (E8): nur dezimale Zahlen — `Number()` würde sonst auch
-// '0x1FBB' (HEX) und '8.123e3' (Exponential) akzeptieren. In url-discovery
-// für Port-Felder wäre HEX-Acceptance Schaden-Vektor.
+// v1.9.0 (E8): decimal numbers only — `Number()` would also accept
+// '0x1FBB' (hex) and '8.123e3' (exponential). For the port fields in
+// url-discovery, accepting hex would be a way to do damage.
 const DECIMAL_NUMBER_RE = /^-?\d+(\.\d+)?$/;
 
 /**
@@ -265,8 +265,8 @@ export function coerceSafeUrl(value: unknown): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// v1.20.0 (Phase F-DRY): generische Helpers, die in client-registry und
-// global-config bisher dupliziert waren.
+// v1.20.0 (phase F-DRY): generic helpers that client-registry and
+// global-config used to duplicate.
 // ---------------------------------------------------------------------------
 
 /**

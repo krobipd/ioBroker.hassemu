@@ -111,8 +111,8 @@ export const REQUEST_ERROR_COOLDOWN_MS = 60 * 1000;
 export const REQUEST_ERROR_COOLDOWN_CAP = 200;
 /**
  * Hard cap for the per-IP new-client burst tracker (`client-registry.newClientBurst`).
- * FIFO-Eviction analog der anderen Caps; verhindert unbounded growth bei broken-cookie
- * Display-Farmen oder Brute-Force-Burst.
+ * FIFO eviction like the other caps; prevents unbounded growth from a farm of displays
+ * with broken cookies or a brute-force burst.
  */
 export const NEW_CLIENT_BURST_CAP = 200;
 
@@ -185,9 +185,9 @@ export const NEW_CLIENT_BURST_WARN_THRESHOLD = 3;
 export const CLIENT_OBJECTS_VERSION = 3;
 
 /**
- * Resolver-Sentinels für `client.mode` und `global.mode`. `'global'` heißt:
- * delegate an `global.mode`. `'manual'` heißt: nutze die zugehörige
- * `manualUrl`-State. Jeder andere String wird als URL interpretiert.
+ * Resolver sentinels for `client.mode` and `global.mode`. `'global'` means:
+ * delegate to `global.mode`. `'manual'` means: use the matching `manualUrl`
+ * state. Any other string is taken as a URL.
  */
 export const MODE_GLOBAL = "global";
 export const MODE_MANUAL = "manual";

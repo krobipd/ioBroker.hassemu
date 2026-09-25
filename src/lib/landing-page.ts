@@ -50,10 +50,10 @@ export function renderLandingPage(
   // the client FOLDER (not `.mode`) so the setup steps can reference both `mode` and
   // `manualUrl` inside it. M2 (v1.38.0).
   const datapoint = `${namespace}.clients.${clientId}`;
-  // v1.16.0 (E3): Loopback-IPs nicht anzeigen — der End-User sieht sonst
-  // „localhost" / „127.0.0.1" / „::1" als sein Display-IP, was bei Proxy-
-  // Setups verwirrt (Display sitzt am Reverse-Proxy, nicht am Adapter).
-  // Ohne IP-Zeile fällt die Tabellen-Zeile einfach weg, alles andere bleibt.
+  // v1.16.0 (E3): do not show loopback addresses — the user would otherwise see
+  // "localhost" / "127.0.0.1" / "::1" as the display's address, which confuses in proxy
+  // setups (the display sits behind the reverse proxy, not at the adapter).
+  // Without an address the table row is simply left out, everything else stays.
   const ipLine = renderIpRow(t("pageIpAddress"), ip);
 
   return `<!DOCTYPE html>

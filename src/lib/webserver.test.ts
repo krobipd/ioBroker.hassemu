@@ -496,9 +496,9 @@ describe("WebServer", () => {
     });
 
     it("POST /auth/token accepts application/x-www-form-urlencoded body (OAuth2-Spec, v1.4.0)", async () => {
-      // Real HA-Reference-Clients (Wall Display, frontend) senden urlencoded —
-      // ohne @fastify/formbody würde Fastify mit 415 antworten und Auth wäre tot.
-      // Tests via inject({payload:{}}) serialisieren zu JSON und maskieren das.
+      // Real HA reference clients (Wall Display, frontend) send urlencoded —
+      // without @fastify/formbody Fastify would answer 415 and sign-in would be dead.
+      // Tests through inject({payload:{}}) serialise to JSON and hide that.
       const r1 = await server.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
       const cookie = extractCookie(r1.headers["set-cookie"])!;
       const flowId = r1.json().flow_id;
@@ -792,7 +792,8 @@ describe("WebServer", () => {
       // Source: home-assistant/android IntegrationRepositoryImpl.kt:122-161 @2026.9.0
       // — calls POST /api/mobile_app/registrations with Bearer token
       // after registerAuthorizationCode finishes. A 404 here surfaces
-      // as „Mobile-App-Integration nicht verfügbar" and blocks onboarding.
+      // as "The 'Mobile App' integration is required to use the app, but it is not
+      // available on your Home Assistant server." and blocks onboarding.
 
       // 1. OAuth2: GET /auth/authorize → auth_code
       const r1 = await server.inject({ method: "GET", url: `/auth/authorize?${SHELLY_QUERY}` });
@@ -1129,8 +1130,8 @@ describe("WebServer", () => {
     it("GET / wrapper notifies HA Companion App via externalApp / externalAppV2 bridge (v1.29.2)", async () => {
       // Source: home-assistant/android FrontendMessageHandler.kt expects a
       // `{type:"connection-status",payload:{event:"connected"}}` envelope.
-      // Without it the WebView shows „Verbindung zu Home Assistant nicht
-      // möglich" after CONNECTION_TIMEOUT=10s. The wrapper now emits this
+      // Without it the WebView shows "Unable to connect to Home Assistant."
+      // after CONNECTION_TIMEOUT=10s. The wrapper now emits this
       // message at load through both V1 (externalApp) and V2 (externalAppV2)
       // bridges so the WebView's timeout is preempted.
       const res = await server.inject({ method: "GET", url: "/" });
@@ -1807,7 +1808,7 @@ describe("WebServer", () => {
       }
     });
 
-    // --- C3: auth pre-handler-guard für /api/* (v1.6.0) ---
+    // --- C3: auth pre-handler guard for /api/* (v1.6.0) ---
 
     it("GET /api/states without Bearer returns 401 when authRequired=true (v1.6.0)", async () => {
       const s = await buildAuthServer();

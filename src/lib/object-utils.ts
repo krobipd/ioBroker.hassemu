@@ -9,7 +9,7 @@
 
 import { isPlainObject } from "./coerce";
 
-/** Minimal-Surface für `safeGetState` — Tests können das mocken. */
+/** Minimal surface for `safeGetState` — tests can mock it. */
 export interface StateReader {
   /** Returns the state for `id`, or `null|undefined` if it does not exist. */
   getStateAsync: (id: string) => Promise<ioBroker.State | null | undefined>;
@@ -52,13 +52,13 @@ export function isBareStringName(value: unknown): value is string {
 }
 
 /**
- * v1.20.0 (F10): try/catch + null-Fallback um `getStateAsync`. Vorher hatten
- * `client-registry.readState` und `global-config.safeGetState` identische
- * Wrapper. Caller extrahieren `.val` selbst, wenn sie nur den Wert wollen.
+ * v1.20.0 (F10): try/catch + null fallback around `getStateAsync`.
+ * `client-registry.readState` and `global-config.safeGetState` used to carry
+ * identical wrappers. Callers take `.val` themselves when they only want the value.
  *
  * @param adapter Anything that exposes `getStateAsync(id)`.
- * @param id      Voller State-ID (mit Namespace) oder relativer Pfad — wie der
- *                Caller das schon bisher übergeben hat.
+ * @param id      Full state id (with namespace) or a relative path — whatever the
+ *                caller passed before.
  */
 export async function safeGetState(adapter: StateReader, id: string): Promise<ioBroker.State | null> {
   try {
@@ -69,18 +69,18 @@ export async function safeGetState(adapter: StateReader, id: string): Promise<io
 }
 
 /**
- * v1.20.0 (F9): generischer Parser für Namespace-Prefix-Tail-Kind State-IDs.
- * Vorher hatten `parseClientStateId` und `parseGlobalStateId` identische
- * Prefix-Validierung + Split-Logik. Beide delegieren jetzt hier.
+ * v1.20.0 (F9): generic parser for state ids of the form namespace + prefix + tail.
+ * `parseClientStateId` and `parseGlobalStateId` used to carry identical prefix
+ * validation and split logic. Both delegate here now.
  *
- * Beispiel: `parseAdapterStateId('hassemu.0.clients.abc.mode', 'hassemu.0', 'clients.', 2)`
- * liefert `['abc', 'mode']` (zwei Tail-Parts mit `clients.<id>.<kind>`).
+ * Example: `parseAdapterStateId('hassemu.0.clients.abc.mode', 'hassemu.0', 'clients.', 2)`
+ * returns `['abc', 'mode']` (two tail parts for `clients.<id>.<kind>`).
  *
- * @param fullId      Voller State-ID aus dem Event.
- * @param namespace   Adapter-Namespace (z.B. `hassemu.0`).
- * @param prefix      Sub-Pfad nach dem Namespace, **mit** trailing dot (z.B. `clients.`).
- * @param expectedParts Anzahl erwarteter Tail-Segmente (1 für `global.<kind>`, 2 für `clients.<id>.<kind>`).
- * @returns Tail-Segments als Tuple, oder `null` wenn Prefix/Anzahl nicht passt.
+ * @param fullId      Full state id from the event.
+ * @param namespace   Adapter namespace (e.g. `hassemu.0`).
+ * @param prefix      Sub-path after the namespace, **with** the trailing dot (e.g. `clients.`).
+ * @param expectedParts Number of expected tail segments (1 for `global.<kind>`, 2 for `clients.<id>.<kind>`).
+ * @returns The tail segments as a tuple, or `null` when prefix or count does not match.
  */
 export function parseAdapterStateId(
   fullId: string,
@@ -106,9 +106,9 @@ export function parseAdapterStateId(
  * defensive — if `cap` is lowered at runtime or a bulk-insert pushes multiple
  * entries past the threshold in one call, all overflow gets evicted.
  *
- * v1.32.0: konsolidiert aus `webserver.ts:evictOldest` (private static, while-loop)
- * und `client-registry.ts:recordNewClientIp` (single-shot inline) zu einem shared
- * helper.
+ * v1.32.0: consolidated into one shared helper from `webserver.ts:evictOldest`
+ * (private static, while loop) and the single-shot inline eviction of the former
+ * `client-registry.ts:recordNewClientIp` (gone since).
  *
  * @param map Map to evict from.
  * @param cap Hard cap — evicts while `map.size >= cap`.

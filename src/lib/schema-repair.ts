@@ -54,18 +54,18 @@ async function repairOne(
   id: string,
   expectedCommonType: string,
 ): Promise<void> {
-  // v1.14.0 (H3): needs-repair-Check vor unconditional extendObject —
-  // spart 2 Round-Trips bei jedem Start für ~99% der Installationen.
+  // v1.14.0 (H3): check whether a repair is needed before an unconditional extendObject —
+  // saves two round trips on every start for ~99% of installations.
   try {
     const obj = await adapter.getObjectAsync(id);
     if (obj && obj.type === "state" && obj.common?.type === expectedCommonType) {
-      return; // bereits korrekt
+      return; // already correct
     }
   } catch {
     /* fall through to repair */
   }
-  // v1.25.0 (F3): schemas kommen aus io-package.json:instanceObjects (single
-  // source of truth), nicht hardgecoded.
+  // v1.25.0 (F3): the schemas come from io-package.json:instanceObjects (single
+  // source of truth), not hard-coded.
   const fullId = `${adapter.namespace}.${id}`;
   const schema = instanceObjects.find(o => o._id === id || o._id === fullId);
   if (!schema) {
@@ -73,20 +73,17 @@ async function repairOne(
     return;
   }
   try {
-    // `extendObject` erwartet die diskriminierte Union `PartialObject`,
-    // deren `type` ein `ObjectType`-LITERAL sein muss, damit der Compiler
-    // `common` auf das passende Member narrowt. `schema` kommt aber aus der
-    // (build-time-validierten) io-package.json, wo `type` zur Laufzeit ein
-    // String und `common` `unknown` ist — ein Laufzeit-`type` lässt sich in
-    // TS 6 NICHT auf die Literal-Union reduzieren (verifiziert: jeder Feld-Cast
-    // scheitert an `Partial<StateCommon>` vs `Partial<OtherCommon>`). Daher der
-    // bewusste Cast auf `PartialObject` (statt `never`): die Shape ist durch das
-    // Manifest garantiert.
+    // `extendObject` expects the discriminated union `PartialObject`, whose `type`
+    // has to be an `ObjectType` LITERAL for the compiler to narrow `common` to the
+    // matching member. `schema` comes from the (build-time validated) io-package.json,
+    // where `type` is a string at runtime and `common` is `unknown` — TS 6 cannot
+    // reduce a runtime `type` to the literal union (verified: every field cast fails
+    // on `Partial<StateCommon>` vs `Partial<OtherCommon>`). Hence the deliberate cast
+    // to `PartialObject` (not `never`): the manifest guarantees the shape.
     // v1.41.0: no `preserve` any more. It used to shield `common.name`, but the adapter
     // owns the names of its own manifest objects and `refreshInstanceObjects` overwrites
     // them from admin/i18n on the very next step of onReady — two writes in one start
-    // disagreeing about who owns the name is a contradiction, not a safeguard
-    // (`reference_preserve_name_verhindert_umbenennung`).
+    // disagreeing about who owns the name is a contradiction, not a safeguard.
     await adapter.extendObject(id, {
       type: schema.type,
       common: schema.common,

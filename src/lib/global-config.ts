@@ -87,8 +87,8 @@ export class GlobalConfig {
    * @param rawValue Value written to the state.
    */
   async handleModeWrite(rawValue: unknown): Promise<void> {
-    // v1.23.0 (F2): zentralisierte Validierung via parseModeWrite. Erlaubte
-    // Sentinels: nur MODE_MANUAL — MODE_GLOBAL wäre self-referential
+    // v1.23.0 (F2): central validation through parseModeWrite. The only sentinel
+    // allowed here is MODE_MANUAL — MODE_GLOBAL would refer to itself
     // (global.mode='global' → resolve global.mode → ...).
     const result = parseModeWrite(rawValue, [MODE_MANUAL]);
     switch (result.kind) {
@@ -106,7 +106,7 @@ export class GlobalConfig {
         await this.adapter.setState("global.mode", { val: this.mode || NO_CHOICE, ack: true });
         return;
       case "rejected-disallowed-sentinel":
-        // MODE_GLOBAL bei global.mode → self-referential.
+        // MODE_GLOBAL on global.mode → refers to itself.
         this.adapter.log.warn(`global.mode rejected — "global" is not allowed at the global level (self-referential)`);
         // L37: revert to `this.mode || "0"` so a blank mode reverts to the dropdown's `0='---'`.
         await this.adapter.setState("global.mode", { val: this.mode || NO_CHOICE, ack: true });
@@ -191,10 +191,10 @@ export class GlobalConfig {
    * @param states Discovered URL → label map.
    */
   async syncUrlDropdown(states: UrlStates): Promise<void> {
-    // v1.20.0 (F4): buildDropdownStates Helper aus coerce.ts — vorher
-    // hatten client-registry und global-config identische `0='---' +
-    // sentinels + states`-Composition. Hier nur `manual`-Sentinel weil
-    // `global` in global-config self-referential wäre.
+    // v1.20.0 (F4): the shared buildDropdownStates helper (state-write-rules.ts) —
+    // client-registry and global-config used to compose `0='---' + sentinels + states`
+    // identically. Only the `manual` sentinel here, because `global` would refer to
+    // itself in global-config.
     // resolveLabel() returns a plain string (I18n.translate) — NOT a translation
     // object: Admin renders common.states VALUES directly as a React child and
     // crashes on translation objects with React Error #31.
@@ -224,10 +224,9 @@ export class GlobalConfig {
    * @param manualUrl New manualUrl, or null to clear.
    */
   async migrationSet(mode: string, manualUrl: string | null): Promise<void> {
-    // v1.12.0 (C10): trust-Annahme aus dem Caller droppen. Wenn `mode` weder
-    // 'manual' noch eine sichere URL ist, defaulten wir auf 'manual' (das
-    // legt user-facing den Setup-Pfad nah und vermeidet schreiben von
-    // unsicheren values wie `javascript:alert(1)`).
+    // v1.12.0 (C10): no trust in the caller. When `mode` is neither 'manual' nor
+    // a safe URL, it falls back to 'manual' (that points the user to the setup path
+    // and never writes an unsafe value such as `javascript:alert(1)`).
     const safeMode = mode === MODE_MANUAL || coerceSafeUrl(mode) ? mode : MODE_MANUAL;
     const safeManual = manualUrl !== null ? coerceSafeUrl(manualUrl) : null;
     this.mode = safeMode;
@@ -236,8 +235,8 @@ export class GlobalConfig {
     await this.adapter.setState("global.manualUrl", { val: safeManual ?? "", ack: true });
   }
 
-  // v1.20.0 (F10): private safeGetState war duplicate zu coerce.ts:safeGetState —
-  // jetzt direkt importiert.
+  // v1.20.0 (F10): the private safeGetState duplicated the shared one — now imported
+  // from object-utils.ts.
 }
 
 /**
@@ -247,9 +246,8 @@ export class GlobalConfig {
  * @param namespace The adapter namespace (e.g. `hassemu.0`).
  */
 export function parseGlobalStateId(fullId: string, namespace: string): GlobalStateKind | null {
-  // v1.20.0 (F9): generischer parseAdapterStateId-Helper. Vorher hatte
-  // global-config seine eigene Prefix-+-Tail-Validierung dupliziert mit
-  // client-registry.parseClientStateId.
+  // v1.20.0 (F9): the generic parseAdapterStateId helper. global-config used to
+  // duplicate the prefix + tail validation of client-registry.parseClientStateId.
   const parts = parseAdapterStateId(fullId, namespace, "global.", 1);
   if (!parts) {
     return null;

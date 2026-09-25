@@ -333,8 +333,8 @@ describe("MDNSService cross-platform", () => {
       localService.start();
       expect(localService.isActive()).to.be.true;
 
-      // Fire async 'error' event auf das publish'd service-objekt — bonjour-
-      // service's Service extends EventEmitter, so .emit() ist available.
+      // Fire an async 'error' event on the published service object — bonjour-
+      // service's Service extends EventEmitter, so .emit() is available.
       const internal = localService as unknown as {
         published: { emit?: (event: string, err: Error) => void } | null;
       };

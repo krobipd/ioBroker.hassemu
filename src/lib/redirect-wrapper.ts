@@ -6,17 +6,17 @@ import { makePageTranslator } from "./i18n";
 const REDIRECT_POLL_INTERVAL_MS = 30_000;
 
 /**
- * v1.32.1: Threshold der konsekutiven Poll-Fails ab dem die Down-Seite eingeblendet wird.
- * DOWN_THRESHOLD × REDIRECT_POLL_INTERVAL_MS (3 × 30 s = 1.5 min) ohne Antwort von hassemu —
- * toleriert kurze Hiccups, signalisiert echte Outage.
+ * v1.32.1: number of consecutive failed polls after which the down page is shown.
+ * DOWN_THRESHOLD × REDIRECT_POLL_INTERVAL_MS (3 × 30 s = 1.5 min) without an answer from hassemu —
+ * tolerates short hiccups, signals a real outage.
  */
 const DOWN_THRESHOLD = 3;
 
 /**
- * v1.39.0: Threshold der konsekutiven `targetReachable:false`-Antworten ab dem
- * die Ziel-Down-Karte eingeblendet wird (2 × 30 s ≈ 1 min). Kürzer als
- * {@link DOWN_THRESHOLD}, weil hier hassemu selbst antwortet — das Urteil kommt
- * vom Server-seitigen Probe, nicht aus einem wackligen Client-Netz.
+ * v1.39.0: number of consecutive `targetReachable:false` answers after which the
+ * target-down card is shown (2 × 30 s ≈ 1 min). Shorter than {@link DOWN_THRESHOLD},
+ * because here hassemu itself answers — the verdict comes from the server-side probe,
+ * not from a shaky client network.
  */
 const TARGET_DOWN_THRESHOLD = 2;
 
@@ -102,43 +102,39 @@ const OVERLAY_CARD_THEME = {
 } as const;
 
 /**
- * HTML-Wrapper statt 302-Redirect (A3 / v1.7.0). Display lädt das HTML einmal,
- * sieht den Target im iframe, polled `/api/redirect_check` alle 30s. Bei
- * Target-Wechsel (User edit) macht es `location.reload()`.
+ * HTML wrapper instead of a 302 redirect (A3 / v1.7.0). The display loads the HTML once,
+ * shows the target in an iframe and polls `/api/redirect_check` every 30 s. When the
+ * target changes (a user edit) it calls `location.reload()`.
  *
- * v1.32.1: zusätzliche Down-Seite (`#hassemu-down`-Div, hidden by default) wird
- * eingeblendet wenn der Polling-Endpoint `DOWN_THRESHOLD = 3` mal hintereinander
- * fehlschlägt (~1.5 min). Inline-JS kommt vor dem Adapter-Down vom hassemu-
- * Wrapper im Browser an und lebt dort weiter — die Down-Seite kann also auch
- * gerendert werden wenn hassemu nicht mehr antwortet. Bei Recovery (erste
- * erfolgreiche Antwort) wird die Down-Seite wieder ausgeblendet, kein reload.
- * Plus expliziter „Reload now"-Button als Touch-fähiger Fallback (Shelly Wall
- * Display + HA Companion WebView).
+ * v1.32.1: an extra down page (`#hassemu-down` div, hidden by default) is shown when the
+ * poll endpoint fails `DOWN_THRESHOLD = 3` times in a row (~1.5 min). The inline JS
+ * reaches the browser with the wrapper before hassemu goes down and lives on there — so
+ * the down page can be rendered while hassemu no longer answers. On recovery (the first
+ * successful answer) the down page is hidden again, no reload. Plus an explicit
+ * "Reload now" button as a touch-friendly fallback (Shelly Wall Display + HA Companion
+ * WebView).
  *
- * Limitierung: ein Display der KALT bootet während hassemu down ist, kann
- * dieses HTML nicht von hassemu laden — Browser zeigt Connection-Error.
- * Service-Worker-Cache wäre die Lösung, ist hier bewusst nicht implementiert
- * (Wall-Display-WebView-Cache-Verhalten unklar, Cache-Invalidation eigenes
- * Problem). Praxis: 95% der Realität (Display lief vorher mal) deckt diese
- * Mechanik ab.
+ * Limitation: a display that boots COLD while hassemu is down cannot load this HTML from
+ * hassemu — the browser shows a connection error. A service-worker cache would solve
+ * that and is deliberately not implemented (the Wall Display WebView's cache behaviour
+ * is unclear, cache invalidation is a problem of its own). In practice this covers the
+ * usual case of a display that has been running before.
  *
- * v1.39.0: zweite Karte `#hassemu-target-down` für „hassemu läuft, aber das
- * Weiterleitungsziel antwortet nicht". Das Urteil kommt server-seitig: der
- * `/api/redirect_check`-Response trägt zusätzlich `targetReachable` (Probe mit
- * Cache in `target-health.ts` — der Browser darf cross-origin selbst nicht
- * wissen, ob das iframe geladen hat). Zwei aufeinanderfolgende `false` →
- * Karte statt schwarzer Fläche; die erste `true`-Antwort danach macht ein
- * volles `location.reload()`, damit das iframe frisch lädt (ein einmal ins
- * Leere gelaufenes iframe versucht es von selbst nie wieder). Beim Ausliefern
- * wird der Probe-Stand mitgegeben (`targetReachable`-Parameter): ein Display,
- * das KALT startet während das Ziel down ist, sieht die Karte sofort — nicht
- * erst nach zwei Poll-Runden Schwarz.
+ * v1.39.0: a second card `#hassemu-target-down` for "hassemu runs, but the redirect
+ * target does not answer". The verdict comes from the server: the `/api/redirect_check`
+ * response also carries `targetReachable` (a probe with a cache in `target-health.ts` —
+ * cross-origin, the browser itself may not know whether the iframe loaded). Two `false`
+ * in a row → the card instead of a black area; the first `true` afterwards does a full
+ * `location.reload()` so the iframe loads fresh (an iframe that once ran into nothing
+ * never tries again by itself). The probe state is handed over at render time (the
+ * `targetReachable` parameter): a display that starts COLD while the target is down sees
+ * the card at once — not black for two poll rounds first.
  *
- * @param target          Vom Resolver gelieferte Ziel-URL.
- * @param clientId        Short id of this display (für Anzeige auf der Down-Seite).
- * @param language        ioBroker-Systemsprache für die Down-Seite (EN-Fallback).
- * @param ip              Optional IP-Adresse des Displays (für Anzeige auf der Down-Seite).
- * @param targetReachable Probe-Stand des Ziels zum Render-Zeitpunkt (false → Karte sofort sichtbar).
+ * @param target          Target URL from the resolver.
+ * @param clientId        Short id of this display (shown on the down page).
+ * @param language        ioBroker system language for the down page (English fallback).
+ * @param ip              Optional address of the display (shown on the down page).
+ * @param targetReachable Probe state of the target at render time (false → card visible at once).
  */
 export function renderRedirectWrapper(
   target: string,

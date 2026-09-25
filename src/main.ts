@@ -18,9 +18,9 @@ import { type InstanceObjectSchema, repairGlobalSchemas } from "./lib/schema-rep
 import { isUrlSourceAdapterEvent, UrlDiscovery, type UrlStatesListener } from "./lib/url-discovery";
 import { WebServer } from "./lib/webserver";
 import type { AdapterConfig } from "./lib/types";
-// v1.25.0 (F3): instanceObjects als single source of truth — repairGlobalSchemas
-// liest die Object-Schemas aus dem io-package.json statt sie zu duplizieren.
-// resolveJsonModule ist im tsconfig aktiv.
+// v1.25.0 (F3): instanceObjects as the single source of truth — repairGlobalSchemas
+// reads the object schemas from io-package.json instead of duplicating them.
+// resolveJsonModule is enabled in the tsconfig.
 import iobrokerPackage from "../io-package.json";
 const instanceObjectsList = (iobrokerPackage as { instanceObjects: unknown[] }).instanceObjects ?? [];
 
@@ -153,8 +153,8 @@ export class HassEmu extends utils.Adapter {
 
       await this.setState("info.connection", { val: false, ack: true });
 
-      // System-Sprache lesen — wird an WebServer durchgereicht für die
-      // user-facing Landing-Seite (HTML). Adapter-Logs sind Englisch.
+      // Read the system language — handed to the WebServer for the user-facing
+      // landing page (HTML). Adapter logs are English.
       this.systemLanguage = await this.readSystemLanguage();
 
       this.globalConfig = this.makeGlobalConfig();
@@ -213,12 +213,11 @@ export class HassEmu extends utils.Adapter {
       // seen display — tokens do not matter (design decision 14).
       await this.gcStaleClients();
 
-      // HA-Server-UUID stabil über Restarts halten — sonst behandeln HA-Clients
-      // (Companion-App, Wall-Display, ...) jeden Adapter-Restart als „neuer Server"
-      // → Re-Onboarding, Token-Invalidation, History-Verlust. Persistierung in
-      // einem normalen State (NICHT via extendForeignObjectAsync auf
-      // system.adapter.X.native — das triggert Restart-Loops, govee-smart-Lesson
-      // v2.1.3, Memory `feedback_unhandled_rejection_crash_loop` / `reference_iobroker_partial_object_repair`).
+      // Keep the HA server UUID stable across restarts — otherwise HA clients
+      // (Companion app, Wall Display, ...) treat every adapter restart as a "new server"
+      // → re-onboarding, invalidated tokens, lost history. Persisted in an ordinary state
+      // (NOT through extendForeignObjectAsync on system.adapter.X.native — that triggers
+      // restart loops; a lesson from another adapter's v2.1.3).
       const instanceUuid = await this.getOrCreateServerUuid();
       this.log.debug(
         `Config: port=${this.config.port}, auth=${this.config.authRequired}, mdns=${this.config.mdnsEnabled}`,
@@ -228,9 +227,9 @@ export class HassEmu extends utils.Adapter {
         await this.globalConfig?.syncUrlDropdown(states);
         await this.registry?.syncUrlDropdown(states);
       });
-      // v1.13.0 (H5): Provider VOR collect() setzen — sonst läuft das
-      // erste collect() mit dem Default-Provider (`() => MODE_GLOBAL`),
-      // der nicht den Resolver-Output für neue Clients widerspiegelt.
+      // v1.13.0 (H5): set the provider BEFORE collect() — otherwise the first collect()
+      // runs with the default provider (`() => MODE_GLOBAL`), which does not reflect
+      // what the resolver gives new clients.
       this.registry.setNewClientModeProvider(() => this.computeNewClientMode());
       await this.urlDiscovery.collect();
       // A stop arrived during the start (see `unloading`). Nothing is bound yet.
@@ -270,11 +269,10 @@ export class HassEmu extends utils.Adapter {
         return;
       }
 
-      // v1.13.0 (D11+H6): Subscriptions NACH webServer.start() — vorher
-      // hätte ein State-Write zwischen subscribe und start einen Handler
-      // ausgelöst der auf einen noch-nicht-laufenden Server zugriff. Plus:
-      // wenn webServer.start() throwt, sind Subscriptions noch nicht angelegt
-      // (kein Cleanup-Pfad nötig im catch-Block oben).
+      // v1.13.0 (D11+H6): subscriptions AFTER webServer.start() — before, a state write
+      // between subscribe and start would have fired a handler that touched a server
+      // not yet running. Plus: when webServer.start() throws, no subscription exists
+      // yet (no cleanup path needed in the catch block).
       await this.subscribeForeignObjectsAsync("system.adapter.*");
       await this.subscribeStatesAsync("clients.*");
       await this.subscribeStatesAsync("global.*");
@@ -284,11 +282,10 @@ export class HassEmu extends utils.Adapter {
       if (this.config.mdnsEnabled) {
         this.mdnsService = this.makeMdnsService(instanceUuid);
         this.mdnsService.start();
-        // v1.10.0 (H1): mdns.start() catched intern und setzt active=false
-        // bei Fehler — vorher wurde info.connection=true unabhängig gesetzt
-        // und der User hatte den Eindruck Discovery funktioniert. Jetzt
-        // führen wir die Information sichtbar im Log + im Suffix der
-        // running-Meldung.
+        // v1.10.0 (H1): mdns.start() catches internally and sets active=false on an
+        // error — before, info.connection=true was set regardless, and the user was led
+        // to believe discovery worked. Now the log and the suffix of the running line
+        // say so.
         mdnsActive = this.mdnsService.isActive();
         if (!mdnsActive) {
           // Generic warn — MDNSService already logged the underlying cause.
@@ -348,10 +345,11 @@ export class HassEmu extends utils.Adapter {
    * Re-apply the adapter's OWN nine objects on every start, so a changed name or
    * description reaches an installation that already has them.
    *
-   * js-controller creates the manifest's `instanceObjects` only where they are MISSING.
-   * Without this pass the manifest, the state-role gate and the linter are all green
-   * while the real tree keeps the text of whatever version first created it
-   * (`reference_iobroker_bestehende_objekte_erreichen`). Measured on the live tree
+   * js-controller applies the manifest's `instanceObjects` on every start, but preserves
+   * `common.name` (7.2.2 `_extendObjects`, `preserve: { common: ["name"] }`): a changed name
+   * reaches fresh installations only. Without this pass the manifest, the state-role gate
+   * and the linter are all green while the real tree keeps the name of whatever version
+   * first created it. Measured on the live tree
    * 2026-09-03: seven objects still carried a bare English string instead of the
    * translation object the manifest declares, `clients` still read "Known display
    * clients" and `global.manualUrl` still showed the developer note
@@ -366,7 +364,7 @@ export class HassEmu extends utils.Adapter {
    * Two things are deliberately NOT written: `common.states` (the mode dropdown belongs
    * to `syncUrlDropdown`, and `extendObject` deep-merges it — a copy here would resurrect
    * stale URL keys) and a `desc` on the four objects that have nothing to explain
-   * (`feedback_beschreibung_ist_erklaerung`: empty is allowed, an invented sentence is not).
+   * (fleet rule: an empty description is allowed, an invented sentence is not).
    *
    * Nine unconditional writes per start are deliberate and cheap — hueemu does the same
    * for its three; a read-before-write would cost the same round-trips.
@@ -496,14 +494,13 @@ export class HassEmu extends utils.Adapter {
   }
 
   /**
-   * Liefert die persistente Server-UUID. Beim ersten Start wird sie generiert und in
-   * `info.serverUuid` geschrieben; bei späteren Starts kommt der gleiche Wert raus.
+   * Returns the persistent server UUID. The first start generates it and writes it to
+   * `info.serverUuid`; later starts return the same value.
    *
-   * Warum nicht `extendForeignObjectAsync(system.adapter.X, native: { serverUuid })`?
-   * Schreibt man auf den eigenen `system.adapter.X`-Objekt, triggert js-controller
-   * einen Adapter-Restart — bei jedem Start ein Restart-Loop. govee-smart hatte das
-   * in v2.1.3 (`extendForeignObjectAsync` für `mqttCredentials`-native) und musste
-   * auf state-based persistence migrieren.
+   * Why not `extendForeignObjectAsync(system.adapter.X, native: { serverUuid })`?
+   * A write to the adapter's own `system.adapter.X` object makes js-controller restart
+   * the adapter — a restart loop on every start. Another adapter ran into exactly that
+   * (`extendForeignObjectAsync` for a native value) and had to move to a state.
    */
   private async getOrCreateServerUuid(): Promise<string> {
     // A READ ERROR propagates: onReady then ends with a crash code and the host restarts the
@@ -533,11 +530,11 @@ export class HassEmu extends utils.Adapter {
   /**
    * Default mode for newly registered clients. Respects the master switch:
    * - `global.enabled=true`  → `'global'` (follow master)
-   * - sonst                  → `'0'` (no-choice) → Resolver returnt null →
-   *   Landing-Page bis der User im Mode-Dropdown explizit eine URL wählt.
-   *   Pre-v1.26.0 fiel der Default auf die erste discovered URL — das hat
-   *   die Landing-Page für neue Displays praktisch unsichtbar gemacht und
-   *   den User mit einer ungewollten Auto-Wahl überrascht.
+   * - otherwise              → `'0'` (no choice) → the resolver returns null →
+   *   landing page until the user picks a URL in the mode dropdown.
+   *   Before v1.26.0 the default was the first discovered URL — that made the
+   *   landing page practically invisible for new displays and surprised the
+   *   user with an unwanted automatic choice.
    */
   private computeNewClientMode(): string {
     if (this.globalConfig?.isEnabled()) {
@@ -596,11 +593,11 @@ export class HassEmu extends utils.Adapter {
       const ttlDays = Math.round(STALE_CLIENT_TTL_MS / (24 * 60 * 60 * 1000));
       this.log.debug(`gcStaleClients: scanning ${records.length} client(s) for staleness (TTL=${ttlDays}d)`);
     }
-    // v1.28.3 (M5): GC-Pass parallel statt sequentiell. Bei vielen Clients
-    // (Display-Farm) summierten sich die Broker-Round-Trips beim Adapter-
-    // Start zur spürbaren Pause vor `webServer.start()`. Pro-Client-try-catch
-    // bleibt — ein einzelner getObject-Fehler darf den GC-Pass nicht
-    // abbrechen. Counter ist ein primitive number unter Promise.all sicher.
+    // v1.28.3 (M5): the GC pass runs in parallel instead of sequentially. With many
+    // clients (a farm of displays) the broker round trips at start added up to a
+    // noticeable pause before `webServer.start()`. The per-client try/catch stays — one
+    // failed read must not abort the pass. The counter is a primitive number, safe
+    // under Promise.all.
     const results: number[] = await Promise.all(
       records.map(async (record): Promise<number> => {
         try {
@@ -646,9 +643,9 @@ export class HassEmu extends utils.Adapter {
       await this.registry.bulkSetMode(MODE_GLOBAL);
       return;
     }
-    // Master aus → alle Clients auf no-choice. Ohne explizite User-Wahl
-    // zeigt jedes Display die Landing-Page (statt automatisch auf irgendeine
-    // discovered URL umzuswitchen, die der User vielleicht gar nicht meinte).
+    // Master off → every client to no choice. Without an explicit choice by the user,
+    // every display shows the landing page (instead of switching automatically to some
+    // discovered URL the user may never have meant).
     this.log.debug(`applyMasterSwitch: enabled=false → propagating mode='0' (no-choice) to all clients`);
     await this.registry.bulkSetMode(NO_CHOICE);
   }
@@ -707,9 +704,9 @@ export class HassEmu extends utils.Adapter {
         return;
       }
 
-      // info.refreshUrls — User-Trigger für manuelles Dropdown-Refresh ohne
-      // Adapter-Neustart. Re-scan'd den Broker nach VIS/VIS-2-Projekten und
-      // Admin-Tiles, schreibt die neuen states-Maps in alle Mode-Dropdowns.
+      // info.refreshUrls — the user's trigger for refreshing the dropdowns without an
+      // adapter restart. Scans the broker again for VIS/VIS-2 projects and admin tiles and
+      // writes the new states maps into every mode dropdown.
       if (id === `${this.namespace}.info.refreshUrls` && state.val === true) {
         await this.handleRefreshUrlsWrite();
       }
@@ -720,9 +717,9 @@ export class HassEmu extends utils.Adapter {
 
   /**
    * Handler for the `info.refreshUrls` button.
-   * Triggert eine sofortige `urlDiscovery.collect()` (statt Debounce-Schedule),
-   * damit der User nicht 2s warten muss. Schreibt anschließend `false ack` damit
-   * der Button in der Admin-UI wieder „klickbar" wird.
+   * Triggers an immediate `urlDiscovery.collect()` (instead of the debounced schedule),
+   * so the user does not wait 2 s. Then writes `false` with ack, so the button in the
+   * admin UI becomes clickable again.
    */
   private async handleRefreshUrlsWrite(): Promise<void> {
     if (!this.urlDiscovery) {
@@ -785,10 +782,9 @@ export class HassEmu extends utils.Adapter {
       // throws, the state still ends up false instead of staying true.
       const pending: Promise<unknown>[] = [this.setState("info.connection", { val: false, ack: true })];
 
-      // v1.10.0 (H2): subscriptions explizit lösen bevor Refs nullen.
-      // js-controller cleant das normalerweise — aber im compact-mode mit
-      // hot-remove + re-add kann Residual entstehen, das dann auf eine
-      // bereits genullte Adapter-Instance feuert.
+      // v1.10.0 (H2): release the subscriptions explicitly before nulling the references.
+      // js-controller normally cleans them up — but in compact mode, a hot remove + re-add
+      // can leave a residue that then fires on an adapter instance already nulled.
       pending.push(
         this.unsubscribeStatesAsync("clients.*"),
         this.unsubscribeStatesAsync("global.*"),
@@ -807,7 +803,7 @@ export class HassEmu extends utils.Adapter {
       }
 
       if (this.webServer) {
-        // v1.18.0 (G6): kein doppeltes log — webServer.stop() loggt intern bereits auf debug.
+        // v1.18.0 (G6): no double log — webServer.stop() already logs on debug internally.
         pending.push(this.webServer.stop());
         this.webServer = null;
       }

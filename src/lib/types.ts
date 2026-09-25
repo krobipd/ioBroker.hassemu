@@ -19,18 +19,17 @@ export interface AdapterConfig {
   /** Service name for mDNS discovery. */
   serviceName: string;
   /**
-   * v1.25.0 (C11): nur aktivieren wenn der Adapter hinter einem **trusted**
-   * Reverse-Proxy mit TLS-Termination läuft. Effekte:
-   * - Fastify `trustProxy: true` (req.ip kommt aus X-Forwarded-For)
-   * - Cookie `secure: true` wenn der Proxy `X-Forwarded-Proto: https` setzt
+   * v1.25.0 (C11): enable only when the adapter runs behind a **trusted** reverse
+   * proxy that terminates TLS. Effects:
+   * - Fastify `trustProxy: true` (req.ip comes from X-Forwarded-For)
+   * - cookie `secure: true` when the proxy sets `X-Forwarded-Proto: https`
    *
-   * Achtung: bei `trustProxy: true` ohne echten Reverse-Proxy kann jeder
-   * Client per `X-Forwarded-For` seine sichtbare IP fälschen — das verfälscht
-   * die IP in den Logs und die per-IP-Burst-Erkennung defekter Cookies UND
-   * hebelt die per-IP-Drossel für neue Clients aus (jede Anfrage eine „neue
-   * IP"). Dagegen steht die IP-unabhängige globale Obergrenze der Registry
-   * (`GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW`), die den Schaden deckelt.
-   * Default ist `false`. Optional in jsonConfig.
+   * Caution: with `trustProxy: true` and no real reverse proxy, any client can fake
+   * its visible address through `X-Forwarded-For` — that falsifies the address in the
+   * logs and the per-IP burst detection of broken cookies AND defeats the per-IP
+   * throttle for new clients (every request is a "new IP"). The registry's global cap,
+   * independent of the address (`GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW`), limits the
+   * damage. Default `false`. Optional in jsonConfig.
    */
   trustProxy?: boolean;
 }
@@ -70,7 +69,7 @@ export interface ClientRecord {
    * plain-text in `clients.<id>.native.refreshToken` so it survives adapter
    * restarts (ioBroker update, network glitch, power cut). Same exposure
    * profile as {@link token} above; the adapter is LAN-only by design (see
-   * Design-Entscheidung 4) and object-store read access already equals server
+   * design decision 4 in CLAUDE.md) and object-store read access already equals server
    * access via the stored access token.
    */
   refreshToken: string | null;

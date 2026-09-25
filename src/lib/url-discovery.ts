@@ -164,8 +164,8 @@ export class UrlDiscovery {
   private async collectOnce(): Promise<UrlStates> {
     const result: UrlStates = {};
     const hostIp = getLocalIp();
-    // v1.32.0 B2: per-Adapter-Tracking für Discovery-Summary statt N silent-skips.
-    // Skip-Sites mutieren `skipped`; finale Zeile pro collect() summarisiert.
+    // v1.32.0 B2: per-adapter tracking for the discovery summary instead of N silent skips.
+    // Every skip site adds to `skipped`; one final line per collect() sums it up.
     const skipped: SkipEntry[] = [];
 
     let instances: Record<string, unknown> = {};
@@ -192,15 +192,15 @@ export class UrlDiscovery {
       collectFromInstance(id, obj, crossRefs, hostIp, result, skipped);
     }
 
-    // v1.17.0 (E10): über alle `web.*`-Instances iterieren statt nur `web.0`
-    // hardcoded. User mit `web.1` (zweite Web-Instance, z.B. separat für VIS)
-    // hatten vorher keine VIS-Projekte im Dropdown.
+    // v1.17.0 (E10): iterate over every `web.*` instance instead of a hard-coded
+    // `web.0`. Users with `web.1` (a second web instance, e.g. one just for VIS)
+    // used to get no VIS projects in the dropdown.
     //
-    // v1.27.2: bei MEHREREN web-Instances die Instance-ID ins Label nehmen
-    // (sonst landen die User mit 2-3 web-Instances bei identischen Labels
-    // im Dropdown — drei Mal `VIS-2: main / Wohnzimmer` ohne Hinweis welche
-    // welcher web-Instance gehört). Bei nur einer web-Instance bleibt das
-    // Label minimal (`VIS-2: main / Wohnzimmer`).
+    // v1.27.2: with SEVERAL web instances the instance id goes into the label
+    // (otherwise users with 2-3 web instances get identical labels in the dropdown —
+    // `VIS-2: main / Living room` three times, with no hint which belongs to which
+    // web instance). With a single web instance the label stays minimal
+    // (`VIS-2: main / Living room`).
     //
     // Only ENABLED web instances serve anything. A disabled second instance (a test
     // instance, an old port) used to contribute VIS entries that sent a display to a port
@@ -223,17 +223,17 @@ export class UrlDiscovery {
       });
     const webInstances = enabledInstances("web.");
     const showWebSuffix = webInstances.length > 1;
-    // v1.28.3 (UD1): pro web-Instance vis-2- und vis-1-Discovery parallel.
-    // addVisProjects mutiert `result` direkt — der Output bleibt deterministisch
-    // weil jede Project-URL ein eigener key ist (keine Race auf identischen
-    // keys möglich, da vis-2 und vis-1 unterschiedliche urlPaths benutzen).
-    // URL-Pfad-Komponente kommt aus `common.localLinks.Runtime.link`
-    // bzw. `common.welcomeScreen.link` der jeweiligen vis-Instance:
-    //   vis-2: `/vis-2/index.html`     (NICHT `/vis-2.0/`)
-    //   vis-1: `/vis/index.html`       (NICHT `/vis.0/`)
-    // Verifiziert in iobroker.vis-2 + iobroker.vis io-package.json.
-    // adapterName (`vis-2.0`/`vis.0`) wird für `readDirAsync` /
-    // `readFileAsync` gebraucht (Folder-Lookup), urlPath nur für die URL.
+    // v1.28.3 (UD1): per web instance, the vis-2 and vis-1 discovery run in parallel.
+    // addVisProjects writes into `result` directly — the output stays deterministic
+    // because every project URL is a key of its own (no race on identical keys: vis-2
+    // and vis-1 use different URL paths).
+    // The URL path comes from `common.localLinks.Runtime.link` or
+    // `common.welcomeScreen.link` of the vis instance:
+    //   vis-2: `/vis-2/index.html`     (NOT `/vis-2.0/`)
+    //   vis-1: `/vis/index.html`       (NOT `/vis.0/`)
+    // Verified in the io-package.json of iobroker.vis-2 and iobroker.vis.
+    // adapterName (`vis-2.0`/`vis.0`) is needed for `readDirAsync` / `readFileAsync`
+    // (folder lookup), urlPath only for the URL.
     // I7 (v1.37.0): bound the fan-out. Process web instances sequentially while
     // keeping the vis-2 + vis-1 lookup per instance parallel — concurrency is capped
     // at 2 regardless of how many web instances exist, instead of an unbounded
@@ -301,10 +301,10 @@ export class UrlDiscovery {
 
     this.cached = result;
 
-    // v1.32.0 B2: Discovery-Summary mit per-Adapter-ID. Eine Zeile pro collect()
-    // statt N silent-skip-lines. Bei busy ioBroker (30+ Adapter) hätte per-skip-log
-    // ~36000 lines/Tag produziert — diese Summary ist deterministisch klein
-    // (~150 chars worst-case) und gibt volle Triage-Information.
+    // v1.32.0 B2: discovery summary with the id of each adapter. One line per collect()
+    // instead of N silent skip lines. On a busy ioBroker (30+ adapters) a log line per
+    // skip would have produced ~36000 lines a day — this summary is small and
+    // deterministic (~150 characters worst case) and carries the full triage information.
     // L47: flat, readable summary line — the central discovery triage log.
     const labels = Object.values(result);
     const count = labels.length;
@@ -422,20 +422,20 @@ export class UrlDiscovery {
       if (!name || name.startsWith("_")) {
         continue;
       }
-      // URL-Form (Quelle: io-package.json `localLinks.Runtime.link`
-      // bzw. `welcomeScreen.link` aus iobroker.vis-2 + iobroker.vis):
+      // URL form (source: io-package.json `localLinks.Runtime.link` or
+      // `welcomeScreen.link` of iobroker.vis-2 + iobroker.vis):
       //   vis-2: http(s)://<ip>:<port>/vis-2/index.html
       //   vis-1: http(s)://<ip>:<port>/vis/index.html
       //
-      // Project-Switch via `?<project>` Query — funktioniert in BEIDEN:
-      //   VIS-2: `Runtime.tsx:920-923` parst `window.location.search`
+      // Project switch through the `?<project>` query — works in BOTH:
+      //   VIS-2: `Runtime.tsx:920-923` parses `window.location.search`
       //          (`projectName = window.location.search.replace('?', '')`).
-      //   VIS-1: `visEdit.js:1539, 1562, 2225` setzt `?<project>` beim Switch.
-      // Pro Project-Folder eine eigene Runtime-URL mit explizitem Query —
-      // damit ist jedes Projekt ohne localStorage-Trick direkt erreichbar.
+      //   VIS-1: `visEdit.js:1539, 1562, 2225` sets `?<project>` on a switch.
+      // One runtime URL with an explicit query per project folder — so every project
+      // is reachable directly, without a localStorage trick.
       //
-      // View ist Hash-Fragment hinter dem Query (visEngine.tsx:430-455
-      // für VIS-2; visEdit.js:2225 für VIS-1).
+      // The view is the hash fragment after the query (visEngine.tsx:430-455
+      // for VIS-2; visEdit.js:2225 for VIS-1).
       const runtimeUrl = `${protocol}://${ip}:${port}/${urlPath}/index.html?${encodeURIComponent(name)}`;
       const safeBase = coerceSafeUrl(runtimeUrl);
       if (!safeBase) {
@@ -443,27 +443,26 @@ export class UrlDiscovery {
       }
       result[safeBase] = `${label}: ${name}`;
 
-      // Sub-views aus <project>/vis-views.json — pro View ein
-      // <base>#<viewName>-Eintrag. Sowohl VIS-2 als auch VIS-1
-      // verwenden dieselbe Datei-Konvention (Top-Level-Object,
-      // optionaler `views`-Wrapper). Datei fehlt/malformed → silently skip.
+      // Sub-views from <project>/vis-views.json — one <base>#<viewName> entry per
+      // view. VIS-2 and VIS-1 use the same file convention (top-level object,
+      // optional `views` wrapper). File missing or malformed → skipped silently.
       await this.addVisViews(result, adapterName, name, safeBase, label);
     }
   }
 
   /**
-   * Lese `<project>/vis-views.json` und füge pro View einen Dropdown-Eintrag
-   * `<runtimeUrl>#<viewName>` ein. Defensive — alle Fehler silently caught.
+   * Read `<project>/vis-views.json` and add one dropdown entry `<runtimeUrl>#<viewName>`
+   * per view. Defensive — every error is caught silently.
    *
-   * VIS-2-Hash-Routing-Quelle: iobroker.vis-2 v2.13.19+
-   * src-vis/src/Vis/visEngine.tsx:430-455 (`getCurrentPath` parst
-   * `window.location.hash`, `buildPath` baut `#encodeURIComponent(view)`).
+   * VIS-2 hash routing source: iobroker.vis-2 v2.13.19+
+   * src-vis/src/Vis/visEngine.tsx:430-455 (`getCurrentPath` parses
+   * `window.location.hash`, `buildPath` builds `#encodeURIComponent(view)`).
    *
-   * @param result Output-Map (mutated)
-   * @param adapterName VIS-Adapter (z.B. `vis-2.0`)
-   * @param projectName Project-Folder-Name (für vis-views.json-Lookup, NICHT in URL)
-   * @param runtimeUrl Komplette Runtime-URL inkl. `/index.html` (z.B. `http://host:8082/vis-2/index.html`)
-   * @param label Sprach-Label für Dropdown (`VIS-2`)
+   * @param result Output map (mutated)
+   * @param adapterName VIS adapter (e.g. `vis-2.0`)
+   * @param projectName Project folder name (for the vis-views.json lookup, NOT in the URL)
+   * @param runtimeUrl Complete runtime URL including `/index.html` (e.g. `http://host:8082/vis-2/index.html`)
+   * @param label Label for the dropdown (`VIS-2`)
    */
   private async addVisViews(
     result: UrlStates,
@@ -476,11 +475,11 @@ export class UrlDiscovery {
     try {
       raw = await this.adapter.readFileAsync(adapterName, `${projectName}/vis-views.json`);
     } catch {
-      return; // file fehlt — kein VIS-2-Projekt mit Views, oder pre-VIS-2.x
+      return; // file missing — no VIS-2 project with views, or pre-VIS-2.x
     }
 
-    // readFileAsync kann je nach js-controller-Version Buffer, string oder
-    // { file, mimeType } returnen — alle Varianten zu utf-8-string normalisieren.
+    // Depending on the js-controller version, readFileAsync returns a Buffer, a string
+    // or { file, mimeType } — normalise every variant to a UTF-8 string.
     let text: string;
     if (typeof raw === "string") {
       text = raw;
@@ -501,25 +500,25 @@ export class UrlDiscovery {
     try {
       parsed = JSON.parse(text);
     } catch {
-      return; // malformed JSON — Top-level-Projekt-Eintrag reicht
+      return; // malformed JSON — the project entry at the top level is enough
     }
 
     if (!isPlainObject(parsed)) {
       return;
     }
 
-    // VIS-2 vis-views.json hat optionalen Top-Key `views` (Object). Wenn der
-    // fehlt, sind die View-Keys direkt im Top-Level-Object. Beide Varianten
-    // unterstützen — VIS-2 hat sich da über Versionen verändert.
+    // A VIS-2 vis-views.json has an optional top-level key `views` (object). Without it
+    // the view keys sit directly in the top-level object. Both variants are supported —
+    // VIS-2 changed this across versions.
     const viewsContainer = isPlainObject(parsed.views) ? parsed.views : parsed;
 
     for (const viewName of Object.keys(viewsContainer)) {
-      // Skip Meta-Keys (typische VIS-2-Struktur: `views`, `settings`, `___settings`, `activeView`, ...)
+      // Skip meta keys (typical VIS-2 structure: `views`, `settings`, `___settings`, `activeView`, ...)
       if (viewName.startsWith("_") || viewName === "settings" || viewName === "activeView") {
         continue;
       }
-      // Skip wenn dazugehöriger Wert kein View-Object ist (View-Objects haben
-      // typische Felder wie `widgets` oder `name`).
+      // Skip when the value is not a view object (view objects carry typical
+      // fields such as `widgets` or `name`).
       const v = viewsContainer[viewName];
       if (!isPlainObject(v)) {
         continue;

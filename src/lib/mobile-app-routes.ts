@@ -8,7 +8,8 @@
  *
  * Reached by the Shelly Wall Display FW 2.6.0+, whose on-device Companion App requires
  * these endpoints to finish device registration after the OAuth2 sign-in. Without them the
- * App refuses to proceed with a "Mobile-App-Integration nicht verfügbar" error.
+ * App refuses to proceed with "The 'Mobile App' integration is required to use the app, but it
+ * is not available on your Home Assistant server." (Android strings.xml `error_with_registration`).
  */
 
 import crypto from "node:crypto";

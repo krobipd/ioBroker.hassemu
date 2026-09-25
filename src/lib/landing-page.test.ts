@@ -185,7 +185,7 @@ describe("landing-page", () => {
     describe("Companion-App bridge signal (v1.29.3)", () => {
       it("emits connection-status:connected to V1 and V2 bridges from the landing page too", () => {
         // Without this, FW 2.6.0+ Companion App shows the
-        // "Verbindung zu Home Assistant nicht möglich" popup even when
+        // "Unable to connect to Home Assistant." popup even when
         // the landing page is the displayed content (no URL configured).
         const html = renderLandingPage("abc123", "hassemu.0");
         expect(html).to.include("window.externalApp");
