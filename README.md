@@ -14,7 +14,7 @@ Emulates a Home Assistant server so displays that only accept an HA dashboard sh
 
 The display completes the HA onboarding, then shows whatever web URL you point it at — VIS, VIS-2, Aura, Grafana, Node-RED, anything HTTP.
 
-Typical clients: Shelly Wall Display family (built-in HA page; on-device HA app on firmware 2.6.0+), Home Assistant Companion App (Android wall panels, sideloaded apps). Anything that uses the same HA onboarding flow should work — if yours doesn't, open an issue with the failing endpoint trace.
+Typical clients: the Shelly Wall Display family (legacy models Stargate and X2, modern models XL, X2i, X1i, U1 and D1) — through its built-in Home Assistant page or the on-device Home Assistant app of firmware 2.6.0 and newer; firmware 2.7.0 lifted the deprecation of the built-in page — and the Home Assistant Companion App (Android wall panels, sideloaded apps, iOS). Anything that uses the same HA onboarding flow should work — if yours doesn't, open an issue with the failing endpoint trace.
 
 ---
 
@@ -22,7 +22,7 @@ Typical clients: Shelly Wall Display family (built-in HA page; on-device HA app 
 
 - One URL per display, or one global URL for all
 - Auto-discovery via mDNS, plus auto-detect of every VIS / VIS-2 / Aura instance installed on the host (see [Supported dashboards](#supported-dashboards) below)
-- Two HA login flows in parallel — the classic JSON `login_flow` for older clients, plus the browser-OAuth2 flow used by the on-device HA app on Shelly Wall Display 2.6.0+
+- Two HA login flows in parallel — the classic JSON `login_flow` for older clients, plus the browser-OAuth2 flow of the Home Assistant app (also the one built into Shelly Wall Display firmware 2.6.0 and newer)
 - Mobile-App registration emulation so the HA Companion App finishes onboarding
 - Cookie-based: displays keep their URL across reboots, IP changes, renames
 
@@ -30,7 +30,7 @@ Typical clients: Shelly Wall Display family (built-in HA page; on-device HA app 
 
 ## Sentry / Error reporting
 
-**This adapter uses Sentry libraries to automatically report exceptions and code errors to the developers.** Reporting only happens if you have enabled error reporting in the ioBroker diagnostics (**System settings → Diagnostics and error reporting**). Only an anonymous installation ID is transmitted — no name, e-mail address or IP address.
+**This adapter uses Sentry libraries to automatically report exceptions and code errors to the developers.** Reporting is active by default. It stays off when the ioBroker diagnostics setting is `none` (`diag` in the system configuration), when data reporting is disabled for this instance or its host (`disableDataReporting`), and on CI systems. A report contains the error with its stack trace and technical context such as versions and platform, plus an anonymous installation ID.
 
 For details and how to disable it, see the [Sentry plugin documentation](https://github.com/ioBroker/plugin-sentry#plugin-sentry). Error reporting requires js-controller 3.0 or newer.
 
@@ -69,7 +69,9 @@ Want to add a URL the adapter doesn't auto-detect? Set `manual` and paste it.
 | 8123 / TCP | HA emulation (fixed, HA standard)   |
 | 5353 / UDP | mDNS broadcast (only if mDNS is on) |
 
-One instance per host. Port 8123 is HA-fixed. With multiple ioBroker hosts on the same LAN, only one of them runs hassemu.
+Port 8123 is fixed by the HA clients, so each ioBroker host normally runs one instance — a second one on the same host only works when each is bound to its own interface. Several ioBroker hosts in the LAN may each run one; the displays then see separate servers.
+
+**Monitoring:** point uptime monitors and container health checks at `http://<ioBroker-IP>:8123/health` — it answers without creating a display entry. A `GET /` counts as a display's first visit; a `HEAD /` creates nothing.
 
 **All traffic is plain HTTP** — HA clients do not support HTTPS on this flow. Treat port 8123 as LAN-only and never forward it to the internet. With authentication on, the username, password and tokens travel unencrypted over your LAN, so Auth guards the HA API against other LAN devices — it is not internet-exposure protection.
 
@@ -79,6 +81,9 @@ One instance per host. Port 8123 is HA-fixed. With multiple ioBroker hosts on th
 
 1. Start the hassemu instance in ioBroker.
 2. On the display, add a Home Assistant server. With mDNS on it appears automatically; otherwise enter `http://<ioBroker-IP>:8123` by hand.
+
+   > **Android 17 and newer:** allow _local network access_ when the Home Assistant app asks. Without it the app neither finds hassemu nor can reach it on your network — hassemu is LAN-only, there is no cloud fallback.
+
 3. Complete the HA onboarding on the display. With Auth off you can click through the login; with Auth on, enter the username and password from the instance settings.
 4. The display now shows the **landing page** with its own device ID — that means it is connected and waiting for a URL.
 5. In ioBroker, open the Object Browser and set `hassemu.0.clients.<id>.mode` for that device: pick a discovered URL from the dropdown, or choose `manual` and put any URL in `clients.<id>.manualUrl`.
@@ -92,15 +97,15 @@ Want the same URL on every display? Set `global.mode` (plus `global.manualUrl` f
 
 | Option              | What                                                                              | Default   |
 | ------------------- | --------------------------------------------------------------------------------- | --------- |
-| Port                | Fixed at 8123 — every HA client expects it; the form warns if another instance holds it | 8123      |
-| Bind                | Network interface                                                                 | 0.0.0.0   |
-| Service Name        | Name the display sees                                                             | ioBroker  |
-| mDNS                | LAN auto-discovery. Off → set `http://<ioBroker-IP>:8123` on the display by hand. | on        |
-| Auth                | Login required (guards the HA API on the LAN; credentials travel in plain HTTP)   | off       |
-| Username / Password | When Auth is on                                                                   | admin / — |
-| Trust Proxy         | Only behind a trusted reverse proxy that terminates TLS and strips X-Forwarded-*  | off       |
+| Port                        | Fixed at 8123 — every HA client expects it; the form warns if another instance holds it | 8123      |
+| Bind to Interface           | Network interface                                                                       | 0.0.0.0   |
+| Service Name                | Name the display sees                                                                   | ioBroker  |
+| Enable mDNS Discovery       | LAN auto-discovery. Off → set `http://<ioBroker-IP>:8123` on the display by hand.       | on        |
+| Require Authentication      | Login required (guards the HA API on the LAN; credentials travel in plain HTTP)         | off       |
+| Username / Password         | When authentication is on                                                               | admin / — |
+| Trust Reverse Proxy Headers | Only behind a trusted reverse proxy that terminates TLS and strips X-Forwarded-*        | off       |
 
-Leave _Trust Proxy_ off unless that proxy really exists: without it any client can fake its address on every request. Since 1.40.0 a global per-hour ceiling on new display entries limits the damage, but it does not make the setting safe.
+Leave _Trust Reverse Proxy Headers_ off unless that proxy really exists: without it any client can fake its address on every request. Since 1.40.0 a global per-hour ceiling on new display entries limits the damage, but it does not make the setting safe.
 
 ---
 
@@ -117,7 +122,7 @@ hassemu.0.
 │   ├── mode            — URL choice used by every client whose mode is `global`
 │   └── manualUrl       — free-text URL, used when global.mode = `manual`
 └── clients.
-    └── <id>            — one channel per display (channel name = hostname or IP)
+    └── <id>            — one device per display (named after its hostname or IP)
         ├── mode        — per-client URL choice
         ├── manualUrl   — free-text URL, used when mode = `manual`
         ├── resolvedUrl — the URL this display was actually sent to (read-only)
@@ -160,11 +165,13 @@ Set the instance log level to `debug` first — since v1.31.1 the adapter traces
 
 **Display can't find the server** — with mDNS on, the log should show `mDNS: Broadcasting`. If that line is missing, mDNS failed to bind (port 5353/UDP). Workaround: turn mDNS off in the instance config and point the display at `http://<ioBroker-IP>:8123` by hand.
 
-**Display shows the wrong URL or the landing page** — open Object Browser, check `clients.<id>.mode` (and `manualUrl` if mode is `manual`). At `mode='global'`, also check `global.mode` / `global.manualUrl`. `clients.<id>.resolvedUrl` shows where the display was actually sent, so you can see the outcome without following the mode chain yourself. The device id is shown on the landing page and stored at `clients.<id>.ip`. The debug log shows the full resolver chain (`chain=global→manual→…`) per request.
+**Display shows the wrong URL or the landing page** — open Object Browser, check `clients.<id>.mode` (and `manualUrl` if mode is `manual`). At `mode='global'`, also check `global.mode` / `global.manualUrl`. `clients.<id>.resolvedUrl` shows where the display was actually sent, so you can see the outcome without following the mode chain yourself. The device id is shown on the landing page — it is the `<id>` in `clients.<id>`. The debug log shows the full resolver chain (`chain=global→manual→…`) per request.
 
-**Display lost its identity (new id on every visit)** — the display is not persisting the cookie. Common causes: aggressive privacy mode, factory reset, browser cache flush. The old `clients.<id>`-channels can be removed via their `remove` button, but the root cause is on the display side, not in hassemu.
+**Display lost its identity (new id on every visit)** — the display is not persisting the cookie. Common causes: aggressive privacy mode, factory reset, browser cache flush. Clearing the WebView cache (Shelly firmware 2.7.0 and newer: Settings → Home Assistant) deletes the cookie as well: the display comes back once under a new id and has to run the onboarding again. The old `clients.<id>` entries can be removed via their `remove` button; the root cause is on the display side, not in hassemu.
 
-**Log warns "More than 100 new clients within an hour across all IPs"** — something is creating display entries far faster than any real setup does. Typical cause: _Trust Proxy_ is on without a sanitising reverse proxy in front, so a device can fake a different address on every request and slips past the per-address limit. Turn _Trust Proxy_ off (or put a real proxy in front). Displays keep working meanwhile; the adapter just stops persisting new entries until the burst is over.
+**Home Assistant app on Android 17 or newer finds nothing and cannot connect** — the app needs _local network access_; allow it when asked, or in the Android app settings. Without it the app cannot reach hassemu at all, not even with the address entered by hand.
+
+**Log warns "More than 100 new clients within an hour across all IPs"** — something is creating display entries far faster than any real setup does. Typical cause: _Trust Reverse Proxy Headers_ is on without a sanitising reverse proxy in front, so a device can fake a different address on every request and slips past the per-address limit. Turn _Trust Reverse Proxy Headers_ off (or put a real proxy in front). Displays keep working meanwhile; the adapter just stops persisting new entries until the burst is over.
 
 **HA Companion App says "Server is not Home Assistant"** — point the app at `http://<ioBroker-IP>:8123`, not at the ioBroker Admin port. If a reverse proxy is in front of hassemu, make sure `/manifest.json` is passed through unmodified — the App parses `name === "Home Assistant"` to verify the server.
 
@@ -178,7 +185,7 @@ Migration runs automatically when the adapter starts.
 
 Got scripts that still write to `visUrl`? Update them — write to `manualUrl` instead and set `mode` to `manual`.
 
-**Coming from a Shelly Wall Display on firmware 2.6.0 or newer?** Make sure you're on hassemu **≥ 1.29.2**. The on-device HA app introduced in firmware 2.6.0 needs a server-identity probe, a mobile-app registration step and a WebView "connected" signal — all three came in with v1.29.0–v1.29.2. After upgrading, run the display through the on-device HA onboarding once more.
+**Coming from a Shelly Wall Display on firmware 2.6.0 or newer?** Make sure you're on hassemu **≥ 1.29.2**. The on-device HA app introduced in firmware 2.6.0 needs a server-identity probe, a mobile-app registration step and a WebView "connected" signal — all three came in with v1.29.0–v1.29.2. After upgrading, run the display through the on-device HA onboarding once more. Firmware 2.7.0 lifted the deprecation of the built-in Home Assistant page, so both ways are supported again; hassemu serves both.
 
 ---
 
@@ -188,6 +195,19 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+
+### **WORK IN PROGRESS**
+
+- Fixed: a start that fails (port briefly in use, database not up yet) now restarts after 30 seconds instead of leaving the instance off until someone starts it by hand
+- Fixed: displays are no longer all removed after the adapter or its host was off for more than 30 days — the cleanup now counts from the most recently seen display
+- Fixed: an update from 1.0 or 1.1 no longer resets the global URL choice on every start, and old URL settings are removed once their value has been taken over
+- Fixed: on iOS the Home Assistant app no longer keeps its loading screen over the dashboard, and on Android the bottom of the dashboard no longer hides behind the navigation bar
+- Fixed: uptime monitors and HEAD requests no longer create display entries, and the adapter settings point monitors at the /health address, which creates nothing
+- Fixed: stopping the adapter no longer waits on open connections or hangs while a display is mid-request, and a stop during the start no longer brings the server up
+- Fixed: room and function assignments move along reliably when an old datapoint is replaced, and a read error no longer gives the server a new identity
+- Changed: the sign-in hands its code to an unknown address only after a click on Continue, and a signed-in app is disconnected when its display is removed
+- Improved: mDNS announces an address the displays can reach — no link-local, container or VPN address — and announces again when the host's address changes
+- Improved: the proxy option and the offline card explain themselves in all languages, and writing the mode before its URL no longer logs a misleading warning
 
 ### 1.45.0 (2026-09-17) — stable
 

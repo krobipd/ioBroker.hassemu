@@ -19,8 +19,25 @@ Diese Seite ist die ausführliche Anleitung. Die [README](../../README.md) ist d
 - ioBroker Admin 8.0.11 oder neuer
 - Display und ioBroker im selben Netz
 
-Nur eine hassemu-Instanz je Netz. Der Adapter lauscht auf Port 8123, weil HA-Clients genau
-diesen Port erwarten; er ist nicht einstellbar — zwei Instanzen würden sich darum streiten.
+Der Adapter lauscht auf Port 8123, weil HA-Clients genau diesen Port erwarten; er ist nicht
+einstellbar. Deshalb läuft je ioBroker-Rechner normalerweise eine Instanz — eine zweite auf
+demselben Rechner geht nur, wenn jede an eine eigene Schnittstelle gebunden ist. Mehrere
+ioBroker-Rechner im Netz dürfen je eine betreiben; die Displays sehen dann getrennte Server.
+
+## Shelly Wall Display
+
+Die Shelly-Wall-Display-Familie gibt es als ältere Modelle (Stargate, X2) und als neuere (XL,
+X2i, X1i, U1, D1). Ein Display erreicht hassemu auf einem von zwei Wegen:
+
+- **über die eingebaute Home-Assistant-Seite** — der ursprüngliche Weg; Firmware 2.7.0 hat
+  sie nicht mehr als veraltet markiert
+- **über die Home-Assistant-App auf dem Gerät** ab Firmware 2.6.0 — sie durchläuft dieselbe
+  Einrichtung wie die Companion-App auf einem Handy
+
+hassemu bedient beide. Firmware 2.7.0 hat außerdem _WebView-Cache leeren_ gebracht
+(Einstellungen → Home Assistant). Das löscht das Erkennungsmerkmal des Displays: Danach
+erscheint es einmal unter einer neuen Kennung und durchläuft die Einrichtung erneut. Den alten
+Eintrag über seinen `remove`-Knopf entfernen.
 
 ## Einrichtung
 
@@ -30,7 +47,7 @@ Adapter installieren, Instanz 0 starten. In den Instanz-Einstellungen musst du z
 nichts ändern: mDNS ist an, die Anmeldung ist aus, und der Adapter lauscht auf allen
 Schnittstellen.
 
-Hat dein ioBroker-Rechner mehrere Netzwerkkarten, stell **Auf Schnittstelle binden** auf die,
+Hat dein ioBroker-Rechner mehrere Netzwerkkarten, stell **Interface binden** auf die,
 in der deine Displays hängen. Der Adapter kündigt sich unter dieser Adresse an — kündigt er
 eine an, die das Display nicht erreicht, ist das der häufigste Grund dafür, dass die
 Erkennung scheinbar klappt, die Verbindung danach aber nicht.
@@ -40,10 +57,14 @@ Erkennung scheinbar klappt, die Verbindung danach aber nicht.
 Am Display einen Home-Assistant-Server hinzufügen.
 
 - **Mit mDNS** findet das Display den Server von allein. Er erscheint unter dem Namen aus
-  **Dienstname** (Vorgabe `ioBroker`).
+  **Service-Name** (Vorgabe `ioBroker`).
 - **Ohne mDNS** — oder wenn das Display nicht sucht — die Adresse von Hand eintragen:
   `http://<IP-deines-ioBroker>:8123`. Es muss `http` sein, siehe
   [Anmeldung und dein Netz](#anmeldung-und-dein-netz).
+
+**Android 17 und neuer:** Erlaube der Home-Assistant-App den _Zugriff auf das lokale Netzwerk_,
+wenn sie danach fragt. Ohne ihn findet die App hassemu nicht und erreicht es in deinem Netz
+auch nicht — hassemu läuft nur im Heimnetz, einen Umweg über eine Cloud gibt es nicht.
 
 ### 3. Einrichtung abschließen
 
@@ -193,9 +214,9 @@ folgen zwei Dinge, die man klar sagen sollte:
   durch dein Netz. Die Anmeldung hält andere Geräte in deinem Netz von der HA-Schnittstelle
   fern — sie ist kein Schutz gegen eine Öffnung ins Internet.
 
-**Reverse-Proxy-Kopfzeilen vertrauen** bleibt aus, solange nicht wirklich ein Reverse-Proxy
+**Reverse-Proxy-Header vertrauen** bleibt aus, solange nicht wirklich ein Reverse-Proxy
 davor steht, der die Verschlüsselung beendet und die vom Client mitgeschickten
-`X-Forwarded-*`-Kopfzeilen entfernt. Ohne einen solchen eingeschaltet, kann jedes Gerät bei
+`X-Forwarded-*`-Header entfernt. Ohne einen solchen eingeschaltet, kann jedes Gerät bei
 **jeder einzelnen Anfrage** eine andere Adresse behaupten. Der Adapter protokolliert dann
 falsche Adressen, und seine Grenze für neue Display-Einträge je Adresse begrenzt nichts mehr.
 Seit Version 1.40.0 gibt es deshalb eine zweite Grenze, die nicht an der Adresse hängt —
@@ -211,15 +232,22 @@ deckelt den Schaden — sie macht die Einstellung nicht sicher.
 | 8123 / TCP | eingehend | die HA-Schnittstelle, mit der das Display spricht |
 | 5353 / UDP | eingehend | mDNS, damit Displays den Server von allein finden |
 
+Für Uptime-Monitore und Container-Healthchecks `http://<IP-deines-ioBroker>:8123/health`
+nehmen. Diese Adresse antwortet, ohne etwas anzulegen. Ein `GET /` ist das, was ein Display
+bei seinem ersten Besuch schickt — ein Monitor dort erschiene als neues Display; ein `HEAD /`
+legt nichts an.
+
 ## Häufige Fragen
 
-**Kann ich zwei Instanzen betreiben?** Nein. Port 8123 ist von den HA-Clients vorgegeben,
-also betreibt ein Rechner im Netz hassemu.
+**Kann ich zwei Instanzen betreiben?** Nicht auf derselben Schnittstelle. Port 8123 ist von
+den HA-Clients vorgegeben, also gehen zwei Instanzen auf einem Rechner nur, wenn jede an eine
+eigene Schnittstelle gebunden ist. Zwei ioBroker-Rechner dürfen je eine betreiben; die
+Displays sehen dann zwei getrennte Server.
 
 **Muss das Display dauerhaft mit dem Adapter verbunden bleiben?** Ja. Es holt seine Seite
 über den Adapter, und die Offline-Seite wie auch die Ziel-Prüfung hängen daran. Stoppt der
-Adapter, zeigt das Display die zuletzt geladene Seite weiter, bis es das nächste Mal
-nachfragt.
+Adapter, bleibt das Dashboard noch etwa 1,5 Minuten stehen; dann zeigt das Display die
+Offline-Seite und kehrt von selbst zum Dashboard zurück, sobald der Adapter wieder da ist.
 
 **Kann ich ein Display umbenennen?** Ja — das Objekt `clients.<Kennung>` im Objektbaum
 umbenennen. Der Adapter behält deinen Namen und überschreibt ihn nicht, auch nicht, wenn sich
@@ -227,7 +255,8 @@ Adresse oder Hostname des Displays ändern.
 
 **Warum gibt es zwei Einträge für dasselbe Display?** Das Display hat sein Erkennungsmerkmal
 nicht zurückgeschickt — meist nach einem Zurücksetzen auf Werkseinstellungen, einem geleerten
-Browser-Speicher oder in einem Privatmodus, der Cookies verwirft. Den alten Eintrag über
+Browser- oder WebView-Speicher (Shelly ab Firmware 2.7.0: Einstellungen → Home Assistant)
+oder in einem Privatmodus, der Cookies verwirft. Den alten Eintrag über
 seinen `remove`-Knopf entfernen. Die Ursache liegt am Display, nicht am Adapter.
 
 **Brauche ich ein installiertes Home Assistant?** Nein. Der Adapter beantwortet das
@@ -247,3 +276,7 @@ lassen sich direkt aus diesem Protokoll ablesen.
 Ist mDNS an, im Protokoll steht aber keine Zeile `mDNS: Broadcasting`, ging die Ankündigung
 nicht raus — meist, weil etwas anderes Port 5353 belegt. Dann mDNS ausschalten und die
 Adresse am Display von Hand eintragen; alles Übrige bleibt gleich.
+
+Findet die Home-Assistant-App unter Android 17 oder neuer nichts und verbindet sich auch mit
+von Hand eingetragener Adresse nicht, fehlt ihr der _Zugriff auf das lokale Netzwerk_ — in den
+App-Einstellungen erlauben.

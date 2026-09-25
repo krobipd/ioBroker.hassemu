@@ -19,8 +19,24 @@ This page is the detailed guide. The [README](../../README.md) is the short vers
 - ioBroker Admin 8.0.11 or newer
 - The display and ioBroker on the same network
 
-Only one hassemu instance per network. The adapter listens on port 8123 because that is the
-port HA clients expect, and it is not configurable — two instances would fight over it.
+The adapter listens on port 8123 because that is the port HA clients expect, and it is not
+configurable. So each ioBroker host normally runs one instance — a second one on the same host
+only works when each is bound to its own interface. Several ioBroker hosts in the network may
+each run one; the displays then see separate servers.
+
+## Shelly Wall Display
+
+The Shelly Wall Display family comes in legacy models (Stargate, X2) and modern ones (XL,
+X2i, X1i, U1, D1). A display reaches hassemu in one of two ways:
+
+- **the built-in Home Assistant page** — the original way; firmware 2.7.0 lifted its
+  deprecation
+- **the on-device Home Assistant app** of firmware 2.6.0 and newer — it runs the same
+  onboarding as the Companion App on a phone
+
+hassemu serves both. Firmware 2.7.0 also added _clear WebView cache_ (Settings → Home
+Assistant). That deletes the cookie the display is identified by: afterwards it shows up once
+under a new id and runs the onboarding again. Remove the old entry with its `remove` button.
 
 ## Setting it up
 
@@ -30,7 +46,7 @@ Install the adapter and start instance 0. In the instance settings you normally 
 nothing to begin with: mDNS is on, authentication is off, and the adapter binds to all
 interfaces.
 
-If your ioBroker host has several network cards, set **Bind to interface** to the one your
+If your ioBroker host has several network cards, set **Bind to Interface** to the one your
 displays are on. The adapter announces itself under that address, so announcing an address
 the display cannot reach is the most common reason discovery "works" but the display then
 fails to connect.
@@ -44,6 +60,10 @@ On the display, add a Home Assistant server.
 - **Without mDNS**, or when the display does not search, enter the address by hand:
   `http://<ip-of-your-ioBroker>:8123`. It has to be `http` — see
   [Authentication and your network](#authentication-and-your-network).
+
+**Android 17 and newer:** allow _local network access_ when the Home Assistant app asks.
+Without it the app neither finds hassemu nor can reach it on your network — hassemu is
+LAN-only, there is no cloud fallback.
 
 ### 3. Complete the onboarding
 
@@ -189,7 +209,7 @@ clear about:
   unencrypted. Authentication stops other devices on your network from using the HA
   interface — it is not protection against exposure to the internet.
 
-**Trust Proxy** should stay off unless a reverse proxy really is in front of the adapter,
+**Trust Reverse Proxy Headers** should stay off unless a reverse proxy really is in front of the adapter,
 terminating TLS and removing the `X-Forwarded-*` headers a client sent. Switched on without
 one, any device can claim a different address on every single request. The adapter then logs
 the wrong addresses, and its per-address limit on new display entries no longer limits
@@ -206,23 +226,29 @@ the setting safe.
 | 8123 / TCP | inbound   | the HA interface the display talks to          |
 | 5353 / UDP | inbound   | mDNS, so displays find the server on their own |
 
+For uptime monitors and container health checks use `http://<ip-of-your-ioBroker>:8123/health`.
+It answers without creating anything. A `GET /` is what a display sends on its first visit,
+so a monitor pointed there would show up as a new display; a `HEAD /` creates nothing.
+
 ## Questions that come up
 
-**Can I run two instances?** No. Port 8123 is fixed by the HA clients, so one host on the
-network runs hassemu.
+**Can I run two instances?** Not on the same interface. Port 8123 is fixed by the HA clients,
+so two instances on one host only work when each is bound to its own interface. Two ioBroker
+hosts may each run one; the displays then see two separate servers.
 
 **Does the display have to stay connected to the adapter?** Yes. It fetches its page through
 the adapter, and the offline page and the target check depend on it. If the adapter stops,
-the display keeps showing the last page it loaded until it tries again.
+the dashboard stays on screen for about 1.5 minutes; then the display shows the offline page
+and returns to the dashboard by itself once the adapter is back.
 
 **Can I rename a display?** Yes — rename the `clients.<id>` object in the object browser.
 The adapter keeps your name and will not overwrite it, even when the display's address or
 host name changes.
 
 **Why is there a second entry for the same display?** The display did not send back its
-cookie — usually a factory reset, a cleared browser cache, or a privacy mode that discards
-cookies. Remove the old entry with its `remove` button. The cause is on the display, not in
-the adapter.
+cookie — usually a factory reset, a cleared browser or WebView cache (Shelly firmware 2.7.0 and
+newer: Settings → Home Assistant), or a privacy mode that discards cookies. Remove the old
+entry with its `remove` button. The cause is on the display, not in the adapter.
 
 **Do I need Home Assistant installed?** No. The adapter answers the HA protocol itself.
 There is no Home Assistant anywhere in this setup.
@@ -239,3 +265,6 @@ mode into an address for each request. Most problems can be read straight out of
 If mDNS is on but the log has no `mDNS: Broadcasting` line, the announcement did not get out
 — usually because something else holds port 5353. Turn mDNS off and enter the address on the
 display by hand; everything else works the same.
+
+If the Home Assistant app on Android 17 or newer finds nothing and cannot connect even with
+the address entered by hand, it lacks _local network access_ — allow it in the app settings.
