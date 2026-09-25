@@ -113,7 +113,7 @@ _Je Nummer der Regel-Satz. Wortlaut und Beleg von DD 1–26 bis 1.45.0: `.claude
    3. `clients.<id>.mode = <URL>` → diese URL
    4. sonst → 200 HTML mit der Landing-Seite
 
-## Tests (940 unit + 61 package + 5 inventory + 3 upgrade = 1009)
+## Tests (943 unit + 61 package + 5 inventory + 3 upgrade = 1012)
 
 **Objekt-Inventar in der CI (seit 2026-09-15, Gate-Job `adapter-inventory`, seit 1.46.0 rot bei veraltetem `test/objects.inventory.json`):** `test/inventory.js` läuft bei jedem Push auf dem ubuntu-Runner. Fünf Fixture-Displays (`test/fixtures/inventory/displays.json`) kommen je von einer eigenen Adresse aus 192.0.2.0/24 (`X-Forwarded-For`, `trustProxy` an) — Auto-Name nach Adresse und nach PTR, Modus global/manual/`---`/direkte URL, eins mit Anmeldung; dazu ein 1.x-Display als `channel` mit `visUrl` und die Umgebung einer echten Anlage (web, VIS-2-Projekt mit View, aura mit `customUrl`, admin mit `%bind%`), sodass das Dropdown im Inventar steht. `test/inventory-dns-hook.cjs` (per `NODE_OPTIONS=--require` im Adapterprozess) beantwortet jede Rückwärtsauflösung aus `INVENTORY_PTR`, alles andere wie ohne PTR-Eintrag — der Runner löst sonst selbst auf, asynchron nach dem Abzug. Der Abzug wartet auf die Umbenennung und darauf (`waitForStableTree`), dass der Objektsatz 4×250 ms nicht mehr wächst. Die Aufstiegs-Suite sät das Vorgänger-Inventar samt `.ip`-Wert (sonst gilt der alte Name als Hostname) und prüft den Wächter nur für Displays, die der Vorgänger hatte.
 

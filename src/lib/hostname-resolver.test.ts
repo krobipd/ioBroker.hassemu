@@ -97,6 +97,21 @@ describe("hostname-resolver", () => {
       expect(r.inFlightCount).to.equal(0);
     });
 
+    it("a lookup that fails after dispose() caches nothing and logs nothing (H12)", async () => {
+      const { adapter, logs } = mockAdapter();
+      const r = new HostnameResolver(adapter, () => Promise.resolve());
+      let fail = (_err: Error): void => undefined;
+      dnsReverse.mockImplementation(() => new Promise<string[]>((_resolve, reject) => (fail = reject)));
+
+      r.resolve(target(), "10.0.0.8");
+      r.dispose();
+      fail(new Error("getHostByAddr ENOTFOUND 10.0.0.8"));
+      await settle();
+
+      expect(r.negativeCacheSize).to.equal(0);
+      expect(logs.some(l => l.includes("10.0.0.8"))).to.be.false;
+    });
+
     it("hands a resolved name to the sink and clears the in-flight mark", async () => {
       const { adapter, timers } = mockAdapter();
       const sunk: Array<[string, string]> = [];

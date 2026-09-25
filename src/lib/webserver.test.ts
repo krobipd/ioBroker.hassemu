@@ -59,6 +59,8 @@ interface MockStore {
   logs: { level: string; msg: string }[];
   /** Live interval handles (added by setInterval, removed by clearInterval) — L7 cleanup test. */
   activeIntervals: Set<object>;
+  /** The callback behind each tracked interval, so a test can fire one tick by hand. */
+  intervalCallbacks: Map<object, () => void>;
 }
 
 interface MockAdapterApi {
@@ -96,6 +98,7 @@ function createMockAdapter(namespace = "hassemu.0"): {
     states: new Map(),
     logs: [],
     activeIntervals: new Set(),
+    intervalCallbacks: new Map(),
   };
 
   function build(): MockAdapterApi {
@@ -109,16 +112,18 @@ function createMockAdapter(namespace = "hassemu.0"): {
         error: (m: string) => store.logs.push({ level: "error", msg: m }),
       },
       // Return a handle and track it so the L7 test can prove the per-socket
-      // heartbeat interval is cleared on close. The callback is never invoked
-      // (no real timer), which is fine — the test asserts lifecycle, not ticks.
-      setInterval: (_cb: () => void, _ms: number) => {
+      // heartbeat interval is cleared on close. No real timer runs; a test that needs a
+      // tick fires the remembered callback itself.
+      setInterval: (cb: () => void, _ms: number) => {
         const h = {};
         store.activeIntervals.add(h);
+        store.intervalCallbacks.set(h, cb);
         return h as unknown as ioBroker.Interval;
       },
       clearInterval: (h?: unknown) => {
         if (h) {
           store.activeIntervals.delete(h);
+          store.intervalCallbacks.delete(h);
         }
       },
       setTimeout: () => undefined,
@@ -2845,6 +2850,15 @@ describe("WebServer /api/websocket (v1.34.0)", () => {
     expect(store.activeIntervals.size, "heartbeat cleared on close").to.equal(before);
   });
 
+  it("only an auth frame authenticates — a command carrying a valid token is refused", async () => {
+    const ws = new WebSocket(wsUrl);
+    const col = wsCollector(ws);
+    await col.next(); // auth_required
+    ws.send(JSON.stringify({ id: 1, type: "get_config", access_token: TOKEN }));
+    expect((await col.next()).type).to.equal("auth_invalid");
+    await once(ws, "close");
+  });
+
   it("rejects an unknown token with auth_invalid and closes the socket", async () => {
     const ws = new WebSocket(wsUrl);
     const col = wsCollector(ws);
@@ -2998,6 +3012,17 @@ describe("WebServer /api/websocket (v1.34.0)", () => {
       ws.send(JSON.stringify({ id: 2, type: "get_config" }));
       expect(await col.next()).to.deep.include({ id: 2, type: "result", success: true });
       ws.close();
+    });
+
+    it("the heartbeat closes a revoked session even while the display sends nothing", async () => {
+      const before = new Set(store.intervalCallbacks.keys());
+      const { ws, id } = await authedSocket("acc-4", "ref-4");
+      const heartbeat = [...store.intervalCallbacks].find(([h]) => !before.has(h))?.[1];
+      expect(heartbeat, "heartbeat registered after auth").to.be.a("function");
+      await reg.setTokens(id, null, null); // /auth/revoke
+      const closed = once(ws, "close");
+      heartbeat!(); // one tick — the peer answered the last ping, only the revoke can end it
+      await closed;
     });
 
     it("a removed display's session is closed", async () => {
