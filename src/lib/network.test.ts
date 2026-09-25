@@ -10,7 +10,14 @@ vi.mock("node:os", async importOriginal => {
 });
 
 import type * as os from "node:os";
-import { generateClientId, getLocalIp, isWildcardBind, resolveAdvertisedHost } from "./network";
+import {
+  advertisedBaseUrl,
+  generateClientId,
+  getLocalIp,
+  hostForUrl,
+  isWildcardBind,
+  resolveAdvertisedHost,
+} from "./network";
 
 /**
  * Build one interface entry with only the fields getLocalIp reads.
@@ -72,11 +79,46 @@ describe("network", () => {
       expect(getLocalIp()).to.equal("172.16.4.7");
     });
 
-    it("falls back to IPv6, then to loopback", () => {
+    it("falls back to a global IPv6, never to a link-local one, then to loopback (H10)", () => {
+      // fe80:: is valid only with a zone id — useless in a URL a display is given.
       osMock.interfaces = { eth0: [iface("fe80::1", "IPv6")] };
-      expect(getLocalIp()).to.equal("fe80::1");
+      expect(getLocalIp()).to.equal("127.0.0.1");
+      osMock.interfaces = { eth0: [iface("fe80::1", "IPv6"), iface("2001:db8::5", "IPv6")] };
+      expect(getLocalIp()).to.equal("2001:db8::5");
+      osMock.interfaces = { eth0: [iface("169.254.3.4", "IPv4")], eth1: [iface("192.168.1.5", "IPv4")] };
+      expect(getLocalIp()).to.equal("192.168.1.5");
       osMock.interfaces = { lo: [iface("127.0.0.1", "IPv4", true)] };
       expect(getLocalIp()).to.equal("127.0.0.1");
+    });
+
+    it("ranks VPN and container interfaces by NAME behind the LAN, whatever their address (H10)", () => {
+      osMock.interfaces = {
+        tailscale0: [iface("100.101.102.103", "IPv4")],
+        "br-3f2a": [iface("172.20.0.1", "IPv4")],
+        eth0: [iface("192.168.1.10", "IPv4")],
+      };
+      expect(getLocalIp()).to.equal("192.168.1.10");
+      // A physical IPv6 beats a virtual IPv4 — the virtual one is not reachable from the LAN.
+      osMock.interfaces = { wg0: [iface("10.8.0.2", "IPv4")], eth0: [iface("2001:db8::7", "IPv6")] };
+      expect(getLocalIp()).to.equal("2001:db8::7");
+      // Only virtual interfaces: better than nothing.
+      osMock.interfaces = { tailscale0: [iface("100.64.0.1", "IPv4")] };
+      expect(getLocalIp()).to.equal("100.64.0.1");
+    });
+  });
+
+  describe("hostForUrl / advertisedBaseUrl (H10)", () => {
+    it("puts an IPv6 address in brackets, leaves IPv4 and names alone", () => {
+      expect(hostForUrl("2001:db8::5")).to.equal("[2001:db8::5]");
+      expect(hostForUrl("192.168.1.5")).to.equal("192.168.1.5");
+      expect(hostForUrl("hassemu.local")).to.equal("hassemu.local");
+    });
+
+    it("builds a URL that parses for an IPv6 bind", () => {
+      const url = advertisedBaseUrl("::1", 8123);
+      expect(url).to.equal("http://[::1]:8123");
+      expect(new URL(url).port).to.equal("8123");
+      expect(advertisedBaseUrl("192.168.1.5", 8123)).to.equal("http://192.168.1.5:8123");
     });
   });
 

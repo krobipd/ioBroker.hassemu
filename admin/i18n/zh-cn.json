@@ -72,5 +72,9 @@
   "authSignIn": "登录",
   "authErrorTitle": "授权失败",
   "authErrorHint": "请检查服务器地址并重新配置该显示器。",
-  "authInvalidCredentials": "用户名或密码无效。"
+  "authInvalidCredentials": "用户名或密码无效。",
+  "authContinueTitle": "继续登录？",
+  "authContinueHint": "此次登录会将访问码交给下方地址。仅当登录是你自己发起时才继续。",
+  "authContinueButton": "继续",
+  "healthInfo": "在线监控和容器健康检查：请使用 http://你的IP:8123/health —— 它会响应但不会创建显示器条目。对 / 的请求会被视为新的显示器。"
 }

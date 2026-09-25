@@ -72,5 +72,9 @@
   "authSignIn": "Se connecter",
   "authErrorTitle": "Échec de l'autorisation",
   "authErrorHint": "Vérifiez l'adresse du serveur et réessayez de configurer l'écran.",
-  "authInvalidCredentials": "Nom d'utilisateur ou mot de passe invalide."
+  "authInvalidCredentials": "Nom d'utilisateur ou mot de passe invalide.",
+  "authContinueTitle": "Poursuivre la connexion ?",
+  "authContinueHint": "Cette connexion transmet un code d'accès à l'adresse ci-dessous. Ne continuez que si vous l'avez lancée vous-même.",
+  "authContinueButton": "Continuer",
+  "healthInfo": "Moniteurs de disponibilité et contrôles de santé de conteneurs : utilisez http://VOTRE_IP:8123/health — il répond sans créer d'entrée d'écran. Une requête sur / compte comme un nouvel écran."
 }

@@ -53,6 +53,15 @@
       "lg": 12,
       "xl": 12
     },
+    "_healthInfo": {
+      "type": "staticText",
+      "text": "healthInfo",
+      "xs": 12,
+      "sm": 12,
+      "md": 12,
+      "lg": 12,
+      "xl": 12
+    },
     "_headerMdns": {
       "type": "header",
       "text": "header_mdns",

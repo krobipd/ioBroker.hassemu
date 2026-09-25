@@ -62,7 +62,10 @@ export function probeTarget(url: string, timeoutMs: number): Promise<boolean> {
     if (isHttps) {
       options.rejectUnauthorized = false;
     }
-    const req = (isHttps ? httpsRequest : httpRequest)(parsed, options, res => {
+    // Reachability is a property of the origin — never fetch the dashboard itself (a large
+    // page, or a GET with a side effect behind the configured path; audit 2026-09-25).
+    const probeUrl = new URL(`${parsed.origin}/`);
+    const req = (isHttps ? httpsRequest : httpRequest)(probeUrl, options, res => {
       // Response headers arrived — that is the whole question. Drop the body.
       res.destroy();
       settle(true);

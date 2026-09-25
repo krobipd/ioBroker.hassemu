@@ -74,6 +74,29 @@ describe("hostname-resolver", () => {
       dnsReverse.mockImplementation(() => Promise.resolve([]));
     });
 
+    it("an answer that arrives after dispose() writes nothing and caches nothing (H12)", async () => {
+      const { adapter, logs } = mockAdapter();
+      const sunk: string[] = [];
+      const r = new HostnameResolver(adapter, (_c, name) => {
+        sunk.push(name);
+        return Promise.resolve();
+      });
+      let answer = (_names: string[]): void => undefined;
+      dnsReverse.mockImplementation(() => new Promise<string[]>(resolve => (answer = resolve)));
+
+      r.resolve(target(), "10.0.0.6");
+      r.dispose();
+      answer(["display-kitchen.lan"]);
+      await settle();
+
+      expect(sunk).to.deep.equal([]);
+      expect(r.negativeCacheSize).to.equal(0);
+      expect(logs.some(l => l.includes("display-kitchen.lan"))).to.be.false;
+      // And nothing new starts after the stop.
+      r.resolve(target("other1"), "10.0.0.7");
+      expect(r.inFlightCount).to.equal(0);
+    });
+
     it("hands a resolved name to the sink and clears the in-flight mark", async () => {
       const { adapter, timers } = mockAdapter();
       const sunk: Array<[string, string]> = [];

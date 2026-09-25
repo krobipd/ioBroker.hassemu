@@ -530,6 +530,26 @@ describe("HassEmu onReady", () => {
     expect(logsOf(stub, "debug").some(m => m.includes("Web server failed to start"))).toBe(true);
   });
 
+  it("web server and mDNS get the SAME server UUID — the one stored in info.serverUuid (DD2, T5)", async () => {
+    const { internal, stub, webServer, mdns } = setup({ mdnsEnabled: true });
+    const stored = "12345678-1234-4234-8234-123456789abc";
+    stub.states.set("hassemu.0.info.serverUuid", { val: stored, ack: true });
+    const seen: { web?: string; mdns?: string } = {};
+    internal.makeWebServer = uuid => {
+      seen.web = uuid;
+      return webServer;
+    };
+    internal.makeMdnsService = uuid => {
+      seen.mdns = uuid;
+      return mdns;
+    };
+
+    await internal.onReady();
+
+    expect(seen.web).toBe(stored);
+    expect(seen.mdns).toBe(stored);
+  });
+
   it("mdnsEnabled=true + active mDNS → 'mDNS started' suffix in the running log", async () => {
     const { internal, stub, mdns } = setup({ mdnsEnabled: true });
     await internal.onReady();

@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import http from "node:http";
+import net from "node:net";
 import fastifyCookie from "@fastify/cookie";
 import fastifyFormbody from "@fastify/formbody";
 import fastifyWebsocket from "@fastify/websocket";
@@ -15,11 +17,29 @@ import {
   COOKIE_MAX_AGE_S,
   WS_MAX_PAYLOAD_BYTES,
   DEFAULT_SERVICE_NAME,
+  HTTP_CONNECTION_TIMEOUT_MS,
+  HTTP_REQUEST_TIMEOUT_MS,
+  HTTP_CONNECTIONS_CHECK_INTERVAL_MS,
+  AUTH_CODE_TTL_MS,
 } from "./constants";
-import { coerceString, coerceUuid, isValidRedirectUri, oneLine, safeStringEqual } from "./coerce";
+import {
+  coerceString,
+  coerceUuid,
+  describeUntrusted,
+  isValidRedirectUri,
+  mayAutoRedirect,
+  oneLine,
+  safeStringEqual,
+} from "./coerce";
 import { errText } from "./err-text";
 import { evictOldest } from "./object-utils";
-import { buildRedirectUrl, renderAuthorizeError, renderAuthorizeForm, renderAuthorizeRedirect } from "./auth-page";
+import {
+  buildRedirectUrl,
+  renderAuthorizeContinue,
+  renderAuthorizeError,
+  renderAuthorizeForm,
+  renderAuthorizeRedirect,
+} from "./auth-page";
 import { registerHaWebSocket } from "./ha-websocket";
 import { registerMobileAppRoutes } from "./mobile-app-routes";
 import { HostnameResolver } from "./hostname-resolver";
@@ -27,18 +47,15 @@ import { tPage } from "./i18n";
 import type { ClientRegistry } from "./client-registry";
 import type { GlobalConfig } from "./global-config";
 import { renderLandingPage } from "./landing-page";
-import { resolveAdvertisedHost } from "./network";
+import { advertisedBaseUrl } from "./network";
 import { resolveRedirect, resolveRedirectWithChain } from "./redirect-resolver";
 import { renderRedirectWrapper } from "./redirect-wrapper";
 import { TargetHealth, probeTarget, type TargetProbe } from "./target-health";
 import type { AdapterConfig, AdapterInterface, ClientRecord, SessionData } from "./types";
 
-// v1.22.0 (F5): `safeStringEqual` ist nach `coerce.ts` verschoben — generischer
-// crypto-Helper, kein webserver-spezifischer Belang.
-
-// v1.32.0: `renderRedirectWrapper` ist nach `lib/redirect-wrapper.ts` ausgelagert
-// für Symmetrie zu `landing-page.ts` / `auth-page.ts`. `evictOldest` ist shared
-// helper aus `coerce.ts`.
+// v1.22.0 (F5): `safeStringEqual` lives in `coerce.ts` — a generic crypto helper.
+// v1.32.0: `renderRedirectWrapper` lives in `redirect-wrapper.ts`, next to `landing-page.ts`
+// and `auth-page.ts`; `evictOldest` is the shared helper from `object-utils.ts`.
 
 /** Adapter surface the WebServer depends on — adds `namespace` for the setup page. */
 export type WebServerAdapter = AdapterInterface & Pick<ioBroker.Adapter, "namespace">;
@@ -60,6 +77,22 @@ export const CLIENT_COOKIE = "hassemu_client";
  * bug). Default (no config) = protected. v1.37.0 (M6).
  */
 const PUBLIC_ROUTE = { config: { public: true } } as const;
+
+/** The HTTP server's time limits (constants; a test seam shortens them). */
+export interface HttpLimits {
+  /** Socket inactivity limit — see {@link HTTP_CONNECTION_TIMEOUT_MS}. */
+  connectionTimeoutMs: number;
+  /** Time to receive a request — see {@link HTTP_REQUEST_TIMEOUT_MS}. */
+  requestTimeoutMs: number;
+  /** How often Node checks connections against the request limit. */
+  checkIntervalMs: number;
+}
+
+const DEFAULT_HTTP_LIMITS: HttpLimits = {
+  connectionTimeoutMs: HTTP_CONNECTION_TIMEOUT_MS,
+  requestTimeoutMs: HTTP_REQUEST_TIMEOUT_MS,
+  checkIntervalMs: HTTP_CONNECTIONS_CHECK_INTERVAL_MS,
+};
 
 /**
  * Fastify web server emulating the HA REST API.
@@ -99,9 +132,9 @@ export class WebServer {
    * `POST /api/webhook/<unknown-id>` branch returning HTTP 200 with a
    * truly EMPTY body — the HA Companion App reads that as a stale webhook
    * and re-runs `registerDevice`, which on hassemu issues a fresh
-   * webhookId. (Source, verified at tag 2026.4.4: home-assistant/android
-   * IntegrationRepositoryImpl.kt:167-171 — the trigger is
-   * `response.code() == 200 && response.body()?.contentLength() == 0L`.)
+   * webhookId. (Source, at tag 2026.9.0: home-assistant/android
+   * IntegrationRepositoryImpl.kt:172-177 — re-registration on `200` with an empty body,
+   * `404` or `410`; the empty `200` stays for older app versions.)
    *
    * If a future refactor changes the unknown-webhookId response from
    * `200 empty` to `404` or to any non-empty body (even JSON `null`),
@@ -144,10 +177,17 @@ export class WebServer {
    * fall to debug to prevent log-spam under attack/probe traffic.
    */
   private readonly errorLogCooldown: Map<string, number> = new Map();
-  // I1 (v1.38.0): invalid-credentials dedup gets its OWN FIFO map so a burst of
-  // distinct-message 5xx errors can't evict the per-IP credential-warn entries (and
-  // vice-versa) — the two dedup classes must not share one eviction budget.
-  private readonly invalidCredsCooldown: Map<string, number> = new Map();
+  /**
+   * ONE window for invalid-credential warnings, not one per address: keyed per IP, 300
+   * attempts from 300 addresses (IPv4 aliases in the LAN, or a rotated X-Forwarded-For
+   * with trustProxy) were 300 warn lines (audit 2026-09-25, H5). The first attempt of a
+   * window is a warn; the next warn after the window reports how many followed.
+   */
+  private invalidCreds: { windowStart: number; suppressed: number; addresses: Set<string> } = {
+    windowStart: 0,
+    suppressed: 0,
+    addresses: new Set(),
+  };
 
   /**
    * @param adapter        Adapter instance used for logging, timers and namespace.
@@ -157,6 +197,7 @@ export class WebServer {
    * @param instanceUuid   Stable UUID shared with the mDNS advert.
    * @param systemLanguage ioBroker system language (`en`, `de`, …) used for the setup page.
    * @param targetProbe    Reachability probe for redirect targets (test seam; default {@link probeTarget}).
+   * @param httpLimits     HTTP time limits (test seam; default {@link DEFAULT_HTTP_LIMITS}).
    */
   constructor(
     adapter: WebServerAdapter,
@@ -166,6 +207,7 @@ export class WebServer {
     instanceUuid: string,
     systemLanguage: string = "en",
     targetProbe: TargetProbe = probeTarget,
+    httpLimits: HttpLimits = DEFAULT_HTTP_LIMITS,
   ) {
     this.adapter = adapter;
     this.config = config;
@@ -187,7 +229,29 @@ export class WebServer {
     // Logs + die per-IP-Burst-Erkennung defekter Cookies und hebelt die per-IP-
     // Drossel neuer Clients aus; die IP-unabhängige globale Obergrenze der
     // Registry deckelt diesen Schaden — GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW).
-    this.app = Fastify({ logger: false, trustProxy: this.config.trustProxy === true });
+    // HTTP limits (audit 2026-09-25, H1). fastify's defaults leave every limit at 0: a request
+    // running during the stop kept `app.close()` waiting on a keep-alive socket (measured
+    // > 20 s against `common.stopTimeout` 2 s), and a stalled header or body held a socket
+    // forever. `forceCloseConnections: true` destroys every socket on close. The server is
+    // built here because the request limit must reach `http.createServer` itself — fastify's
+    // own `requestTimeout` option is set after the server exists and was measured
+    // ineffective. With a server factory fastify applies neither the inactivity limit nor
+    // its keep-alive timeout (lib/server.js 310-341), so both are set on the server here.
+    this.app = Fastify({
+      logger: false,
+      trustProxy: this.config.trustProxy === true,
+      forceCloseConnections: true,
+      serverFactory: (handler, options) => {
+        const server = http.createServer(
+          { requestTimeout: httpLimits.requestTimeoutMs, connectionsCheckingInterval: httpLimits.checkIntervalMs },
+          handler,
+        );
+        // fastify always hands over its keep-alive timeout (default 72 s).
+        server.keepAliveTimeout = (options as { keepAliveTimeout: number }).keepAliveTimeout;
+        server.setTimeout(httpLimits.connectionTimeoutMs);
+        return server;
+      },
+    });
     // v1.14.0 (H8): inject einmal binden, nicht pro Getter-Access.
     (this as { inject: WebserverInject }).inject = this.app.inject.bind(this.app);
   }
@@ -278,7 +342,7 @@ export class WebServer {
       // ohne Konsequenz. Caller (main.ts onUnload) loggt nicht doppelt.
       this.adapter.log.debug(`Web server stop error: ${errText(err)}`);
     }
-    this.hostnames.clear();
+    this.hostnames.dispose();
     // v1.39.0: drop target-health bookkeeping; an in-flight probe self-destroys
     // on its own timeout and writes nowhere after dispose.
     this.targetHealth.dispose();
@@ -345,6 +409,27 @@ export class WebServer {
       }
     }
     return removed;
+  }
+
+  /**
+   * A session that is still within its lifetime, or undefined — an expired one is dropped on
+   * the spot. The periodic cleanup alone let a code live up to 15 min (its 5-min interval on
+   * top of the 10-min lifetime; audit 2026-09-25, H8).
+   *
+   * @param map   Session map.
+   * @param key   Untrusted key (flow id or code).
+   * @param ttlMs Lifetime.
+   */
+  private static takeFresh(map: Map<string, SessionData>, key: unknown, ttlMs: number): SessionData | undefined {
+    if (typeof key !== "string") {
+      return undefined;
+    }
+    const session = map.get(key);
+    if (session && Date.now() - session.created >= ttlMs) {
+      map.delete(key);
+      return undefined;
+    }
+    return session;
   }
 
   /** Periodic cleanup of expired in-flight auth sessions and stale redirect-target entries. */
@@ -502,7 +587,10 @@ export class WebServer {
    * @param req Fastify request (uses `req.ip`).
    */
   private static getClientIp(req: FastifyRequest): string | null {
-    return coerceString(req.ip);
+    const ip = coerceString(req.ip);
+    // With trustProxy the value is a client-supplied X-Forwarded-For entry — only a real
+    // address counts (`<b>x</b>` was stored as a display's IP, audit 2026-09-25, H4).
+    return ip !== null && net.isIP(ip) !== 0 ? ip : null;
   }
 
   /**
@@ -538,7 +626,10 @@ export class WebServer {
     // v1.17.0 (C8): UA durchreichen damit NAT-Co-Located Displays nicht
     // im selben Pending-Lock landen (siehe identifyOrCreate-Kommentar).
     const userAgent = coerceString(req.headers["user-agent"]);
-    const record = await this.registry.identifyOrCreate(cookie, ip, { userAgent });
+    // HEAD never mints a display: uptime monitors, scanners and both Companion apps'
+    // connectivity checks (android DefaultConnectivityChecker.kt:100-104, iOS
+    // ConnectivityChecker.swift:224-228) send HEAD without a cookie (audit 2026-09-25, H2).
+    const record = await this.registry.identifyOrCreate(cookie, ip, { userAgent, create: req.method !== "HEAD" });
     // v1.32.0 A1: cookie-state explizit traced. Drei Branches:
     //   hit          — cookie matched a known client, no setCookie needed
     //   stale/new    — cookie present but unknown, OR no cookie at all → new client created
@@ -550,7 +641,7 @@ export class WebServer {
       // `reference_iobroker_logging_levels`: excessive volume moves down a level, it does
       // not disappear.
       this.adapter.log.silly(`identify: cookie-hit client=${record.id} ip=${ip ?? "?"}`);
-    } else {
+    } else if (record.persistent) {
       const reason = cookie ? "cookie-stale (unknown)" : "no-cookie";
       this.adapter.log.debug(`identify: ${reason}, new client=${record.id} ip=${ip ?? "?"}`);
       // v1.25.0 (C11): Cookie `secure: true` wenn TLS — Browser sendet
@@ -570,7 +661,10 @@ export class WebServer {
         maxAge: COOKIE_MAX_AGE_S,
       });
     }
-    if (ip) {
+    // A transient record owns nothing — no cookie above, no name, so no reverse lookup either:
+    // under the very flood the throttle exists for, each request sent a PTR query whose
+    // answer had nowhere to go (audit 2026-09-25, H3).
+    if (ip && record.persistent) {
       this.hostnames.resolve({ id: record.id, cookie: record.cookie, hasHostname: !!record.hostname }, ip);
     }
     return record;
@@ -579,20 +673,16 @@ export class WebServer {
   // --- auth guard ---
 
   /**
-   * Pre-handler hook der `/api/*`-Routen schützt wenn `authRequired=true`.
+   * Pre-handler hook that protects the API when `authRequired=true`. Real HA requires
+   * `Authorization: Bearer <token>` for all of `/api/*` except the `/api/` heartbeat; before
+   * this guard, `/api/states`, `/api/services`, `/api/events` and `/api/error_log` answered
+   * unauthenticated.
    *
-   * Vorher: `/api/states`, `/api/services`, `/api/events`, `/api/error_log`,
-   * `/api/discovery_info` lieferten unauthenticated alle ihre Daten —
-   * pure Information-Disclosure. Echte HA verlangt `Authorization: Bearer
-   * <token>` für alle `/api/*` außer dem `/api/`-Heartbeat.
+   * Public or protected is declared per route (`PUBLIC_ROUTE`), not in a path list here.
+   * `/api/discovery_info` stays public: HA core removed the endpoint in 2022 (#64534) and no
+   * Companion app asks for it any more, but closed-source clients may still do.
    *
-   * Whitelist (kein Auth nötig):
-   *   - `/`, `/manifest.json`, `/health`, `/api/` — public Endpoints (Heartbeat, PWA)
-   *   - `/api/discovery_info` — HA-Clients fragen das VOR dem Auth-Flow ab um
-   *     zu erkennen ob `requires_api_password` true ist (Spec-Verhalten)
-   *   - `/auth/*` — der Auth-Flow selbst
-   *
-   * Bei `authRequired=false`: Hook macht nichts (no-op), bestehender Verhalten.
+   * With `authRequired=false` the hook does nothing.
    */
   private setupAuthGuard(): void {
     this.app.addHook("preHandler", async (req, reply) => {
@@ -700,21 +790,19 @@ export class WebServer {
 
     this.app.get("/api/config", () => this.buildHaConfig());
 
+    // HA core removed this endpoint in 2022 (#64534) and no Companion app asks for it any
+    // more; kept because closed-source clients (the Shelly built-in page) may still do.
     this.app.get("/api/discovery_info", PUBLIC_ROUTE, () => {
-      // v1.17.0 (E11): NICHT mehr `req.hostname` — der Host-Header ist
-      // client-controlled und ein Angreifer könnte mit `Host: attacker.lan`
-      // andere HA-Clients zur falschen URL umleiten. Stattdessen die
-      // tatsächlich gebundene Adresse via resolveAdvertisedHost (konkrete
-      // bind, otherwise getLocalIp) — identical to the mDNS advert.
-      const host = resolveAdvertisedHost(this.config.bind);
-      const baseUrl = `http://${host}:${this.config.port}`;
+      // v1.17.0 (E11): never `req.hostname` — the Host header is client-controlled, and
+      // `Host: attacker.lan` would point other HA clients at a wrong URL. The bound address,
+      // identical to the mDNS advert; an IPv6 address in brackets (H10).
+      const baseUrl = advertisedBaseUrl(this.config.bind, this.config.port);
       return {
         base_url: baseUrl,
         external_url: null,
         internal_url: baseUrl,
         location_name: this.serviceName,
-        // Vorher hardcoded `true` unabhängig von authRequired — strict HA-Clients
-        // versuchten Auth auch bei authRequired=false und scheiterten am leeren Login-Flow.
+        // Follows authRequired (it used to be a hardcoded `true`).
         requires_api_password: this.config.authRequired,
         uuid: this.instanceUuid,
         version: HA_VERSION,
@@ -784,7 +872,7 @@ export class WebServer {
     };
     if (responseType !== "code") {
       this.adapter.log.debug(
-        `Authorize ${method} rejected: response_type=${oneLine(String(responseType))} (expected 'code')`,
+        `Authorize ${method} rejected: response_type=${describeUntrusted(responseType)} (expected 'code')`,
       );
       return fail("unsupported_response_type", "This authorization server supports `response_type=code` only.");
     }
@@ -804,23 +892,49 @@ export class WebServer {
   }
 
   /**
-   * Issue an auth code, build the redirect target and render the auto-submit redirect page.
+   * Issue an auth code, build the redirect target and answer with the redirect page — or,
+   * when the target is neither a Companion app nor the host the browser is on, with a page
+   * that asks before continuing (audit 2026-09-25, H6). One decision point for every grant.
    *
-   * @param reply       Fastify reply (content-type set to text/html).
-   * @param clientId    Identity of the requesting display (always known).
-   * @param redirectUri Already-validated `redirect_uri` to append the code to.
-   * @param state       Optional OAuth2 `state` round-tripped verbatim.
+   * @param reply         Fastify reply (content-type set to text/html).
+   * @param displayId     Identity of the requesting display (always known).
+   * @param oauthClientId The validated OAuth2 `client_id`.
+   * @param redirectUri   Already-validated `redirect_uri` to append the code to.
+   * @param state         Optional OAuth2 `state` round-tripped verbatim.
+   * @param requestHost   The `Host` the request came in on.
    */
   private issueAuthorizeRedirect(
     reply: FastifyReply,
-    clientId: string,
+    displayId: string,
+    oauthClientId: string,
     redirectUri: string,
     state: string | undefined,
+    requestHost: unknown,
   ): string {
-    const code = this.issueAuthorizationCode(clientId);
+    const code = this.issueAuthorizationCode(displayId);
     const target = buildRedirectUrl(redirectUri, code, state);
     reply.type("text/html");
-    return renderAuthorizeRedirect(target);
+    if (mayAutoRedirect(oauthClientId, redirectUri, requestHost)) {
+      return renderAuthorizeRedirect(target);
+    }
+    const host = WebServer.hostOf(redirectUri);
+    this.adapter.log.debug(
+      `Authorize: redirect_uri host ${oneLine(host)} is foreign to client_id ${oneLine(oauthClientId)} — asking before continuing`,
+    );
+    return renderAuthorizeContinue(target, host, this.systemLanguage);
+  }
+
+  /**
+   * The host part of a validated URL, for display and logs.
+   *
+   * @param url A URL that passed the redirect validation.
+   */
+  private static hostOf(url: string): string {
+    try {
+      return new URL(url).host || url;
+    } catch {
+      return url;
+    }
   }
 
   /**
@@ -865,21 +979,32 @@ export class WebServer {
   }
 
   /**
-   * Log an invalid-credentials attempt, deduplicated per IP via its OWN cooldown map
-   * (I1) — first attempt per IP within the window at warn, repeats at debug. An app
-   * retrying with stale credentials after a password change would otherwise flood the
-   * log every minute forever. Log-dedup only — NOT a lockout (removed in v1.31.0, stays
-   * removed). v1.37.0 (M3).
+   * Log an invalid-credentials attempt: the first of a {@link REQUEST_ERROR_COOLDOWN_MS}
+   * window at warn, every further one at debug; the first warn after the window names how
+   * many followed and from how many addresses. The summary appears with that next attempt —
+   * no timer of its own. Log-dedup only — NOT a lockout (removed in v1.31.0, stays removed).
+   * v1.37.0 (M3), one global window since audit 2026-09-25 (H5).
    *
    * @param ip Client IP, or null.
    */
   private logInvalidCredentials(ip: string | null): void {
-    const suffix = ip ? ` (IP ${ip})` : "";
-    if (this.emitOncePerWindow(this.invalidCredsCooldown, `invalid-credentials:${ip ?? "?"}`, Date.now())) {
-      this.adapter.log.warn(`Invalid credentials${suffix}`);
-    } else {
-      this.adapter.log.debug(`Invalid credentials (repeat)${suffix}`);
+    const now = Date.now();
+    const w = this.invalidCreds;
+    const where = ip ? ` (IP ${ip})` : "";
+    if (w.windowStart !== 0 && now - w.windowStart <= REQUEST_ERROR_COOLDOWN_MS) {
+      w.suppressed++;
+      if (ip && w.addresses.size < REQUEST_ERROR_COOLDOWN_CAP) {
+        w.addresses.add(ip);
+      }
+      this.adapter.log.debug(`Invalid credentials (repeat)${where}`);
+      return;
     }
+    const summary =
+      w.suppressed > 0
+        ? ` — ${w.suppressed} further attempt(s) from ${w.addresses.size} address(es) in the previous window were logged at debug`
+        : "";
+    this.adapter.log.warn(`Invalid credentials${where}${summary}`);
+    this.invalidCreds = { windowStart: now, suppressed: 0, addresses: new Set() };
   }
 
   private setupAuthRoutes(): void {
@@ -887,16 +1012,20 @@ export class WebServer {
       { name: "Home Assistant Local", type: "homeassistant", id: null },
     ]);
 
-    // Browser-OAuth2 flow at GET/POST /auth/authorize. Needed by the
-    // HA Companion Android App (Shelly Wall Display FW 2.6.0+ embeds
-    // the Companion App). Source-verified flow:
-    //   home-assistant/android UrlUtil.kt:buildAuthenticationUrl
-    //   home-assistant/core indieauth.py:verify_redirect_uri
+    // Browser-OAuth2 flow at GET/POST /auth/authorize — used by the HA Companion apps (also
+    // the one from the Shelly app store). Source-verified flow:
+    //   home-assistant/android ConnectionViewModel.kt:185-190 @2026.9.0 (client_id android +
+    //     redirect_uri homeassistant://auth-callback)
+    //   home-assistant/core indieauth.py:verify_redirect_uri @2026.9.3
     //   home-assistant/frontend src/data/auth.ts:redirectWithAuthCode
+    // No HEAD twin: fastify answers HEAD with the GET handler, and a HEAD here issued an
+    // authorization code nobody would ever read (audit 2026-09-25, H2).
     this.app.get<{
-      Querystring: { response_type?: string; client_id?: string; redirect_uri?: string; state?: string };
-    }>("/auth/authorize", PUBLIC_ROUTE, async (req, reply) => {
-      const { response_type, client_id, redirect_uri, state } = req.query ?? {};
+      Querystring: { response_type?: string; client_id?: string; redirect_uri?: string; state?: unknown };
+    }>("/auth/authorize", { ...PUBLIC_ROUTE, exposeHeadRoute: false }, async (req, reply) => {
+      const { response_type, client_id, redirect_uri } = req.query ?? {};
+      // A repeated `state` parameter arrives as an array — a string or nothing (H7).
+      const state = coerceString(req.query?.state) ?? undefined;
 
       // v1.32.0 D2: rejection-Pfade traced — Triage „warum bricht OAuth ab"
       const v = this.validateAuthorizeRequest(reply, "GET", response_type, client_id, redirect_uri);
@@ -909,19 +1038,13 @@ export class WebServer {
       // No auth required → issue the code right away and redirect.
       if (!this.config.authRequired) {
         this.adapter.log.debug(`Authorize auto-grant — client ${client.id}`);
-        return this.issueAuthorizeRedirect(reply, client.id, v.redirectUri, state);
+        return this.issueAuthorizeRedirect(reply, client.id, v.clientId, v.redirectUri, state, req.host);
       }
 
-      // v1.32.0 D1: Form-render Trace — wenn Companion die Form nie absendet,
-      // sieht User hier dass sie überhaupt gerendert wurde.
-      let redirectHost = "?";
-      try {
-        redirectHost = new URL(v.redirectUri).host || v.redirectUri;
-      } catch {
-        redirectHost = v.redirectUri;
-      }
+      // v1.32.0 D1: trace the form render — if the Companion never submits the form, the
+      // log shows it was rendered at all.
       this.adapter.log.debug(
-        `Authorize form rendered — client_id=${oneLine(v.clientId)} redirect_uri-host=${redirectHost}`,
+        `Authorize form rendered — client_id=${oneLine(v.clientId)} redirect_uri-host=${oneLine(WebServer.hostOf(v.redirectUri))}`,
       );
       reply.type("text/html");
       return renderAuthorizeForm(
@@ -936,12 +1059,14 @@ export class WebServer {
         response_type?: string;
         client_id?: string;
         redirect_uri?: string;
-        state?: string;
+        state?: unknown;
         username?: string;
         password?: string;
       };
     }>("/auth/authorize", PUBLIC_ROUTE, async (req, reply) => {
-      const { response_type, client_id, redirect_uri, state, username, password } = req.body ?? {};
+      const { response_type, client_id, redirect_uri, username, password } = req.body ?? {};
+      // A JSON body can carry any type for `state` — a string or nothing (H7).
+      const state = coerceString(req.body?.state) ?? undefined;
 
       const v = this.validateAuthorizeRequest(reply, "POST", response_type, client_id, redirect_uri);
       if (!v.ok) {
@@ -952,7 +1077,7 @@ export class WebServer {
 
       // No auth required → straight to redirect even on POST.
       if (!this.config.authRequired) {
-        return this.issueAuthorizeRedirect(reply, client.id, v.redirectUri, state);
+        return this.issueAuthorizeRedirect(reply, client.id, v.clientId, v.redirectUri, state, req.host);
       }
 
       const ip = WebServer.getClientIp(req);
@@ -967,7 +1092,7 @@ export class WebServer {
       }
 
       this.adapter.log.debug(`Authorize grant — client ${client.id}`);
-      return this.issueAuthorizeRedirect(reply, client.id, v.redirectUri, state);
+      return this.issueAuthorizeRedirect(reply, client.id, v.clientId, v.redirectUri, state, req.host);
     });
 
     this.app.post("/auth/login_flow", PUBLIC_ROUTE, async (req, reply) => {
@@ -1004,7 +1129,7 @@ export class WebServer {
       },
       async (req, reply) => {
         const flowId = req.params.flowId;
-        const session = this.sessions.get(flowId);
+        const session = WebServer.takeFresh(this.sessions, flowId, SESSION_TTL_MS);
         if (!session) {
           // v1.8.0: nach Session-TTL (10 min) feuert das bei jedem
           // legit returning user — nicht actionable. debug, nicht warn.
@@ -1050,8 +1175,8 @@ export class WebServer {
     );
 
     // HA ≥2022.9 logout: POST /auth/revoke with form field `token` (the refresh
-    // token). Always 200 with empty body. Whitelisted by the `/auth/` prefix in
-    // the auth guard. Source: AuthenticationRepositoryImpl.revokeSession.
+    // token). Always 200 with empty body. Public via its route config (PUBLIC_ROUTE).
+    // Source: AuthenticationRepositoryImpl.revokeSession.
     this.app.post<{ Body: { token?: string } }>("/auth/revoke", PUBLIC_ROUTE, async req => {
       await this.revokeToken(req.body?.token);
       return {};
@@ -1071,7 +1196,10 @@ export class WebServer {
 
       // L38: get + null-check instead of has + get + non-null-assertion. M7: each
       // grant is a named method with its own invariant, the route is the dispatcher.
-      const session = grant_type === "authorization_code" && code ? this.codeSessions.get(code) : undefined;
+      const session =
+        grant_type === "authorization_code"
+          ? WebServer.takeFresh(this.codeSessions, code, AUTH_CODE_TTL_MS)
+          : undefined;
       if (session && code) {
         return this.handleAuthCodeGrant(code, session, reply);
       }
@@ -1082,7 +1210,7 @@ export class WebServer {
 
       // „wrong grant_type" ist ein Client-Format-Fehler, kein Server-Concern
       // — daher nur debug (legitime Client-Bugs sollen das Log nicht fluten).
-      this.adapter.log.debug(`Token exchange failed: grant_type=${oneLine(String(grant_type))}`);
+      this.adapter.log.debug(`Token exchange failed: grant_type=${describeUntrusted(grant_type)}`);
       reply.status(400);
       return { error: "invalid_request", error_description: "Invalid or expired code" };
     });
@@ -1137,7 +1265,7 @@ export class WebServer {
    * ones (was previously accepting any string, security fix v1.2.0) and mint a
    * fresh access token. The refresh token is NOT rotated: HA core itself never
    * returns a new one on refresh, and the HA Android Companion stores the token it
-   * SENT (AuthenticationRepositoryImpl.kt:147), ignoring any rotated response —
+   * SENT (AuthenticationRepositoryImpl.kt:119-133 at 2026.9.0), ignoring any rotated response —
    * v1.28.3's RFC-6819 rotation killed the Companion token on first refresh.
    * v1.37.0 (M7).
    *
@@ -1175,6 +1303,17 @@ export class WebServer {
     registerHaWebSocket(this.app, {
       adapter: this.adapter,
       clientForToken: token => this.registry.getByToken(token),
+      // Bound to the refresh token like HA core (websocket_api/auth.py:116-117) — the access
+      // token rotates on every refresh. Without a refresh token the access token decides.
+      sessionAlive: s => {
+        const client = this.registry.getById(s.clientId);
+        if (!client) {
+          return false;
+        }
+        return s.refreshToken !== null
+          ? client.refreshToken === s.refreshToken
+          : this.registry.getByToken(s.accessToken) === client;
+      },
       instanceUuid: this.instanceUuid,
       userName: () => this.config.username || this.serviceName,
       buildHaConfig: () => this.buildHaConfig(),
@@ -1245,7 +1384,8 @@ export class WebServer {
       // v1.39.0: probe the target (cached) so a display that COLD-boots while the
       // target is down gets the target-down card with its very first page instead
       // of a black iframe until the poll rounds catch up.
-      const targetReachable = await this.targetHealth.isReachable(url);
+      // A HEAD answer has no body to show a card in — no probe for it (H2).
+      const targetReachable = req.method === "HEAD" ? true : await this.targetHealth.isReachable(url);
       return reply
         .status(200)
         .type("text/html; charset=utf-8")
@@ -1277,7 +1417,7 @@ export class WebServer {
       // non-empty, DIFFERENT target, so withdrawing the choice left the display on
       // its old dashboard. The guarantee now lives in `decidePollAction`
       // (redirect-wrapper.ts), which the tests execute; do not re-assert it here.
-      const targetReachable = next === null ? true : await this.targetHealth.isReachable(next);
+      const targetReachable = next === null || req.method === "HEAD" ? true : await this.targetHealth.isReachable(next);
       return { target: next, targetReachable };
     });
   }

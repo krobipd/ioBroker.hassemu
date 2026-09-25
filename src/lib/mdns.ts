@@ -1,7 +1,7 @@
 import Bonjour from "bonjour-service";
-import { DEFAULT_SERVICE_NAME, HA_VERSION } from "./constants";
+import { DEFAULT_SERVICE_NAME, HA_VERSION, MDNS_ADDRESS_CHECK_INTERVAL_MS } from "./constants";
 import { errText } from "./err-text";
-import { resolveAdvertisedHost } from "./network";
+import { advertisedBaseUrl, isWildcardBind } from "./network";
 import type { AdapterConfig, AdapterInterface } from "./types";
 
 type PublishedService = ReturnType<InstanceType<typeof Bonjour>["publish"]>;
@@ -15,6 +15,13 @@ export class MDNSService {
   private active = false;
   private bonjour: Bonjour | null = null;
   private published: PublishedService | null = null;
+  /** The base URL the current announcement carries. */
+  private advertisedBase = "";
+  /** Periodic address comparison — only with a wildcard bind, where the address can change. */
+  private addressCheck: ioBroker.Interval | undefined;
+  private refreshing = false;
+  /** Where the advertised base URL comes from (test seam). */
+  private readonly baseUrlOf: () => string;
 
   /** Read-only flag — true between successful `start()` and `stop()`. */
   public isActive(): boolean {
@@ -27,17 +34,58 @@ export class MDNSService {
    * @param adapter - Adapter interface for logging
    * @param config - Adapter configuration
    * @param uuid - Shared UUID for consistent identity across WebServer and mDNS
+   * @param baseUrlOf - Source of the advertised base URL (test seam; default: bind address or LAN address)
    */
-  constructor(adapter: AdapterInterface, config: AdapterConfig, uuid: string) {
+  constructor(adapter: AdapterInterface, config: AdapterConfig, uuid: string, baseUrlOf?: () => string) {
     this.adapter = adapter;
     this.config = config;
     this.uuid = uuid;
+    this.baseUrlOf = baseUrlOf ?? (() => advertisedBaseUrl(config.bind, config.port));
   }
 
   /** Start mDNS broadcasting via bonjour-service */
   start(): void {
-    const host = resolveAdvertisedHost(this.config.bind);
-    const baseUrl = `http://${host}:${this.config.port}`;
+    this.advertisedBase = this.baseUrlOf();
+    this.announce();
+    // With a wildcard bind the advertised address is the host's LAN address, which DHCP can
+    // change; the TXT record carries it as base_url, and HA clients read it from there. The
+    // A/AAAA records bonjour builds per announcement, the TXT record only here — so compare
+    // once a minute and announce again when it moved (audit 2026-09-25, H10).
+    if (this.active && isWildcardBind(this.config.bind)) {
+      this.addressCheck =
+        this.adapter.setInterval(() => void this.refreshIfAddressChanged(), MDNS_ADDRESS_CHECK_INTERVAL_MS) ??
+        undefined;
+    }
+  }
+
+  /**
+   * Announce again when the advertised address changed. bonjour-service 1.4.4 has no TXT
+   * update (`service.js` builds the TXT record once per publish; `registry.register` keeps a
+   * second record beside the first), so the old service says goodbye and a new one is
+   * published.
+   */
+  async refreshIfAddressChanged(): Promise<void> {
+    if (!this.active || this.refreshing) {
+      return;
+    }
+    const next = this.baseUrlOf();
+    if (next === this.advertisedBase) {
+      return;
+    }
+    this.refreshing = true;
+    try {
+      this.adapter.log.info(`mDNS: address changed ${this.advertisedBase} → ${next} — announcing again`);
+      await this.withdraw(false);
+      this.advertisedBase = next;
+      this.announce();
+    } finally {
+      this.refreshing = false;
+    }
+  }
+
+  /** Publish the service with the current {@link advertisedBase}. */
+  private announce(): void {
+    const baseUrl = this.advertisedBase;
     const serviceName = this.config.serviceName || DEFAULT_SERVICE_NAME;
 
     try {
@@ -51,9 +99,8 @@ export class MDNSService {
         version: HA_VERSION,
         uuid: this.uuid,
         location_name: serviceName,
-        // mDNS-TXT ist string-only — boolean explizit zu „True"/„False" mappen.
-        // Vorher hardcoded 'True' unabhängig von authRequired → Spec-Drift (HA-Clients
-        // mit strict-mode triggerten Auth-Flow auch bei authRequired=false).
+        // Legacy key: HA core dropped it from the announcement in 2026.7.0 (#173090) and no
+        // Companion app reads it; kept for closed-source clients. TXT values are strings.
         requires_api_password: this.config.authRequired ? "True" : "False",
       };
 
@@ -65,11 +112,12 @@ export class MDNSService {
         txt,
       });
 
-      // v1.15.0 (D12): Bonjour wirft Bind-Fehler (z.B. Port 5353 belegt)
-      // ASYNCHRON in dgram-Sockets — der sync try/catch oben fängt das
-      // nicht. Listener auf 'error' anhängen, dann active=false zurücksetzen.
-      this.published.on?.("error", (err: Error) => {
-        this.adapter.log.warn(`mDNS async publish error: ${err.message}`);
+      // v1.15.0 (D12): bonjour raises bind errors (e.g. port 5353 taken) ASYNCHRONOUSLY in its
+      // dgram sockets — the try/catch around this does not see them. The event hands over
+      // whatever was emitted, so the text goes through errText (a string event read
+      // `undefined` off `.message` — audit 2026-09-25, H13).
+      this.published.on?.("error", (err: unknown) => {
+        this.adapter.log.warn(`mDNS async publish error: ${errText(err)}`);
         this.active = false;
         try {
           this.bonjour?.destroy();
@@ -82,19 +130,16 @@ export class MDNSService {
 
       this.active = true;
 
-      this.adapter.log.debug(
-        `mDNS: Broadcasting ${serviceName}._home-assistant._tcp.local on ${host}:${this.config.port}`,
-      );
+      this.adapter.log.debug(`mDNS: Broadcasting ${serviceName}._home-assistant._tcp.local at ${baseUrl}`);
       this.adapter.log.debug(`mDNS: UUID: ${this.uuid}`);
     } catch (err) {
       this.adapter.log.warn(`mDNS failed to start: ${errText(err)}`);
-      // Wichtig: bonjour-instance freigeben sonst leakt der UDP-Socket
-      // über die Adapter-Lifetime. `stop()` short-circuit'd auf
-      // `!this.active` und würde nichts cleanen.
+      // Release the bonjour instance, or its UDP socket leaks for the adapter's lifetime —
+      // `stop()` short-circuits on `!this.active` and would clean nothing.
       try {
         this.bonjour?.destroy();
       } catch {
-        /* destroy darf re-throwen — wir wollen nur die Resource lossen */
+        /* destroy may throw — we only want the resource released */
       }
       this.bonjour = null;
       this.published = null;
@@ -112,6 +157,19 @@ export class MDNSService {
    *   re-init path, where the adapter keeps running and the fallback matters.
    */
   stop(shuttingDown = false): Promise<void> {
+    if (this.addressCheck) {
+      this.adapter.clearInterval(this.addressCheck);
+      this.addressCheck = undefined;
+    }
+    return this.withdraw(shuttingDown);
+  }
+
+  /**
+   * Say goodbye and release the sockets — {@link stop} without ending the address check.
+   *
+   * @param shuttingDown See {@link stop}.
+   */
+  private withdraw(shuttingDown: boolean): Promise<void> {
     if (!this.active) {
       return Promise.resolve();
     }

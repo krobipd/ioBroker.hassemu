@@ -88,6 +88,7 @@ function createMockAdapter(namespace = "hassemu.0"): {
   function buildAdapter(): {
     namespace: string;
     log: {
+      silly: (m: string) => void;
       debug: (m: string) => void;
       info: (m: string) => void;
       warn: (m: string) => void;
@@ -115,6 +116,7 @@ function createMockAdapter(namespace = "hassemu.0"): {
     return {
       namespace,
       log: {
+        silly: (m: string) => void store.logs.push({ level: "silly", msg: m }),
         debug: (m: string) => void store.logs.push({ level: "debug", msg: m }),
         info: (m: string) => void store.logs.push({ level: "info", msg: m }),
         warn: (m: string) => void store.logs.push({ level: "warn", msg: m }),
@@ -2173,6 +2175,34 @@ describe("ClientRegistry transient records own nothing (audit 2026-09-15 — B3,
       expect(transient.id).to.equal("fresh1");
     } finally {
       generator.mockRestore();
+    }
+  });
+
+  it("writes at most one address change per minute for a known display (H4)", async () => {
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const rec = await reg.identifyOrCreate(null, "10.0.0.1");
+      let ipWrites = 0;
+      const setState = built.adapter.setState.bind(built.adapter);
+      built.adapter.setState = (id: string, value: { val: unknown; ack?: boolean }) => {
+        if (id.endsWith(".ip")) {
+          ipWrites++;
+        }
+        return setState(id, value);
+      };
+      for (let i = 2; i < 52; i++) {
+        await reg.identifyOrCreate(rec.cookie, `10.0.0.${i}`);
+      }
+      expect(ipWrites, "a rotating address inside one window").to.equal(1);
+
+      vi.setSystemTime(Date.now() + 61_000);
+      await reg.identifyOrCreate(rec.cookie, "10.0.9.9");
+      expect(ipWrites).to.equal(2);
+      expect(reg.getById(rec.id)!.ip).to.equal("10.0.9.9");
+    } finally {
+      vi.useRealTimers();
     }
   });
 

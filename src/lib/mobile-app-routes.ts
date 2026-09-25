@@ -59,9 +59,10 @@ export function mobileRegResponse(webhookId: string): {
  * **The registration map is in-memory by intent** and NOT persisted across adapter
  * restarts. Restart recovery relies on the `POST /api/webhook/<unknown-id>` branch
  * returning HTTP 200 with a truly EMPTY body — the HA Companion App reads that as a stale
- * webhook and re-runs `registerDevice`, which issues a fresh webhookId. (Source, verified
- * at tag 2026.4.4: home-assistant/android IntegrationRepositoryImpl.kt:167-171 — the
- * trigger is `response.code() == 200 && response.body()?.contentLength() == 0L`.)
+ * webhook and re-runs `registerDevice`, which issues a fresh webhookId. (Source, at tag
+ * 2026.9.0: home-assistant/android IntegrationRepositoryImpl.kt:172-177 — `updateRegistration`
+ * re-registers on `200` with an empty body, `404` or `410`; the empty `200` stays because
+ * older app versions know only that trigger.)
  *
  * If a future change turns that response into a `404` or gives it any non-empty body (even
  * JSON `null`), displays break silently across adapter restarts. Keep the response shape
@@ -71,14 +72,15 @@ export function mobileRegResponse(webhookId: string): {
  * @param deps Route dependencies.
  */
 export function registerMobileAppRoutes(app: FastifyInstance, deps: MobileAppDeps): void {
-  // Source: home-assistant/android IntegrationRepositoryImpl.kt:120-159 calls
+  // Source: home-assistant/android IntegrationRepositoryImpl.kt:122-161 @2026.9.0 calls
   // POST /api/mobile_app/registrations after the OAuth2 sign-in. A 404 here surfaces as
-  // "Mobile-App-Integration nicht verfügbar" in the App's onboarding screen and blocks the
-  // display from finishing setup.
+  // "The 'Mobile App' integration is required to use the app, but it is not available on
+  // your Home Assistant server." in the app's onboarding and blocks the display from
+  // finishing setup.
   //
-  // The Bearer-token check is already done by the auth pre-handler — this route is
-  // protected by default, so by the time the handler runs the caller holds a valid
-  // access_token from /auth/token.
+  // With authentication on, the auth pre-handler has checked the Bearer token before this
+  // runs. With authentication off the guard does nothing and the caller may hold no token at
+  // all — then the registration has no owning display (`ownerId ""`, H14).
   app.post<{
     Body: {
       app_id?: string;
@@ -151,10 +153,10 @@ export function registerMobileAppRoutes(app: FastifyInstance, deps: MobileAppDep
     const id = req.params.webhookId;
     if (!deps.registrations.has(id)) {
       // Unknown webhookId — match HA's 200-empty for stale webhooks so the App
-      // re-registers. Source (verified at tag 2026.4.4): home-assistant/android
-      // IntegrationRepositoryImpl.kt:167-171 — `updateRegistration` re-runs
-      // `registerDevice` ONLY when `response.code() == 200 &&
-      // response.body()?.contentLength() == 0L`. The body MUST therefore be truly empty:
+      // re-registers. Source (at tag 2026.9.0): home-assistant/android
+      // IntegrationRepositoryImpl.kt:172-177 — `updateRegistration` re-runs
+      // `registerDevice` on `200` with an empty body (and on 404/410 since then; older app
+      // versions know only the empty 200). The body MUST therefore be truly empty:
       // `return null` would let Fastify serialize the 4-byte JSON text "null"
       // (contentLength 4), the Companion would take the success branch and the display
       // would stay broken silently (v1.35.2 fix).
@@ -166,7 +168,10 @@ export function registerMobileAppRoutes(app: FastifyInstance, deps: MobileAppDep
     }
     const body = req.body ?? {};
     const type = typeof body.type === "string" ? body.type : "";
-    deps.adapter.log.debug(`Webhook ${oneLine(id).substring(0, 8)}… type=${type || "(no type)"}`);
+    // The type is client-supplied — flattened like every other logged request value (H11).
+    deps.adapter.log.debug(
+      `Webhook ${oneLine(id).substring(0, 8)}… type=${type ? oneLine(type).substring(0, 64) : "(no type)"}`,
+    );
 
     switch (type) {
       case "get_config":

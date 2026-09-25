@@ -113,6 +113,21 @@ describe("target-health", () => {
       }
     });
 
+    it("asks only the origin root — never the configured dashboard path (audit 2026-09-25)", async () => {
+      const seen: string[] = [];
+      const server = createServer((req, res) => {
+        seen.push(req.url ?? "");
+        res.end("ok");
+      });
+      const port = await listen(server);
+      try {
+        expect(await probeTarget(`http://127.0.0.1:${port}/vis/index.html?main#x`, 2000)).to.equal(true);
+        expect(seen).to.deep.equal(["/"]);
+      } finally {
+        server.close();
+      }
+    });
+
     it("treats connection-refused as unreachable", async () => {
       // Grab a port that WAS free a moment ago, then close it again.
       const server = createServer();

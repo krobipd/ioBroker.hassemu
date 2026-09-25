@@ -72,5 +72,9 @@
   "authSignIn": "Iniciar sessão",
   "authErrorTitle": "Falha na autorização",
   "authErrorHint": "Verifique o endereço do servidor e tente configurar o display novamente.",
-  "authInvalidCredentials": "Nome de utilizador ou palavra-passe inválidos."
+  "authInvalidCredentials": "Nome de utilizador ou palavra-passe inválidos.",
+  "authContinueTitle": "Continuar o início de sessão?",
+  "authContinueHint": "Este início de sessão entrega um código de acesso ao endereço abaixo. Continue apenas se foi você que o iniciou.",
+  "authContinueButton": "Continuar",
+  "healthInfo": "Monitores de disponibilidade e verificações de estado de contentores: use http://SEU_IP:8123/health — responde sem criar uma entrada de ecrã. Um pedido a / conta como um novo ecrã."
 }

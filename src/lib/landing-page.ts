@@ -245,5 +245,5 @@ ${CONNECTION_STATUS_SCRIPT}
 </html>`;
 }
 
-// v1.32.0: `escapeHtml` ist nach `coerce.ts` ausgelagert (shared helper für
-// landing-page, auth-page, redirect-wrapper).
+// v1.32.0: `escapeHtml` lives in `html-shared.ts` (shared by the landing, auth and
+// redirect pages).

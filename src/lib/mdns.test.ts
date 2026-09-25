@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { MDNSService } from "./mdns";
+import { HA_VERSION } from "./constants";
 import type { AdapterConfig } from "./types";
 
 interface LogEntry {
@@ -19,12 +20,17 @@ interface MockAdapter {
   // path skips it). Returns a dummy handle; the callback is never invoked.
   setTimeout: (cb: () => void, ms: number) => unknown;
   _timerCalls: number[];
+  setInterval: (cb: () => void, ms: number) => unknown;
+  clearInterval: (handle: unknown) => void;
+  /** Live interval handles with their callbacks — a test can fire one by hand. */
+  _intervals: Map<object, { cb: () => void; ms: number }>;
 }
 
 // Mock adapter for testing
 function createMockAdapter(): MockAdapter {
   const logs: LogEntry[] = [];
   const timerCalls: number[] = [];
+  const intervals = new Map<object, { cb: () => void; ms: number }>();
   return {
     log: {
       debug: (msg: string): void => {
@@ -46,6 +52,15 @@ function createMockAdapter(): MockAdapter {
       return undefined;
     },
     _timerCalls: timerCalls,
+    setInterval: (cb: () => void, ms: number): unknown => {
+      const handle = {};
+      intervals.set(handle, { cb, ms });
+      return handle;
+    },
+    clearInterval: (handle: unknown): void => {
+      intervals.delete(handle as object);
+    },
+    _intervals: intervals,
   };
 }
 
@@ -332,5 +347,96 @@ describe("MDNSService cross-platform", () => {
 
       await localService.stop();
     });
+  });
+
+  /** Wildcard bind, mDNS on — the configuration the three blocks below start from. */
+  const MDNS_CONFIG: AdapterConfig = {
+    port: 8123,
+    bind: "0.0.0.0",
+    authRequired: false,
+    username: "admin",
+    password: "secret",
+    mdnsEnabled: true,
+    serviceName: "TestService",
+  };
+
+  describe("the announced record (T5)", () => {
+    it("publishes _home-assistant._tcp with the shared UUID and the base URL in TXT", async () => {
+      const uuid = crypto.randomUUID();
+      const local = new MDNSService(createMockAdapter() as never, { ...MDNS_CONFIG, bind: "192.168.1.5" }, uuid);
+      local.start();
+      try {
+        const published = (
+          local as unknown as { published: { type: string; port: number; name: string; txt: unknown } }
+        ).published;
+        expect(published.type).to.equal("_home-assistant._tcp");
+        expect(published.port).to.equal(8123);
+        expect(published.name).to.equal("TestService");
+        expect(published.txt).to.deep.equal({
+          base_url: "http://192.168.1.5:8123",
+          internal_url: "http://192.168.1.5:8123",
+          version: HA_VERSION,
+          uuid,
+          location_name: "TestService",
+          requires_api_password: "False",
+        });
+      } finally {
+        await local.stop();
+      }
+    });
+  });
+
+  describe("a changed address is announced again (H10)", () => {
+    it("re-publishes with the new base_url and the same UUID; an unchanged address changes nothing", async () => {
+      const localAdapter = createMockAdapter();
+      let base = "http://192.168.1.5:8123";
+      const local = new MDNSService(localAdapter as never, MDNS_CONFIG, crypto.randomUUID(), () => base);
+      local.start();
+      try {
+        expect(localAdapter._intervals.size, "address check armed for a wildcard bind").to.equal(1);
+        const internal = local as unknown as { published: { txt: Record<string, string> } };
+        const first = internal.published;
+
+        await local.refreshIfAddressChanged();
+        expect(internal.published, "unchanged address — same announcement").to.equal(first);
+
+        base = "http://192.168.1.77:8123";
+        await local.refreshIfAddressChanged();
+        expect(internal.published.txt.base_url).to.equal("http://192.168.1.77:8123");
+        expect(internal.published.txt.uuid).to.equal(local.uuid);
+        expect(local.isActive()).to.be.true;
+      } finally {
+        await local.stop(true);
+      }
+      expect(localAdapter._intervals.size, "stop ends the address check").to.equal(0);
+    });
+
+    it("a concrete bind address arms no address check", async () => {
+      const localAdapter = createMockAdapter();
+      const local = new MDNSService(
+        localAdapter as never,
+        { ...MDNS_CONFIG, bind: "192.168.1.5" },
+        crypto.randomUUID(),
+      );
+      local.start();
+      try {
+        expect(localAdapter._intervals.size).to.equal(0);
+      } finally {
+        await local.stop();
+      }
+    });
+  });
+
+  it("an error event that carries a string still names it (H13)", async () => {
+    const localAdapter = createMockAdapter();
+    const local = new MDNSService(localAdapter as never, MDNS_CONFIG, crypto.randomUUID());
+    local.start();
+    (local as unknown as { published: { emit: (e: string, v: unknown) => void } }).published.emit(
+      "error",
+      "bind failed",
+    );
+    expect(localAdapter._logs.some(l => l.level === "warn" && l.msg === "mDNS async publish error: bind failed")).to.be
+      .true;
+    await local.stop();
   });
 });

@@ -72,5 +72,9 @@
   "authSignIn": "Aanmelden",
   "authErrorTitle": "Autorisatie mislukt",
   "authErrorHint": "Controleer het serveradres en probeer het display opnieuw te koppelen.",
-  "authInvalidCredentials": "Ongeldige gebruikersnaam of wachtwoord."
+  "authInvalidCredentials": "Ongeldige gebruikersnaam of wachtwoord.",
+  "authContinueTitle": "Aanmelding voortzetten?",
+  "authContinueHint": "Deze aanmelding geeft een toegangscode door aan het onderstaande adres. Ga alleen verder als je de aanmelding zelf hebt gestart.",
+  "authContinueButton": "Doorgaan",
+  "healthInfo": "Uptime-monitors en container-healthchecks: gebruik http://JOUW_IP:8123/health — dat antwoordt zonder een display-item aan te maken. Een verzoek naar / telt als een nieuw display."
 }

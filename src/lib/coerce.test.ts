@@ -27,6 +27,8 @@ import {
   isValidRedirectUri,
   oneLine,
   safeStringEqual,
+  mayAutoRedirect,
+  describeUntrusted,
 } from "./coerce";
 import { evictOldest, parseAdapterStateId, shallowStatesEqual } from "./object-utils";
 import { decideGcAction, decideLegacyVisMigration } from "./state-write-rules";
@@ -549,5 +551,32 @@ describe("coerce", () => {
         expect(shallowStatesEqual(broken, { a: "1" }), String(broken)).to.be.false;
       }
     });
+  });
+});
+
+describe("mayAutoRedirect (audit 2026-09-25, H6)", () => {
+  const cases: [string, string, unknown, boolean][] = [
+    ["https://home-assistant.io/android", "homeassistant://auth-callback", "10.0.0.2:8123", true],
+    ["https://home-assistant.io/iOS", "homeassistant://auth-callback", undefined, true],
+    ["http://hassemu.test:8123/", "http://hassemu.test:8123/cb", "hassemu.test:8123", true],
+    ["http://hassemu.test:8123/", "http://HASSEMU.test:8123/cb", "hassemu.TEST:8123", true],
+    ["https://evil.test/", "https://evil.test/cb", "hassemu.test:8123", false],
+    ["http://hassemu.test:8123/", "http://hassemu.test:8123/cb", ["hassemu.test:8123"], false],
+    ["http://hassemu.test:8123/", "http://hassemu.test:8123/cb", undefined, false],
+    ["http://hassemu.test:8123/", "http://hassemu.test:8123/cb", "", false],
+  ];
+  it.each(cases)("client_id=%s redirect_uri=%s host=%o → %s", (clientId, redirectUri, host, expected) => {
+    expect(mayAutoRedirect(clientId, redirectUri, host)).to.equal(expected);
+  });
+});
+
+describe("describeUntrusted (audit 2026-09-25, NH5)", () => {
+  it("shows a string on one line and any other value by its type — never throws", () => {
+    expect(describeUntrusted("a\nb")).to.equal("a b");
+    expect(describeUntrusted({ toString: 1 })).to.equal("<object>");
+    expect(describeUntrusted([1])).to.equal("<array>");
+    expect(describeUntrusted(null)).to.equal("<null>");
+    expect(describeUntrusted(undefined)).to.equal("<undefined>");
+    expect(describeUntrusted(5)).to.equal("<number>");
   });
 });

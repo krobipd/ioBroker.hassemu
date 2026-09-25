@@ -65,11 +65,17 @@ export type HostnameSink = (cookie: string, hostname: string) => Promise<void>;
 
 /**
  * Resolves display IPs to hostnames in the background, with a deadline, an in-flight
- * guard and a negative cache. One instance per web server; `clear()` on shutdown.
+ * guard and a negative cache. One instance per web server; `dispose()` on shutdown.
  */
 export class HostnameResolver {
   private readonly adapter: AdapterInterface;
   private readonly sink: HostnameSink;
+  /**
+   * Set by {@link dispose}: a lookup still running at the stop must not write anything
+   * afterwards — its answer used to rename a display after "Web server stopped" (audit
+   * 2026-09-25, H12; the same terminal flag `TargetHealth` has).
+   */
+  private disposed = false;
   /** IPs whose reverse lookup is currently running — prevents duplicate work. */
   private readonly inFlight = new Set<string>();
   /**
@@ -97,6 +103,9 @@ export class HostnameResolver {
    * @param ip     Remote IP observed for that client.
    */
   resolve(target: HostnameTarget, ip: string): void {
+    if (this.disposed) {
+      return;
+    }
     // I8: the skip decision lives in the pure `shouldAttemptReverseDns` so the
     // negative-cache window is unit-testable without driving real DNS.
     if (
@@ -124,6 +133,9 @@ export class HostnameResolver {
     });
     Promise.race([dns.reverse(ip), timeout])
       .then(names => {
+        if (this.disposed) {
+          return;
+        }
         const name = names[0];
         if (name) {
           // v1.32.0 A4: the IP→hostname resolution is the anchor for "why does display X
@@ -137,6 +149,9 @@ export class HostnameResolver {
         }
       })
       .catch(err => {
+        if (this.disposed) {
+          return;
+        }
         // v1.32.0 A3: reverse DNS fails on a LAN often and legitimately → debug, but with
         // a diagnostic anchor. L6: cache the failure so it is not retried every poll.
         this.rememberNegative(ip);
@@ -182,11 +197,13 @@ export class HostnameResolver {
   }
 
   /**
-   * Forget all bookkeeping (web server stop). v1.28.3 (HW1): a slow lookup started just
-   * before the stop would otherwise keep its IP pinned in `inFlight` for up to five
-   * seconds — long enough to matter when the adapter restarts inside that window.
+   * Terminal: forget all bookkeeping and ignore every answer still on its way (web server
+   * stop). v1.28.3 (HW1): a slow lookup started just before the stop would otherwise keep its
+   * IP pinned in `inFlight` for up to five seconds; since audit 2026-09-25 (H12) its answer is
+   * also no longer written.
    */
-  clear(): void {
+  dispose(): void {
+    this.disposed = true;
     this.inFlight.clear();
     this.negativeCache.clear();
   }

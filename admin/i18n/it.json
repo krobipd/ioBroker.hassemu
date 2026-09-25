@@ -72,5 +72,9 @@
   "authSignIn": "Accedi",
   "authErrorTitle": "Autorizzazione non riuscita",
   "authErrorHint": "Controlla l'indirizzo del server e riprova a configurare il display.",
-  "authInvalidCredentials": "Nome utente o password non validi."
+  "authInvalidCredentials": "Nome utente o password non validi.",
+  "authContinueTitle": "Continuare l'accesso?",
+  "authContinueHint": "Questo accesso consegna un codice di accesso all'indirizzo qui sotto. Continua solo se l'hai avviato tu.",
+  "authContinueButton": "Continua",
+  "healthInfo": "Monitor di disponibilità e health check dei container: usa http://TUO_IP:8123/health — risponde senza creare una voce display. Una richiesta a / conta come un nuovo display."
 }

@@ -213,6 +213,48 @@ export const TARGET_PROBE_TIMEOUT_MS = 4_000;
 export const TARGET_PROBE_CACHE_MS = 25_000;
 
 /**
+ * Socket inactivity limit of the HTTP server (fastify `connectionTimeout` → `server.timeout`):
+ * a connection that sends nothing for this long is closed — a stalled header or body no longer
+ * holds a socket forever (fastify's default is 0). Far above every silent wait inside a request:
+ * the target probe is {@link TARGET_PROBE_TIMEOUT_MS}, reverse DNS is never awaited. After a
+ * response Node's keep-alive timeout applies instead, so the 30 s poll never trips over it
+ * (audit 2026-09-25, H1).
+ */
+export const HTTP_CONNECTION_TIMEOUT_MS = 30_000;
+
+/**
+ * Time allowed to RECEIVE a request (headers + body) — the bound for a body that trickles in
+ * one byte at a time, which the inactivity limit above never sees. It has to be given to
+ * `http.createServer` itself: fastify's own `requestTimeout` option is set after the server
+ * exists and was measured ineffective (fastify 5.12.5, Node 22). A slow HANDLER is not
+ * affected — the limit ends when the request is complete (audit 2026-09-25, H1).
+ */
+export const HTTP_REQUEST_TIMEOUT_MS = 30_000;
+
+/** How often Node checks open connections against {@link HTTP_REQUEST_TIMEOUT_MS} (its default). */
+export const HTTP_CONNECTIONS_CHECK_INTERVAL_MS = 30_000;
+
+/**
+ * An address change of a known display is written at most once per this window — with
+ * `trustProxy` the address comes from a client-supplied header, and every rotated value used
+ * to cost a state and an object write (audit 2026-09-25, H4).
+ */
+export const IP_CHANGE_MIN_INTERVAL_MS = 60 * 1000;
+
+/**
+ * OAuth2 authorization-code lifetime — HA core `auth/__init__.py:473` at 2026.9.3 (valid below
+ * 10 min), checked when the code is exchanged, not only by the periodic cleanup (H8).
+ */
+export const AUTH_CODE_TTL_MS = 10 * 60 * 1000;
+
+/**
+ * How often mDNS compares the advertised address with the current one when the server listens
+ * on all interfaces: the TXT record carries `base_url`, and a DHCP change would leave it stale
+ * until a restart (audit 2026-09-25, H10).
+ */
+export const MDNS_ADDRESS_CHECK_INTERVAL_MS = 60_000;
+
+/**
  * FIFO cap for the target-health cache (v1.39.0). Targets come from config
  * (discovered dashboards + manual URLs), so a handful is the norm — the cap only
  * guards against unbounded growth if targets churn over months.

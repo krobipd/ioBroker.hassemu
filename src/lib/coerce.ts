@@ -9,9 +9,53 @@
 import crypto from "node:crypto";
 
 /**
+ * The HA Companion apps' fixed `client_id`/`redirect_uri` pairs — home-assistant/core
+ * `indieauth.py:46-59` at 2026.9.3 (iOS, Android, Wear OS).
+ *
+ * @param clientId    Untrusted `client_id`.
+ * @param redirectUri Untrusted `redirect_uri`.
+ */
+export function isCompanionRedirect(clientId: string, redirectUri: string): boolean {
+  if (clientId === "https://home-assistant.io/iOS") {
+    return redirectUri === "homeassistant://auth-callback";
+  }
+  return (
+    clientId === "https://home-assistant.io/android" &&
+    (redirectUri === "homeassistant://auth-callback" ||
+      redirectUri === "https://wear.googleapis.com/3p_auth/io.homeassistant.companion.android" ||
+      redirectUri === "https://wear.googleapis-cn.com/3p_auth/io.homeassistant.companion.android")
+  );
+}
+
+/**
+ * Whether an authorize answer may hand its code over by itself: to a Companion app pair, or
+ * to a `redirect_uri` on the very host the browser is talking to. Anything else gets a page
+ * with a "Continue" button — hassemu grants without a login when authentication is off, and
+ * an automatic hand-over to any address made it a redirector for links sent into the LAN
+ * (audit 2026-09-25, H6).
+ *
+ * @param clientId    Validated `client_id`.
+ * @param redirectUri Validated `redirect_uri`.
+ * @param requestHost The `Host` the request came in on (untrusted, any type).
+ */
+export function mayAutoRedirect(clientId: string, redirectUri: string, requestHost: unknown): boolean {
+  if (isCompanionRedirect(clientId, redirectUri)) {
+    return true;
+  }
+  if (typeof requestHost !== "string" || requestHost === "") {
+    return false;
+  }
+  try {
+    return new URL(redirectUri).host.toLowerCase() === requestHost.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+/**
  * IndieAuth-style redirect_uri validation + HA Companion App whitelist.
  *
- * Three accept paths (matches home-assistant/core/homeassistant/components/auth/indieauth.py:30-55):
+ * Three accept paths (home-assistant/core homeassistant/components/auth/indieauth.py:23-62 at 2026.9.3):
  * 1. Same scheme + netloc as client_id (default IndieAuth).
  * 2. Hardcoded whitelist for HA Companion iOS/Android apps — needed because
  *    they use custom URI scheme `homeassistant://` which can never pass rule (1).
@@ -38,16 +82,7 @@ export function isValidRedirectUri(clientId: string, redirectUri: string): boole
   }
   // (2) HA Companion App whitelist — must be checked before (1) because
   // these apps use `homeassistant://` which has no http(s) netloc to match.
-  // Source: home-assistant/core indieauth.py:39-50.
-  if (clientId === "https://home-assistant.io/iOS" && redirectUri === "homeassistant://auth-callback") {
-    return true;
-  }
-  if (
-    clientId === "https://home-assistant.io/android" &&
-    (redirectUri === "homeassistant://auth-callback" ||
-      redirectUri === "https://wear.googleapis.com/3p_auth/io.homeassistant.companion.android" ||
-      redirectUri === "https://wear.googleapis-cn.com/3p_auth/io.homeassistant.companion.android")
-  ) {
+  if (isCompanionRedirect(clientId, redirectUri)) {
     return true;
   }
 
@@ -246,4 +281,19 @@ export function coerceSafeUrl(value: unknown): string | null {
  */
 export function oneLine(value: string): string {
   return value.replace(/[\r\n\t\0\v\f\u2028\u2029]+/g, " ");
+}
+
+/**
+ * One log-safe token for an untrusted value of any type. `oneLine(String(x))` threw a
+ * TypeError for an object from a JSON body whose `toString`/`valueOf` are not callable
+ * (`{"grant_type": {"toString": 1}}` → 500 and a warn line) — only a string is shown, every
+ * other value by its type (audit 2026-09-25, NH5).
+ *
+ * @param value The untrusted value.
+ */
+export function describeUntrusted(value: unknown): string {
+  if (typeof value === "string") {
+    return oneLine(value);
+  }
+  return `<${Array.isArray(value) ? "array" : value === null ? "null" : typeof value}>`;
 }

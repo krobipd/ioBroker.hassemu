@@ -1,5 +1,7 @@
 import crypto from "node:crypto";
 import { once } from "node:events";
+import http from "node:http";
+import net from "node:net";
 import WebSocket from "ws";
 
 // No real DNS in this suite (audit 2026-09-15, F5): every `GET /` used to start a real
@@ -35,7 +37,7 @@ vi.mock("@iobroker/adapter-core", async () => {
   };
 });
 
-import { CLIENT_COOKIE, WebServer } from "./webserver";
+import { CLIENT_COOKIE, WebServer, type HttpLimits } from "./webserver";
 import type { HostnameResolver } from "./hostname-resolver";
 import { ClientRegistry } from "./client-registry";
 import { GlobalConfig } from "./global-config";
@@ -563,7 +565,7 @@ describe("WebServer", () => {
       await s["app"].close();
     });
 
-    it("dedups the invalid-credentials warning per IP — first warn, repeat debug (M3/I1)", async () => {
+    it("dedups the invalid-credentials warning — first warn, repeat debug (M3/I1)", async () => {
       const { s, store } = await buildServer({ config: { authRequired: true } });
       const attempt = async (): Promise<void> => {
         const r1 = await s.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
@@ -635,7 +637,7 @@ describe("WebServer", () => {
 
   describe("OAuth2 browser flow (v1.29.0 — Shelly FW 2.6+, HA Companion)", () => {
     // Sources verified before coding:
-    //   home-assistant/android UrlUtil.kt:buildAuthenticationUrl
+    //   home-assistant/android ConnectionViewModel.kt:185-190 @2026.9.0
     //   home-assistant/core indieauth.py:verify_redirect_uri
     //   home-assistant/frontend src/data/auth.ts:redirectWithAuthCode
 
@@ -787,7 +789,7 @@ describe("WebServer", () => {
     });
 
     it("POST /api/mobile_app/registrations: end-to-end after OAuth2 token → returns webhook_id (v1.29.1)", async () => {
-      // Source: home-assistant/android IntegrationRepositoryImpl.kt:120
+      // Source: home-assistant/android IntegrationRepositoryImpl.kt:122-161 @2026.9.0
       // — calls POST /api/mobile_app/registrations with Bearer token
       // after registerAuthorizationCode finishes. A 404 here surfaces
       // as „Mobile-App-Integration nicht verfügbar" and blocks onboarding.
@@ -1078,7 +1080,8 @@ describe("WebServer", () => {
 
     it("Companion registration completes and the display loads without any WebSocket (no-WS fallback)", async () => {
       // registerDevice persists the registration via REST BEFORE the best-effort
-      // WS auth/current_user call (home-assistant/android @2026.4.4 line 142 vs 154).
+      // WS get_config/auth/current_user calls (home-assistant/android IntegrationRepositoryImpl.kt
+      // 138-141 vs 156-157 @2026.9.0).
       // The WS is never opened in this inject-based path — registration must still succeed.
       const reg1 = await server.inject({
         method: "POST",
@@ -1839,8 +1842,9 @@ describe("WebServer", () => {
     // without a Bearer. Pins the guard's whole partition so the v1.37.0 route-config
     // rewrite is proven equivalent to the path-whitelist it replaces (not just "nicer").
     // /api/websocket is a WS-upgrade route, covered separately by the socket test below.
-    const M6_PUBLIC: Array<{ method: "GET" | "POST"; url: string; payload?: unknown }> = [
+    const M6_PUBLIC: Array<{ method: "GET" | "POST" | "HEAD"; url: string; payload?: unknown }> = [
       { method: "GET", url: "/" },
+      { method: "HEAD", url: "/" },
       { method: "GET", url: "/api/" },
       { method: "GET", url: "/api/discovery_info" },
       { method: "GET", url: "/manifest.json" },
@@ -1852,11 +1856,14 @@ describe("WebServer", () => {
         method: "GET",
         url: "/auth/authorize?response_type=code&client_id=https%3A%2F%2Fx.io%2F&redirect_uri=https%3A%2F%2Fx.io%2Fcb",
       },
+      { method: "POST", url: "/auth/authorize", payload: {} },
       { method: "POST", url: "/auth/revoke", payload: {} },
       { method: "POST", url: "/auth/token", payload: {} },
       { method: "POST", url: "/api/webhook/anyid", payload: {} },
     ];
-    const M6_PROTECTED: Array<{ method: "GET" | "POST"; url: string }> = [
+    const M6_PROTECTED: Array<{ method: "GET" | "POST" | "PUT" | "DELETE"; url: string }> = [
+      { method: "PUT", url: "/api/mobile_app/registrations/x" },
+      { method: "DELETE", url: "/api/mobile_app/registrations/x" },
       { method: "GET", url: "/api/config" },
       { method: "GET", url: "/api/states" },
       { method: "GET", url: "/api/services" },
@@ -1935,7 +1942,7 @@ describe("WebServer", () => {
         // /manifest.json
         const r3 = await s.inject({ method: "GET", url: "/manifest.json" });
         expect(r3.statusCode).to.equal(200);
-        // /api/discovery_info — pre-auth probe used by HA-Clients
+        // /api/discovery_info — removed from HA core in 2022, kept for closed-source clients
         const r4 = await s.inject({ method: "GET", url: "/api/discovery_info" });
         expect(r4.statusCode).to.equal(200);
       } finally {
@@ -2022,6 +2029,440 @@ describe("WebServer under the new-client throttle (audit 2026-09-15 — B2, D2)"
       expect(map.size).to.equal(0);
     } finally {
       await s["app"].close();
+    }
+  });
+});
+
+describe("WebServer hardening (audit 2026-09-25 — H2–H8, NH5)", () => {
+  it("HEAD requests create no display, set no cookie and log no new client (H2)", async () => {
+    const { s, reg, store } = await buildServer();
+    try {
+      for (let i = 0; i < 35; i++) {
+        const r = await s.inject({ method: "HEAD", url: "/", remoteAddress: "10.9.9.9" });
+        expect(r.statusCode).to.equal(200);
+        expect(r.headers["set-cookie"]).to.be.undefined;
+      }
+      expect(reg.listAll()).to.have.length(0);
+      expect(store.logs.some(l => l.msg.startsWith("New client connected"))).to.be.false;
+    } finally {
+      await s["app"].close();
+    }
+  });
+
+  it("HEAD with a known cookie still finds its display (H2)", async () => {
+    const { s, reg } = await buildServer();
+    try {
+      const first = await s.inject({ method: "GET", url: "/" });
+      const cookie = String(first.headers["set-cookie"]).split(";")[0];
+      const r = await s.inject({ method: "HEAD", url: "/", headers: { cookie } });
+      expect(r.statusCode).to.equal(200);
+      expect(reg.listAll()).to.have.length(1);
+    } finally {
+      await s["app"].close();
+    }
+  });
+
+  it("HEAD /auth/authorize issues no code (no HEAD twin of the route) (H2)", async () => {
+    const { s } = await buildServer();
+    try {
+      const r = await s.inject({
+        method: "HEAD",
+        url: "/auth/authorize?response_type=code&client_id=https%3A%2F%2Fhome-assistant.io%2Fandroid&redirect_uri=homeassistant%3A%2F%2Fauth-callback",
+      });
+      expect(r.statusCode).to.equal(404);
+      expect(s.codeSessions.size).to.equal(0);
+    } finally {
+      await s["app"].close();
+    }
+  });
+
+  it("a transient record triggers no reverse lookup (H3)", async () => {
+    const { s, reg } = await buildServer();
+    (reg as unknown as { globalBurst: { count: number; lastCreate: number; warnedAt: number } }).globalBurst = {
+      count: 100,
+      lastCreate: Date.now(),
+      warnedAt: 0,
+    };
+    dnsReverse.mockClear();
+    try {
+      for (let i = 0; i < 20; i++) {
+        await s.inject({ method: "GET", url: "/", remoteAddress: `10.0.3.${i}` });
+      }
+      expect(reg.listAll()).to.have.length(0);
+      expect(dnsReverse).not.toHaveBeenCalled();
+    } finally {
+      await s["app"].close();
+    }
+  });
+
+  it("only a real address is taken from X-Forwarded-For (H4)", async () => {
+    const { s, reg } = await buildServer({ config: { trustProxy: true } });
+    try {
+      await s.inject({ method: "GET", url: "/", headers: { "x-forwarded-for": "<b>x</b>" } });
+      const [rec] = reg.listAll();
+      expect(rec.ip).to.be.null;
+    } finally {
+      await s["app"].close();
+    }
+  });
+
+  it("300 wrong logins from 300 addresses are ONE warn line; the next window names the rest (H5)", async () => {
+    const { s, store } = await buildServer({ config: { authRequired: true } });
+    try {
+      const attempt = async (ip: string): Promise<void> => {
+        const r1 = await s.inject({ method: "POST", url: "/auth/login_flow", payload: {}, remoteAddress: ip });
+        await s.inject({
+          method: "POST",
+          url: `/auth/login_flow/${r1.json().flow_id}`,
+          payload: { username: "wrong", password: "wrong" },
+          remoteAddress: ip,
+        });
+      };
+      for (let i = 0; i < 300; i++) {
+        await attempt(`10.1.${Math.floor(i / 250)}.${i % 250}`);
+      }
+      expect(store.logs.filter(l => l.level === "warn" && l.msg.startsWith("Invalid credentials"))).to.have.length(1);
+
+      vi.useFakeTimers({ toFake: ["Date"] });
+      try {
+        vi.setSystemTime(Date.now() + 61_000);
+        await attempt("10.2.0.1");
+      } finally {
+        vi.useRealTimers();
+      }
+      const warns = store.logs.filter(l => l.level === "warn" && l.msg.startsWith("Invalid credentials"));
+      expect(warns).to.have.length(2);
+      expect(warns[1].msg).to.include("299 further attempt(s)");
+    } finally {
+      await s["app"].close();
+    }
+  });
+
+  it("a repeated or non-string `state` is dropped, never a 500 (H7)", async () => {
+    const { s } = await buildServer({ config: { authRequired: true } });
+    try {
+      const q =
+        "response_type=code&client_id=https%3A%2F%2Fhome-assistant.io%2Fandroid&redirect_uri=homeassistant%3A%2F%2Fauth-callback";
+      const get = await s.inject({ method: "GET", url: `/auth/authorize?${q}&state=a&state=b` });
+      expect(get.statusCode).to.equal(200);
+      const post = await s.inject({
+        method: "POST",
+        url: "/auth/authorize",
+        payload: {
+          response_type: "code",
+          client_id: "https://home-assistant.io/android",
+          redirect_uri: "homeassistant://auth-callback",
+          state: 5,
+          username: "wrong",
+          password: "wrong",
+        },
+      });
+      expect(post.statusCode).to.equal(401);
+    } finally {
+      await s["app"].close();
+    }
+  });
+
+  it("an authorization code older than 10 minutes is refused; a 9-minute one is not (H8)", async () => {
+    const { s } = await buildServer();
+    try {
+      const codeAt = async (ageMs: number): Promise<number> => {
+        const r1 = await s.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
+        const r2 = await s.inject({ method: "POST", url: `/auth/login_flow/${r1.json().flow_id}`, payload: {} });
+        const code = r2.json().result as string;
+        s.codeSessions.get(code)!.created = Date.now() - ageMs;
+        const r3 = await s.inject({
+          method: "POST",
+          url: "/auth/token",
+          payload: { grant_type: "authorization_code", code },
+        });
+        return r3.statusCode;
+      };
+      expect(await codeAt(10 * 60 * 1000 + 1000)).to.equal(400);
+      expect(await codeAt(9 * 60 * 1000)).to.equal(200);
+    } finally {
+      await s["app"].close();
+    }
+  });
+
+  it("a login flow older than 10 minutes is refused as unknown (H8)", async () => {
+    const { s } = await buildServer();
+    try {
+      const r1 = await s.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
+      const flowId = r1.json().flow_id as string;
+      s.sessions.get(flowId)!.created = Date.now() - 11 * 60 * 1000;
+      const r2 = await s.inject({ method: "POST", url: `/auth/login_flow/${flowId}`, payload: {} });
+      expect(r2.statusCode).to.equal(400);
+      expect(r2.json().reason).to.equal("unknown_flow");
+    } finally {
+      await s["app"].close();
+    }
+  });
+
+  describe("authorize asks before handing a code to a foreign address (H6)", () => {
+    const authorizeUrl = (clientId: string, redirectUri: string): string =>
+      `/auth/authorize?response_type=code&client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+
+    it("a Companion app pair redirects by itself", async () => {
+      const { s } = await buildServer();
+      try {
+        const r = await s.inject({
+          method: "GET",
+          url: authorizeUrl("https://home-assistant.io/android", "homeassistant://auth-callback"),
+        });
+        expect(r.body).to.include("document.location.assign");
+      } finally {
+        await s["app"].close();
+      }
+    });
+
+    it("a redirect_uri on the host the browser is talking to redirects by itself", async () => {
+      const { s } = await buildServer();
+      try {
+        const r = await s.inject({
+          method: "GET",
+          url: authorizeUrl("http://hassemu.test:8123/", "http://hassemu.test:8123/cb"),
+          headers: { host: "hassemu.test:8123" },
+        });
+        expect(r.body).to.include("document.location.assign");
+      } finally {
+        await s["app"].close();
+      }
+    });
+
+    it("a foreign address gets a page with a Continue button — no refresh, no script", async () => {
+      const { s } = await buildServer({ systemLanguage: "de" });
+      try {
+        const r = await s.inject({
+          method: "GET",
+          url: authorizeUrl("https://evil.test/", "https://evil.test/cb"),
+          headers: { host: "hassemu.test:8123" },
+        });
+        expect(r.statusCode).to.equal(200);
+        expect(r.body).to.not.include("document.location.assign");
+        expect(r.body).to.not.include('http-equiv="refresh"');
+        expect(r.body).to.match(/<a class="button" href="https:\/\/evil\.test\/cb\?code=[0-9a-f-]{36}">Weiter<\/a>/);
+        expect(r.body).to.include("<code>evil.test</code>");
+      } finally {
+        await s["app"].close();
+      }
+    });
+
+    it("the same rule holds after a successful login (POST)", async () => {
+      const { s } = await buildServer({ config: { authRequired: true } });
+      try {
+        const r = await s.inject({
+          method: "POST",
+          url: "/auth/authorize",
+          headers: { host: "hassemu.test:8123" },
+          payload: {
+            response_type: "code",
+            client_id: "https://evil.test/",
+            redirect_uri: "https://evil.test/cb",
+            username: "admin",
+            password: "secret",
+          },
+        });
+        expect(r.statusCode).to.equal(200);
+        expect(r.body).to.not.include("document.location.assign");
+        expect(r.body).to.include('class="button"');
+      } finally {
+        await s["app"].close();
+      }
+    });
+  });
+
+  it("the display poll writes resolvedUrl when the target changes — not only GET / (T2)", async () => {
+    const { s, g, store } = await buildServer({ globalMode: "http://dash.test/" });
+    try {
+      const first = await s.inject({ method: "GET", url: "/" });
+      const cookie = String(first.headers["set-cookie"]).split(";")[0];
+      const id = [...store.states.keys()].find(k => k.endsWith(".resolvedUrl"))!;
+      expect(store.states.get(id)?.val).to.equal("http://dash.test/");
+
+      await g.handleModeWrite("http://dash2.test/");
+      await s.inject({ method: "GET", url: "/api/redirect_check", headers: { cookie } });
+
+      expect(store.states.get(id)?.val).to.equal("http://dash2.test/");
+    } finally {
+      await s["app"].close();
+    }
+  });
+
+  it("discovery_info brackets an IPv6 bind address so the URL parses (H10)", async () => {
+    const { s } = await buildServer({ config: { bind: "::1", port: 8123 } });
+    try {
+      const r = await s.inject({ method: "GET", url: "/api/discovery_info" });
+      expect(r.json().base_url).to.equal("http://[::1]:8123");
+    } finally {
+      await s["app"].close();
+    }
+  });
+
+  it("a webhook type with a line break is logged on one line (H11)", async () => {
+    const { s, store } = await buildServer();
+    try {
+      s.webhookRegistrations.set("hook-id-123456", "");
+      await s.inject({
+        method: "POST",
+        url: "/api/webhook/hook-id-123456",
+        payload: { type: "a\nFORGED warn line" },
+      });
+      const line = store.logs.find(l => l.msg.startsWith("Webhook hook-id-"));
+      expect(line?.msg).to.include("type=a FORGED warn line");
+      expect(store.logs.some(l => l.msg.includes("\n"))).to.be.false;
+    } finally {
+      await s["app"].close();
+    }
+  });
+
+  it("an object without a callable toString in the token body is a 400, not a 500 (NH5)", async () => {
+    const { s, store } = await buildServer();
+    try {
+      const r = await s.inject({ method: "POST", url: "/auth/token", payload: { grant_type: { toString: 1 } } });
+      expect(r.statusCode).to.equal(400);
+      expect(store.logs.some(l => l.msg.includes("grant_type=<object>"))).to.be.true;
+    } finally {
+      await s["app"].close();
+    }
+  });
+});
+
+describe("WebServer HTTP limits (audit 2026-09-25, H1)", () => {
+  /**
+   * A real server on 127.0.0.1 with the given limits and target probe.
+   *
+   * @param limits HTTP limits (shortened for the test).
+   * @param probe  Target probe.
+   */
+  async function realServer(
+    limits?: HttpLimits,
+    probe: TargetProbe = () => Promise.resolve(true),
+  ): Promise<{ s: WebServer; port: number }> {
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never);
+    const g = await buildGlobalConfig(built.adapter, "http://dash.test/");
+    const s = new WebServer(
+      built.adapter as never,
+      { ...baseConfig, port: 0, bind: "127.0.0.1" },
+      reg,
+      g,
+      crypto.randomUUID(),
+      "en",
+      probe,
+      limits,
+    );
+    await s.start();
+    return { s, port: s.boundAddress!.port };
+  }
+
+  /**
+   * Resolves with the milliseconds until the server closed the socket, or null after `maxMs`.
+   *
+   * @param sock   The client socket.
+   * @param t0     Start time.
+   * @param maxMs  Give-up time.
+   */
+  async function closedAfter(sock: net.Socket, t0: number, maxMs: number): Promise<number | null> {
+    let closed: number | null = null;
+    sock.on("close", () => (closed = Date.now() - t0));
+    sock.on("error", () => undefined);
+    while (closed === null && Date.now() - t0 < maxMs) {
+      await new Promise(r => setTimeout(r, 25));
+    }
+    return closed;
+  }
+
+  it("the server carries the limits: inactivity, request, and fastify's keep-alive timeout", async () => {
+    const { s } = await realServer();
+    try {
+      const server = (s as unknown as { app: { server: http.Server } }).app.server;
+      expect(server.timeout).to.equal(30_000);
+      expect(server.requestTimeout).to.equal(30_000);
+      expect(server.keepAliveTimeout).to.equal(72_000);
+    } finally {
+      await s.stop();
+    }
+  });
+
+  it("stop() does not wait for a request that is still running (hanging target probe)", async () => {
+    const { s, port } = await realServer(undefined, () => new Promise<boolean>(() => undefined));
+    const request = new Promise<string>(resolve => {
+      http
+        .get({ host: "127.0.0.1", port, path: "/", agent: new http.Agent({ keepAlive: true }) }, res => {
+          res.resume();
+          res.on("end", () => resolve("answered"));
+        })
+        .on("error", () => resolve("dropped"));
+    });
+    await new Promise(r => setTimeout(r, 100)); // the handler now waits on the probe
+    const t0 = Date.now();
+    await s.stop();
+    expect(Date.now() - t0, "stop duration").to.be.below(1000);
+    expect(await request).to.equal("dropped");
+  });
+
+  it("closes a connection that stalls in the middle of its body (inactivity limit)", async () => {
+    const { s, port } = await realServer({
+      connectionTimeoutMs: 300,
+      requestTimeoutMs: 60_000,
+      checkIntervalMs: 60_000,
+    });
+    try {
+      const t0 = Date.now();
+      const sock = net.connect(port, "127.0.0.1");
+      sock.write(
+        "POST /auth/token HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n{",
+      );
+      const closed = await closedAfter(sock, t0, 5000);
+      sock.destroy();
+      expect(closed, "closed by the server").to.not.be.null;
+      expect(closed!).to.be.below(2000);
+    } finally {
+      await s.stop();
+    }
+  });
+
+  it("closes a connection whose body trickles in one byte at a time (request limit)", async () => {
+    const { s, port } = await realServer({ connectionTimeoutMs: 60_000, requestTimeoutMs: 500, checkIntervalMs: 100 });
+    try {
+      const t0 = Date.now();
+      const sock = net.connect(port, "127.0.0.1");
+      sock.write(
+        "POST /auth/token HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: 1000\r\n\r\n",
+      );
+      const drip = setInterval(() => !sock.destroyed && sock.write(" "), 50);
+      const closed = await closedAfter(sock, t0, 5000);
+      clearInterval(drip);
+      sock.destroy();
+      expect(closed, "closed by the server").to.not.be.null;
+      expect(closed!).to.be.below(2000);
+    } finally {
+      await s.stop();
+    }
+  });
+
+  it("a slow HANDLER is not cut by the request limit — it only bounds receiving the request", async () => {
+    let release = (): void => undefined;
+    const probe: TargetProbe = () => new Promise<boolean>(resolve => (release = () => resolve(true)));
+    const { s, port } = await realServer(
+      { connectionTimeoutMs: 60_000, requestTimeoutMs: 300, checkIntervalMs: 100 },
+      probe,
+    );
+    try {
+      const status = new Promise<number>((resolve, reject) => {
+        http
+          .get({ host: "127.0.0.1", port, path: "/" }, res => {
+            res.resume();
+            resolve(res.statusCode ?? 0);
+          })
+          .on("error", reject);
+      });
+      await new Promise(r => setTimeout(r, 800)); // well past the request limit
+      release();
+      expect(await status).to.equal(200);
+    } finally {
+      await s.stop();
     }
   });
 });
@@ -2443,7 +2884,7 @@ describe("WebServer /api/websocket (v1.34.0)", () => {
     ws.close();
   });
 
-  it("answers the Companion command set @2026.4.4 with grounded empty-HA responses", async () => {
+  it("answers the Companion command set @2026.9.0 with grounded empty-HA responses", async () => {
     const ws = new WebSocket(wsUrl);
     const col = wsCollector(ws);
     await col.next(); // auth_required
@@ -2455,16 +2896,30 @@ describe("WebServer /api/websocket (v1.34.0)", () => {
       [10, "config/area_registry/list"],
       [11, "config/device_registry/list"],
       [12, "config/entity_registry/list"],
+      [18, "config/floor_registry/list"],
     ] as const) {
       ws.send(JSON.stringify({ id: n, type: cmd }));
       expect((await col.next()).result, cmd).to.deep.equal([]);
     }
+
+    // core config/entity_registry.py:68-93 @2026.9.3 — the fixed category map, no entities (U5).
+    ws.send(JSON.stringify({ id: 19, type: "config/entity_registry/list_for_display" }));
+    expect((await col.next()).result).to.deep.equal({
+      entity_categories: { 0: "config", 1: "diagnostic" },
+      entities: [],
+    });
+    // An unknown entity is `not_found` like core (NH12).
+    ws.send(JSON.stringify({ id: 26, type: "config/entity_registry/get", entity_id: "light.x" }));
+    const get = await col.next();
+    expect(get).to.deep.include({ id: 26, type: "result", success: false });
+    expect(get.error).to.deep.equal({ code: "not_found", message: "Entity not found" });
 
     // Valid subscriptions on an empty server ack (result null) but never emit.
     // Both mobile_app/* commands ack (mobile_app is an advertised component).
     for (const [n, cmd] of [
       [13, "subscribe_events"],
       [14, "subscribe_entities"],
+      [27, "unsubscribe_events"],
       [15, "supported_features"],
       [16, "mobile_app/push_notification_confirm"],
       [17, "mobile_app/push_notification_channel"],
@@ -2493,6 +2948,64 @@ describe("WebServer /api/websocket (v1.34.0)", () => {
     }
 
     ws.close();
+  });
+
+  it("drops an unauthenticated socket at once — no close handshake to wait for (H9)", async () => {
+    const ws = new WebSocket(wsUrl);
+    const col = wsCollector(ws);
+    await col.next(); // auth_required
+    ws.send(JSON.stringify({ type: "auth", access_token: "bogus-token" }));
+    await col.next(); // auth_invalid
+    const [code] = (await once(ws, "close")) as [number];
+    // 1006 = the TCP connection went away without a close frame (terminate), where close()
+    // would have sent 1005 and waited for the peer's answer.
+    expect(code).to.equal(1006);
+  });
+
+  describe("a session is bound to the refresh token (H9)", () => {
+    /**
+     * An authenticated socket for a display holding the given tokens.
+     *
+     * @param access  Access token.
+     * @param refresh Refresh token.
+     */
+    async function authedSocket(
+      access: string,
+      refresh: string,
+    ): Promise<{ ws: WebSocket; col: ReturnType<typeof wsCollector>; id: string }> {
+      const client = await reg.identifyOrCreate(null, "127.0.0.2");
+      await reg.setTokens(client.id, access, refresh);
+      const ws = new WebSocket(wsUrl);
+      const col = wsCollector(ws);
+      await col.next(); // auth_required
+      ws.send(JSON.stringify({ type: "auth", access_token: access }));
+      expect((await col.next()).type).to.equal("auth_ok");
+      return { ws, col, id: client.id };
+    }
+
+    it("a revoked session answers no further command and is closed", async () => {
+      const { ws, id } = await authedSocket("acc-1", "ref-1");
+      await reg.setTokens(id, null, null); // /auth/revoke
+      const closed = once(ws, "close");
+      ws.send(JSON.stringify({ id: 1, type: "get_config" }));
+      await closed;
+    });
+
+    it("a refreshed access token keeps the session", async () => {
+      const { ws, col, id } = await authedSocket("acc-2", "ref-2");
+      await reg.setToken(id, "acc-2b"); // refresh grant rotates the access token
+      ws.send(JSON.stringify({ id: 2, type: "get_config" }));
+      expect(await col.next()).to.deep.include({ id: 2, type: "result", success: true });
+      ws.close();
+    });
+
+    it("a removed display's session is closed", async () => {
+      const { ws, id } = await authedSocket("acc-3", "ref-3");
+      await reg.remove(id);
+      const closed = once(ws, "close");
+      ws.send(JSON.stringify({ id: 3, type: "get_config" }));
+      await closed;
+    });
   });
 
   it("fails fast: closes the socket if no auth frame arrives within the timeout", async () => {

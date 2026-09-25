@@ -32,6 +32,7 @@ import {
   NEW_CLIENT_THROTTLE_PER_HOUR,
   NEW_CLIENT_WINDOW_MS,
   OAUTH_ACCESS_TOKEN_TTL_S,
+  IP_CHANGE_MIN_INTERVAL_MS,
 } from "./constants";
 import { errText } from "./err-text";
 import { resolveLabel, tName, tRaw } from "./i18n";
@@ -84,6 +85,8 @@ export class ClientRegistry {
    * is one hour — saves us extendObject roundtrips on every request.
    */
   private readonly lastSeenFlushedAt = new Map<string, number>();
+  /** When each display's address last changed — the window of {@link IP_CHANGE_MIN_INTERVAL_MS}. */
+  private readonly ipChangedAt = new Map<string, number>();
   /**
    * v1.19.0 (G5): per-IP burst tracking for broken-cookie displays. v1.37.0 (M4):
    * the window is now SLIDING — keyed on `lastActivity`, not a fixed start — so an
@@ -325,11 +328,13 @@ export class ClientRegistry {
    * @param opts           Optional details, named so a call site can't transpose the nullable strings. v1.37.0 (L30).
    * @param opts.hostname  Hostname (from reverse DNS), stored for the admin UI.
    * @param opts.userAgent User-Agent header for NAT-collision protection in the pending lock.
+   * @param opts.create    False: a request without a known cookie gets a transient record, never
+   *   a new display (HEAD requests, audit 2026-09-25, H2). Default true.
    */
   async identifyOrCreate(
     cookie: string | null,
     ip: string | null,
-    opts: { hostname?: string | null; userAgent?: string | null } = {},
+    opts: { hostname?: string | null; userAgent?: string | null; create?: boolean } = {},
   ): Promise<ClientRecord> {
     const hostname = opts.hostname ?? null;
     const userAgent = opts.userAgent ?? null;
@@ -341,6 +346,13 @@ export class ClientRegistry {
         this.touchLastSeen(existing);
         return existing;
       }
+    }
+    // HEAD never mints a display: uptime monitors, port scanners and both Companion apps'
+    // connectivity checks send HEAD without a cookie — each used to create a device tree
+    // that lived 30 days (audit 2026-09-25, H2). Nothing is counted against the throttles.
+    if (opts.create === false) {
+      this.adapter.log.debug("identify: no known cookie on a request that may not create a display — transient record");
+      return this.transientRecord(ip, hostname);
     }
     // IP-INDEPENDENT ceiling on persistent creation, checked before the per-IP path
     // below. Closes the trustProxy / spoofed-X-Forwarded-For hole: a device rotating
@@ -787,6 +799,7 @@ export class ClientRegistry {
     // v1.8.1 (D2): the lastSeen throttle entry goes too — on an id reuse (16M space, possible
     // after years) it would suppress the new display's first lastSeen write; plus a small leak.
     this.lastSeenFlushedAt.delete(record.id);
+    this.ipChangedAt.delete(record.id);
   }
 
   private trackInMemory(record: ClientRecord): void {
@@ -1276,22 +1289,43 @@ export class ClientRegistry {
     ]);
   }
 
+  /**
+   * Store a display's new address, and carry it into the device name while that name is still
+   * the previous auto-address.
+   *
+   * @param record The display.
+   * @param ip     Its new address.
+   */
+  private async applyIpChange(record: ClientRecord, ip: string): Promise<void> {
+    const previousIp = record.ip;
+    record.ip = ip;
+    await this.adapter.setState(`clients.${record.id}.ip`, { val: ip, ack: true });
+    // If no hostname is known, common.name falls back to the IP. Only refresh it
+    // when the channel name is STILL the old auto-IP — never clobber a name the
+    // user set in the admin UI (the README documents the channel name as the
+    // user-owned display label). onObjectChange does not observe clients.* renames,
+    // so record.hostname stays null and this read-before-overwrite is the only
+    // guard protecting a user rename across an IP change. v1.36.0 (C4).
+    if (!record.hostname) {
+      // Only the previous auto-IP counts as "auto" here — deliberately NOT record.id:
+      // a web request always carries an IP, so a client is never id-named in practice,
+      // and keeping the set minimal preserves the exact pre-v1.38.0 behavior. L4.
+      await this.applyAutoName(record.id, ip, [previousIp]);
+    }
+  }
+
   private async updateIpHostname(record: ClientRecord, ip: string | null, hostname: string | null): Promise<void> {
     if (ip && ip !== record.ip) {
-      const previousIp = record.ip;
-      record.ip = ip;
-      await this.adapter.setState(`clients.${record.id}.ip`, { val: ip, ack: true });
-      // If no hostname is known, common.name falls back to the IP. Only refresh it
-      // when the channel name is STILL the old auto-IP — never clobber a name the
-      // user set in the admin UI (the README documents the channel name as the
-      // user-owned display label). onObjectChange does not observe clients.* renames,
-      // so record.hostname stays null and this read-before-overwrite is the only
-      // guard protecting a user rename across an IP change. v1.36.0 (C4).
-      if (!record.hostname) {
-        // Only the previous auto-IP counts as "auto" here — deliberately NOT record.id:
-        // a web request always carries an IP, so a client is never id-named in practice,
-        // and keeping the set minimal preserves the exact pre-v1.38.0 behavior. L4.
-        await this.applyAutoName(record.id, ip, [previousIp]);
+      const now = Date.now();
+      // At most one address change per window: with trustProxy the address is a
+      // client-supplied header, and every rotated value cost a state and an object write
+      // (audit 2026-09-25, H4). Neither memory nor state moves inside the window — updating
+      // memory alone would leave the datapoint stale for good.
+      if (now - (this.ipChangedAt.get(record.id) ?? 0) < IP_CHANGE_MIN_INTERVAL_MS) {
+        this.adapter.log.silly(`client-registry: address change for ${record.id} deferred (at most one per minute)`);
+      } else {
+        this.ipChangedAt.set(record.id, now);
+        await this.applyIpChange(record, ip);
       }
     }
     if (hostname && hostname !== record.hostname) {

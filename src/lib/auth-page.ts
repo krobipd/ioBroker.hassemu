@@ -15,6 +15,9 @@
  * - `400` error page when query parameters are malformed or the
  *   `redirect_uri` fails validation — never redirects, so an attacker
  *   cannot use the endpoint as an open redirector.
+ * - Continue page: when the code would go to an address that is neither a Companion app
+ *   nor the host the browser is talking to, the user confirms with a button instead of an
+ *   automatic hand-over (audit 2026-09-25, H6).
  *
  * Source: `home-assistant/frontend/src/data/auth.ts:redirectWithAuthCode` —
  * `document.location.assign(url)` with `code=<encoded>&state=<encoded>`.
@@ -63,6 +66,8 @@ input{display:block;width:100%;padding:12px;margin:8px 0 16px;background:#2a2a2a
 input:focus{outline:none;border-color:#03a9f4;}
 button{display:block;width:100%;padding:14px;background:#03a9f4;color:#fff;border:none;border-radius:4px;font-size:16px;cursor:pointer;}
 button:hover{background:#039be5;}
+a.button{display:block;padding:14px;background:#03a9f4;color:#fff;border-radius:4px;font-size:16px;text-align:center;text-decoration:none;}
+code{display:block;word-break:break-all;background:#2a2a2a;padding:8px;border-radius:4px;margin:0 0 16px;text-align:center;}
 .loading{text-align:center;color:#888;padding:16px;}
 `.trim();
 
@@ -127,6 +132,27 @@ export function renderAuthorizeRedirect(target: string): string {
     cardInner: `<h1>Home Assistant</h1>
 <p class="loading">Signing in…</p>`,
     bodyExtra: `<script>(function(){document.location.assign(${j});})();</script>`,
+  });
+}
+
+/**
+ * Render the continue page: the code goes to `target` only when the user taps the button —
+ * no meta refresh, no script.
+ *
+ * @param target   The fully-built `redirect_uri?code=…&state=…` URL.
+ * @param host     The host the code would go to, shown to the user.
+ * @param language System language for the visible strings (`en` fallback).
+ */
+export function renderAuthorizeContinue(target: string, host: string, language = "en"): string {
+  const t = makePageTranslator(language);
+  return htmlShell({
+    lang: language,
+    title: "Home Assistant",
+    headExtra: `<meta name="viewport" content="width=device-width, initial-scale=1">`,
+    cardInner: `<h1>${escapeHtml(t("authContinueTitle"))}</h1>
+<p class="subtitle">${escapeHtml(t("authContinueHint"))}</p>
+<code>${escapeHtml(host)}</code>
+<a class="button" href="${escapeHtml(target)}">${escapeHtml(t("authContinueButton"))}</a>`,
   });
 }
 

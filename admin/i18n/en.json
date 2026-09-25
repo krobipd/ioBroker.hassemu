@@ -72,5 +72,9 @@
   "authSignIn": "Sign in",
   "authErrorTitle": "Authorization failed",
   "authErrorHint": "Please check the server address and try onboarding the display again.",
-  "authInvalidCredentials": "Invalid username or password."
+  "authInvalidCredentials": "Invalid username or password.",
+  "authContinueTitle": "Continue sign-in?",
+  "authContinueHint": "This sign-in hands an access code to the address below. Continue only if you started the sign-in yourself.",
+  "authContinueButton": "Continue",
+  "healthInfo": "Uptime monitors and container health checks: use http://YOUR_IP:8123/health — it answers without creating a display entry. A request to / counts as a new display."
 }

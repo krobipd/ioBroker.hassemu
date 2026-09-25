@@ -72,5 +72,9 @@
   "authSignIn": "Zaloguj się",
   "authErrorTitle": "Autoryzacja nie powiodła się",
   "authErrorHint": "Sprawdź adres serwera i spróbuj ponownie skonfigurować wyświetlacz.",
-  "authInvalidCredentials": "Nieprawidłowa nazwa użytkownika lub hasło."
+  "authInvalidCredentials": "Nieprawidłowa nazwa użytkownika lub hasło.",
+  "authContinueTitle": "Kontynuować logowanie?",
+  "authContinueHint": "To logowanie przekazuje kod dostępu pod poniższy adres. Kontynuuj tylko, jeśli to Ty je rozpocząłeś.",
+  "authContinueButton": "Dalej",
+  "healthInfo": "Monitory dostępności i kontrole kondycji kontenerów: używaj http://TWOJE_IP:8123/health — odpowiada bez tworzenia wpisu wyświetlacza. Zapytanie na / liczy się jako nowy wyświetlacz."
 }

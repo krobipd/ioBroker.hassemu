@@ -72,5 +72,9 @@
   "authSignIn": "Iniciar sesión",
   "authErrorTitle": "Error de autorización",
   "authErrorHint": "Comprueba la dirección del servidor e intenta configurar la pantalla de nuevo.",
-  "authInvalidCredentials": "Usuario o contraseña no válidos."
+  "authInvalidCredentials": "Usuario o contraseña no válidos.",
+  "authContinueTitle": "¿Continuar el inicio de sesión?",
+  "authContinueHint": "Este inicio de sesión entrega un código de acceso a la dirección de abajo. Continúa solo si lo has iniciado tú.",
+  "authContinueButton": "Continuar",
+  "healthInfo": "Monitores de disponibilidad y comprobaciones de estado de contenedores: usa http://TU_IP:8123/health — responde sin crear una entrada de pantalla. Una petición a / cuenta como una pantalla nueva."
 }

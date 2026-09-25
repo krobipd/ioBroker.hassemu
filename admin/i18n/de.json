@@ -72,5 +72,9 @@
   "authSignIn": "Anmelden",
   "authErrorTitle": "Autorisierung fehlgeschlagen",
   "authErrorHint": "Bitte prüfe die Server-Adresse und richte das Display erneut ein.",
-  "authInvalidCredentials": "Benutzername oder Passwort ungültig."
+  "authInvalidCredentials": "Benutzername oder Passwort ungültig.",
+  "authContinueTitle": "Anmeldung fortsetzen?",
+  "authContinueHint": "Diese Anmeldung übergibt einen Zugangscode an die unten genannte Adresse. Fahre nur fort, wenn du die Anmeldung selbst gestartet hast.",
+  "authContinueButton": "Weiter",
+  "healthInfo": "Uptime-Monitore und Container-Healthchecks: http://DEINE_IP:8123/health verwenden — diese Adresse antwortet, ohne einen Display-Eintrag anzulegen. Eine Abfrage auf / zählt als neues Display."
 }
