@@ -1214,19 +1214,21 @@ describe("gcStaleClients", () => {
     seedDisplay(stub, "f0", Date.now() - 1000);
     internal.registry = internal.makeRegistry();
     await internal.registry.restore();
-    const adapter = internal as unknown as { delObjectAsync: (id: string, o?: unknown) => Promise<unknown> };
-    const original = adapter.delObjectAsync.bind(adapter);
-    adapter.delObjectAsync = async (id: string, o?: unknown) => {
-      if (id.includes("d4")) {
-        throw new Error("broker hiccup");
-      }
-      return original(id, o);
-    };
+    // The failure has to reach the GC's own catch: `registry.remove` swallows a failed
+    // delObject itself, so the throw sits on `remove`.
+    const registry = internal.registry;
+    const remove = registry.remove.bind(registry);
+    registry.remove = (id: string): Promise<void> =>
+      id === "d4" ? Promise.reject(new Error("broker hiccup")) : remove(id);
 
     await internal.gcStaleClients();
 
     expect(stub.objects.has("hassemu.0.clients.e5")).toBe(false);
     expect(internal.registry.getById("e5")).toBeNull();
+    expect(logsOf(stub, "debug")).toContain("Stale-GC: failed for d4: broker hiccup");
+    expect(logsOf(stub, "info")).toContain(
+      "Removed 1 inactive client(s) (30 days behind the most recently seen display)",
+    );
   });
 
   it("an adapter that was OFF for 40 days keeps every display (L3)", async () => {
