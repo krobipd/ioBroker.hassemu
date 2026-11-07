@@ -145,7 +145,7 @@ export class TargetHealth {
           return alive;
         }
         const prev = this.cache.get(url)?.alive;
-        // Evict only when INSERTING a new key (emitOncePerWindow pattern) — a
+        // Evict only when INSERTING a new key — a
         // refresh of a known target must not push out an unrelated entry.
         if (prev === undefined) {
           evictOldest(this.cache, TARGET_HEALTH_CACHE_CAP);

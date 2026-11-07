@@ -32,6 +32,7 @@ import {
   safeStringEqual,
 } from "./coerce";
 import { errText } from "./err-text";
+import { LogOnce } from "./log-once";
 import { evictOldest } from "./object-utils";
 import {
   buildRedirectUrl,
@@ -173,11 +174,11 @@ export class WebServer {
    */
   private readonly hostnames: HostnameResolver;
   /**
-   * Per-message cooldown timestamps for 5xx error logging. First occurrence
-   * of a unique message logs at warn; repeats within {@link REQUEST_ERROR_COOLDOWN_MS}
-   * fall to debug to prevent log-spam under attack/probe traffic.
+   * 5xx error lines through the fleet master: the first sighting of a message is a warn,
+   * a repeat within {@link REQUEST_ERROR_COOLDOWN_MS} goes to debug (probe traffic can
+   * trigger many 500s), at most {@link REQUEST_ERROR_COOLDOWN_CAP} messages remembered.
    */
-  private readonly errorLogCooldown: Map<string, number> = new Map();
+  private readonly requestErrors: LogOnce;
   /**
    * ONE window for invalid-credential warnings, not one per address: keyed per IP, 300
    * attempts from 300 addresses (IPv4 aliases in the LAN, or a rotated X-Forwarded-For
@@ -217,6 +218,10 @@ export class WebServer {
     this.instanceUuid = instanceUuid;
     this.systemLanguage = systemLanguage;
     this.targetHealth = new TargetHealth(adapter, targetProbe);
+    this.requestErrors = new LogOnce(adapter.log, {
+      windowMs: REQUEST_ERROR_COOLDOWN_MS,
+      maxKeys: REQUEST_ERROR_COOLDOWN_CAP,
+    });
     // M5: update-only. A byCookie miss is a deliberate no-op — the client was removed
     // while the lookup ran, and minting one here would create a ghost with a cookie no
     // display owns.
@@ -484,42 +489,6 @@ export class WebServer {
   }
 
   /**
-   * Cooldown decision for logging 5xx errors. Returns `true` for the first sighting of
-   * a `key` within {@link REQUEST_ERROR_COOLDOWN_MS} and marks the entry — repeats
-   * return `false` until the window has passed. The map is FIFO-capped at
-   * {@link REQUEST_ERROR_COOLDOWN_CAP}.
-   *
-   * @param key Unique error identifier (usually `error.message`).
-   * @param now Current time in ms (testable).
-   */
-  public shouldEmitRequestErrorWarn(key: string, now: number): boolean {
-    return this.emitOncePerWindow(this.errorLogCooldown, key, now);
-  }
-
-  /**
-   * First-observation-per-window decision shared by the 5xx-error and the invalid-
-   * credentials dedup. Returns `true` for the first `key` within
-   * {@link REQUEST_ERROR_COOLDOWN_MS}, then `false` until the window lapses; the map is
-   * FIFO-capped at {@link REQUEST_ERROR_COOLDOWN_CAP}. Each caller passes its OWN map
-   * (I1) so the two dedup classes can't evict each other under load.
-   *
-   * @param map The caller's dedup map (mutated in place).
-   * @param key Unique identifier for the event being deduplicated.
-   * @param now Current time in ms.
-   */
-  private emitOncePerWindow(map: Map<string, number>, key: string, now: number): boolean {
-    const lastSeen = map.get(key) ?? 0;
-    if (lastSeen !== 0 && now - lastSeen <= REQUEST_ERROR_COOLDOWN_MS) {
-      return false;
-    }
-    if (!map.has(key)) {
-      evictOldest(map, REQUEST_ERROR_COOLDOWN_CAP);
-    }
-    map.set(key, now);
-    return true;
-  }
-
-  /**
    * Record the target a client was just served and report whether it CHANGED.
    *
    * One bookkeeping place for both display-facing routes: `GET /` (every 15 s while a
@@ -751,15 +720,9 @@ export class WebServer {
         return;
       }
       // 5xx: an attacker can trigger many 500s with malformed paths / oversized bodies.
-      // Per-message dedup map with a 60 s cooldown — the first occurrence of a unique
-      // message is a warn, every repeat inside the window goes to debug.
-      // Memory `feedback_no_log_spam`.
-      const key = message || "unknown";
-      if (this.shouldEmitRequestErrorWarn(key, Date.now())) {
-        this.adapter.log.warn(`Request error: ${message}`);
-      } else {
-        this.adapter.log.debug(`Request error (repeat): ${message}`);
-      }
+      // The first occurrence of a message is a warn, every repeat inside the window goes
+      // to debug (fleet master log-once.ts, keyed by the message).
+      this.requestErrors.report(message || "unknown", `Request error: ${message}`);
       reply.status(500).send({ error: "Internal server error" });
     });
   }

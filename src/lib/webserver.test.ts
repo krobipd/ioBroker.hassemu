@@ -2628,48 +2628,78 @@ describe("WebServer bind / start-stop", () => {
 
   // --- D6: Request-error log cooldown (v1.9.x) ---
 
-  describe("shouldEmitRequestErrorWarn — 5xx log dedup (D6 v1.9.x)", () => {
-    const buildCooldownServer = async (): Promise<WebServer> =>
-      (await buildServer({ globalMode: "http://x/", globalEnabled: false })).s;
+  describe("5xx log dedup through the fleet master log-once (D6 v1.9.x)", () => {
+    /**
+     * A server whose route `/boom/<msg>` rejects with an Error carrying `<msg>`.
+     */
+    async function serverFailing(): Promise<{ s: WebServer; store: MockStore }> {
+      const built = createMockAdapter();
+      const reg = new ClientRegistry(built.adapter as never);
+      const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
+      const s = new WebServer(
+        built.adapter as never,
+        baseConfig,
+        reg,
+        g,
+        crypto.randomUUID(),
+        "en",
+        (): Promise<boolean> => Promise.resolve(true),
+      );
+      s["setupErrorHandler"]();
+      s["app"].get<{ Params: { msg: string } }>("/boom/:msg", req => Promise.reject(new Error(req.params.msg)));
+      await s["app"].ready();
+      return { s, store: built.store };
+    }
+    const lines = (store: MockStore, level: string): string[] =>
+      store.logs.filter(l => l.level === level && l.msg.startsWith("Request error:")).map(l => l.msg);
 
-    it("returns true on first occurrence of a message", async () => {
-      const s = await buildCooldownServer();
-      expect(s.shouldEmitRequestErrorWarn("boom", 1000)).to.be.true;
-    });
-
-    it("returns false within cooldown window for same message", async () => {
-      const s = await buildCooldownServer();
-      s.shouldEmitRequestErrorWarn("boom", 1000);
-      // 59s later — still in cooldown (< REQUEST_ERROR_COOLDOWN_MS=60000)
-      expect(s.shouldEmitRequestErrorWarn("boom", 60_000)).to.be.false;
-    });
-
-    it("returns true after cooldown elapsed for same message", async () => {
-      const s = await buildCooldownServer();
-      s.shouldEmitRequestErrorWarn("boom", 1000);
-      // 61s later — outside cooldown window
-      expect(s.shouldEmitRequestErrorWarn("boom", 62_000)).to.be.true;
-    });
-
-    it("different messages have independent cooldowns", async () => {
-      const s = await buildCooldownServer();
-      expect(s.shouldEmitRequestErrorWarn("a", 1000)).to.be.true;
-      expect(s.shouldEmitRequestErrorWarn("b", 1001)).to.be.true; // 1ms later, but different key
-      expect(s.shouldEmitRequestErrorWarn("a", 1002)).to.be.false; // a is in cooldown
-    });
-
-    it("FIFO-caps the cooldown map (E9 + D6 consistency)", async () => {
-      const s = await buildCooldownServer();
-      for (let i = 0; i < 250; i++) {
-        s.shouldEmitRequestErrorWarn(`err-${i}`, 1000 + i);
+    it("the same message twice inside the window: one warn, the repeat on debug", async () => {
+      const now = vi.spyOn(Date, "now").mockReturnValue(1000);
+      const { s, store } = await serverFailing();
+      try {
+        await s.inject({ method: "GET", url: "/boom/same" });
+        now.mockReturnValue(60_000); // 59 s later — inside REQUEST_ERROR_COOLDOWN_MS
+        await s.inject({ method: "GET", url: "/boom/same" });
+        expect(lines(store, "warn")).to.deep.equal(["Request error: same"]);
+        expect(lines(store, "debug")).to.deep.equal(["Request error: same"]);
+      } finally {
+        now.mockRestore();
+        await s["app"].close();
       }
-      const cooldown = (s as unknown as { errorLogCooldown: Map<string, number> }).errorLogCooldown;
-      expect(cooldown.size).to.equal(200); // REQUEST_ERROR_COOLDOWN_CAP
-      // oldest 50 (err-0..err-49) should be evicted, newest 200 (err-50..err-249) survive
-      expect(cooldown.has("err-0")).to.be.false;
-      expect(cooldown.has("err-49")).to.be.false;
-      expect(cooldown.has("err-50")).to.be.true;
-      expect(cooldown.has("err-249")).to.be.true;
+    });
+
+    it("the same message after the window is a warn again", async () => {
+      const now = vi.spyOn(Date, "now").mockReturnValue(1000);
+      const { s, store } = await serverFailing();
+      try {
+        await s.inject({ method: "GET", url: "/boom/same" });
+        now.mockReturnValue(62_000); // 61 s later — the window has passed
+        await s.inject({ method: "GET", url: "/boom/same" });
+        expect(lines(store, "warn")).to.deep.equal(["Request error: same", "Request error: same"]);
+      } finally {
+        now.mockRestore();
+        await s["app"].close();
+      }
+    });
+
+    it("remembers at most REQUEST_ERROR_COOLDOWN_CAP messages — the oldest is loud again", async () => {
+      const now = vi.spyOn(Date, "now").mockReturnValue(1000);
+      const { s, store } = await serverFailing();
+      try {
+        for (let i = 0; i <= 200; i++) {
+          await s.inject({ method: "GET", url: `/boom/err-${i}` });
+        }
+        // 201 messages, cap 200: err-0 was evicted, err-200 is remembered.
+        await s.inject({ method: "GET", url: "/boom/err-0" });
+        await s.inject({ method: "GET", url: "/boom/err-200" });
+        const warns = lines(store, "warn");
+        expect(warns).to.have.length(202);
+        expect(warns[201]).to.equal("Request error: err-0");
+        expect(lines(store, "debug")).to.deep.equal(["Request error: err-200"]);
+      } finally {
+        now.mockRestore();
+        await s["app"].close();
+      }
     });
   });
 
