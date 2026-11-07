@@ -2,27 +2,9 @@
 // (L7) — mock it to serve the real translations from the JSON files (same pattern as
 // landing-page.test / webserver.test).
 vi.mock("@iobroker/adapter-core", async () => {
-  const { readdirSync, readFileSync } = await import("node:fs");
-  const { join } = await import("node:path");
-  const i18nDir = join(__dirname, "../../admin/i18n");
-  const i18nData: Record<string, Record<string, string>> = {};
-  for (const f of readdirSync(i18nDir).filter(f => f.endsWith(".json"))) {
-    i18nData[f.replace(".json", "")] = JSON.parse(readFileSync(join(i18nDir, f), "utf8"));
-  }
-  return {
-    I18n: {
-      getTranslatedObject: vi.fn((key: string) => {
-        const result: Record<string, string> = {};
-        for (const [lang, data] of Object.entries(i18nData)) {
-          if (data[key]) {
-            result[lang] = data[key];
-          }
-        }
-        return Object.keys(result).length > 0 ? result : { en: key };
-      }),
-      translate: vi.fn((key: string) => i18nData.en?.[key] ?? key),
-    },
-  };
+  // The factory is hoisted above the imports — the shared translation lookup comes in here.
+  const { realI18n } = await import("../../test/unit/i18n-stub.js");
+  return { I18n: realI18n() };
 });
 
 import { buildRedirectUrl, renderAuthorizeError, renderAuthorizeForm, renderAuthorizeRedirect } from "./auth-page";

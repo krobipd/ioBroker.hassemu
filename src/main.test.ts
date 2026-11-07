@@ -7,12 +7,11 @@
  */
 
 import crypto from "node:crypto";
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 
 vi.mock("@iobroker/adapter-core", async () => {
   // The factory is hoisted above the imports — the shared broker semantics come in here.
   const { brokerExtend, brokerDelObject } = await import("../test/unit/broker-stub.js");
+  const { realI18n } = await import("../test/unit/i18n-stub.js");
   // The real exit codes (the value js-controller reads), not a copy that could drift.
   const { EXIT_CODES } = await import("@iobroker/adapter-core/exitCodes");
   interface ObjEntry {
@@ -194,31 +193,12 @@ vi.mock("@iobroker/adapter-core", async () => {
     }
   }
 
-  // Read the REAL admin/i18n files (same as client-registry.test.ts). The object
-  // refresh exists to land the actual user-visible text in an existing tree, so a mock
-  // that echoed the key back would let a wrong key pass unnoticed.
-  const i18nDir = join(__dirname, "../admin/i18n");
-  const i18nData: Record<string, Record<string, string>> = {};
-  for (const f of readdirSync(i18nDir).filter(f => f.endsWith(".json"))) {
-    i18nData[f.replace(".json", "")] = JSON.parse(readFileSync(join(i18nDir, f), "utf8"));
-  }
-
   return {
     Adapter: StubAdapter,
     EXIT_CODES,
-    I18n: {
-      init: vi.fn(async () => {}),
-      getTranslatedObject: vi.fn((key: string) => {
-        const result: Record<string, string> = {};
-        for (const [lang, data] of Object.entries(i18nData)) {
-          if (data[key]) {
-            result[lang] = data[key];
-          }
-        }
-        return Object.keys(result).length > 0 ? result : { en: key };
-      }),
-      translate: vi.fn((key: string) => i18nData.en?.[key] ?? key),
-    },
+    // The REAL admin/i18n texts (test/unit/i18n-stub.ts): the object refresh exists to land
+    // the actual user-visible text in an existing tree.
+    I18n: { init: vi.fn(async () => {}), ...realI18n() },
   };
 });
 
