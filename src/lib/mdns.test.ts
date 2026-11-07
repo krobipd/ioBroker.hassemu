@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import type { EventEmitter } from "node:events";
 import { MDNSService } from "./mdns";
 import { HA_VERSION } from "./constants";
 import type { AdapterConfig } from "./types";
@@ -296,9 +297,17 @@ describe("MDNSService cross-platform", () => {
     service.start();
     expect(service.isActive()).to.be.true;
 
-    // No error logs — bonjour-service works everywhere
-    const errorLogs = adapter._logs.filter(l => l.level === "error");
-    expect(errorLogs.length).to.equal(0);
+    // bonjour reports a socket failure asynchronously, as a warn — wait until the first
+    // announcement went out (or failed) before judging the log.
+    const published = (service as unknown as { published: EventEmitter | null }).published;
+    expect(published).to.not.equal(null);
+    await new Promise<void>(resolve => {
+      published!.once("up", () => resolve());
+      published!.once("error", () => resolve());
+    });
+    const problems = adapter._logs.filter(l => l.level === "warn" || l.level === "error");
+    expect(problems).to.deep.equal([]);
+    expect(service.isActive()).to.be.true;
 
     await service.stop();
     expect(service.isActive()).to.be.false;
