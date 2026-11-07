@@ -1296,8 +1296,9 @@ describe("applyMasterSwitch", () => {
 
     expect(a.mode).toBe(MODE_GLOBAL);
     expect(b.mode).toBe(MODE_GLOBAL);
-    // A user action reports its result on info (fleet logging rule, 2026-09-22).
-    expect(logsOf(stub, "info")).toContain("Master switch on — 2 display(s) now follow the global URL");
+    // A switch datapoint gets no info line (krobi 2026-10-16) — the count is on debug.
+    expect(logsOf(stub, "debug")).toContain("Master switch on — 2 display(s) now follow the global URL");
+    expect(logsOf(stub, "info").some(l => l.startsWith("Master switch"))).toBe(false);
   });
 
   it("enabled=false → every client drops to '0' (no-choice → landing page)", async () => {
@@ -1312,7 +1313,8 @@ describe("applyMasterSwitch", () => {
 
     expect(a.mode).toBe("0");
     // Counts the displays it changed, not the ones already on their landing page.
-    expect(logsOf(stub, "info")).toContain("Master switch off — 1 display(s) back to their landing page");
+    expect(logsOf(stub, "debug")).toContain("Master switch off — 1 display(s) back to their landing page");
+    expect(logsOf(stub, "info").some(l => l.startsWith("Master switch"))).toBe(false);
   });
 
   it("is a safe no-op without a registry", async () => {
@@ -1453,8 +1455,9 @@ describe("onStateChange routing", () => {
       s.discovery.collect.mock.invocationCallOrder[0],
     );
     expect(s.stub.states.get("hassemu.0.info.refreshUrls")).toEqual({ val: false, ack: true });
-    // A user action reports its result on info (fleet logging rule, 2026-09-22).
-    expect(logsOf(s.stub, "info")).toContain("URL list refreshed on request — 2 dashboard(s) found");
+    // A button datapoint gets no info line (krobi 2026-10-16) — the count is on debug.
+    expect(logsOf(s.stub, "debug")).toContain("URL list refreshed on request — 2 dashboard(s) found");
+    expect(logsOf(s.stub, "info").some(l => l.startsWith("URL list refreshed"))).toBe(false);
   });
 
   it("info.refreshUrls=false does NOT trigger a scan", async () => {

@@ -149,8 +149,8 @@ export class UrlDiscovery {
   /**
    * Collects all discoverable URLs from the broker and pushes them to listeners
    * via the `onChange` callback (the production effect channel). The returned
-   * states map and the {@link cached} fallback exist for the unit tests —
-   * production `await`s collect() and ignores the result. v1.37.0 (L29).
+   * states map is what the `info.refreshUrls` handler counts for its line; the
+   * {@link cached} fallback on a broker error exists for the unit tests. v1.37.0 (L29).
    */
   collect(): Promise<UrlStates> {
     if (!this.inflight) {

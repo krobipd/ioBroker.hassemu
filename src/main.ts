@@ -575,18 +575,18 @@ class HassEmu extends utils.Adapter {
     if (!this.registry) {
       return;
     }
-    // A user action reports its result on info (fleet logging rule, 2026-09-22): the switch
-    // changes every display, and only the log says how many it reached.
+    // A switch datapoint gets no info line (krobi 2026-10-16 07:29/07:49: feedback for
+    // admin actions, never log spam from datapoints) — the count stays on debug.
     if (enabled) {
       const changed = await this.registry.bulkSetMode(MODE_GLOBAL);
-      this.log.info(`Master switch on — ${changed} display(s) now follow the global URL`);
+      this.log.debug(`Master switch on — ${changed} display(s) now follow the global URL`);
       return;
     }
     // Master off → every client to no choice. Without an explicit choice by the user,
     // every display shows the landing page (instead of switching automatically to some
     // discovered URL the user may never have meant).
     const changed = await this.registry.bulkSetMode(NO_CHOICE);
-    this.log.info(`Master switch off — ${changed} display(s) back to their landing page`);
+    this.log.debug(`Master switch off — ${changed} display(s) back to their landing page`);
   }
 
   private async onStateChange(id: string, state: ioBroker.State | null | undefined): Promise<void> {
@@ -669,9 +669,9 @@ class HassEmu extends utils.Adapter {
     this.urlDiscovery.cancelRefresh();
     try {
       const found = await this.urlDiscovery.collect();
-      // A user action reports its result on info (fleet logging rule, 2026-09-22) — the
-      // count tells whether the new VIS view or project was actually found.
-      this.log.info(`URL list refreshed on request — ${Object.keys(found).length} dashboard(s) found`);
+      // A button datapoint gets no info line (krobi 2026-10-16 07:29/07:39) — the count
+      // stays on debug; the dropdown itself shows what was found.
+      this.log.debug(`URL list refreshed on request — ${Object.keys(found).length} dashboard(s) found`);
     } catch (err) {
       this.log.warn(`URL refresh failed: ${errText(err)}`);
     } finally {

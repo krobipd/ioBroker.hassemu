@@ -731,7 +731,9 @@ export class ClientRegistry {
       this.adapter.log.debug(`client-registry: delObject failed for ${id}: ${errText(err)}`);
     }
     if (objectRemoved) {
-      this.adapter.log.info(`Client forgotten: ${id}`);
+      // debug: the `remove` button gets no info line (krobi 2026-10-16 07:29/07:39), and
+      // the stale-client GC already sums its removals in one info line.
+      this.adapter.log.debug(`Client forgotten: ${id}`);
     } else {
       // The in-memory maps are already cleared, but the object survived and will
       // be read back as a client on the next restart — don't claim success, or

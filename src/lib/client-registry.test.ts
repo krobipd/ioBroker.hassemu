@@ -889,11 +889,11 @@ describe("ClientRegistry", () => {
       expect(rec2.cookie).to.not.equal(oldCookie);
     });
 
-    it("logs info on removal", async () => {
+    it("logs the removal on debug, never on info (a button gets no info line)", async () => {
       const rec = await registry.identifyOrCreate(null, null);
       await registry.remove(rec.id);
-      const info = store.logs.find(l => l.level === "info" && l.msg.includes("forgotten"));
-      expect(info).to.not.be.undefined;
+      expect(store.logs.some(l => l.level === "debug" && l.msg === `Client forgotten: ${rec.id}`)).to.be.true;
+      expect(store.logs.some(l => l.level === "info" && l.msg.includes("forgotten"))).to.be.false;
     });
 
     it("no-op when id is unknown", async () => {
