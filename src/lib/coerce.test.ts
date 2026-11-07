@@ -503,10 +503,13 @@ describe("coerce", () => {
       const before = cryptoCounters.timingSafe;
       expect(safeStringEqual("admin", "admin")).to.be.true;
       expect(safeStringEqual("admin", "wrong")).to.be.false;
+      // An unequal length goes through the same comparison — an early return on the
+      // length would leak it through the response time (C6 v1.16.0).
+      expect(safeStringEqual("admin", "administrator")).to.be.false;
       // A plain === would answer the same but leak the answer through timing —
       // the guarantee only exists if the comparison really goes through
       // crypto.timingSafeEqual.
-      expect(cryptoCounters.timingSafe).to.equal(before + 2);
+      expect(cryptoCounters.timingSafe).to.equal(before + 3);
     });
   });
 
