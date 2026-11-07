@@ -83,7 +83,6 @@ function createMockAdapter(namespace = "hassemu.0"): {
     getForeignObjectsAsync: (pattern: string, type?: string) => Promise<Record<string, ObjEntry>>;
     getStateAsync: (id: string) => Promise<{ val: unknown; ack: boolean } | null>;
     getObjectAsync: (id: string) => Promise<ObjEntry | null>;
-    setObject: (id: string, obj: ObjEntry) => Promise<void>;
     setForeignObject: (fullId: string, obj: ObjEntry) => Promise<void>;
     setObjectNotExistsAsync: (id: string, obj: ObjEntry) => Promise<void>;
     extendObject: (id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>) => Promise<void>;
@@ -93,7 +92,6 @@ function createMockAdapter(namespace = "hassemu.0"): {
       value: { val: unknown; ack?: boolean },
     ) => Promise<{ id: string; notChanged: boolean }>;
     delObjectAsync: (id: string, options?: { recursive?: boolean }) => Promise<void>;
-    delStateAsync: (id: string) => Promise<void>;
   } {
     return {
       namespace,
@@ -137,11 +135,6 @@ function createMockAdapter(namespace = "hassemu.0"): {
         const obj = store.objects.get(fullId);
         return Promise.resolve(obj ? structuredClone(obj) : null);
       },
-      setObject: (id: string, obj: ObjEntry) => {
-        const fullId = id.startsWith(`${namespace}.`) ? id : `${namespace}.${id}`;
-        store.objects.set(fullId, obj);
-        return Promise.resolve();
-      },
       // Like the controller: the id is taken as given — no namespace prefixing. A caller
       // that hands over a short id writes to the wrong key, and the tests see it.
       setForeignObject: (fullId: string, obj: ObjEntry) => {
@@ -180,10 +173,6 @@ function createMockAdapter(namespace = "hassemu.0"): {
       // Like 7.2.2: a missing object deletes nothing, the value goes only with a state object.
       delObjectAsync: (id: string, options?: { recursive?: boolean }) => {
         brokerDelObject(store.objects, store.states, `${namespace}.${id}`, options?.recursive === true);
-        return Promise.resolve();
-      },
-      delStateAsync: (id: string) => {
-        store.states.delete(`${namespace}.${id}`);
         return Promise.resolve();
       },
     };
@@ -1915,7 +1904,6 @@ describe("ClientRegistry start cost (audit 2026-09-15 — C1, C2, D1)", () => {
       "getObjectAsync",
       "getForeignObjectsAsync",
       "setObjectNotExistsAsync",
-      "setObject",
       "extendObject",
       "setForeignObject",
       "setState",
@@ -1943,7 +1931,6 @@ describe("ClientRegistry start cost (audit 2026-09-15 — C1, C2, D1)", () => {
    * @param c The call counts collected by {@link count}.
    */
   const writes = (c: Counts): number =>
-    (c.setObject ?? 0) +
     (c.extendObject ?? 0) +
     (c.setForeignObject ?? 0) +
     (c.setState ?? 0) +

@@ -63,11 +63,9 @@ interface MockAdapterApi {
   setObjectNotExistsAsync(id: string, obj: ObjEntry): Promise<void>;
   extendObject(id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>): Promise<void>;
   getObjectAsync(id: string): Promise<ObjEntry | null>;
-  setObject(id: string, obj: ObjEntry): Promise<void>;
   setState(id: string, val: { val: unknown; ack?: boolean }): Promise<void>;
   setStateChangedAsync(id: string, val: { val: unknown; ack?: boolean }): Promise<{ id: string; notChanged: boolean }>;
   delObjectAsync(id: string, options?: { recursive?: boolean }): Promise<void>;
-  delStateAsync(id: string): Promise<void>;
 }
 
 function createMockAdapter(namespace = "hassemu.0"): {
@@ -146,10 +144,6 @@ function createMockAdapter(namespace = "hassemu.0"): {
         const obj = store.objects.get(`${namespace}.${id}`);
         return Promise.resolve(obj ? structuredClone(obj) : null);
       },
-      setObject: (id: string, obj: ObjEntry) => {
-        store.objects.set(`${namespace}.${id}`, obj);
-        return Promise.resolve();
-      },
       setState: (id: string, val: { val: unknown; ack?: boolean }) => {
         store.states.set(`${namespace}.${id}`, { val: val.val, ack: val.ack ?? false });
         return Promise.resolve();
@@ -166,10 +160,6 @@ function createMockAdapter(namespace = "hassemu.0"): {
       // Like 7.2.2: a missing object deletes nothing, the value goes only with a state object.
       delObjectAsync: (id: string, options?: { recursive?: boolean }) => {
         brokerDelObject(store.objects, store.states, `${namespace}.${id}`, options?.recursive === true);
-        return Promise.resolve();
-      },
-      delStateAsync: (id: string) => {
-        store.states.delete(`${namespace}.${id}`);
         return Promise.resolve();
       },
     };

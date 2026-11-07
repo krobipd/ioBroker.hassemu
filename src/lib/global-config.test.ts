@@ -8,7 +8,7 @@ import { GlobalConfig, parseGlobalStateId } from "./global-config";
 import { resolveRedirect } from "./redirect-resolver";
 import { MODE_GLOBAL, MODE_MANUAL } from "./constants";
 import type { ClientRecord } from "./types";
-import { brokerDelObject, brokerExtend } from "../../test/unit/broker-stub";
+import { brokerExtend } from "../../test/unit/broker-stub";
 
 interface ObjEntry {
   type: string;
@@ -51,10 +51,7 @@ function createMockAdapter(namespace = "hassemu.0"): {
     setState: (id: string, value: { val: unknown; ack?: boolean }) => Promise<void>;
     getObjectAsync: (id: string) => Promise<ObjEntry | null>;
     setForeignObject: (fullId: string, obj: ObjEntry) => Promise<void>;
-    setObject: (id: string, obj: ObjEntry) => Promise<void>;
     extendObject: (id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>) => Promise<void>;
-    setObjectNotExistsAsync: (id: string, obj: ObjEntry) => Promise<void>;
-    delObjectAsync: (id: string, options?: { recursive?: boolean }) => Promise<void>;
   } {
     return {
       namespace,
@@ -93,24 +90,6 @@ function createMockAdapter(namespace = "hassemu.0"): {
       setForeignObject: (fullId: string, obj: ObjEntry) => {
         store.writes.push({ method: "setForeignObject", id: fullId, obj: structuredClone(obj) });
         store.objects.set(fullId, structuredClone(obj));
-        return Promise.resolve();
-      },
-      setObject: (id: string, obj: ObjEntry) => {
-        const fullId = id.includes(".") && id.startsWith(`${namespace}.`) ? id : `${namespace}.${id}`;
-        store.objects.set(fullId, obj);
-        return Promise.resolve();
-      },
-      setObjectNotExistsAsync: (id: string, obj: ObjEntry) => {
-        const fullId = id.includes(".") && id.startsWith(`${namespace}.`) ? id : `${namespace}.${id}`;
-        if (!store.objects.has(fullId)) {
-          store.objects.set(fullId, obj);
-        }
-        return Promise.resolve();
-      },
-      // Like 7.2.2: a missing object deletes nothing, the value goes only with a state object.
-      delObjectAsync: (id: string, options?: { recursive?: boolean }) => {
-        const fullId = id.includes(".") && id.startsWith(`${namespace}.`) ? id : `${namespace}.${id}`;
-        brokerDelObject(store.objects, store.states, fullId, options?.recursive === true);
         return Promise.resolve();
       },
     };
@@ -404,7 +383,7 @@ describe("GlobalConfig", () => {
 
   describe("syncUrlDropdown", () => {
     // global.mode is an instanceObject — always present in real installs.
-    // Seed it in tests so syncUrlDropdown's getObjectAsync→setObject
+    // Seed it in tests so syncUrlDropdown's getObjectAsync→setForeignObject
     // flow has something to read.
     beforeEach(() => {
       store.objects.set("hassemu.0.global.mode", {

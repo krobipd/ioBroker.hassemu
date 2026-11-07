@@ -71,11 +71,6 @@ vi.mock("@iobroker/adapter-core", async () => {
       return Promise.resolve(obj ? structuredClone(obj) : null);
     }
 
-    setObject(id: string, obj: ObjEntry): Promise<void> {
-      this.objects.set(this.fullId(id), obj);
-      return Promise.resolve();
-    }
-
     setObjectNotExistsAsync(id: string, obj: ObjEntry): Promise<void> {
       const full = this.fullId(id);
       if (!this.objects.has(full)) {
@@ -112,26 +107,6 @@ vi.mock("@iobroker/adapter-core", async () => {
     // Like the controller: the id is taken as given — no namespace prefixing.
     setForeignObject(fullId: string, obj: ObjEntry): Promise<void> {
       this.objects.set(fullId, structuredClone(obj));
-      return Promise.resolve();
-    }
-
-    // The controller's enum view: every `enum.<group>.<name>` object, grouped by `enum.<group>`.
-    getEnumsAsync(): Promise<Record<string, Record<string, ObjEntry>>> {
-      const groups: Record<string, Record<string, ObjEntry>> = {};
-      for (const [id, obj] of this.objects) {
-        const parts = id.split(".", 3);
-        if (parts[0] !== "enum" || !parts[2]) {
-          continue;
-        }
-        const group = `${parts[0]}.${parts[1]}`;
-        (groups[group] ??= {})[id] = structuredClone(obj);
-      }
-      return Promise.resolve(groups);
-    }
-
-    // 7.2.2 semantics: `common.members` is emptied before the merge, so the list is replaced.
-    extendForeignObject(id: string, obj: Partial<ObjEntry>): Promise<void> {
-      this.objects.set(id, brokerExtend(this.objects.get(id), obj, undefined, "enum"));
       return Promise.resolve();
     }
 
