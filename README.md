@@ -6,7 +6,12 @@
 
 **Support:** [![Ko-fi](https://img.shields.io/badge/Ko--fi-Support-ff5e5b?logo=ko-fi)](https://ko-fi.com/krobipd) [![PayPal](https://img.shields.io/badge/Donate-PayPal-blue.svg)](https://paypal.me/krobipd)
 
+> [!IMPORTANT]
+> This adapter cannot be installed from github
+
 Emulates a Home Assistant server so displays that only accept an HA dashboard show any web URL instead.
+
+[🇺🇸 Documentation](./docs/en/README.md) · [🇩🇪 Dokumentation](./docs/de/README.md)
 
 ---
 
@@ -57,8 +62,6 @@ Want to add a URL the adapter doesn't auto-detect? Set `manual` and paste it.
 - Node.js ≥ 22
 - ioBroker js-controller ≥ 7.2.2
 - ioBroker Admin ≥ 8.0.11
-
-> The adapter CANNOT be installed via GitHub: The adapter must be installed via the ioBroker repository (stable or latest).
 
 ---
 
@@ -269,5 +272,4 @@ SOFTWARE.
 
 ---
 
-<!-- prettier-ignore -->
 *Developed with assistance from Claude.ai*
