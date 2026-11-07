@@ -131,7 +131,11 @@ class HassEmu extends utils.Adapter {
 
   private async onReady(): Promise<void> {
     try {
-      // First: without this the whole shutdown path stays dead on an updated install.
+      // The translations come first (package check `i18n-before-messages`): every step after
+      // this may write a translated name or log a translated text.
+      await I18n.init(join(this.adapterDir, "admin"), this);
+
+      // Then: without this the whole shutdown path stays dead on an updated install.
       // A correction means the host is restarting us — no point starting anything.
       if (await this.clearStopInstanceFlag()) {
         return;
@@ -148,8 +152,6 @@ class HassEmu extends utils.Adapter {
       // v1.14.0 (H7): a second onReady without an unload in between (a js-controller edge
       // case) must not orphan a server or its listeners from the first run.
       await this.stopStartedServices();
-
-      await I18n.init(join(this.adapterDir, "admin"), this);
 
       await this.setState("info.connection", { val: false, ack: true });
 
