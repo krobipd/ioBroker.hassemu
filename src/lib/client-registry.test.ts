@@ -1935,6 +1935,7 @@ describe("ClientRegistry start cost (audit 2026-09-15 — C1, C2, D1)", () => {
       "setObjectNotExistsAsync",
       "setObject",
       "extendObject",
+      "setForeignObject",
       "setState",
       "delObjectAsync",
     ]) {
@@ -1962,6 +1963,7 @@ describe("ClientRegistry start cost (audit 2026-09-15 — C1, C2, D1)", () => {
   const writes = (c: Counts): number =>
     (c.setObject ?? 0) +
     (c.extendObject ?? 0) +
+    (c.setForeignObject ?? 0) +
     (c.setState ?? 0) +
     (c.delObjectAsync ?? 0) +
     (c["setStateChanged:written"] ?? 0);
