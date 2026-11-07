@@ -9,6 +9,7 @@ vi.mock("node:os", async importOriginal => {
   return { ...actual, default: { ...actual, networkInterfaces }, networkInterfaces };
 });
 
+import crypto from "node:crypto";
 import type * as os from "node:os";
 import {
   advertisedBaseUrl,
@@ -164,14 +165,16 @@ describe("network", () => {
       expect(id).to.match(/^[0-9a-f]{6}$/);
     });
 
-    it("produces different IDs on subsequent calls (crypto-random)", () => {
-      const ids = new Set<string>();
-      for (let i = 0; i < 100; i++) {
-        ids.add(generateClientId());
+    it("takes its three bytes from crypto.randomBytes", () => {
+      // Deterministic instead of drawing 100 ids and expecting no repeat: that test failed
+      // by chance in about 0.03 % of runs (birthday bound, 100 draws from 16.7M ids).
+      const spy = vi.spyOn(crypto, "randomBytes").mockImplementation(() => Buffer.from([0x0a, 0xbc, 0xde]));
+      try {
+        expect(generateClientId()).to.equal("0abcde");
+        expect(spy).toHaveBeenCalledWith(3);
+      } finally {
+        spy.mockRestore();
       }
-      // 100 random 6-hex IDs from a 16.7M-key space — collisions
-      // statistically negligible. If this ever fails, RNG is broken.
-      expect(ids.size).to.equal(100);
     });
   });
 });
