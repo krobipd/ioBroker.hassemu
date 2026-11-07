@@ -92,17 +92,8 @@ describe("MDNSService", () => {
   });
 
   describe("constructor", () => {
-    it("should use the provided UUID", () => {
-      expect(service.uuid).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
-    });
-
     it("should not be active initially", () => {
       expect(service.isActive()).to.be.false;
-    });
-
-    it("should use different UUIDs when different UUIDs are provided", () => {
-      const service2 = new MDNSService(adapter as never, config, crypto.randomUUID());
-      expect(service.uuid).to.not.equal(service2.uuid);
     });
   });
 
@@ -390,7 +381,8 @@ describe("MDNSService cross-platform", () => {
     it("re-publishes with the new base_url and the same UUID; an unchanged address changes nothing", async () => {
       const localAdapter = createMockAdapter();
       let base = "http://192.168.1.5:8123";
-      const local = new MDNSService(localAdapter as never, MDNS_CONFIG, crypto.randomUUID(), () => base);
+      const uuid = crypto.randomUUID();
+      const local = new MDNSService(localAdapter as never, MDNS_CONFIG, uuid, () => base);
       local.start();
       try {
         expect(localAdapter._intervals.size, "address check armed for a wildcard bind").to.equal(1);
@@ -403,7 +395,7 @@ describe("MDNSService cross-platform", () => {
         base = "http://192.168.1.77:8123";
         await local.refreshIfAddressChanged();
         expect(internal.published.txt.base_url).to.equal("http://192.168.1.77:8123");
-        expect(internal.published.txt.uuid).to.equal(local.uuid);
+        expect(internal.published.txt.uuid).to.equal(uuid);
         expect(local.isActive()).to.be.true;
       } finally {
         await local.stop(true);

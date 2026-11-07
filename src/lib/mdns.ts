@@ -10,8 +10,8 @@ type PublishedService = ReturnType<InstanceType<typeof Bonjour>["publish"]>;
 export class MDNSService {
   private readonly adapter: AdapterInterface;
   private readonly config: AdapterConfig;
-  /** Shared server UUID (constructor input). Exposed read-only for the unit tests only — no production reader (main.ts already holds the uuid). v1.37.0 (L25). */
-  public readonly uuid: string;
+  /** Shared server UUID (constructor input) — goes into the TXT record. */
+  private readonly uuid: string;
   private active = false;
   private bonjour: Bonjour | null = null;
   private published: PublishedService | null = null;
