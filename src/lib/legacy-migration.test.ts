@@ -7,16 +7,14 @@
 // The edges that matter here are all about NOT losing a user's configured URL: a failed
 // write must never be followed by deleting the source it came from.
 
+import { brokerExtend, type StubObject } from "../../test/unit/broker-stub";
 import { migrateLegacyDefaultVisUrl, migrateVisUrlToMode, type MigrationAdapter } from "./legacy-migration";
 import { MODE_MANUAL } from "./constants";
 import type { ClientRegistry } from "./client-registry";
 import type { GlobalConfig } from "./global-config";
 
-interface ObjEntry {
-  type?: string;
-  common?: Record<string, unknown>;
-  native?: Record<string, unknown>;
-}
+/** A stored object — the broker stub's shape (`type` is always set). */
+type ObjEntry = StubObject;
 
 interface Store {
   objects: Map<string, ObjEntry>;
@@ -74,14 +72,10 @@ function createStub(namespace = "hassemu.0"): { store: Store; adapter: Migration
       const obj = store.objects.get(id);
       return Promise.resolve(obj ? structuredClone(obj) : null);
     },
+    // The broker's deep merge (js-controller 7.2.2), not a flat spread — a flat spread
+    // would drop nested keys the patch leaves out.
     extendForeignObjectAsync: (id: string, obj: ObjEntry) => {
-      const existing = store.objects.get(id) ?? {};
-      store.objects.set(id, {
-        ...existing,
-        ...obj,
-        common: { ...(existing.common ?? {}), ...(obj.common ?? {}) },
-        native: { ...(existing.native ?? {}), ...(obj.native ?? {}) },
-      });
+      store.objects.set(id, brokerExtend(store.objects.get(id), obj));
       return Promise.resolve();
     },
     getStateAsync: (id: string) => {
