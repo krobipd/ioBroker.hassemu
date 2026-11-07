@@ -1,17 +1,10 @@
+// Fleet master — the release run requires this file byte for byte in every adapter; change it in
+// Entwicklung/.consistency-master, never in an adapter.
 /**
- * One readable line for anything a `catch` hands over — never `[object Object]`, never without the reason.
+ * One readable line for anything a `catch` receives — never `[object Object]`, never without the reason.
  *
- * Fleet rule (audit series 2026-09-02, class 1; enforced by the package checks
- * `caught-value-text` since iobroker-adapter-checks 0.11 and `error-text-reason` since 0.14):
- * every caught value becomes text through THIS helper, never inline. `String(err)` and
- * `${err}` turn a thrown plain object into `[object Object]`, `${err}` throws a second time
- * on a symbol, `(err as Error).message` reads `undefined` off a thrown string, and a bare
- * `JSON.stringify(err)` throws on a cyclic structure. The form is the fleet master
- * (`CLAUDE_PATTERNS.md`, Async-Handler): the reason from `code` or one level of `cause`,
- * a type tag for a thrown function, the whole body inside `try`.
- *
- * @param err Whatever was thrown or rejected with.
- * @returns A non-empty, human-readable description of the value.
+ * @param err the caught value
+ * @returns the text
  */
 export function errText(err: unknown): string {
   // It runs inside a `catch` and must not throw there: any property of a caught value can be a
