@@ -1,7 +1,7 @@
 import { coerceSafeUrl } from "./coerce";
 import { decideLegacyVisMigration } from "./state-write-rules";
 import { MODE_MANUAL } from "./constants";
-import { moveWithEnums } from "./enum-carry";
+import { moveAllWithEnums, moveWithEnums } from "./enum-carry";
 import { errText } from "./err-text";
 import { migrateNativeKeys, type NativeKeyMigration } from "./native-key-migration";
 import type { ClientRegistry } from "./client-registry";
@@ -184,13 +184,13 @@ export async function migrateVisUrlToMode(
     return;
   }
   const byId = new Map((registry?.listAll() ?? []).map(r => [r.id, r]));
+  const migrated: string[] = [];
   await Promise.all(
     [...legacyByClient].map(async ([id, rawValue]) => {
       const record = byId.get(id);
       if (!record) {
         return;
       }
-      let clientMigrated = true;
       const decision = decideLegacyVisMigration(rawValue);
       if (decision.kind === "empty") {
         return;
@@ -205,22 +205,28 @@ export async function migrateVisUrlToMode(
         } else {
           adapter.log.warn(`Migration: client ${id} legacy URL rejected as unsafe — please set the URL manually`);
         }
+        migrated.push(id);
       } catch (err) {
         // Same as the global block: a write failure must not delete the legacy
         // source — keep clients.<id>.visUrl as a recovery anchor + warn. v1.36.0 (C5).
-        clientMigrated = false;
         adapter.log.warn(`Migration: client ${id} URL move failed — legacy visUrl preserved (${errText(err)})`);
       }
-      if (clientMigrated) {
-        await moveWithEnums(
-          adapter,
-          `${adapter.namespace}.clients.${id}.visUrl`,
-          `${adapter.namespace}.clients.${id}.manualUrl`,
-          () => deleteLegacyDatapoint(adapter, `clients.${id}.visUrl`),
-          errText,
-        );
-      }
     }),
+  );
+  if (migrated.length === 0) {
+    return;
+  }
+  // ONE carry for every migrated client: the enums are read once before the deletes and each
+  // affected enum is written once after them. A carry per client read the same enum fresh in
+  // parallel and wrote it back once per client — the later write dropped the earlier successor.
+  const successorOf = new Map(
+    migrated.map(id => [`${adapter.namespace}.clients.${id}.visUrl`, [`${adapter.namespace}.clients.${id}.manualUrl`]]),
+  );
+  await moveAllWithEnums(
+    adapter,
+    memberId => successorOf.get(memberId) ?? [],
+    () => Promise.all(migrated.map(id => deleteLegacyDatapoint(adapter, `clients.${id}.visUrl`))),
+    errText,
   );
 
   // 3) global.mode + global.manualUrl repair handled by repairGlobalSchemas()

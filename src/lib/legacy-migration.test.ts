@@ -306,6 +306,69 @@ describe("migrateVisUrlToMode", () => {
     expect(store.enums.get("enum.functions.displays")).to.deep.equal(["hassemu.0.clients.abc123.manualUrl"]);
   });
 
+  it("carries the room of two clients sharing one enum to both successors, writing it once", async () => {
+    // A loop of single carries read the same enum fresh in parallel and wrote it back twice —
+    // the second write dropped the first client's successor. One carry for all clients reads
+    // the enums once and writes each affected enum once (enum-carry.ts `moveAllWithEnums`).
+    const { store, adapter } = createStub();
+    const { config } = fakeGlobal();
+    const a = { id: "aaa111", mode: "", manualUrl: null as string | null };
+    const b = { id: "bbb222", mode: "", manualUrl: null as string | null };
+    for (const id of [a.id, b.id]) {
+      store.objects.set(`hassemu.0.clients.${id}.visUrl`, { type: "state", common: {}, native: {} });
+      store.states.set(`hassemu.0.clients.${id}.visUrl`, { val: "http://old.local/", ack: true });
+    }
+    store.enums.set("enum.rooms.hall", [
+      "hue.0.light",
+      "hassemu.0.clients.aaa111.visUrl",
+      "hassemu.0.clients.bbb222.visUrl",
+    ]);
+
+    await migrateVisUrlToMode(
+      adapter,
+      config,
+      fakeRegistry({ aaa111: "http://old.local/", bbb222: "http://old.local/" }, [a, b]),
+    );
+
+    expect(store.deleted).to.include.members(["clients.aaa111.visUrl", "clients.bbb222.visUrl"]);
+    expect(store.enums.get("enum.rooms.hall")).to.deep.equal([
+      "hue.0.light",
+      "hassemu.0.clients.aaa111.manualUrl",
+      "hassemu.0.clients.bbb222.manualUrl",
+    ]);
+    expect(store.enumWrites.filter(w => w.id === "enum.rooms.hall")).to.have.length(1);
+  });
+
+  it("keeps the room of a client whose URL write failed — only migrated clients move", async () => {
+    const { store, adapter } = createStub();
+    const { config } = fakeGlobal();
+    const a = { id: "aaa111", mode: "", manualUrl: null as string | null };
+    const b = { id: "bbb222", mode: "", manualUrl: null as string | null };
+    for (const id of [a.id, b.id]) {
+      store.objects.set(`hassemu.0.clients.${id}.visUrl`, { type: "state", common: {}, native: {} });
+      store.states.set(`hassemu.0.clients.${id}.visUrl`, { val: "http://old.local/", ack: true });
+    }
+    store.enums.set("enum.rooms.hall", ["hassemu.0.clients.aaa111.visUrl", "hassemu.0.clients.bbb222.visUrl"]);
+    const setState = adapter.setState.bind(adapter);
+    adapter.setState = ((id: string, ...rest: unknown[]) =>
+      id.startsWith("clients.bbb222.")
+        ? Promise.reject(new Error("broker down"))
+        : (setState as (...args: unknown[]) => Promise<unknown>)(id, ...rest)) as typeof adapter.setState;
+
+    await migrateVisUrlToMode(
+      adapter,
+      config,
+      fakeRegistry({ aaa111: "http://old.local/", bbb222: "http://old.local/" }, [a, b]),
+    );
+
+    expect(store.deleted).to.include("clients.aaa111.visUrl");
+    expect(store.deleted).to.not.include("clients.bbb222.visUrl");
+    expect(store.enums.get("enum.rooms.hall")).to.deep.equal([
+      "hassemu.0.clients.bbb222.visUrl",
+      "hassemu.0.clients.aaa111.manualUrl",
+    ]);
+  });
+
   it("the successor survives the delete writing the CACHED enum back (L5)", async () => {
     // js-controller 7.2.2 strikes the old id from its cached this.enums and writes that list
     // back: a successor written BEFORE the delete was overwritten.
