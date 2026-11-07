@@ -183,7 +183,11 @@ describe("MDNSService", () => {
       // Both the stop-callback and the 300 ms fallback call destroy(); a second
       // destroy() on an already-closed bonjour instance throws inside the
       // library (it walks closed sockets).
-      (service as unknown as { bonjour: { destroy(): void } | null }).bonjour = {
+      const internals = service as unknown as { bonjour: { destroy(): void } | null };
+      // The real instance start() opened is swapped for the counter — release its sockets here.
+      const real = internals.bonjour;
+      onTestFinished(() => real?.destroy());
+      internals.bonjour = {
         destroy: () => {
           destroys++;
         },
@@ -213,6 +217,9 @@ describe("MDNSService", () => {
         bonjour: { destroy(): void } | null;
         published: { stop(cb: () => void): void } | null;
       };
+      // The real instance start() opened is swapped for the fake — release its sockets here.
+      const real = internals.bonjour;
+      onTestFinished(() => real?.destroy());
       let destroyed = false;
       internals.bonjour = {
         destroy: () => {
