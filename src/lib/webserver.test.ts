@@ -2392,7 +2392,12 @@ describe("WebServer HTTP limits (audit 2026-09-25, H1)", () => {
   });
 
   it("stop() does not wait for a request that is still running (hanging target probe)", async () => {
-    const { s, port } = await realServer(undefined, () => new Promise<boolean>(() => undefined));
+    let probing: () => void = () => undefined;
+    const probed = new Promise<void>(resolve => (probing = resolve));
+    const { s, port } = await realServer(undefined, () => {
+      probing();
+      return new Promise<boolean>(() => undefined);
+    });
     const request = new Promise<string>(resolve => {
       http
         .get({ host: "127.0.0.1", port, path: "/", agent: new http.Agent({ keepAlive: true }) }, res => {
@@ -2401,7 +2406,7 @@ describe("WebServer HTTP limits (audit 2026-09-25, H1)", () => {
         })
         .on("error", () => resolve("dropped"));
     });
-    await new Promise(r => setTimeout(r, 100)); // the handler now waits on the probe
+    await probed; // the handler now waits on the probe
     const t0 = Date.now();
     await s.stop();
     expect(Date.now() - t0, "stop duration").to.be.below(1000);
