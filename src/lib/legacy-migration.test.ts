@@ -199,6 +199,26 @@ describe("migrateVisUrlToMode", () => {
     expect(store.deleted).to.deep.equal([]);
   });
 
+  it("looks up no object and reads no enum when global.visUrl holds nothing (I5)", async () => {
+    // The delete of a legacy global.visUrl runs only when there was one: on a migrated
+    // installation it was an object lookup, a delete and an enum read on every start.
+    const { adapter } = createStub();
+    const { config } = fakeGlobal();
+    const calls: string[] = [];
+    const a = adapter as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>;
+    for (const m of ["getForeignObjectAsync", "getForeignObjectsAsync", "delObjectAsync", "delStateAsync"]) {
+      const original = a[m];
+      a[m] = (...args: unknown[]) => {
+        calls.push(m);
+        return original(...args);
+      };
+    }
+
+    await migrateVisUrlToMode(adapter, config, fakeRegistry({}, []));
+
+    expect(calls).to.deep.equal([]);
+  });
+
   it("moves a safe per-client legacy URL to manual mode and drops the old datapoint", async () => {
     const { store, adapter } = createStub();
     const { config } = fakeGlobal();
