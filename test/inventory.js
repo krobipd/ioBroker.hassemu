@@ -59,17 +59,28 @@ const canonical = v =>
       : x,
   );
 
-/** The port the adapter binds — fixed at the HA standard, not configurable (design decision 3). */
+/** The port the adapter binds — the default of the setting, the Home Assistant standard (K3). */
 const PORT = 8123;
+/**
+ * The address the fixtures reach the adapter on: the first non-internal IPv4 of this machine. The adapter answers only
+ * peers in its own networks (fleet master src/lib/network-address.ts, `isOwnPeer`, no exception for loopback), so a
+ * request from 127.0.0.1 gets a 403; a connection to this address comes from this address, which is in its network.
+ */
+const CHOSEN_ADDRESS = Object.values(require("node:os").networkInterfaces())
+  .flatMap(list => list ?? [])
+  .find(i => i.family === "IPv4" && !i.internal)?.address;
+if (!CHOSEN_ADDRESS) {
+  throw new Error("this machine has no non-internal IPv4 address — the adapter answers no fixture");
+}
 
 /**
- * Adapter-specific config the fixtures need: loopback only, no mDNS, no auth, and the
+ * Adapter-specific config the fixtures need: the chosen address, no mDNS, no auth, and the
  * proxy header trusted so each fixture display can arrive from its own address. Complete —
  * resetInstanceNative nulls every other key, so every key the adapter reads is here.
  */
 const FIXTURE_NATIVE = {
   port: PORT,
-  bind: "127.0.0.1",
+  bind: CHOSEN_ADDRESS,
   authRequired: false,
   username: "admin",
   password: "",
@@ -78,8 +89,16 @@ const FIXTURE_NATIVE = {
   trustProxy: true,
 };
 
-/** The display left over from 1.x: a channel container with a legacy `visUrl`, seeded in both suites. */
-const LEGACY = { id: "a1b2c3", stableId: "display-legacy", cookie: "00000000-0000-4000-8000-00000000abcd" };
+/**
+ * The display left over from 1.x: a channel container with a legacy `visUrl`, seeded in both suites. The start moves
+ * it once to the id of K7 (`display-` and the last four characters of the old id).
+ */
+const LEGACY = {
+  id: "a1b2c3",
+  movedId: "display-b2c3",
+  stableId: "display-legacy",
+  cookie: "00000000-0000-4000-8000-00000000abcd",
+};
 
 /**
  * The throwaway js-controller keeps its instance object between runs, and changeAdapterConfig only
@@ -191,7 +210,7 @@ function request(method, urlPath, opts = {}) {
     if (opts.ip) headers["x-forwarded-for"] = opts.ip;
     const body = opts.form ? new URLSearchParams(opts.form).toString() : "";
     if (opts.form) headers["content-type"] = "application/x-www-form-urlencoded";
-    const req = http.request({ host: "127.0.0.1", port: PORT, path: urlPath, method, headers }, res => {
+    const req = http.request({ host: CHOSEN_ADDRESS, port: PORT, path: urlPath, method, headers }, res => {
       let text = "";
       res.setEncoding("utf8");
       res.on("data", chunk => (text += chunk));
@@ -295,7 +314,7 @@ async function waitForName(harness, realId, name) {
  */
 async function feedFixtures(harness, knownCookies = {}) {
   await waitForServer(30000);
-  const idMap = { [LEGACY.id]: LEGACY.stableId };
+  const idMap = { [LEGACY.movedId]: LEGACY.stableId };
   await request("GET", "/", { cookie: LEGACY.cookie, ip: "192.0.2.50" });
   for (const [index, display] of FIXTURES.displays.entries()) {
     const stableId = `display-${index + 1}`;
@@ -363,20 +382,27 @@ async function waitForStableTree(harness) {
 }
 
 /**
- * Find which `clients.<id>` object carries `cookie`.
+ * Find which display carries `cookie`. The cookie stands in `identities.json` in the instance data folder
+ * (`iobroker-data/<adapter>.0` under the harness's test directory), never in an object (B3, design decision 37).
  *
  * @param {import("@iobroker/testing").IntegrationTestHarness} harness
  * @param {string} cookie The cookie the adapter just handed out.
  * @returns {Promise<string>} The short client id.
  */
 async function findClientIdByCookie(harness, cookie) {
-  const list = await harness.objects.getObjectList({ startkey: `${NS}clients.`, endkey: `${NS}clients.香` });
-  for (const row of list.rows) {
-    if (row.value?.native?.cookie === cookie) {
-      return row.id.substring(`${NS}clients.`.length);
+  const testDir = /** @type {{ testDir?: unknown }} */ (/** @type {unknown} */ (harness)).testDir;
+  if (typeof testDir !== "string") {
+    throw new Error("the harness no longer carries testDir — the instance data folder cannot be found");
+  }
+  const file = path.join(testDir, "iobroker-data", `${ADAPTER}.0`, "identities.json");
+  /** @type {{ displays?: Record<string, { cookie?: unknown }> }} */
+  const stored = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : {};
+  for (const [id, entry] of Object.entries(stored.displays ?? {})) {
+    if (entry.cookie === cookie) {
+      return id;
     }
   }
-  throw new Error(`no client object carries cookie ${cookie}`);
+  throw new Error(`no display in ${file} carries cookie ${cookie}`);
 }
 
 /**
@@ -420,11 +446,10 @@ function reviveSeededClient(obj, cookie) {
 
 /**
  * The address a seeded display had under the previous release. The seed writes objects
- * only, but an installation also holds the `.ip` VALUE — and the adapter decides on it
- * whether the name is still the auto-assigned address it may follow to a new one. Without
- * it the old name reads as a hostname and the display keeps it after an address change,
- * which no real installation does. An auto-named display is named after that address;
- * one named after its reverse-DNS answer had the address its fixture gives it.
+ * only, but an installation also holds the `.ip` VALUE — and the adapter names a display
+ * after it while neither the app's device name nor a host name is known (K7). An
+ * auto-named display is named after that address; one named after its reverse-DNS answer
+ * had the address its fixture gives it.
  *
  * @param {Record<string, any>} obj The seeded display container.
  * @param {string} stableId         Its `display-N` key.
@@ -548,9 +573,9 @@ tests.integration(ADAPTER_DIR, {
         const base = `${NS}clients.${LEGACY.stableId}`;
         assert.strictEqual(objects[base].type, "device");
         assert.ok(!objects[`${base}.visUrl`], "legacy visUrl still there");
-        const manualUrl = await harness.states.getStateAsync(`${NS}clients.${LEGACY.id}.manualUrl`);
+        const manualUrl = await harness.states.getStateAsync(`${NS}clients.${LEGACY.movedId}.manualUrl`);
         assert.strictEqual(manualUrl?.val, "http://192.0.2.10:8082/vis/index.html");
-        const mode = await harness.states.getStateAsync(`${NS}clients.${LEGACY.id}.mode`);
+        const mode = await harness.states.getStateAsync(`${NS}clients.${LEGACY.movedId}.mode`);
         assert.strictEqual(mode?.val, "manual");
       });
 

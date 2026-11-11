@@ -34,13 +34,11 @@
         "pl": "192.0.2.31",
         "uk": "192.0.2.31",
         "zh-cn": "192.0.2.31"
-      }
+      },
+      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPgogIDxwYXRoIGQ9Ik0xMSAxMiBoNDIgYTUgNSAwIDAgMSA1IDUgdjI2IGE1IDUgMCAwIDEgLTUgNSBoLTQyIGE1IDUgMCAwIDEgLTUgLTUgdi0yNiBhNSA1IDAgMCAxIDUgLTUgeiIvPgogIDxwYXRoIGQ9Ik0yMSAzMiBMMzIgMjIgTDQzIDMyIi8+CiAgPHBhdGggZD0iTTI1IDMwIHYxMCBoMTQgdi0xMCIvPgo8L3N2Zz4K"
     },
     "native": {
-      "cookie": "00000000-0000-4000-8000-000000000000",
-      "token": null,
-      "objectsVersion": 3,
-      "lastSeen": 1700000000000
+      "objectsVersion": 4
     },
     "_id": "hassemu.0.clients.display-1"
   },
@@ -136,8 +134,8 @@
         "uk": "Куди перенаправляє цей дисплей: виявлена панель, Глобальний URL щоб слідувати глобальному налаштуванню, Ручний URL щоб використати датапоінт manualUrl, або --- щоб показати стартову сторінку.",
         "zh-cn": "此显示器重定向到哪里：已发现的仪表板、“全局 URL”跟随全局设置、“手动 URL”使用 manualUrl 数据点，或“---”显示落地页。"
       },
-      "type": "mixed",
-      "role": "state",
+      "type": "string",
+      "role": "text",
       "read": true,
       "write": true,
       "def": "0",
@@ -245,13 +243,11 @@
         "pl": "wall-display-kitchen.lan",
         "uk": "wall-display-kitchen.lan",
         "zh-cn": "wall-display-kitchen.lan"
-      }
+      },
+      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPgogIDxwYXRoIGQ9Ik0xMSAxMiBoNDIgYTUgNSAwIDAgMSA1IDUgdjI2IGE1IDUgMCAwIDEgLTUgNSBoLTQyIGE1IDUgMCAwIDEgLTUgLTUgdi0yNiBhNSA1IDAgMCAxIDUgLTUgeiIvPgogIDxwYXRoIGQ9Ik0yMSAzMiBMMzIgMjIgTDQzIDMyIi8+CiAgPHBhdGggZD0iTTI1IDMwIHYxMCBoMTQgdi0xMCIvPgo8L3N2Zz4K"
     },
     "native": {
-      "cookie": "00000000-0000-4000-8000-000000000000",
-      "token": null,
-      "objectsVersion": 3,
-      "lastSeen": 1700000000000
+      "objectsVersion": 4
     },
     "_id": "hassemu.0.clients.display-2"
   },
@@ -347,8 +343,8 @@
         "uk": "Куди перенаправляє цей дисплей: виявлена панель, Глобальний URL щоб слідувати глобальному налаштуванню, Ручний URL щоб використати датапоінт manualUrl, або --- щоб показати стартову сторінку.",
         "zh-cn": "此显示器重定向到哪里：已发现的仪表板、“全局 URL”跟随全局设置、“手动 URL”使用 manualUrl 数据点，或“---”显示落地页。"
       },
-      "type": "mixed",
-      "role": "state",
+      "type": "string",
+      "role": "text",
       "read": true,
       "write": true,
       "def": "0",
@@ -456,13 +452,11 @@
         "pl": "192.0.2.44",
         "uk": "192.0.2.44",
         "zh-cn": "192.0.2.44"
-      }
+      },
+      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPgogIDxwYXRoIGQ9Ik0xMSAxMiBoNDIgYTUgNSAwIDAgMSA1IDUgdjI2IGE1IDUgMCAwIDEgLTUgNSBoLTQyIGE1IDUgMCAwIDEgLTUgLTUgdi0yNiBhNSA1IDAgMCAxIDUgLTUgeiIvPgogIDxwYXRoIGQ9Ik0yMSAzMiBMMzIgMjIgTDQzIDMyIi8+CiAgPHBhdGggZD0iTTI1IDMwIHYxMCBoMTQgdi0xMCIvPgo8L3N2Zz4K"
     },
     "native": {
-      "cookie": "00000000-0000-4000-8000-000000000000",
-      "token": null,
-      "objectsVersion": 3,
-      "lastSeen": 1700000000000
+      "objectsVersion": 4
     },
     "_id": "hassemu.0.clients.display-3"
   },
@@ -558,8 +552,8 @@
         "uk": "Куди перенаправляє цей дисплей: виявлена панель, Глобальний URL щоб слідувати глобальному налаштуванню, Ручний URL щоб використати датапоінт manualUrl, або --- щоб показати стартову сторінку.",
         "zh-cn": "此显示器重定向到哪里：已发现的仪表板、“全局 URL”跟随全局设置、“手动 URL”使用 manualUrl 数据点，或“---”显示落地页。"
       },
-      "type": "mixed",
-      "role": "state",
+      "type": "string",
+      "role": "text",
       "read": true,
       "write": true,
       "def": "0",
@@ -667,13 +661,11 @@
         "pl": "192.0.2.45",
         "uk": "192.0.2.45",
         "zh-cn": "192.0.2.45"
-      }
+      },
+      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPgogIDxwYXRoIGQ9Ik0xMSAxMiBoNDIgYTUgNSAwIDAgMSA1IDUgdjI2IGE1IDUgMCAwIDEgLTUgNSBoLTQyIGE1IDUgMCAwIDEgLTUgLTUgdi0yNiBhNSA1IDAgMCAxIDUgLTUgeiIvPgogIDxwYXRoIGQ9Ik0yMSAzMiBMMzIgMjIgTDQzIDMyIi8+CiAgPHBhdGggZD0iTTI1IDMwIHYxMCBoMTQgdi0xMCIvPgo8L3N2Zz4K"
     },
     "native": {
-      "cookie": "00000000-0000-4000-8000-000000000000",
-      "token": null,
-      "objectsVersion": 3,
-      "lastSeen": 1700000000000
+      "objectsVersion": 4
     },
     "_id": "hassemu.0.clients.display-4"
   },
@@ -769,8 +761,8 @@
         "uk": "Куди перенаправляє цей дисплей: виявлена панель, Глобальний URL щоб слідувати глобальному налаштуванню, Ручний URL щоб використати датапоінт manualUrl, або --- щоб показати стартову сторінку.",
         "zh-cn": "此显示器重定向到哪里：已发现的仪表板、“全局 URL”跟随全局设置、“手动 URL”使用 manualUrl 数据点，或“---”显示落地页。"
       },
-      "type": "mixed",
-      "role": "state",
+      "type": "string",
+      "role": "text",
       "read": true,
       "write": true,
       "def": "0",
@@ -878,15 +870,11 @@
         "pl": "192.0.2.46",
         "uk": "192.0.2.46",
         "zh-cn": "192.0.2.46"
-      }
+      },
+      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPgogIDxwYXRoIGQ9Ik0xMSAxMiBoNDIgYTUgNSAwIDAgMSA1IDUgdjI2IGE1IDUgMCAwIDEgLTUgNSBoLTQyIGE1IDUgMCAwIDEgLTUgLTUgdi0yNiBhNSA1IDAgMCAxIDUgLTUgeiIvPgogIDxwYXRoIGQ9Ik0yMSAzMiBMMzIgMjIgTDQzIDMyIi8+CiAgPHBhdGggZD0iTTI1IDMwIHYxMCBoMTQgdi0xMCIvPgo8L3N2Zz4K"
     },
     "native": {
-      "cookie": "00000000-0000-4000-8000-000000000000",
-      "token": "00000000-0000-4000-8000-00000000000f",
-      "objectsVersion": 3,
-      "lastSeen": 1700000000000,
-      "tokenExpiresAt": 1700000000000,
-      "refreshToken": "00000000-0000-4000-8000-00000000000f"
+      "objectsVersion": 4
     },
     "_id": "hassemu.0.clients.display-5"
   },
@@ -982,8 +970,8 @@
         "uk": "Куди перенаправляє цей дисплей: виявлена панель, Глобальний URL щоб слідувати глобальному налаштуванню, Ручний URL щоб використати датапоінт manualUrl, або --- щоб показати стартову сторінку.",
         "zh-cn": "此显示器重定向到哪里：已发现的仪表板、“全局 URL”跟随全局设置、“手动 URL”使用 manualUrl 数据点，或“---”显示落地页。"
       },
-      "type": "mixed",
-      "role": "state",
+      "type": "string",
+      "role": "text",
       "read": true,
       "write": true,
       "def": "0",
@@ -1077,7 +1065,6 @@
     "_id": "hassemu.0.clients.display-5.resolvedUrl"
   },
   "hassemu.0.clients.display-legacy": {
-    "_id": "hassemu.0.clients.display-legacy",
     "type": "device",
     "common": {
       "name": {
@@ -1092,13 +1079,13 @@
         "pl": "192.0.2.50",
         "uk": "192.0.2.50",
         "zh-cn": "192.0.2.50"
-      }
+      },
+      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPgogIDxwYXRoIGQ9Ik0xMSAxMiBoNDIgYTUgNSAwIDAgMSA1IDUgdjI2IGE1IDUgMCAwIDEgLTUgNSBoLTQyIGE1IDUgMCAwIDEgLTUgLTUgdi0yNiBhNSA1IDAgMCAxIDUgLTUgeiIvPgogIDxwYXRoIGQ9Ik0yMSAzMiBMMzIgMjIgTDQzIDMyIi8+CiAgPHBhdGggZD0iTTI1IDMwIHYxMCBoMTQgdi0xMCIvPgo8L3N2Zz4K"
     },
     "native": {
-      "cookie": "00000000-0000-4000-8000-000000000000",
-      "lastSeen": 1700000000000,
-      "objectsVersion": 3
-    }
+      "objectsVersion": 4
+    },
+    "_id": "hassemu.0.clients.display-legacy"
   },
   "hassemu.0.clients.display-legacy.ip": {
     "type": "state",
@@ -1164,7 +1151,6 @@
     "_id": "hassemu.0.clients.display-legacy.manualUrl"
   },
   "hassemu.0.clients.display-legacy.mode": {
-    "_id": "hassemu.0.clients.display-legacy.mode",
     "type": "state",
     "common": {
       "name": {
@@ -1180,8 +1166,8 @@
         "uk": "Режим redirect",
         "zh-cn": "重定向模式"
       },
-      "type": "mixed",
-      "role": "state",
+      "type": "string",
+      "role": "text",
       "read": true,
       "write": true,
       "desc": {
@@ -1208,7 +1194,8 @@
         "http://192.0.2.10:8095/": "Aura"
       }
     },
-    "native": {}
+    "native": {},
+    "_id": "hassemu.0.clients.display-legacy.mode"
   },
   "hassemu.0.clients.display-legacy.remove": {
     "type": "state",
@@ -1399,8 +1386,8 @@
         "uk": "Глобальний режим redirect",
         "zh-cn": "全局重定向模式"
       },
-      "type": "mixed",
-      "role": "state",
+      "type": "string",
+      "role": "text",
       "read": true,
       "write": true,
       "def": "0",
@@ -1508,44 +1495,6 @@
       "read": false,
       "write": true,
       "def": false
-    },
-    "native": {}
-  },
-  "hassemu.0.info.serverUuid": {
-    "_id": "hassemu.0.info.serverUuid",
-    "type": "state",
-    "common": {
-      "name": {
-        "en": "HA-server UUID",
-        "de": "HA-Server-UUID",
-        "ru": "UUID HA-сервера",
-        "pt": "UUID do servidor HA",
-        "nl": "HA-server UUID",
-        "fr": "UUID du serveur HA",
-        "it": "UUID del server HA",
-        "es": "UUID del servidor HA",
-        "pl": "UUID serwera HA",
-        "uk": "UUID HA-сервера",
-        "zh-cn": "HA 服务器 UUID"
-      },
-      "desc": {
-        "en": "Persistent UUID broadcast via mDNS and /api/discovery_info. Generated once on first start and re-used across restarts so HA-Clients don't treat each restart as a new server (which would invalidate cached identity, force re-onboarding and drop tokens).",
-        "de": "Persistente UUID, broadcastet via mDNS und /api/discovery_info. Wird beim ersten Start einmal erzeugt und über Neustarts hinweg wiederverwendet, sodass HA-Clients nicht jeden Neustart als neuen Server behandeln (was die gecachte Identität ungültig machen, Re-Onboarding erzwingen und Tokens verwerfen würde).",
-        "ru": "Постоянный UUID, транслируемый через mDNS и /api/discovery_info. Генерируется один раз при первом старте и переиспользуется при перезапусках, чтобы HA-клиенты не считали каждый рестарт новым сервером.",
-        "pt": "UUID persistente difundido via mDNS e /api/discovery_info. Gerado uma vez no primeiro arranque e reutilizado entre reinícios para que os clientes HA não tratem cada reinício como um novo servidor.",
-        "nl": "Persistente UUID die via mDNS en /api/discovery_info wordt uitgezonden. Wordt eenmaal gegenereerd bij de eerste start en blijft over herstarts behouden zodat HA-clients elke herstart niet als nieuwe server zien.",
-        "fr": "UUID persistant diffusé via mDNS et /api/discovery_info. Généré une fois au premier démarrage et réutilisé entre redémarrages, ainsi les clients HA ne traitent pas chaque redémarrage comme un nouveau serveur.",
-        "it": "UUID persistente trasmesso via mDNS e /api/discovery_info. Generato una volta al primo avvio e riutilizzato tra i riavvii: così i client HA non considerano ogni riavvio come un nuovo server.",
-        "es": "UUID persistente difundido vía mDNS y /api/discovery_info. Se genera una vez en el primer arranque y se reutiliza entre reinicios para que los clientes HA no traten cada reinicio como un servidor nuevo.",
-        "pl": "Trwały UUID rozgłaszany przez mDNS i /api/discovery_info. Generowany raz przy pierwszym starcie i ponownie używany przy restartach, aby klienci HA nie traktowali każdego restartu jako nowego serwera.",
-        "uk": "Постійний UUID, що транслюється через mDNS та /api/discovery_info. Створюється один раз при першому запуску й повторно використовується після перезапусків, щоб HA-клієнти не сприймали кожен перезапуск як новий сервер.",
-        "zh-cn": "通过 mDNS 和 /api/discovery_info 广播的持久 UUID。首次启动时生成一次，重启之间复用，避免 HA 客户端每次重启都视为新服务器。"
-      },
-      "type": "string",
-      "role": "text",
-      "read": true,
-      "write": false,
-      "def": ""
     },
     "native": {}
   }
