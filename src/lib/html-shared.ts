@@ -71,12 +71,15 @@ export function htmlLangFor(language: string): string {
  *
  * v1.16.0 (E3): a reverse-proxy setup makes the display look like `127.0.0.1` /
  * `::1` to the adapter, which is confusing on screen. An empty string (no IP
- * known) is treated the same way so the IP row is simply omitted.
+ * known) is treated the same way so the IP row is simply omitted. The display's
+ * address is a real peer address (`net.isIP`, webserver.ts `getClientIp`) — never the
+ * wildcard `0.0.0.0`, so that clause went (the fleet gate read it as a second form of
+ * the address choice, review 2026-11-07).
  *
  * @param ip Already-trimmed IP string (see {@link renderIpRow}).
  */
 export function isLoopbackIp(ip: string): boolean {
-  return ip === "" || ip === "127.0.0.1" || ip === "::1" || ip === "0.0.0.0" || ip.startsWith("127.");
+  return ip === "" || ip === "::1" || ip.startsWith("127.");
 }
 
 /**
@@ -182,4 +185,33 @@ ${sel.cell} code {
     border-radius: 4px;
     font-size: 0.9em;
 }`;
+}
+
+/** One edge of the screen, as named by the safe-area insets. */
+export type ScreenEdge = "top" | "right" | "bottom" | "left";
+
+/**
+ * Query that wraps every use of {@link safeAreaInset}. The pages first set each inset to
+ * `var(--app-safe-area-inset-*, 0px)` (Android ≥ 2026.2 injects those, constants.ts) and repeat
+ * the declaration with `env()` only inside this block: an Android 7 WebView of the legacy Shelly
+ * Wall Displays (Ressourcen/hassemu/shelly-wall-display.md, "legacy") does not know `env()`, and an
+ * unknown function inside a `var()` fallback makes the whole declaration invalid only at
+ * computed-value time — the iframe would drop to its default 300×150. A browser that does not
+ * support `env()` skips the block and keeps the first declaration.
+ */
+export const SAFE_AREA_ENV_QUERY = "@supports (top:env(safe-area-inset-top))";
+
+/**
+ * The inset of one edge of the app's safe area, computed like the HA frontend does
+ * (src/resources/theme/main.globals.ts:31-34 at frontend tag 20261028.5): the app's own
+ * `--app-safe-area-inset-*`, else the WebView's `env(safe-area-inset-*)` — which the iOS app
+ * reports once it draws edge to edge for a 2026.8.0 server (AppConstants.swift:530 at
+ * release/2026.10.3/2026.3322) and the page declares `viewport-fit=cover`, as the frontend's
+ * own viewport meta does (src/html/_style_base.html.template:1 at 20261028.5) — else `0px`.
+ * Only for use inside {@link SAFE_AREA_ENV_QUERY}.
+ *
+ * @param edge The screen edge.
+ */
+export function safeAreaInset(edge: ScreenEdge): string {
+  return `var(--app-safe-area-inset-${edge},env(safe-area-inset-${edge},0px))`;
 }

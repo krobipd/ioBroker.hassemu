@@ -32,8 +32,8 @@ describe("html-shared", () => {
   });
 
   describe("isLoopbackIp", () => {
-    it("treats empty, loopback and 0.0.0.0 as loopback (hidden)", () => {
-      for (const ip of ["", "127.0.0.1", "127.0.0.5", "127.255.255.255", "::1", "0.0.0.0"]) {
+    it("treats empty and loopback as loopback (hidden)", () => {
+      for (const ip of ["", "127.0.0.1", "127.0.0.5", "127.255.255.255", "::1"]) {
         expect(isLoopbackIp(ip), `ip=${ip || "(empty)"}`).to.be.true;
       }
     });
@@ -56,7 +56,7 @@ describe("html-shared", () => {
     });
 
     it("returns an empty string for loopback / empty / null", () => {
-      for (const ip of [null, "", "127.0.0.1", "::1", "0.0.0.0"]) {
+      for (const ip of [null, "", "127.0.0.1", "::1"]) {
         expect(renderIpRow("IP address", ip), `ip=${ip ?? "null"}`).to.equal("");
       }
     });

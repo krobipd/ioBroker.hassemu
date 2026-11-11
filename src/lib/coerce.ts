@@ -7,6 +7,7 @@
  */
 
 import crypto from "node:crypto";
+import { DEVICE_NAME_MAX, HOSTNAME_MAX } from "./constants";
 
 /**
  * The HA Companion apps' fixed `client_id`/`redirect_uri` pairs — home-assistant/core
@@ -171,6 +172,41 @@ export function coerceString(value: unknown): string | null {
     return value;
   }
   return null;
+}
+
+/**
+ * Untrusted text as one line, trimmed, at most `max` characters — or null when no text is left.
+ *
+ * @param value Untrusted input.
+ * @param max   Longest text kept; a longer one is cut.
+ */
+function boundedLine(value: unknown, max: number): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const text = oneLine(value).trim().slice(0, max).trim();
+  return text === "" ? null : text;
+}
+
+/**
+ * A device name a Companion app reports (`device_name`), as a display name: one line, trimmed, at most
+ * {@link DEVICE_NAME_MAX} characters — or null when no text is left.
+ *
+ * @param value Untrusted input.
+ */
+export function coerceDeviceName(value: unknown): string | null {
+  return boundedLine(value, DEVICE_NAME_MAX);
+}
+
+/**
+ * A host name a reverse lookup returned, as a display name: one line, trimmed, at most {@link HOSTNAME_MAX}
+ * characters — or null when no text is left. A PTR label is attacker-influenceable (L1(a)); the same form is stored
+ * and read back, so a stored host name round-trips unchanged.
+ *
+ * @param value Untrusted input.
+ */
+export function coerceHostname(value: unknown): string | null {
+  return boundedLine(value, HOSTNAME_MAX);
 }
 
 /**

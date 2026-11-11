@@ -9,7 +9,7 @@
 
 import { isPlainObject } from "./coerce";
 
-/** Minimal surface for `safeGetState` — tests can mock it. */
+/** Minimal surface for `getStateOrNull` — tests can mock it. */
 export interface StateReader {
   /** Returns the state for `id`, or `null|undefined` if it does not exist. */
   getStateAsync: (id: string) => Promise<ioBroker.State | null | undefined>;
@@ -52,20 +52,17 @@ export function isBareStringName(value: unknown): value is string {
 }
 
 /**
- * v1.20.0 (F10): try/catch + null fallback around `getStateAsync`.
- * `client-registry.readState` and `global-config.safeGetState` used to carry
- * identical wrappers. Callers take `.val` themselves when they only want the value.
+ * Read a state at the start: `null` when it does not exist, and a READ ERROR propagates. The helper this
+ * replaces (`safeGetState`, v1.20.0) read an error as "empty" — the restore then wrote `"0"` back over the
+ * user's mode and a display's setting was gone (K16, krobi 2026-11-11; Ressourcen/iobroker-entwicklung/
+ * startfehler-recherche-2026-11-11.md ST1: no access to ioBroker is a failed start, and the controller
+ * restarts the instance).
  *
  * @param adapter Anything that exposes `getStateAsync(id)`.
- * @param id      Full state id (with namespace) or a relative path — whatever the
- *                caller passed before.
+ * @param id      Full state id (with namespace) or a relative path.
  */
-export async function safeGetState(adapter: StateReader, id: string): Promise<ioBroker.State | null> {
-  try {
-    return (await adapter.getStateAsync(id)) ?? null;
-  } catch {
-    return null;
-  }
+export async function getStateOrNull(adapter: StateReader, id: string): Promise<ioBroker.State | null> {
+  return (await adapter.getStateAsync(id)) ?? null;
 }
 
 /**

@@ -1,9 +1,7 @@
-import crypto from "node:crypto";
 import { join } from "node:path";
 import { I18n } from "@iobroker/adapter-core";
 import * as utils from "@iobroker/adapter-core";
 import { ClientRegistry, parseClientStateId } from "./lib/client-registry";
-import { coerceUuid } from "./lib/coerce";
 import { moveWithEnums } from "./lib/enum-carry";
 import { errText } from "./lib/err-text";
 import { decideGcAction } from "./lib/state-write-rules";
@@ -13,8 +11,11 @@ import { tName } from "./lib/i18n";
 import { migrateLegacyDefaultVisUrl, migrateVisUrlToMode } from "./lib/legacy-migration";
 import { migrateNativeKeys } from "./lib/native-key-migration";
 import { MDNSService } from "./lib/mdns";
+import { advertisedBaseUrl, resolveAdvertisedHost } from "./lib/network";
+import { carriesAddress, chosenAddress } from "./lib/network-address";
 import { resolveRedirect } from "./lib/redirect-resolver";
 import { type InstanceObjectSchema, repairGlobalSchemas } from "./lib/schema-repair";
+import { CERTIFICATES_OBJECT_ID, isCertificateNotFound, loadTls, selectCollections, type TlsSetup } from "./lib/tls";
 import { isUrlSourceAdapterEvent, UrlDiscovery, type UrlStatesListener } from "./lib/url-discovery";
 import { WebServer } from "./lib/webserver";
 import type { AdapterConfig } from "./lib/types";
@@ -64,13 +65,32 @@ class HassEmu extends utils.Adapter {
   // unit tests (src/main.test.ts) override these fields with fakes so onReady &
   // friends can run without sockets, mDNS or a js-controller.
   private makeGlobalConfig: () => GlobalConfig = () => new GlobalConfig(this);
-  private makeRegistry: () => ClientRegistry = () => new ClientRegistry(this);
+  // The data folder holds identities.json (the server id; cookie, tokens, lastSeen per display) — declared as
+  // `common.dataFolder`, so a backup carries it.
+  private makeRegistry: () => ClientRegistry = () => new ClientRegistry(this, utils.getAbsoluteInstanceDataDir(this));
   private makeUrlDiscovery: (onChange: UrlStatesListener) => UrlDiscovery = onChange =>
-    new UrlDiscovery(this, onChange);
-  private makeWebServer: (instanceUuid: string) => WebServer = instanceUuid =>
-    new WebServer(this, this.config, this.registry!, this.globalConfig!, instanceUuid, this.systemLanguage);
-  private makeMdnsService: (instanceUuid: string) => MDNSService = instanceUuid =>
-    new MDNSService(this, this.config, instanceUuid);
+    new UrlDiscovery(this, onChange, () => resolveAdvertisedHost(this.config.bind));
+  private makeWebServer: (instanceUuid: string, tls: TlsSetup | null) => WebServer = (instanceUuid, tls) =>
+    new WebServer(
+      this,
+      this.config,
+      this.registry!,
+      this.globalConfig!,
+      instanceUuid,
+      this.systemLanguage,
+      undefined,
+      undefined,
+      tls,
+    );
+  private makeMdnsService: (instanceUuid: string, tls: TlsSetup | null) => MDNSService = (instanceUuid, tls) =>
+    new MDNSService(
+      this,
+      this.config,
+      instanceUuid,
+      tls ? () => advertisedBaseUrl(this.config.bind, this.config.port, tls) : undefined,
+    );
+  /** The HTTPS part of this start (K4), or `null` for plain HTTP — renewed collections go into it. */
+  private tlsSetup: TlsSetup | null = null;
 
   declare config: AdapterConfig;
 
@@ -148,6 +168,7 @@ class HassEmu extends utils.Adapter {
       if (await migrateNativeKeys(this, [{ from: "bindAddress", to: "bind", coerce: bindOrAllInterfaces }], errText)) {
         return;
       }
+      this.config.bind = this.listenAddress();
 
       // v1.14.0 (H7): a second onReady without an unload in between (a js-controller edge
       // case) must not orphan a server or its listeners from the first run.
@@ -163,7 +184,10 @@ class HassEmu extends utils.Adapter {
       await this.globalConfig.restore();
 
       this.registry = this.makeRegistry();
-      await this.registry.restore();
+      // The server id and the display identities come from the data file; 1.46.1 kept the server id as the
+      // value of info.serverUuid, read here once to move it into the file (B3).
+      await this.registry.restore(async () => (await this.getStateAsync("info.serverUuid"))?.val);
+      await this.dropLegacyServerUuid();
 
       // Migrations run before subscriptions / webserver — first the legacy
       // 1.0.x-style native config, then the visUrl → mode/manualUrl move,
@@ -215,12 +239,10 @@ class HassEmu extends utils.Adapter {
       // seen display — tokens do not matter (design decision 14).
       await this.gcStaleClients();
 
-      // Keep the HA server UUID stable across restarts — otherwise HA clients
-      // (Companion app, Wall Display, ...) treat every adapter restart as a "new server"
-      // → re-onboarding, invalidated tokens, lost history. Persisted in an ordinary state
-      // (NOT through extendForeignObjectAsync on system.adapter.X.native — that triggers
-      // restart loops; a lesson from another adapter's v2.1.3).
-      const instanceUuid = await this.getOrCreateServerUuid();
+      // The HA server id stays the same across restarts — otherwise HA clients (Companion app, Wall
+      // Display, ...) treat every restart as a "new server": re-onboarding, invalidated tokens. It lives in
+      // the data file (design decision 2), read by the registry's restore above.
+      const instanceUuid = this.registry.serverUuid;
       this.log.debug(
         `Config: port=${this.config.port}, auth=${this.config.authRequired}, mdns=${this.config.mdnsEnabled}`,
       );
@@ -239,11 +261,30 @@ class HassEmu extends utils.Adapter {
         return;
       }
 
+      // HTTPS (K4): the certificate is loaded before anything listens. Not configured, the controller has logged
+      // the error line itself (CertificateManager, js-controller 7.2.5) — the echo here is debug, one line per
+      // failed start; any other cause reaches the catch below with its own line. Both end with code 6.
+      if (this.config.secure === true) {
+        try {
+          this.tlsSetup = await loadTls(this, this.config);
+        } catch (err) {
+          if (!isCertificateNotFound(err)) {
+            throw err;
+          }
+          this.log.debug(`HTTPS certificates could not be loaded: ${errText(err)}`);
+          await this.stopStartedServices();
+          if (!this.unloading) {
+            this.terminate("HTTPS certificates missing", utils.EXIT_CODES.UNCAUGHT_EXCEPTION);
+          }
+          return;
+        }
+      }
+
       // Kept in a local: onUnload nulls the field, and the check below must still reach
       // the server that is opening its listener right now (audit 2026-09-25, N7).
       let webServer: WebServer;
       try {
-        webServer = this.makeWebServer(instanceUuid);
+        webServer = this.makeWebServer(instanceUuid, this.tlsSetup);
         this.webServer = webServer;
         await webServer.start();
       } catch (err) {
@@ -254,13 +295,16 @@ class HassEmu extends utils.Adapter {
         if (this.unloading) {
           return;
         }
+        // Close what the start opened — the URL discovery's refresh timer, the half-opened
+        // server — before the end: in compact mode the process lives on (start-failure
+        // standard ST5, K16). Subscriptions come after this block.
+        await this.stopStartedServices();
         // v1.10.0 (B4): never sit idle as a zombie (no server, no subscriptions). The exit
         // code matters: 11 (ADAPTER_REQUESTED_TERMINATION) means "do not restart" to
         // js-controller 7.2.2 (controller main.ts 4231/4305) — the instance stayed off until
         // someone started it by hand. UNCAUGHT_EXCEPTION restarts after 30 s and stops with a
         // restart-loop notice after three failures in ten minutes, so a port that is briefly
-        // in use heals itself (audit 2026-09-25, L1). Subscriptions come after this block, so
-        // there is nothing to undo here.
+        // in use heals itself (audit 2026-09-25, L1).
         this.terminate("Web server failed to start", utils.EXIT_CODES.UNCAUGHT_EXCEPTION);
         return;
       }
@@ -279,10 +323,13 @@ class HassEmu extends utils.Adapter {
       await this.subscribeStatesAsync("clients.*");
       await this.subscribeStatesAsync("global.*");
       await this.subscribeStatesAsync("info.refreshUrls");
+      if (this.tlsSetup && this.tlsSetup.collectionChoice !== false) {
+        await this.subscribeForeignObjectsAsync(CERTIFICATES_OBJECT_ID);
+      }
 
       let mdnsActive = false;
       if (this.config.mdnsEnabled) {
-        this.mdnsService = this.makeMdnsService(instanceUuid);
+        this.mdnsService = this.makeMdnsService(instanceUuid, this.tlsSetup);
         this.mdnsService.start();
         // v1.10.0 (H1): mdns.start() catches internally and sets active=false on an
         // error — before, info.connection=true was set regardless, and the user was led
@@ -303,7 +350,7 @@ class HassEmu extends utils.Adapter {
         return;
       }
       await this.setState("info.connection", { val: true, ack: true });
-      const bindAddr = this.config.bind || "0.0.0.0";
+      const bindAddr = this.config.bind;
       // "started" (not "active"): isActive() is read synchronously right after start(),
       // before an asynchronous bonjour publish error could fire — so the headline must
       // not over-claim; a later publish failure surfaces as its own mDNS warn. I6 (v1.38.0).
@@ -344,7 +391,7 @@ class HassEmu extends utils.Adapter {
   }
 
   /**
-   * Re-apply the adapter's OWN nine objects on every start, so a changed name or
+   * Re-apply the adapter's OWN eight objects on every start, so a changed name or
    * description reaches an installation that already has them.
    *
    * js-controller applies the manifest's `instanceObjects` on every start, but preserves
@@ -396,12 +443,6 @@ class HassEmu extends utils.Adapter {
       tolerate("info", this.extendObject("info", { common: { name: tName("info") } })),
       tolerate("info.connection", this.extendObject("info.connection", { common: { name: tName("connection") } })),
       tolerate(
-        "info.serverUuid",
-        this.extendObject("info.serverUuid", {
-          common: { name: tName("serverUuid"), desc: tName("serverUuidDesc") },
-        }),
-      ),
-      tolerate(
         "info.refreshUrls",
         this.extendObject("info.refreshUrls", {
           common: { name: tName("refreshUrls"), desc: tName("refreshUrlsDesc") },
@@ -433,37 +474,14 @@ class HassEmu extends utils.Adapter {
   }
 
   /**
-   * Returns the persistent server UUID. The first start generates it and writes it to
-   * `info.serverUuid`; later starts return the same value.
-   *
-   * Why not `extendForeignObjectAsync(system.adapter.X, native: { serverUuid })`?
-   * A write to the adapter's own `system.adapter.X` object makes js-controller restart
-   * the adapter — a restart loop on every start. Another adapter ran into exactly that
-   * (`extendForeignObjectAsync` for a native value) and had to move to a state.
+   * Remove `info.serverUuid` — 1.46.1 kept the server id there; since the restore moved it into the data file,
+   * a second copy would only invite a script to overwrite it (B3, krobi 2026-11-11 19:31). Called after the
+   * restore, which fails the start when the file cannot be written, so the file holds the id by then.
    */
-  private async getOrCreateServerUuid(): Promise<string> {
-    // A READ ERROR propagates: onReady then ends with a crash code and the host restarts the
-    // instance. Treating it as a fresh install wrote a NEW identity, and every display saw a
-    // new server and onboarded again (design decision 2; audit 2026-09-25, N4). A state that
-    // does not exist yet reads as null — that is the fresh install.
-    const existing = await this.getStateAsync("info.serverUuid");
-    // L19: reuse the shared coerceUuid instead of an inline copy of the regex.
-    const reused = coerceUuid(existing?.val);
-    if (reused) {
-      this.log.debug(`Server UUID reused from info.serverUuid: ${reused}`);
-      return reused;
+  private async dropLegacyServerUuid(): Promise<void> {
+    if (await this.getObjectAsync("info.serverUuid")) {
+      await this.delObjectAsync("info.serverUuid");
     }
-    const fresh = crypto.randomUUID();
-    try {
-      await this.setState("info.serverUuid", { val: fresh, ack: true });
-      this.log.info(`Server UUID generated and saved: ${fresh}`);
-    } catch (err) {
-      // info.serverUuid is an instanceObject and should always exist. If the write fails, run
-      // with the fresh UUID; the next start generates one again (no lasting damage) — and the
-      // info line above is not printed, it would claim a save that did not happen (L8).
-      this.log.warn(`Could not save server UUID: ${errText(err)}`);
-    }
-    return fresh;
   }
 
   /**
@@ -480,6 +498,25 @@ class HassEmu extends utils.Adapter {
       return MODE_GLOBAL;
     }
     return NO_CHOICE;
+  }
+
+  /**
+   * The address the adapter listens, sends and connects on — the chosen one, or `0.0.0.0`
+   * for every address. The chosen address is the only one the communication runs on
+   * (krobi 2026-10-03 00:27); one this host does not carry (a new address from the router, a
+   * backup restored on other hardware) falls back to every address with exactly one warning
+   * that says what to fix — the fleet rule in the head of the master network-address.ts
+   * (fakeroku F-05/F-06, krobi 2026-10-02 23:52).
+   */
+  private listenAddress(): string {
+    const chosen = chosenAddress(this.config.bind);
+    if (chosen !== undefined && !carriesAddress(chosen)) {
+      this.log.warn(
+        `Address ${chosen} does not exist on this host — listening on all addresses; choose another address in the instance settings`,
+      );
+      return "0.0.0.0";
+    }
+    return chosen ?? "0.0.0.0";
   }
 
   /**
@@ -501,7 +538,7 @@ class HassEmu extends utils.Adapter {
   }
 
   /**
-   * Removes clients that are clearly stale: `native.lastSeen` older than
+   * Removes clients that are clearly stale: a `lastSeen` (data file) older than
    * {@link STALE_CLIENT_TTL_MS}.
    *
    * Clients without `lastSeen` (pre-1.2.0) get the timestamp seeded on this run
@@ -544,7 +581,7 @@ class HassEmu extends utils.Adapter {
           // (state-write-rules.ts); only the broker I/O is here.
           const action = decideGcAction(this.registry!.lastSeenOf(record.id), newestSeen, STALE_CLIENT_TTL_MS);
           if (action === "seed") {
-            await this.registry!.seedLastSeen(record.id, now);
+            this.registry!.seedLastSeen(record.id, now);
             return 0;
           }
           if (action === "stale") {
@@ -687,6 +724,12 @@ class HassEmu extends utils.Adapter {
 
   private onObjectChange(id: string, obj: ioBroker.Object | null | undefined): void {
     try {
+      // A renewed Let's Encrypt collection reaches the running HTTPS server (K4); the named certificates restart
+      // the instance through the controller itself (js-controller 7.2.5 getCertificatesAsync).
+      if (id === CERTIFICATES_OBJECT_ID) {
+        this.renewCollections(obj);
+        return;
+      }
       // v1.13.0 (H4): narrow filter — earlier EVERY objectChange in the
       // `system.adapter.*` namespace triggered a scheduleRefresh, even from an
       // adapter changing discovery-irrelevant config. Now it triggers only when the
@@ -715,6 +758,25 @@ class HassEmu extends utils.Adapter {
     }
   }
 
+  /**
+   * Hand renewed Let's Encrypt collections to the running server. A collection that cannot be used any more keeps
+   * the ones in force — the server goes on with the certificate it has, and says so once.
+   *
+   * @param obj The new `system.certificates`.
+   */
+  private renewCollections(obj: ioBroker.Object | null | undefined): void {
+    const tls = this.tlsSetup;
+    if (!tls || tls.collectionChoice === false) {
+      return;
+    }
+    try {
+      tls.update(selectCollections(obj?.native, tls.collectionChoice));
+      this.log.debug("HTTPS: certificate collections renewed");
+    } catch (err) {
+      this.log.warn(`HTTPS keeps its current certificate — the renewed collection cannot be used: ${errText(err)}`);
+    }
+  }
+
   private onUnload(callback: () => void): void {
     try {
       // First: a start that is still running checks this before it binds anything else (L4).
@@ -732,6 +794,10 @@ class HassEmu extends utils.Adapter {
         this.unsubscribeStatesAsync("info.refreshUrls"),
         this.unsubscribeForeignObjectsAsync("system.adapter.*"),
       );
+      if (this.tlsSetup && this.tlsSetup.collectionChoice !== false) {
+        pending.push(this.unsubscribeForeignObjectsAsync(CERTIFICATES_OBJECT_ID));
+      }
+      this.tlsSetup = null;
 
       this.urlDiscovery?.cancelRefresh();
       this.urlDiscovery = null;

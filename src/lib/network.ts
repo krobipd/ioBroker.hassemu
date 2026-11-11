@@ -1,6 +1,6 @@
-import crypto from "node:crypto";
 import net from "node:net";
 import os from "node:os";
+import { chosenAddress } from "./network-address";
 
 /**
  * Interfaces that are not the LAN a display lives in: container and VM bridges, VPN tunnels.
@@ -83,23 +83,22 @@ export function hostForUrl(host: string): string {
 /**
  * The base URL this server advertises (mDNS TXT `base_url`/`internal_url`, `/api/discovery_info`).
  *
- * @param bindAddress The configured bind address.
- * @param port        The listen port.
- */
-export function advertisedBaseUrl(bindAddress: string | undefined | null, port: number): string {
-  return `http://${hostForUrl(resolveAdvertisedHost(bindAddress))}:${port}`;
-}
-
-/**
- * Returns true if the bind address means "any interface" (0.0.0.0, empty or undefined).
+ * With HTTPS (K4) the scheme is `https` and the host is the name the certificate is valid for — a client checks the
+ * certificate against the host it connects to; only a certificate without a name keeps the address.
  *
  * @param bindAddress The configured bind address.
+ * @param port        The listen port.
+ * @param secure      The HTTPS part (`name`: the certificate's name), or nothing for plain HTTP.
  */
-export function isWildcardBind(bindAddress: string | undefined | null): boolean {
-  if (!bindAddress) {
-    return true;
+export function advertisedBaseUrl(
+  bindAddress: string | undefined | null,
+  port: number,
+  secure?: { name: string | undefined } | null,
+): string {
+  if (secure) {
+    return `https://${hostForUrl(secure.name ?? resolveAdvertisedHost(bindAddress))}:${port}`;
   }
-  return bindAddress === "0.0.0.0" || bindAddress === "::";
+  return `http://${hostForUrl(resolveAdvertisedHost(bindAddress))}:${port}`;
 }
 
 /**
@@ -107,8 +106,8 @@ export function isWildcardBind(bindAddress: string | undefined | null): boolean 
  * both the mDNS `base_url`/`internal_url` TXT records and `/api/discovery_info`.
  *
  * A concrete (non-wildcard) bind address is exactly where the server listens,
- * so advertise it verbatim. Only for a wildcard bind (`0.0.0.0` / `::` / empty)
- * do we fall back to the first routable non-internal IPv4 via {@link getLocalIp}.
+ * so advertise it verbatim. Only for every address (`0.0.0.0` / `::` / empty, see
+ * {@link chosenAddress}) do we fall back to the first routable non-internal IPv4 via {@link getLocalIp}.
  *
  * Single source of truth so the two discovery channels never diverge: before
  * this, `mdns.ts` advertised `getLocalIp()` unconditionally while
@@ -119,21 +118,7 @@ export function isWildcardBind(bindAddress: string | undefined | null): boolean 
  * @param bindAddress The configured bind address.
  */
 export function resolveAdvertisedHost(bindAddress: string | undefined | null): string {
-  // The `bindAddress &&` keeps the type narrowed to a non-empty string for the
-  // return (isWildcardBind alone doesn't narrow); it also short-circuits the
-  // wildcard/empty cases to getLocalIp below.
-  if (bindAddress && !isWildcardBind(bindAddress)) {
-    return bindAddress;
-  }
-  return getLocalIp();
-}
-
-/**
- * Generates a short (6-char), URL-safe, lowercase hex client ID.
- * 16^6 = 16.7 million combinations — sufficient for home networks, readable as
- * a datapoint segment. Uses `crypto.randomBytes` for consistency with the rest
- * of the codebase (cookies, session ids, tokens are all crypto-secure).
- */
-export function generateClientId(): string {
-  return crypto.randomBytes(3).toString("hex");
+  // "Every address" (empty, 0.0.0.0, ::) is read by the fleet master alone (review
+  // 2026-11-07, R-20 — the own wildcard check here was a second form of it).
+  return chosenAddress(bindAddress) ?? getLocalIp();
 }

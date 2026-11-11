@@ -4,7 +4,7 @@
 
 /** Adapter configuration from io-package.json native section. */
 export interface AdapterConfig {
-  /** HTTP port for the web server (fixed at 8123 for HA compatibility). */
+  /** Port of the web server — default 8123 like Home Assistant, set by the user (K3). */
   port: number;
   /** IP address to bind the server to (0.0.0.0 = all interfaces). */
   bind: string;
@@ -32,6 +32,16 @@ export interface AdapterConfig {
    * damage. Default `false`. Optional in jsonConfig.
    */
   trustProxy?: boolean;
+  /** HTTPS instead of HTTP (K4) — with a certificate from ioBroker; default `false`. */
+  secure?: boolean;
+  /** Name of the public certificate in `system.certificates` (the admin's `certificates` field). */
+  certPublic?: string;
+  /** Name of the private key in `system.certificates`. */
+  certPrivate?: string;
+  /** Name of the chained certificate in `system.certificates`, if any. */
+  certChained?: string;
+  /** Let's Encrypt collections of the acme adapter: `false` none, `true` every one, a string the one of that id. */
+  leCollection?: boolean | string;
 }
 
 /**
@@ -49,7 +59,7 @@ export type ModeValue = string;
 
 /** In-memory record for a known client. Mirrors the clients.<id>.* channel. */
 export interface ClientRecord {
-  /** Short client ID — used as datapoint segment (e.g. "a4b9c2"). */
+  /** Display id — the datapoint segment (`display-c3a1`, `pixel-tablet-02b7`; display-id.ts). */
   id: string;
   /** Cookie value (UUID) — persistent browser-side identifier. */
   cookie: string;
@@ -58,19 +68,19 @@ export interface ClientRecord {
   /**
    * Wall-clock ms (Date.now()) when {@link token} expires; null/absent when there
    * is no token. Enforces the advertised 30-min access-token TTL so a captured
-   * token cannot be replayed indefinitely. Persisted to
-   * `clients.<id>.native.tokenExpiresAt` so it survives a restart. v1.36.0 (S5).
+   * token cannot be replayed indefinitely. Persisted in the data file
+   * (client-store.ts) so it survives a restart. v1.36.0 (S5).
    * Required + nullable (not optional) so every record-creation site makes an
    * explicit decision — same shape as the sibling {@link refreshToken}.
    */
   tokenExpiresAt: number | null;
   /**
    * Currently active OAuth2 refresh token, or null if not authenticated. Stored
-   * plain-text in `clients.<id>.native.refreshToken` so it survives adapter
+   * plain-text in the data file (client-store.ts) so it survives adapter
    * restarts (ioBroker update, network glitch, power cut). Same exposure
    * profile as {@link token} above; the adapter is LAN-only by design (see
-   * design decision 4 in CLAUDE.md) and object-store read access already equals server
-   * access via the stored access token.
+   * design decision 4 in CLAUDE.md), and the file is readable for its owner only
+   * (data-file.ts, mode 0600) — no object-store reader sees it.
    */
   refreshToken: string | null;
   /**

@@ -28,15 +28,32 @@ const PTR = (() => {
   }
 })();
 
+/**
+ * The error a resolver gives for an address without a PTR record.
+ *
+ * @param {string} ip the address
+ * @returns {NodeJS.ErrnoException & { hostname: string }} the error
+ */
 function noPtr(ip) {
-  const err = new Error(`getHostByAddr ENOTFOUND ${ip}`);
-  err.code = "ENOTFOUND";
-  err.syscall = "getHostByAddr";
-  err.hostname = ip;
-  return err;
+  return Object.assign(new Error(`getHostByAddr ENOTFOUND ${ip}`), {
+    code: "ENOTFOUND",
+    syscall: "getHostByAddr",
+    hostname: ip,
+  });
 }
 
-dnsPromises.reverse = ip => (PTR[ip] ? Promise.resolve([PTR[ip]]) : Promise.reject(noPtr(ip)));
+/**
+ * The fixture's answer to one reverse lookup.
+ *
+ * @param {string} ip the address
+ * @returns {Promise<string[]>} the PTR name, or the error of an address without one
+ */
+const answer = ip => (PTR[ip] ? Promise.resolve([PTR[ip]]) : Promise.reject(noPtr(ip)));
+
+dnsPromises.reverse = answer;
+// With a chosen address the adapter asks through a resolver bound to it (review 2026-11-07,
+// R-20) — the same answers there.
+dnsPromises.Resolver.prototype.reverse = answer;
 dns.reverse = (ip, callback) => {
-  setImmediate(() => (PTR[ip] ? callback(null, [PTR[ip]]) : callback(noPtr(ip))));
+  setImmediate(() => (PTR[ip] ? callback(null, [PTR[ip]]) : callback(noPtr(ip), [])));
 };

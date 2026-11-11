@@ -1,10 +1,29 @@
 import Bonjour from "bonjour-service";
 import { DEFAULT_SERVICE_NAME, HA_VERSION, MDNS_ADDRESS_CHECK_INTERVAL_MS } from "./constants";
 import { errText } from "./err-text";
-import { advertisedBaseUrl, isWildcardBind } from "./network";
+import { chosenAddress } from "./network-address";
+import { advertisedBaseUrl } from "./network";
 import type { AdapterConfig, AdapterInterface } from "./types";
 
 type PublishedService = ReturnType<InstanceType<typeof Bonjour>["publish"]>;
+
+/** bonjour-service 1.4.4 hands its options to multicast-dns unchanged, but types them as the service record only. */
+type MdnsSocketOptions = Partial<Bonjour.ServiceConfig> & { interface?: string; bind?: string };
+
+/**
+ * The multicast socket for a bind setting. The chosen address is the only one the adapter
+ * sends on (krobi 2026-10-03, fleet master network-address.ts; review 2026-11-07, R-20):
+ * multicast-dns joins the group and sends on that interface. The socket stays on every
+ * address — bound to the interface address it would receive no multicast on Linux
+ * (multicast-dns 7.2.5 `socket.bind(port, opts.bind || opts.interface)`). The address field
+ * is IPv4 only (`onlyIp4`). Every address: bonjour's own default, all interfaces.
+ *
+ * @param bind The effective bind setting.
+ */
+export function mdnsSocketOptions(bind: string | undefined): MdnsSocketOptions {
+  const chosen = chosenAddress(bind);
+  return chosen === undefined ? {} : { interface: chosen, bind: "0.0.0.0" };
+}
 
 /** mDNS service for Home Assistant discovery via bonjour-service */
 export class MDNSService {
@@ -51,7 +70,7 @@ export class MDNSService {
     // change; the TXT record carries it as base_url, and HA clients read it from there. The
     // A/AAAA records bonjour builds per announcement, the TXT record only here — so compare
     // once a minute and announce again when it moved (audit 2026-09-25, H10).
-    if (this.active && isWildcardBind(this.config.bind)) {
+    if (this.active && chosenAddress(this.config.bind) === undefined) {
       this.addressCheck =
         this.adapter.setInterval(() => void this.refreshIfAddressChanged(), MDNS_ADDRESS_CHECK_INTERVAL_MS) ??
         undefined;
@@ -89,7 +108,7 @@ export class MDNSService {
     const serviceName = this.config.serviceName || DEFAULT_SERVICE_NAME;
 
     try {
-      this.bonjour = new Bonjour();
+      this.bonjour = new Bonjour(mdnsSocketOptions(this.config.bind));
 
       // L35: all TXT values below are non-empty by construction (no conditional
       // drop happens here) — build the advertised record.

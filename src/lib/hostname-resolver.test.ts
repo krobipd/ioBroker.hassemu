@@ -1,9 +1,23 @@
 // The resolver's I/O runs against a mocked `dns.reverse` (audit 2026-09-15, F5): the
 // class — lookup, sink, negative cache, deadline, prune, cap — had no test at all.
-const { dnsReverse } = vi.hoisted(() => ({
+const { dnsReverse, resolverLocal, resolverReverse } = vi.hoisted(() => ({
   dnsReverse: vi.fn((_ip: string): Promise<string[]> => Promise.resolve([])),
+  resolverLocal: [] as string[],
+  resolverReverse: vi.fn((_ip: string): Promise<string[]> => Promise.resolve([])),
 }));
-vi.mock("node:dns/promises", () => ({ default: { reverse: (ip: string) => dnsReverse(ip) } }));
+vi.mock("node:dns/promises", () => ({
+  default: {
+    reverse: (ip: string) => dnsReverse(ip),
+    Resolver: class {
+      setLocalAddress(address: string): void {
+        resolverLocal.push(address);
+      }
+      reverse(ip: string): Promise<string[]> {
+        return resolverReverse(ip);
+      }
+    },
+  },
+}));
 
 import { HostnameResolver, shouldAttemptReverseDns } from "./hostname-resolver";
 import { DNS_NEGATIVE_CACHE_CAP, DNS_NEGATIVE_CACHE_MS, DNS_REVERSE_TIMEOUT_MS } from "./constants";
@@ -14,12 +28,12 @@ import { DNS_NEGATIVE_CACHE_CAP, DNS_NEGATIVE_CACHE_MS, DNS_REVERSE_TIMEOUT_MS }
 describe("hostname-resolver", () => {
   describe("shouldAttemptReverseDns (I8 v1.38.0)", () => {
     const TTL = 30_000;
-    const base = { hasHostname: false, inFlight: false, lastNegative: undefined, now: 100_000, negativeCacheMs: TTL };
+    const base = { answered: false, inFlight: false, lastNegative: undefined, now: 100_000, negativeCacheMs: TTL };
     it("attempts when nothing blocks it", () => {
       expect(shouldAttemptReverseDns(base)).to.be.true;
     });
-    it("skips when the client already has a hostname", () => {
-      expect(shouldAttemptReverseDns({ ...base, hasHostname: true })).to.be.false;
+    it("skips when a lookup already named the client at this IP during this run (K7)", () => {
+      expect(shouldAttemptReverseDns({ ...base, answered: true })).to.be.false;
     });
     it("skips when a lookup is already in flight", () => {
       expect(shouldAttemptReverseDns({ ...base, inFlight: true })).to.be.false;
@@ -62,10 +76,12 @@ describe("hostname-resolver", () => {
       };
       return { adapter: adapter as never, timers, logs };
     }
-    const target = (id = "abc123"): { id: string; cookie: string; hasHostname: boolean } => ({
+    const target = (
+      id = "abc123",
+      cookie = "11111111-1111-4111-8111-111111111111",
+    ): { id: string; cookie: string } => ({
       id,
-      cookie: "11111111-1111-4111-8111-111111111111",
-      hasHostname: false,
+      cookie,
     });
     const settle = (): Promise<void> => new Promise(resolve => setImmediate(resolve));
 
@@ -112,6 +128,32 @@ describe("hostname-resolver", () => {
       expect(logs.some(l => l.includes("10.0.0.8"))).to.be.false;
     });
 
+    // The chosen address is the only one the adapter sends on (review 2026-11-07, R-20).
+    it("with a chosen address the lookups go through a resolver bound to it", async () => {
+      const { adapter } = mockAdapter();
+      const sunk: string[] = [];
+      resolverLocal.length = 0;
+      resolverReverse.mockReset();
+      resolverReverse.mockImplementation(() => Promise.resolve(["display.lan"]));
+      dnsReverse.mockClear();
+      const r = new HostnameResolver(
+        adapter,
+        (_cookie, name) => {
+          sunk.push(name);
+          return Promise.resolve();
+        },
+        "192.0.2.10",
+      );
+
+      r.resolve(target(), "10.0.0.6");
+      await settle();
+
+      expect(resolverLocal).to.deep.equal(["192.0.2.10"]);
+      expect(resolverReverse).toHaveBeenCalledWith("10.0.0.6");
+      expect(dnsReverse).not.toHaveBeenCalled();
+      expect(sunk).to.deep.equal(["display.lan"]);
+    });
+
     it("hands a resolved name to the sink and clears the in-flight mark", async () => {
       const { adapter, timers } = mockAdapter();
       const sunk: Array<[string, string]> = [];
@@ -128,6 +170,53 @@ describe("hostname-resolver", () => {
       expect(sunk).to.deep.equal([[target().cookie, "display.lan"]]);
       expect(r.inFlightCount).to.equal(0);
       expect(timers, "the deadline timer is cleared once the lookup answered").to.have.lengthOf(0);
+    });
+
+    // K7: the host name is stored and names the display from the start on, so a display that has one is looked up
+    // again once per run — a name changed in the network arrives — but not on every poll; a new address asks anew.
+    it("a display is looked up once per run and address, and again at a new address (K7)", async () => {
+      const { adapter } = mockAdapter();
+      const sunk: Array<[string, string]> = [];
+      const r = new HostnameResolver(adapter, (cookie, name) => {
+        sunk.push([cookie, name]);
+        return Promise.resolve();
+      });
+      dnsReverse.mockImplementation(ip => Promise.resolve([ip === "10.0.0.5" ? "display.lan" : "display-new.lan"]));
+
+      r.resolve(target(), "10.0.0.5");
+      await settle();
+      r.resolve(target(), "10.0.0.5");
+      await settle();
+      expect(dnsReverse, "the same display at the same address is not asked again").toHaveBeenCalledTimes(1);
+
+      r.resolve(target("other1", "22222222-2222-4222-8222-222222222222"), "10.0.0.5");
+      await settle();
+      expect(dnsReverse, "another display at that address is asked for itself").toHaveBeenCalledTimes(2);
+
+      r.resolve(target(), "10.0.0.6");
+      await settle();
+      expect(dnsReverse, "a new address is asked anew").toHaveBeenCalledTimes(3);
+      expect(sunk.map(([, name]) => name)).to.deep.equal(["display.lan", "display.lan", "display-new.lan"]);
+    });
+
+    it("a new resolver (the next run) asks again for a display it named before (K7)", async () => {
+      const { adapter } = mockAdapter();
+      const sunk: string[] = [];
+      const sink = (_c: string, name: string): Promise<void> => {
+        sunk.push(name);
+        return Promise.resolve();
+      };
+      dnsReverse.mockImplementation(() => Promise.resolve(["display.lan"]));
+      const first = new HostnameResolver(adapter, sink);
+      first.resolve(target(), "10.0.0.5");
+      await settle();
+      first.dispose();
+
+      new HostnameResolver(adapter, sink).resolve(target(), "10.0.0.5");
+      await settle();
+
+      expect(dnsReverse).toHaveBeenCalledTimes(2);
+      expect(sunk).to.deep.equal(["display.lan", "display.lan"]);
     });
 
     it("an empty answer (no PTR record) goes to the negative cache and is not retried inside the window", async () => {
@@ -161,7 +250,7 @@ describe("hostname-resolver", () => {
       r.resolve(target(), "10.0.0.7");
       await settle();
 
-      expect(sunk).to.deep.equal([]);
+      expect(sunk, "a failure never reaches the sink, so a stored host name stays (K7)").to.deep.equal([]);
       expect(dnsReverse).toHaveBeenCalledTimes(1);
       expect(logs.some(l => l.startsWith("[debug]") && l.includes("ENOTFOUND"))).to.be.true;
       expect(logs.some(l => l.startsWith("[warn]"))).to.be.false;
@@ -211,6 +300,23 @@ describe("hostname-resolver", () => {
 
       expect(logs.some(l => l.startsWith("[debug]") && l.includes("store gone"))).to.be.true;
       expect(r.inFlightCount).to.equal(0);
+    });
+
+    it("the run memory of named displays is capped — oldest entry out (K7)", async () => {
+      const { adapter } = mockAdapter();
+      const r = new HostnameResolver(adapter, () => Promise.resolve());
+      dnsReverse.mockImplementation(() => Promise.resolve(["display.lan"]));
+      const cookie = (i: number): string => `00000000-0000-4000-8000-${i.toString(16).padStart(12, "0")}`;
+      const ip = (i: number): string => `10.${(i >> 16) & 255}.${(i >> 8) & 255}.${i & 255}`;
+      for (let i = 0; i < DNS_NEGATIVE_CACHE_CAP + 50; i++) {
+        r.resolve(target(`d${i}`, cookie(i)), ip(i));
+      }
+      await settle();
+
+      const answered = (r as unknown as { answered: Map<string, string> }).answered;
+      expect(answered.size).to.equal(DNS_NEGATIVE_CACHE_CAP);
+      expect(answered.has(cookie(0)), "the oldest entries were evicted").to.be.false;
+      expect(answered.get(cookie(DNS_NEGATIVE_CACHE_CAP + 49))).to.equal(ip(DNS_NEGATIVE_CACHE_CAP + 49));
     });
 
     it("the negative cache is capped — oldest entry out (D3)", async () => {

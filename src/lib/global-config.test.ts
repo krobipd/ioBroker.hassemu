@@ -277,6 +277,17 @@ describe("GlobalConfig", () => {
       expect(warn).to.not.be.undefined;
     });
 
+    it("names no part of a rejected address — a user:pass@ URL keeps its credentials out of the log", async () => {
+      // Fleet rule (krobi 2026-11-11 18:17/18:20): no credentials in a log line, at any level.
+      // coerceSafeUrl rejects exactly this address, and the warning used to echo it raw.
+      await g.handleModeWrite("http://hassuser:Secret-pw-42@10.9.8.7:8082/vis/");
+      expect(store.logs.some(l => l.level === "warn" && l.msg.includes("unsafe"))).to.be.true;
+      const lines = store.logs.map(l => l.msg).join("\n");
+      expect(lines).to.not.include("Secret-pw-42");
+      expect(lines).to.not.include("hassuser");
+      expect(lines).to.not.include("10.9.8.7");
+    });
+
     it("rejects non-string non-zero numbers — on debug, like the client path", async () => {
       await g.handleModeWrite(42);
       // mode stays unchanged → state is reverted to current value (0 by default)

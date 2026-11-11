@@ -1,5 +1,14 @@
-import { CONNECTION_STATUS_SCRIPT } from "./external-bridge";
-import { cardTableCss, escapeHtml, htmlLangFor, jsStringLiteral, renderIdRow, renderIpRow } from "./html-shared";
+import { APP_BRIDGE_SCRIPT } from "./external-bridge";
+import {
+  cardTableCss,
+  escapeHtml,
+  htmlLangFor,
+  jsStringLiteral,
+  renderIdRow,
+  renderIpRow,
+  SAFE_AREA_ENV_QUERY,
+  safeAreaInset,
+} from "./html-shared";
 import { makePageTranslator } from "./i18n";
 
 /** Poll interval (ms) for the display's `/api/redirect_check`. v1.37.0 (L16): named so the down-detection time (DOWN_THRESHOLD × this) isn't split between a constant and a magic number. */
@@ -19,6 +28,31 @@ const DOWN_THRESHOLD = 3;
  * not from a shaky client network.
  */
 const TARGET_DOWN_THRESHOLD = 2;
+
+/**
+ * Latest moment (ms after the page started) at which the wrapper tells the app `frontend/loaded`
+ * when the iframe has not fired `load` by then (a slow or hanging target). Below the 10 s after
+ * which both apps stop waiting by themselves (Android `CONNECTION_TIMEOUT`, FrontendViewModel.kt:91
+ * and 838-848 at android tag 2026.11.1; iOS watchdog, HomeAssistantViewModel.swift:23 and 405-445
+ * at release/2026.10.3/2026.3322), so the app's own loader never runs into its timeout.
+ */
+export const FRONTEND_LOADED_CAP_MS = 8_000;
+
+/**
+ * `onload` of the dashboard iframe: asks the bridge for `frontend/loaded` (external-bridge.ts). The
+ * flag covers an iframe that loads before the bridge script has run — the script reads it at start.
+ */
+const IFRAME_ONLOAD =
+  "window.hassemuIframeLoaded=true;if(window.hassemuFrontendLoaded){window.hassemuFrontendLoaded();}";
+
+/**
+ * The iframe and both cards again with the frontend's inset expression (`env()` as the second
+ * fallback), only where the browser knows `env()` — see {@link SAFE_AREA_ENV_QUERY}.
+ */
+const SAFE_AREA_ENV_CSS = `${SAFE_AREA_ENV_QUERY}{
+iframe{top:${safeAreaInset("top")};left:${safeAreaInset("left")};width:calc(100vw - ${safeAreaInset("left")} - ${safeAreaInset("right")});height:calc(100vh - ${safeAreaInset("top")} - ${safeAreaInset("bottom")});}
+#hassemu-down,#hassemu-target-down{top:${safeAreaInset("top")};left:${safeAreaInset("left")};right:${safeAreaInset("right")};bottom:${safeAreaInset("bottom")};}
+}`;
 
 /** What one poll tick decides to do. */
 export type PollAction = "reload" | "show-target-down" | "none";
@@ -130,6 +164,12 @@ const OVERLAY_CARD_THEME = {
  * `targetReachable` parameter): a display that starts COLD while the target is down sees
  * the card at once — not black for two poll rounds first.
  *
+ * K17 (krobi 2026-11-11): hassemu reports Home Assistant 2026.8.0, so the apps keep their own
+ * loader up until the page sends `frontend/loaded` (external-bridge.ts). The wrapper sends it when
+ * the iframe has loaded, when a card is on screen (at render or later), and at the latest after
+ * {@link FRONTEND_LOADED_CAP_MS}. The insets are repeated with `env()` for the iOS app, which draws
+ * edge to edge for that version (html-shared.ts `safeAreaInset`).
+ *
  * @param target          Target URL from the resolver.
  * @param clientId        Short id of this display (shown on the down page).
  * @param language        ioBroker system language for the down page (English fallback).
@@ -162,7 +202,7 @@ export function renderRedirectWrapper(
 <head>
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
-<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
 <title>${escapeHtml(t("pageConnectedTitle"))}</title>
 <style>
 html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden;}
@@ -197,10 +237,11 @@ ${cardTableCss(
 #hassemu-down button:hover,#hassemu-target-down button:hover{background:#0ea5e9;}
 #hassemu-target-down td.target-url{word-break:break-all;}
 @media (max-width:30rem){#hassemu-down,#hassemu-target-down{padding:0;}#hassemu-down .card,#hassemu-target-down .card{border-radius:0;}#hassemu-down th,#hassemu-target-down th{width:auto;}}
+${SAFE_AREA_ENV_CSS}
 </style>
 </head>
 <body>
-<iframe id="hassemu-iframe" src="${escTarget}"${targetReachable ? "" : ' style="display:none"'} allow="autoplay; fullscreen; geolocation; microphone; camera"></iframe>
+<iframe id="hassemu-iframe" src="${escTarget}"${targetReachable ? "" : ' style="display:none"'} allow="autoplay; fullscreen; geolocation; microphone; camera" onload="${IFRAME_ONLOAD}"></iframe>
 <div id="hassemu-down" role="status" aria-live="polite">
   <div class="card">
     <div class="banner">
@@ -236,7 +277,7 @@ ${cardTableCss(
     </div>
   </div>
 </div>
-${CONNECTION_STATUS_SCRIPT}
+${APP_BRIDGE_SCRIPT}
 <script>
 (function(){
   var current=${escJs};
@@ -250,11 +291,15 @@ ${CONNECTION_STATUS_SCRIPT}
   function targetDownVisible(){
     return !!(targetDownEl && targetDownEl.classList.contains('visible'));
   }
+  function signalLoaded(){
+    if(window.hassemuFrontendLoaded){window.hassemuFrontendLoaded();}
+  }
   function showDown(){
     if(downEl && !downEl.classList.contains('visible')){
       downEl.classList.add('visible');
       if(iframeEl){iframeEl.style.display='none';}
     }
+    signalLoaded();
   }
   function hideDown(){
     if(downEl && downEl.classList.contains('visible')){
@@ -267,7 +312,12 @@ ${CONNECTION_STATUS_SCRIPT}
       targetDownEl.classList.add('visible');
       if(iframeEl){iframeEl.style.display='none';}
     }
+    signalLoaded();
   }
+  // A card on screen is a finished page: the app may drop its loader now. Otherwise the
+  // iframe's onload signals, and the cap does it for a target that never finishes loading.
+  if(targetDownVisible()){signalLoaded();}
+  window.setTimeout(signalLoaded,${FRONTEND_LOADED_CAP_MS});
   // The decision itself is the SAME function the unit tests run — serialised here
   // instead of rewritten as a string, so the page can never drift from what is tested.
   var decide=${decidePollAction.toString()};

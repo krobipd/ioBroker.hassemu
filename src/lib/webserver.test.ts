@@ -1,17 +1,44 @@
 import crypto from "node:crypto";
 import { once } from "node:events";
+import { readFileSync } from "node:fs";
 import http from "node:http";
+import https from "node:https";
+import { join } from "node:path";
 import net from "node:net";
 import WebSocket from "ws";
+import type * as NetworkAddress from "./network-address";
 
 // No real DNS in this suite (audit 2026-09-15, F5): every `GET /` used to start a real
 // `dns.reverse` against the system resolver and rename the display asynchronously —
 // "localhost" on macOS, "ip6-localhost" on the Ubuntu runner. Answers "no PTR record"
 // unless a test hands it something else; a pending answer keeps a lookup in flight.
-const { dnsReverse } = vi.hoisted(() => ({
+// A chosen bind address makes the lookups go through a resolver bound to it (R-20) — the
+// same answers, and the address it was bound to is kept for the test that asks.
+const { dnsReverse, resolverLocal, peerVerdict } = vi.hoisted(() => ({
   dnsReverse: vi.fn((_ip: string): Promise<string[]> => Promise.resolve([])),
+  resolverLocal: [] as string[],
+  // The peer verdict is the fleet master's (network-address.test.ts judges it). These tests
+  // ask from 127.0.0.1, which the master never answers — they judge what the server does
+  // with the verdict, so it is a seam here: true unless a test says otherwise.
+  peerVerdict: vi.fn((_peer: string | undefined, _address: string | undefined): boolean => true),
 }));
-vi.mock("node:dns/promises", () => ({ default: { reverse: (ip: string) => dnsReverse(ip) } }));
+vi.mock("node:dns/promises", () => ({
+  default: {
+    reverse: (ip: string) => dnsReverse(ip),
+    Resolver: class {
+      setLocalAddress(address: string): void {
+        resolverLocal.push(address);
+      }
+      reverse(ip: string): Promise<string[]> {
+        return dnsReverse(ip);
+      }
+    },
+  },
+}));
+vi.mock("./network-address", async importOriginal => ({
+  ...(await importOriginal<typeof NetworkAddress>()),
+  isOwnPeer: (peer: string | undefined, address: string | undefined) => peerVerdict(peer, address),
+}));
 
 vi.mock("@iobroker/adapter-core", async () => {
   // The factory is hoisted above the imports — the shared translation lookup comes in here.
@@ -24,9 +51,14 @@ import type { HostnameResolver } from "./hostname-resolver";
 import { ClientRegistry } from "./client-registry";
 import { GlobalConfig } from "./global-config";
 import { COOKIE_MAX_AGE_S, MODE_MANUAL, HA_VERSION } from "./constants";
+import { APP_BRIDGE_SCRIPT } from "./external-bridge";
 import type { TargetProbe } from "./target-health";
+import { buildTls } from "./tls";
 import type { AdapterConfig } from "./types";
 import { brokerDelObject, brokerExtend } from "../../test/unit/broker-stub";
+import { freshDataDir, removeDataDirs } from "../../test/unit/data-dir";
+
+afterAll(removeDataDirs);
 
 interface ObjEntry {
   type: string;
@@ -39,6 +71,8 @@ interface MockStore {
   objects: Map<string, ObjEntry>;
   states: Map<string, { val: unknown; ack: boolean }>;
   logs: { level: string; msg: string }[];
+  /** The instance data folder of this stub installation (identities.json). */
+  dataDir: string;
   /** Live interval handles (added by setInterval, removed by clearInterval) — L7 cleanup test. */
   activeIntervals: Set<object>;
   /** The callback behind each tracked interval, so a test can fire one tick by hand. */
@@ -74,6 +108,7 @@ function createMockAdapter(namespace = "hassemu.0"): {
 } {
   const store: MockStore = {
     namespace,
+    dataDir: freshDataDir(),
     objects: new Map(),
     states: new Map(),
     logs: [],
@@ -179,6 +214,19 @@ const baseConfig: AdapterConfig = {
 };
 
 /**
+ * A registry that ran restore() first, like main.ts hands it on — restore() reads (here: generates) the server
+ * id every write of the data file carries (K16). Its log lines are dropped.
+ *
+ * @param built The stub installation.
+ */
+async function startedRegistry(built: ReturnType<typeof createMockAdapter>): Promise<ClientRegistry> {
+  const reg = new ClientRegistry(built.adapter as never, built.store.dataDir);
+  await reg.restore();
+  built.store.logs.length = 0;
+  return reg;
+}
+
+/**
  * Build a GlobalConfig with optional `global.mode` (sentinel or URL) and
  * `global.manualUrl` set up via the migration helper. `enabled` flag is
  * persisted but does NOT bulk-sync clients here — that lives in main.ts.
@@ -249,7 +297,7 @@ async function buildServer(opts: ServerOpts = {}): Promise<{
   store: MockStore;
 }> {
   const built = createMockAdapter();
-  const reg = new ClientRegistry(built.adapter as never);
+  const reg = await startedRegistry(built);
   const g = await buildGlobalConfig(
     built.adapter,
     opts.globalMode === undefined ? "http://example.com/vis" : opts.globalMode,
@@ -557,9 +605,7 @@ describe("WebServer", () => {
       await attempt();
 
       const warns = store.logs.filter(l => l.level === "warn" && l.msg.includes("Invalid credentials"));
-      const repeatDebugs = store.logs.filter(
-        l => l.level === "debug" && l.msg.includes("Invalid credentials") && l.msg.includes("repeat"),
-      );
+      const repeatDebugs = store.logs.filter(l => l.level === "debug" && l.msg.startsWith("Invalid credentials"));
       expect(warns.length, "first attempt warns once").to.equal(1);
       expect(repeatDebugs.length, "the repeat from the same IP drops to debug").to.equal(1);
 
@@ -745,6 +791,36 @@ describe("WebServer", () => {
       expect(res.body).to.include("<form");
       // No code issued on failure.
       expect(res.body).to.not.include("document.location.assign");
+      await s["app"].close();
+    });
+
+    it("a wrong login at the authorize form and one in the login flow share ONE warn per window (H5)", async () => {
+      const { s, store } = await buildServer({ config: { authRequired: true } });
+      await s.inject({
+        method: "POST",
+        url: "/auth/authorize",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        payload:
+          `response_type=code` +
+          `&client_id=${encodeURIComponent("https://home-assistant.io/android")}&redirect_uri=${encodeURIComponent(
+            "homeassistant://auth-callback",
+          )}&state=abc` +
+          `&username=admin&password=wrong`,
+        remoteAddress: "10.3.0.1",
+      });
+      const flow = await s.inject({ method: "POST", url: "/auth/login_flow", payload: {}, remoteAddress: "10.3.0.2" });
+      await s.inject({
+        method: "POST",
+        url: `/auth/login_flow/${flow.json().flow_id}`,
+        payload: { username: "wrong", password: "wrong" },
+        remoteAddress: "10.3.0.2",
+      });
+
+      const lines = store.logs.filter(l => l.msg.startsWith("Invalid credentials"));
+      expect(lines.map(l => [l.level, l.msg])).to.deep.equal([
+        ["warn", "Invalid credentials (IP 10.3.0.1)"],
+        ["debug", "Invalid credentials (IP 10.3.0.2)"],
+      ]);
       await s["app"].close();
     });
 
@@ -1122,8 +1198,9 @@ describe("WebServer", () => {
       // Exact payload shape (JS source literal form — JSON.stringify happens client-side)
       expect(res.body).to.include('type:"connection-status"');
       expect(res.body).to.include('event:"connected"');
-      // Retry pattern (slow bridge attach in some companion builds)
-      expect(res.body).to.match(/setTimeout\(notifyConnected,\s*\d+\)/);
+      // The whole bridge script, retries included (slow bridge attach in some companion builds);
+      // what it does is run in external-bridge.test.ts and redirect-wrapper.test.ts.
+      expect(res.body).to.include(APP_BRIDGE_SCRIPT);
     });
 
     it("GET / sets cookie for new clients", async () => {
@@ -1328,7 +1405,7 @@ describe("WebServer", () => {
       const first = await s.inject({ method: "GET", url: "/" });
       const cookie = /hassemu_client=([^;]+)/.exec(first.headers["set-cookie"] as string)![1];
       const id = [...store.objects.keys()]
-        .find(k => /clients\.[0-9a-f]{6}$/.test(k))!
+        .find(k => /clients\.display-[0-9a-f]{4}$/.test(k))!
         .split(".")
         .pop()!;
 
@@ -1390,6 +1467,15 @@ describe("WebServer", () => {
       const res = await server.inject({ method: "GET", url: "/unknown" });
       expect(res.statusCode).to.equal(404);
       expect(res.json().error).to.equal("Not Found");
+    });
+
+    it("logs a 404 without its query — a value in the query reaches no log line", async () => {
+      // Fleet rule (krobi 2026-11-11 18:17/18:20): no credentials in a log line, at any level.
+      // A client may put one into the query of a path hassemu does not serve.
+      const res = await server.inject({ method: "GET", url: "/unknown/path?access_token=QueryValue-7f3a" });
+      expect(res.statusCode).to.equal(404);
+      expect(store.logs.some(l => l.msg.includes("404: GET /unknown/path"))).to.be.true;
+      expect(store.logs.some(l => l.msg.includes("QueryValue-7f3a"))).to.be.false;
     });
   });
 
@@ -1687,7 +1773,7 @@ describe("WebServer", () => {
       // WebServer + ClientRegistry sharing the SAME ioBroker mock-store finds
       // the token via registry.restore() and accepts the refresh-grant.
       const built = createMockAdapter();
-      const reg = new ClientRegistry(built.adapter as never);
+      const reg = await startedRegistry(built);
       const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
       const s1 = new WebServer(
         built.adapter as never,
@@ -1723,7 +1809,7 @@ describe("WebServer", () => {
         await s1["app"].close();
 
         // Simulate adapter restart: new WebServer + new Registry on same mock store
-        const reg2 = new ClientRegistry(built.adapter as never);
+        const reg2 = new ClientRegistry(built.adapter as never, built.store.dataDir);
         await reg2.restore();
         const s2 = new WebServer(
           built.adapter as never,
@@ -2084,7 +2170,9 @@ describe("WebServer hardening (audit 2026-09-25 — H2–H8, NH5)", () => {
     }
   });
 
-  it("300 wrong logins from 300 addresses are ONE warn line; the next window names the rest (H5)", async () => {
+  // Through the fleet helper LogOnce (round 172: an own collecting window that counts is a B02 finding) —
+  // one key for every address, so a new address inside the window is no new warn (H5).
+  it("300 wrong logins from 300 addresses are ONE warn line; the next window warns again, without a count (H5)", async () => {
     const { s, store } = await buildServer({ config: { authRequired: true } });
     try {
       const attempt = async (ip: string): Promise<void> => {
@@ -2109,8 +2197,10 @@ describe("WebServer hardening (audit 2026-09-25 — H2–H8, NH5)", () => {
         vi.useRealTimers();
       }
       const warns = store.logs.filter(l => l.level === "warn" && l.msg.startsWith("Invalid credentials"));
-      expect(warns).to.have.length(2);
-      expect(warns[1].msg).to.include("299 further attempt(s)");
+      expect(warns.map(w => w.msg)).to.deep.equal([
+        "Invalid credentials (IP 10.1.0.0)",
+        "Invalid credentials (IP 10.2.0.1)",
+      ]);
     } finally {
       await s["app"].close();
     }
@@ -2226,6 +2316,25 @@ describe("WebServer hardening (audit 2026-09-25 — H2–H8, NH5)", () => {
       }
     });
 
+    it("the redirect page and the error page speak the system language (BS-3, BS-5)", async () => {
+      const { s } = await buildServer({ systemLanguage: "de" });
+      try {
+        const ok = await s.inject({
+          method: "GET",
+          url: authorizeUrl("https://home-assistant.io/android", "homeassistant://auth-callback"),
+        });
+        expect(ok.body).to.include("document.location.assign");
+        expect(ok.body).to.include('<p class="loading">Anmeldung läuft…</p>');
+        expect(ok.body).to.include('lang="de"');
+        const bad = await s.inject({ method: "GET", url: "/auth/authorize?response_type=code" });
+        expect(bad.statusCode).to.equal(400);
+        expect(bad.body).to.include("Der Anmeldeanfrage fehlt client_id oder redirect_uri");
+        expect(bad.body).to.include('<p class="subtitle">invalid_request</p>');
+      } finally {
+        await s["app"].close();
+      }
+    });
+
     it("the same rule holds after a successful login (POST)", async () => {
       const { s } = await buildServer({ config: { authRequired: true } });
       try {
@@ -2318,7 +2427,7 @@ describe("WebServer HTTP limits (audit 2026-09-25, H1)", () => {
     probe: TargetProbe = () => Promise.resolve(true),
   ): Promise<{ s: WebServer; port: number }> {
     const built = createMockAdapter();
-    const reg = new ClientRegistry(built.adapter as never);
+    const reg = await startedRegistry(built);
     const g = await buildGlobalConfig(built.adapter, "http://dash.test/");
     const s = new WebServer(
       built.adapter as never,
@@ -2453,7 +2562,7 @@ describe("WebServer HTTP limits (audit 2026-09-25, H1)", () => {
 describe("WebServer bind / start-stop", () => {
   it("defaults to 0.0.0.0 when bind is falsy", async () => {
     const built = createMockAdapter();
-    const reg = new ClientRegistry(built.adapter as never);
+    const reg = await startedRegistry(built);
     const g = await buildGlobalConfig(built.adapter, "http://x/");
     const s = new WebServer(built.adapter as never, { ...baseConfig, port: 0, bind: "" }, reg, g, crypto.randomUUID());
     await s.start();
@@ -2465,7 +2574,7 @@ describe("WebServer bind / start-stop", () => {
 
   it("binds to 127.0.0.1 when configured", async () => {
     const built = createMockAdapter();
-    const reg = new ClientRegistry(built.adapter as never);
+    const reg = await startedRegistry(built);
     const g = await buildGlobalConfig(built.adapter, "http://x/");
     const s = new WebServer(
       built.adapter as never,
@@ -2484,7 +2593,7 @@ describe("WebServer bind / start-stop", () => {
     const s1 = new WebServer(
       first.adapter as never,
       { ...baseConfig, port: 0, bind: "127.0.0.1" },
-      new ClientRegistry(first.adapter as never),
+      await startedRegistry(first),
       await buildGlobalConfig(first.adapter, "http://x/"),
       crypto.randomUUID(),
     );
@@ -2494,7 +2603,7 @@ describe("WebServer bind / start-stop", () => {
     const s2 = new WebServer(
       second.adapter as never,
       { ...baseConfig, port, bind: "127.0.0.1" },
-      new ClientRegistry(second.adapter as never),
+      await startedRegistry(second),
       await buildGlobalConfig(second.adapter, "http://x/"),
       crypto.randomUUID(),
     );
@@ -2516,7 +2625,7 @@ describe("WebServer bind / start-stop", () => {
     const s = new WebServer(
       built.adapter as never,
       { ...baseConfig, port: 0, bind: "127.0.0.1" },
-      new ClientRegistry(built.adapter as never),
+      await startedRegistry(built),
       await buildGlobalConfig(built.adapter, "http://x/"),
       crypto.randomUUID(),
     );
@@ -2534,7 +2643,7 @@ describe("WebServer bind / start-stop", () => {
 
   it("start() with authRequired and no password warns the operator (C6, L50)", async () => {
     const built = createMockAdapter();
-    const reg = new ClientRegistry(built.adapter as never);
+    const reg = await startedRegistry(built);
     const g = await buildGlobalConfig(built.adapter, "http://x/");
     const s = new WebServer(
       built.adapter as never,
@@ -2553,7 +2662,7 @@ describe("WebServer bind / start-stop", () => {
 
   it("start() with a password set does not emit the C6 warning (L50)", async () => {
     const built = createMockAdapter();
-    const reg = new ClientRegistry(built.adapter as never);
+    const reg = await startedRegistry(built);
     const g = await buildGlobalConfig(built.adapter, "http://x/");
     const s = new WebServer(
       built.adapter as never,
@@ -2572,7 +2681,7 @@ describe("WebServer bind / start-stop", () => {
 
   it("returns null for boundAddress when server not running", async () => {
     const built = createMockAdapter();
-    const reg = new ClientRegistry(built.adapter as never);
+    const reg = await startedRegistry(built);
     const g = await buildGlobalConfig(built.adapter, "http://x/");
     const s = new WebServer(built.adapter as never, baseConfig, reg, g, crypto.randomUUID());
     expect(s.boundAddress).to.be.null;
@@ -2580,7 +2689,7 @@ describe("WebServer bind / start-stop", () => {
 
   it("stop() clears the dnsInFlight set so pending lookups do not pin IPs (HW1 v1.28.3)", async () => {
     const built = createMockAdapter();
-    const reg = new ClientRegistry(built.adapter as never);
+    const reg = await startedRegistry(built);
     const g = await buildGlobalConfig(built.adapter, "http://x/");
     const s = new WebServer(
       built.adapter as never,
@@ -2595,8 +2704,8 @@ describe("WebServer bind / start-stop", () => {
     // v1.43.0; the guarantee is unchanged.)
     dnsReverse.mockImplementation(() => new Promise<string[]>(() => {}));
     const resolver = (s as unknown as { hostnames: HostnameResolver }).hostnames;
-    resolver.resolve({ id: "aaa111", cookie: crypto.randomUUID(), hasHostname: false }, "203.0.113.42");
-    resolver.resolve({ id: "bbb222", cookie: crypto.randomUUID(), hasHostname: false }, "203.0.113.43");
+    resolver.resolve({ id: "aaa111", cookie: crypto.randomUUID() }, "203.0.113.42");
+    resolver.resolve({ id: "bbb222", cookie: crypto.randomUUID() }, "203.0.113.43");
     expect(resolver.inFlightCount).to.equal(2);
     await s.stop();
     expect(resolver.inFlightCount).to.equal(0);
@@ -2611,7 +2720,7 @@ describe("WebServer bind / start-stop", () => {
      */
     async function serverFailing(): Promise<{ s: WebServer; store: MockStore }> {
       const built = createMockAdapter();
-      const reg = new ClientRegistry(built.adapter as never);
+      const reg = await startedRegistry(built);
       const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
       const s = new WebServer(
         built.adapter as never,
@@ -2691,7 +2800,7 @@ describe("WebServer bind / start-stop", () => {
      */
     async function serverThrowing(thrown: unknown): Promise<{ s: WebServer; store: MockStore }> {
       const built = createMockAdapter();
-      const reg = new ClientRegistry(built.adapter as never);
+      const reg = await startedRegistry(built);
       const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
       const s = new WebServer(
         built.adapter as never,
@@ -2737,7 +2846,7 @@ describe("WebServer bind / start-stop", () => {
 
     it("two different failures on one server both reach the warn level — the dedup key is the message", async () => {
       const built = createMockAdapter();
-      const reg = new ClientRegistry(built.adapter as never);
+      const reg = await startedRegistry(built);
       const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
       const s = new WebServer(
         built.adapter as never,
@@ -2810,7 +2919,7 @@ describe("WebServer /api/websocket (v1.34.0)", () => {
   beforeEach(async () => {
     const built = createMockAdapter();
     store = built.store;
-    reg = new ClientRegistry(built.adapter as never);
+    reg = await startedRegistry(built);
     const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
     s = new WebServer(
       built.adapter as never,
@@ -3047,7 +3156,7 @@ describe("WebServer /api/websocket (v1.34.0)", () => {
     const built = createMockAdapter();
     built.adapter.setTimeout = ((cb: () => void, ms: number) => globalThis.setTimeout(cb, Math.min(ms, 40))) as never;
     built.adapter.clearTimeout = ((h: NodeJS.Timeout) => globalThis.clearTimeout(h)) as never;
-    const reg2 = new ClientRegistry(built.adapter as never);
+    const reg2 = await startedRegistry(built);
     const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
     const s2 = new WebServer(
       built.adapter as never,
@@ -3070,7 +3179,7 @@ describe("WebServer /api/websocket (v1.34.0)", () => {
     // Proves the `/api/websocket` whitelist entry: the HTTP upgrade is NOT 401'd
     // by the preHandler when authRequired=true; auth happens in the handshake.
     const built = createMockAdapter();
-    const reg2 = new ClientRegistry(built.adapter as never);
+    const reg2 = await startedRegistry(built);
     const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
     const s2 = new WebServer(
       built.adapter as never,
@@ -3164,5 +3273,161 @@ describe("WebServer /api/websocket (v1.34.0)", () => {
     const elapsed = Date.now() - started;
     expect(elapsed, `stop() took ${elapsed} ms`).to.be.lessThan(2000);
     (ws as unknown as { terminate(): void }).terminate();
+  });
+});
+
+// The chosen address is the only one the adapter answers on: only a peer in the chosen
+// network — or, with every address, in one of the host's own networks — gets an answer
+// (krobi 2026-10-03 00:27, fleet master `isOwnPeer`; review 2026-11-07, R-20). The verdict
+// itself is the master's (network-address.test.ts); these tests judge what the server does
+// with it, on the real listener.
+describe("WebServer peer guard (R-20)", () => {
+  let s: WebServer;
+  let store: MockStore;
+  let base: string;
+  const probed: (string | undefined)[] = [];
+
+  beforeEach(async () => {
+    peerVerdict.mockClear();
+    peerVerdict.mockImplementation(() => true);
+    resolverLocal.length = 0;
+    probed.length = 0;
+    const built = createMockAdapter();
+    store = built.store;
+    const reg = await startedRegistry(built);
+    const g = await buildGlobalConfig(built.adapter, "http://example.com/vis", null, true);
+    s = new WebServer(
+      built.adapter as never,
+      { ...baseConfig, port: 0, bind: "127.0.0.1", trustProxy: true },
+      reg,
+      g,
+      crypto.randomUUID(),
+      "en",
+      (_url, _timeoutMs, localAddress) => {
+        probed.push(localAddress);
+        return Promise.resolve(true);
+      },
+    );
+    await s.start();
+    base = `http://127.0.0.1:${s.boundAddress!.port}`;
+  });
+
+  afterEach(async () => {
+    await s.stop();
+  });
+
+  it("a refused peer gets a bare 403, the connection closes, nothing is created", async () => {
+    peerVerdict.mockImplementation(() => false);
+    const res = await fetch(`${base}/`);
+    expect(res.status).to.equal(403);
+    expect(await res.text()).to.equal("");
+    expect(res.headers.get("connection")).to.equal("close");
+    expect(res.headers.get("set-cookie"), "no display identity for a stranger").to.equal(null);
+    expect([...store.objects.keys()].filter(id => id.includes(".clients."))).to.deep.equal([]);
+    expect(
+      store.logs.some(
+        l => l.level === "debug" && l.msg === "GET / [127.0.0.1] refused (403) — not in the adapter's networks",
+      ),
+    ).to.be.true;
+    expect(store.logs.filter(l => l.level !== "debug")).to.deep.equal([]);
+  });
+
+  it("judges the socket peer and the chosen address — never X-Forwarded-For", async () => {
+    const res = await fetch(`${base}/health`, { headers: { "x-forwarded-for": "198.51.100.7" } });
+    expect(res.status).to.equal(200);
+    expect(peerVerdict.mock.calls).to.deep.equal([["127.0.0.1", "127.0.0.1"]]);
+  });
+
+  it("refuses the websocket upgrade of a refused peer", async () => {
+    peerVerdict.mockImplementation(() => false);
+    const ws = new WebSocket(`ws://127.0.0.1:${s.boundAddress!.port}/api/websocket`);
+    // the client gives up on the refused handshake — not the question here
+    ws.on("error", () => {});
+    const [, res] = (await once(ws, "unexpected-response")) as [unknown, http.IncomingMessage];
+    expect(res.statusCode).to.equal(403);
+    res.destroy();
+  });
+
+  it("probes a redirect target and looks names up from the chosen address", async () => {
+    const first = await fetch(`${base}/`);
+    const cookie = extractCookie(first.headers.getSetCookie())!;
+    const res = await fetch(`${base}/api/redirect_check`, { headers: { cookie: `${CLIENT_COOKIE}=${cookie}` } });
+    expect(await res.json()).to.deep.equal({ target: "http://example.com/vis", targetReachable: true });
+    // the page probes at render time, the poll answers from that verdict
+    expect(probed).to.deep.equal(["127.0.0.1"]);
+    expect(resolverLocal).to.deep.equal(["127.0.0.1"]);
+  });
+});
+
+describe("WebServer HTTPS (K4)", () => {
+  // Test-only certificate (test/fixtures/tls/README.md): DNS display-test.example, IP 192.0.2.50.
+  const tlsDir = join(__dirname, "../../test/fixtures/tls");
+  const NAMED = {
+    key: readFileSync(join(tlsDir, "named.key"), "utf8"),
+    cert: readFileSync(join(tlsDir, "named.crt"), "utf8"),
+  };
+
+  /**
+   * GET a path over HTTPS, trusting the test certificate and naming its host (SNI).
+   *
+   * @param port The bound port.
+   * @param path The path.
+   */
+  function httpsGet(port: number, path: string): Promise<{ status: number; body: string; secureCookie: boolean }> {
+    return new Promise((resolve, reject) => {
+      const req = https.request(
+        { host: "127.0.0.1", port, path, servername: "display-test.example", ca: NAMED.cert, method: "GET" },
+        res => {
+          let body = "";
+          res.setEncoding("utf8");
+          res.on("data", (c: string) => (body += c));
+          res.on("end", () =>
+            resolve({
+              status: res.statusCode ?? 0,
+              body,
+              secureCookie: (res.headers["set-cookie"] ?? []).some(c => /;\s*Secure/i.test(c)),
+            }),
+          );
+        },
+      );
+      req.on("error", reject);
+      req.end();
+    });
+  }
+
+  it("serves over TLS with the request limits of the HTTP server, and advertises https with the certificate's name", async () => {
+    const built = createMockAdapter();
+    const reg = await startedRegistry(built);
+    const g = await buildGlobalConfig(built.adapter, "https://dash.test/");
+    const s = new WebServer(
+      built.adapter as never,
+      { ...baseConfig, port: 0, bind: "127.0.0.1" },
+      reg,
+      g,
+      crypto.randomUUID(),
+      "en",
+      undefined,
+      undefined,
+      buildTls(NAMED, new Map(), false),
+    );
+    await s.start();
+    try {
+      const port = s.boundAddress!.port;
+      const server = (s as unknown as { app: { server: https.Server } }).app.server;
+      expect(server).toBeInstanceOf(https.Server);
+      expect(server.requestTimeout, "DD32 holds for HTTPS too").to.equal(30_000);
+
+      const info = await httpsGet(port, "/api/discovery_info");
+      expect(info.status).to.equal(200);
+      const parsed = JSON.parse(info.body) as { base_url: string; internal_url: string };
+      expect(parsed.base_url).to.equal("https://display-test.example:0");
+      expect(parsed.internal_url).to.equal(parsed.base_url);
+
+      const page = await httpsGet(port, "/");
+      expect(page.status).to.equal(200);
+      expect(page.secureCookie, "the display cookie is Secure over HTTPS").to.equal(true);
+    } finally {
+      await s.stop();
+    }
   });
 });

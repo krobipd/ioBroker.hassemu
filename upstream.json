@@ -1,21 +1,39 @@
 {
-  "_comment": "Release gate A12: the versioned reference source of the Home Assistant client hassemu answers. The emulation is verified against the Android companion app: the OAuth2 browser flow, the mobile_app registration and webhook, the websocket command set, the manifest.json probe, the loader that waits for connection-status or the `loaded` event, and the safe-area insets. The iOS app reads the same version switch (HA_VERSION in src/lib/constants.ts), the Home Assistant frontend is the reference for the bridge message format (external_messaging.ts) and Home Assistant core for the websocket error codes and the redirect whitelist; the gate reads one source.",
-  "source": "github:home-assistant/android",
-  "verified": "2026.11.1",
+  "_comment": "Release gate A12: the versioned reference sources of the Home Assistant clients hassemu answers. The emulation is verified against the Android companion app: the OAuth2 browser flow, the mobile_app registration and webhook, the websocket command set, the manifest.json probe, the loader that waits for connection-status or the `loaded` event, and the safe-area insets. The iOS app reads the same version switch (HA_VERSION in src/lib/constants.ts) and takes the bridge messages through `webkit.messageHandlers.externalBus` (src/lib/external-bridge.ts), so a new iOS release that moves the switch is judged like an Android one (round 171). The Home Assistant frontend is the reference for the bridge message format (external_messaging.ts) and Home Assistant core for the websocket error codes and the redirect whitelist.",
   "_verified": "2026-11-07, read against 2026.9.0 (the tag of the 2026-09-25 audit). `serverReportsLoaded` still starts at 2026.8.0 and CONNECTION_TIMEOUT is still 10 s (FrontendViewModel.kt), so HA_VERSION 2026.4.0 stays below the loaded switch. The manifest probe now also requires a 2xx status; hassemu answers 200 with name \"Home Assistant\". A start or deep-link URL outside the server origin now opens externally; hassemu's pages stay on their own origin and frame the target. The `--app-safe-area-inset-*` variables are unchanged (WebViewAction.kt). The external bus gained matter/share_device and an error result, and the JS bridge skips a second registration. The authentication, integration and websocket changes are internal. Raising this value means reading the watched paths of the new release against HA_VERSION, external-bridge.ts, redirect-wrapper.ts, auth-page.ts, mobile-app-routes.ts, ha-websocket.ts and the manifest route again.",
-  "watch": [
-    "app/src/main/kotlin/io/homeassistant/companion/android/frontend/FrontendViewModel.kt",
-    "app/src/main/kotlin/io/homeassistant/companion/android/frontend/WebViewAction.kt",
-    "app/src/main/kotlin/io/homeassistant/companion/android/frontend/js/",
-    "app/src/main/kotlin/io/homeassistant/companion/android/frontend/url/",
-    "app/src/main/kotlin/io/homeassistant/companion/android/frontend/externalbus/",
-    "app/src/main/kotlin/io/homeassistant/companion/android/frontend/handler/",
-    "app/src/main/kotlin/io/homeassistant/companion/android/onboarding/connection/",
-    "app/src/main/kotlin/io/homeassistant/companion/android/onboarding/serverdiscovery/",
-    "common/src/main/kotlin/io/homeassistant/companion/android/common/data/authentication/",
-    "common/src/main/kotlin/io/homeassistant/companion/android/common/data/connectivity/",
-    "common/src/main/kotlin/io/homeassistant/companion/android/common/data/integration/impl/",
-    "common/src/main/kotlin/io/homeassistant/companion/android/common/data/websocket/impl/",
-    "common/src/main/kotlin/io/homeassistant/companion/android/util/UrlUtil.kt"
+  "_verifiedIos": "2026-11-08, read against release/2026.9.2/2026.2995 (the tag of the 2026-09-25 audit). `frontendLoadedExternalBus` and `canDisplayEdgeToEdge` still start at 2026.8.0 (AppConstants.swift:528/530), so HA_VERSION 2026.4.0 stays below both. The `externalBus` message handler and the `connection-status` message are unchanged; a page loaded while the app is in the background now has its connection-status, frontend/loaded and config/get held and delivered once the app is active instead of dropped. The loader watchdog (10 s, HomeAssistantViewModel.swift:23) no longer just dismisses the loader: it first probes the page for rendered content and reloads a blank one — hassemu's wrapper holds an iframe and its landing page text, both count as rendered (WebViewJavascriptCommands.swift:10-24), and the connection-status hassemu sends lifts the loader before the watchdog anyway. The new bus messages (matter/share_device, webrtc/stream/*, more_info/*, entity/controlled, updateThemeVariables) are commands hassemu never sends. The websocket command set (HATypedRequest+App.swift) only gained a state argument for call_service and a `limit` for usage_prediction/common_control that the app sends to servers from 2026.10.0 on — hassemu reports 2026.4.0 and answers both as before. Raising this value means reading AppConstants.swift, the external bus handlers and HATypedRequest+App.swift of the new release against HA_VERSION, external-bridge.ts and ha-websocket.ts again.",
+  "sources": [
+    {
+      "source": "github:home-assistant/android",
+      "verified": "2026.11.1",
+      "watch": [
+        "app/src/main/kotlin/io/homeassistant/companion/android/frontend/FrontendViewModel.kt",
+        "app/src/main/kotlin/io/homeassistant/companion/android/frontend/WebViewAction.kt",
+        "app/src/main/kotlin/io/homeassistant/companion/android/frontend/js/",
+        "app/src/main/kotlin/io/homeassistant/companion/android/frontend/url/",
+        "app/src/main/kotlin/io/homeassistant/companion/android/frontend/externalbus/",
+        "app/src/main/kotlin/io/homeassistant/companion/android/frontend/handler/",
+        "app/src/main/kotlin/io/homeassistant/companion/android/onboarding/connection/",
+        "app/src/main/kotlin/io/homeassistant/companion/android/onboarding/serverdiscovery/",
+        "common/src/main/kotlin/io/homeassistant/companion/android/common/data/authentication/",
+        "common/src/main/kotlin/io/homeassistant/companion/android/common/data/connectivity/",
+        "common/src/main/kotlin/io/homeassistant/companion/android/common/data/integration/impl/",
+        "common/src/main/kotlin/io/homeassistant/companion/android/common/data/websocket/impl/",
+        "common/src/main/kotlin/io/homeassistant/companion/android/util/UrlUtil.kt"
+      ]
+    },
+    {
+      "source": "github:home-assistant/iOS",
+      "verified": "release/2026.10.3/2026.3322",
+      "watch": [
+        "Sources/Shared/Environment/AppConstants.swift",
+        "Sources/App/Frontend/Extensions/WebViewScriptMessageHandler.swift",
+        "Sources/App/Frontend/ExternalMessageBus/",
+        "Sources/App/Frontend/WebView/WebViewController/",
+        "Sources/Shared/HATypedRequest+App.swift",
+        "Sources/App/Frontend/WebView/HomeAssistantView/",
+        "Sources/App/Frontend/WebView/WebViewJavascriptCommands.swift"
+      ]
+    }
   ]
 }

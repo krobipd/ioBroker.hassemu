@@ -7,8 +7,16 @@
  * jumps to the real URL the moment the state is written.
  */
 
-import { CONNECTION_STATUS_SCRIPT } from "./external-bridge";
-import { cardTableCss, escapeHtml, htmlLangFor, renderIdRow, renderIpRow } from "./html-shared";
+import { APP_BRIDGE_SCRIPT, FRONTEND_LOADED_NOW_SCRIPT } from "./external-bridge";
+import {
+  cardTableCss,
+  escapeHtml,
+  htmlLangFor,
+  renderIdRow,
+  renderIpRow,
+  SAFE_AREA_ENV_QUERY,
+  safeAreaInset,
+} from "./html-shared";
 import { makePageTranslator } from "./i18n";
 
 /**
@@ -60,7 +68,7 @@ export function renderLandingPage(
 <html lang="${escapeHtml(htmlLangFor(language))}">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta http-equiv="refresh" content="15">
 <title>${escapeHtml(t("pageConnectedTitle"))}</title>
 <style>
@@ -212,6 +220,17 @@ footer .brand svg { width: 0.95rem; height: 0.95rem; display: block; }
     .info th { width: auto; }
     footer { padding: 0.9rem 1.2rem; }
 }
+${SAFE_AREA_ENV_QUERY} {
+    body {
+        padding: calc(1.5rem + ${safeAreaInset("top")}) calc(1.5rem + ${safeAreaInset("right")})
+            calc(1.5rem + ${safeAreaInset("bottom")}) calc(1.5rem + ${safeAreaInset("left")});
+    }
+    @media (max-width: 30rem) {
+        body {
+            padding: ${safeAreaInset("top")} ${safeAreaInset("right")} ${safeAreaInset("bottom")} ${safeAreaInset("left")};
+        }
+    }
+}
 </style>
 </head>
 <body>
@@ -246,7 +265,8 @@ footer .brand svg { width: 0.95rem; height: 0.95rem; display: block; }
         <span class="brand" aria-hidden="true">${LOGO_SVG} ioBroker</span>
     </footer>
 </main>
-${CONNECTION_STATUS_SCRIPT}
+${APP_BRIDGE_SCRIPT}
+${FRONTEND_LOADED_NOW_SCRIPT}
 </body>
 </html>`;
 }

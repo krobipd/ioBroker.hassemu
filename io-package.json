@@ -95,6 +95,62 @@
         "zh-cn": "旧版本遗留的设置现在会从实例中彻底移除，而不再只是关闭——仅关闭时它会永远留在那里。"
       }
     },
+    "messages": [
+      {
+        "condition": {
+          "operand": "and",
+          "rules": [
+            "oldVersion<2.0.0",
+            "newVersion>=2.0.0"
+          ]
+        },
+        "title": {
+          "en": "Display IDs change",
+          "de": "Display-IDs ändern sich",
+          "ru": "ID дисплеев меняются",
+          "pt": "Os IDs dos displays mudam",
+          "nl": "Display-ID's veranderen",
+          "fr": "Les ID des écrans changent",
+          "it": "Gli ID dei display cambiano",
+          "es": "Los ID de las pantallas cambian",
+          "pl": "Zmieniają się ID wyświetlaczy",
+          "uk": "ID дисплеїв змінюються",
+          "zh-cn": "显示屏 ID 将更改"
+        },
+        "text": {
+          "en": "Example: clients.61c3a1 → clients.display-c3a1. Update old IDs in scripts and VIS. Do not go back to 1.x.",
+          "de": "Beispiel: clients.61c3a1 → clients.display-c3a1. Alte IDs in Skripten und VIS anpassen. Nicht auf 1.x zurückgehen.",
+          "ru": "Пример: clients.61c3a1 → clients.display-c3a1. Обновите старые ID в скриптах и VIS. Не возвращайтесь на 1.x.",
+          "pt": "Exemplo: clients.61c3a1 → clients.display-c3a1. Atualize os IDs antigos em scripts e VIS. Não volte para a 1.x.",
+          "nl": "Voorbeeld: clients.61c3a1 → clients.display-c3a1. Pas oude ID's in scripts en VIS aan. Ga niet terug naar 1.x.",
+          "fr": "Exemple : clients.61c3a1 → clients.display-c3a1. Mettez à jour les anciens ID dans les scripts et VIS. Ne revenez pas à la 1.x.",
+          "it": "Esempio: clients.61c3a1 → clients.display-c3a1. Aggiorna i vecchi ID in script e VIS. Non tornare alla 1.x.",
+          "es": "Ejemplo: clients.61c3a1 → clients.display-c3a1. Actualiza los ID antiguos en scripts y VIS. No vuelvas a la 1.x.",
+          "pl": "Przykład: clients.61c3a1 → clients.display-c3a1. Zaktualizuj stare ID w skryptach i VIS. Nie wracaj do wersji 1.x.",
+          "uk": "Приклад: clients.61c3a1 → clients.display-c3a1. Оновіть старі ID у скриптах і VIS. Не повертайтеся до 1.x.",
+          "zh-cn": "示例：clients.61c3a1 → clients.display-c3a1。请在脚本和 VIS 中更新旧 ID。不要退回 1.x。"
+        },
+        "link": "https://github.com/krobipd/ioBroker.hassemu/blob/main/docs/en/README.md#updating-from-1x",
+        "linkText": {
+          "en": "Details",
+          "de": "Details",
+          "ru": "Подробнее",
+          "pt": "Detalhes",
+          "nl": "Details",
+          "fr": "Détails",
+          "it": "Dettagli",
+          "es": "Detalles",
+          "pl": "Szczegóły",
+          "uk": "Докладніше",
+          "zh-cn": "详情"
+        },
+        "level": "warn",
+        "buttons": [
+          "agree",
+          "cancel"
+        ]
+      }
+    ],
     "plugins": {
       "sentry": {
         "dsn": "https://66f27ceff38c1ce1e6cdcc3095ba06d3@o4511524771266560.ingest.de.sentry.io/4511524773560400"
@@ -126,17 +182,8 @@
       "uk": "Емулює мінімальний сервер Home Assistant, щоб пристрої, що очікують панель Home Assistant, могли відображати будь-яку користувацьку URL-адресу.",
       "zh-cn": "模拟一个最小的Home Assistant服务器，使期望Home Assistant仪表板的设备能够显示任何自定义网址。"
     },
-    "authors": [
-      "krobi <krobi@power-dreams.com>"
-    ],
-    "keywords": [
-      "homeassistant",
-      "hass",
-      "emulator",
-      "dashboard",
-      "redirect",
-      "vis"
-    ],
+    "authors": ["krobi <krobi@power-dreams.com>"],
+    "keywords": ["homeassistant", "hass", "emulator", "dashboard", "redirect", "vis"],
     "licenseInformation": {
       "license": "MIT",
       "type": "free"
@@ -146,12 +193,8 @@
     "extIcon": "https://cdn.jsdelivr.net/gh/krobipd/ioBroker.hassemu@main/admin/hassemu.svg",
     "readme": "https://github.com/krobipd/ioBroker.hassemu/blob/main/README.md",
     "docs": {
-      "en": [
-        "docs/en/README.md"
-      ],
-      "de": [
-        "docs/de/README.md"
-      ]
+      "en": ["docs/en/README.md"],
+      "de": ["docs/de/README.md"]
     },
     "enabled": false,
     "tier": 3,
@@ -162,27 +205,24 @@
     "compact": true,
     "connectionType": "local",
     "dataSource": "push",
+    "dataFolder": "hassemu.%INSTANCE%",
     "adminUI": {
       "config": "json"
     },
     "dependencies": [
       {
-        "js-controller": ">=7.2.2"
+        "js-controller": ">=7.2.5"
       }
     ],
     "globalDependencies": [
       {
-        "admin": ">=8.0.11"
+        "admin": ">=8.3.5"
       }
     ],
     "nogit": true
   },
-  "encryptedNative": [
-    "password"
-  ],
-  "protectedNative": [
-    "password"
-  ],
+  "encryptedNative": ["password"],
+  "protectedNative": ["password"],
   "native": {
     "port": 8123,
     "bind": "0.0.0.0",
@@ -191,7 +231,12 @@
     "password": "",
     "mdnsEnabled": true,
     "serviceName": "ioBroker",
-    "trustProxy": false
+    "trustProxy": false,
+    "secure": false,
+    "certPublic": "",
+    "certPrivate": "",
+    "certChained": "",
+    "leCollection": false
   },
   "objects": [],
   "instanceObjects": [
@@ -319,44 +364,6 @@
       "native": {}
     },
     {
-      "_id": "info.serverUuid",
-      "type": "state",
-      "common": {
-        "name": {
-          "en": "HA-server UUID",
-          "de": "HA-Server-UUID",
-          "ru": "UUID HA-сервера",
-          "pt": "UUID do servidor HA",
-          "nl": "HA-server UUID",
-          "fr": "UUID du serveur HA",
-          "it": "UUID del server HA",
-          "es": "UUID del servidor HA",
-          "pl": "UUID serwera HA",
-          "uk": "UUID HA-сервера",
-          "zh-cn": "HA 服务器 UUID"
-        },
-        "desc": {
-          "en": "Persistent UUID broadcast via mDNS and /api/discovery_info. Generated once on first start and re-used across restarts so HA-Clients don't treat each restart as a new server (which would invalidate cached identity, force re-onboarding and drop tokens).",
-          "de": "Persistente UUID, broadcastet via mDNS und /api/discovery_info. Wird beim ersten Start einmal erzeugt und über Neustarts hinweg wiederverwendet, sodass HA-Clients nicht jeden Neustart als neuen Server behandeln (was die gecachte Identität ungültig machen, Re-Onboarding erzwingen und Tokens verwerfen würde).",
-          "ru": "Постоянный UUID, транслируемый через mDNS и /api/discovery_info. Генерируется один раз при первом старте и переиспользуется при перезапусках, чтобы HA-клиенты не считали каждый рестарт новым сервером.",
-          "pt": "UUID persistente difundido via mDNS e /api/discovery_info. Gerado uma vez no primeiro arranque e reutilizado entre reinícios para que os clientes HA não tratem cada reinício como um novo servidor.",
-          "nl": "Persistente UUID die via mDNS en /api/discovery_info wordt uitgezonden. Wordt eenmaal gegenereerd bij de eerste start en blijft over herstarts behouden zodat HA-clients elke herstart niet als nieuwe server zien.",
-          "fr": "UUID persistant diffusé via mDNS et /api/discovery_info. Généré une fois au premier démarrage et réutilisé entre redémarrages, ainsi les clients HA ne traitent pas chaque redémarrage comme un nouveau serveur.",
-          "it": "UUID persistente trasmesso via mDNS e /api/discovery_info. Generato una volta al primo avvio e riutilizzato tra i riavvii: così i client HA non considerano ogni riavvio come un nuovo server.",
-          "es": "UUID persistente difundido vía mDNS y /api/discovery_info. Se genera una vez en el primer arranque y se reutiliza entre reinicios para que los clientes HA no traten cada reinicio como un servidor nuevo.",
-          "pl": "Trwały UUID rozgłaszany przez mDNS i /api/discovery_info. Generowany raz przy pierwszym starcie i ponownie używany przy restartach, aby klienci HA nie traktowali każdego restartu jako nowego serwera.",
-          "uk": "Постійний UUID, що транслюється через mDNS та /api/discovery_info. Створюється один раз при першому запуску й повторно використовується після перезапусків, щоб HA-клієнти не сприймали кожен перезапуск як новий сервер.",
-          "zh-cn": "通过 mDNS 和 /api/discovery_info 广播的持久 UUID。首次启动时生成一次，重启之间复用，避免 HA 客户端每次重启都视为新服务器。"
-        },
-        "type": "string",
-        "role": "text",
-        "read": true,
-        "write": false,
-        "def": ""
-      },
-      "native": {}
-    },
-    {
       "_id": "info.refreshUrls",
       "type": "state",
       "common": {
@@ -411,8 +418,8 @@
           "uk": "Глобальний режим redirect",
           "zh-cn": "全局重定向模式"
         },
-        "type": "mixed",
-        "role": "state",
+        "type": "string",
+        "role": "text",
         "read": true,
         "write": true,
         "def": "0",

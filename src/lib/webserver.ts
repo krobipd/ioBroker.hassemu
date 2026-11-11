@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import http from "node:http";
+import https from "node:https";
 import net from "node:net";
 import fastifyCookie from "@fastify/cookie";
 import fastifyFormbody from "@fastify/formbody";
@@ -35,6 +36,7 @@ import { errText } from "./err-text";
 import { LogOnce } from "./log-once";
 import { evictOldest } from "./object-utils";
 import {
+  type AuthorizeErrorReason,
   buildRedirectUrl,
   renderAuthorizeContinue,
   renderAuthorizeError,
@@ -49,6 +51,8 @@ import type { ClientRegistry } from "./client-registry";
 import type { GlobalConfig } from "./global-config";
 import { renderLandingPage } from "./landing-page";
 import { advertisedBaseUrl } from "./network";
+import type { TlsSetup } from "./tls";
+import { chosenAddress, isOwnPeer } from "./network-address";
 import { resolveRedirect, resolveRedirectWithChain } from "./redirect-resolver";
 import { renderRedirectWrapper } from "./redirect-wrapper";
 import { TargetHealth, probeTarget, type TargetProbe } from "./target-health";
@@ -165,6 +169,8 @@ export class WebServer {
    */
   public readonly inject!: WebserverInject;
   public readonly instanceUuid: string;
+  /** The HTTPS part (K4), or `null` for plain HTTP. */
+  private readonly tlsSetup: TlsSetup | null;
   /** ioBroker system language for the setup page — resolved on startup. */
   public readonly systemLanguage: string;
   /**
@@ -180,16 +186,12 @@ export class WebServer {
    */
   private readonly requestErrors: LogOnce;
   /**
-   * ONE window for invalid-credential warnings, not one per address: keyed per IP, 300
-   * attempts from 300 addresses (IPv4 aliases in the LAN, or a rotated X-Forwarded-For
-   * with trustProxy) were 300 warn lines (audit 2026-09-25, H5). The first attempt of a
-   * window is a warn; the next warn after the window reports how many followed.
+   * Invalid-credential lines through the fleet master, under ONE key for every address:
+   * keyed per IP, 300 attempts from 300 addresses (IPv4 aliases in the LAN, or a rotated
+   * X-Forwarded-For with trustProxy) were 300 warn lines (audit 2026-09-25, H5). The first
+   * attempt of a {@link REQUEST_ERROR_COOLDOWN_MS} window is a warn, every further one debug.
    */
-  private invalidCreds: { windowStart: number; suppressed: number; addresses: Set<string> } = {
-    windowStart: 0,
-    suppressed: 0,
-    addresses: new Set(),
-  };
+  private readonly invalidCredentials: LogOnce;
 
   /**
    * @param adapter        Adapter instance used for logging, timers and namespace.
@@ -200,6 +202,7 @@ export class WebServer {
    * @param systemLanguage ioBroker system language (`en`, `de`, …) used for the setup page.
    * @param targetProbe    Reachability probe for redirect targets (test seam; default {@link probeTarget}).
    * @param httpLimits     HTTP time limits (test seam; default {@link DEFAULT_HTTP_LIMITS}).
+   * @param tlsSetup       The HTTPS part (K4), or `null` for plain HTTP — the default.
    */
   constructor(
     adapter: WebServerAdapter,
@@ -210,22 +213,32 @@ export class WebServer {
     systemLanguage: string = "en",
     targetProbe: TargetProbe = probeTarget,
     httpLimits: HttpLimits = DEFAULT_HTTP_LIMITS,
+    tlsSetup: TlsSetup | null = null,
   ) {
     this.adapter = adapter;
+    this.tlsSetup = tlsSetup;
     this.config = config;
     this.registry = registry;
     this.globalConfig = globalConfig;
     this.instanceUuid = instanceUuid;
     this.systemLanguage = systemLanguage;
-    this.targetHealth = new TargetHealth(adapter, targetProbe);
+    // The probe goes out from the chosen address — the only one the adapter connects on
+    // (krobi 2026-10-03, review 2026-11-07, R-20); undefined lets the system pick.
+    const localAddress = chosenAddress(config.bind);
+    this.targetHealth = new TargetHealth(adapter, (url, timeoutMs) => targetProbe(url, timeoutMs, localAddress));
     this.requestErrors = new LogOnce(adapter.log, {
       windowMs: REQUEST_ERROR_COOLDOWN_MS,
       maxKeys: REQUEST_ERROR_COOLDOWN_CAP,
     });
+    this.invalidCredentials = new LogOnce(adapter.log, { windowMs: REQUEST_ERROR_COOLDOWN_MS });
     // M5: update-only. A byCookie miss is a deliberate no-op — the client was removed
     // while the lookup ran, and minting one here would create a ghost with a cookie no
     // display owns.
-    this.hostnames = new HostnameResolver(adapter, (cookie, hostname) => registry.updateHostname(cookie, hostname));
+    this.hostnames = new HostnameResolver(
+      adapter,
+      (cookie, hostname) => registry.updateHostname(cookie, hostname),
+      localAddress,
+    );
     // v1.25.0 (C11): trustProxy is opt-in through the config — enable it only when the
     // adapter runs BEHIND a trusted reverse proxy that terminates TLS. With
     // trustProxy=true Fastify takes `req.ip` from `X-Forwarded-For` (instead of the
@@ -247,10 +260,14 @@ export class WebServer {
       trustProxy: this.config.trustProxy === true,
       forceCloseConnections: true,
       serverFactory: (handler, options) => {
-        const server = http.createServer(
-          { requestTimeout: httpLimits.requestTimeoutMs, connectionsCheckingInterval: httpLimits.checkIntervalMs },
-          handler,
-        );
+        const limits = {
+          requestTimeout: httpLimits.requestTimeoutMs,
+          connectionsCheckingInterval: httpLimits.checkIntervalMs,
+        };
+        // HTTPS (K4) takes the same limits — the request limit must reach the constructor on both.
+        const server = tlsSetup
+          ? https.createServer({ ...limits, ...tlsSetup.options }, handler)
+          : http.createServer(limits, handler);
         // fastify always hands over its keep-alive timeout (default 72 s).
         server.keepAliveTimeout = (options as { keepAliveTimeout: number }).keepAliveTimeout;
         server.setTimeout(httpLimits.connectionTimeoutMs);
@@ -311,6 +328,7 @@ export class WebServer {
         socket.terminate();
       },
     });
+    this.setupPeerGuard();
     this.setupAuthGuard();
     this.setupErrorHandler();
     this.setupRoutes();
@@ -626,9 +644,9 @@ export class WebServer {
       this.adapter.log.debug(`identify: ${reason}, new client=${record.id} ip=${ip ?? "?"}`);
       // v1.25.0 (C11): cookie `secure: true` under TLS — the browser then sends the
       // cookie over HTTPS only. With trustProxy=true `req.protocol` comes from the
-      // `X-Forwarded-Proto` header. Default without trustProxy: `req.protocol === 'http'`
-      // (the adapter is HTTP only), so the cookie is not secure — otherwise the browser
-      // would never send it.
+      // `X-Forwarded-Proto` header, otherwise from the socket: `https` with the HTTPS option
+      // (K4), `http` without it — then the cookie is not secure, or the browser would never
+      // send it.
       const useSecure = req.protocol === "https";
       // v1.32.0 A2: trace the cookie secure decision — with a wrong trustProxy setting
       // the display may never send the cookie back.
@@ -645,7 +663,7 @@ export class WebServer {
     // under the very flood the throttle exists for, each request sent a PTR query whose
     // answer had nowhere to go (audit 2026-09-25, H3).
     if (ip && record.persistent) {
-      this.hostnames.resolve({ id: record.id, cookie: record.cookie, hasHostname: !!record.hostname }, ip);
+      this.hostnames.resolve({ id: record.id, cookie: record.cookie }, ip);
     }
     return record;
   }
@@ -664,6 +682,28 @@ export class WebServer {
    *
    * With `authRequired=false` the hook does nothing.
    */
+  /**
+   * Only a client in the chosen network — or, with every address, in one of the host's own
+   * networks — is answered (krobi 2026-10-03 00:27, fleet master `isOwnPeer`; review
+   * 2026-11-07, R-20: a display in a routed VLAN needs the address of that network chosen,
+   * krobi 2026-11-07 11:55). Judged on the socket peer, never on `X-Forwarded-For`: with
+   * trustProxy the header names the proxy's client, the peer on the wire is the proxy. The
+   * first hook, so the websocket upgrade and every public route pass it too. A refused
+   * client gets a bare 403 and the connection closes.
+   */
+  private setupPeerGuard(): void {
+    this.app.addHook("onRequest", async (req, reply) => {
+      const peer = req.socket.remoteAddress;
+      if (isOwnPeer(peer, chosenAddress(this.config.bind))) {
+        return;
+      }
+      this.adapter.log.debug(
+        `${req.method} ${(req.url ?? "/").split("?")[0]} [${peer ?? "unknown"}] refused (403) — not in the adapter's networks`,
+      );
+      return reply.code(403).header("connection", "close").send();
+    });
+  }
+
   private setupAuthGuard(): void {
     this.app.addHook("preHandler", async (req, reply) => {
       if (!this.config.authRequired) {
@@ -770,7 +810,7 @@ export class WebServer {
       // v1.17.0 (E11): never `req.hostname` — the Host header is client-controlled, and
       // `Host: attacker.lan` would point other HA clients at a wrong URL. The bound address,
       // identical to the mDNS advert; an IPv6 address in brackets (H10).
-      const baseUrl = advertisedBaseUrl(this.config.bind, this.config.port);
+      const baseUrl = advertisedBaseUrl(this.config.bind, this.config.port, this.tlsSetup);
       return {
         base_url: baseUrl,
         external_url: null,
@@ -799,6 +839,8 @@ export class WebServer {
         return token ? this.registry.getByToken(token) : null;
       },
       buildHaConfig: () => this.buildHaConfig(),
+      // setAppName never rejects — the app gets its answer regardless.
+      onDeviceName: (clientId, deviceName) => void this.registry.setAppName(clientId, deviceName),
     });
   }
 
@@ -839,28 +881,28 @@ export class WebServer {
     redirectUri: unknown,
   ): { ok: true; clientId: string; redirectUri: string } | { ok: false; html: string } {
     // L46: one place to set the 400/text-html reply + render the error page, so
-    // the three rejection branches show only what varies (reason + detail + log).
-    const fail = (reason: string, detail: string): { ok: false; html: string } => {
+    // the three rejection branches show only what varies (reason + log).
+    const fail = (reason: AuthorizeErrorReason): { ok: false; html: string } => {
       reply.status(400).type("text/html");
-      return { ok: false, html: renderAuthorizeError(reason, detail, this.systemLanguage) };
+      return { ok: false, html: renderAuthorizeError(reason, this.systemLanguage) };
     };
     if (responseType !== "code") {
       this.adapter.log.debug(
         `Authorize ${method} rejected: response_type=${describeUntrusted(responseType)} (expected 'code')`,
       );
-      return fail("unsupported_response_type", "This authorization server supports `response_type=code` only.");
+      return fail("unsupported_response_type");
     }
     if (typeof clientId !== "string" || typeof redirectUri !== "string") {
       this.adapter.log.debug(
         `Authorize ${method} rejected: missing client_id or redirect_uri (cid=${typeof clientId}, ru=${typeof redirectUri})`,
       );
-      return fail("invalid_request", "Missing or invalid `client_id` or `redirect_uri` parameter.");
+      return fail("invalid_request");
     }
     if (!isValidRedirectUri(clientId, redirectUri)) {
       this.adapter.log.debug(
         `Authorize ${method} rejected: redirect_uri "${oneLine(redirectUri)}" not allowed for client_id "${oneLine(clientId)}"`,
       );
-      return fail("invalid_redirect_uri", "The `redirect_uri` parameter is not on the allowlist for this client.");
+      return fail("invalid_redirect_uri");
     }
     return { ok: true, clientId, redirectUri };
   }
@@ -889,7 +931,7 @@ export class WebServer {
     const target = buildRedirectUrl(redirectUri, code, state);
     reply.type("text/html");
     if (mayAutoRedirect(oauthClientId, redirectUri, requestHost)) {
-      return renderAuthorizeRedirect(target);
+      return renderAuthorizeRedirect(target, this.systemLanguage);
     }
     const host = WebServer.hostOf(redirectUri);
     this.adapter.log.debug(
@@ -950,35 +992,6 @@ export class WebServer {
     const userOk = safeStringEqual(username, this.config.username);
     const passOk = safeStringEqual(password, this.config.password);
     return userOk && passOk;
-  }
-
-  /**
-   * Log an invalid-credentials attempt: the first of a {@link REQUEST_ERROR_COOLDOWN_MS}
-   * window at warn, every further one at debug; the first warn after the window names how
-   * many followed and from how many addresses. The summary appears with that next attempt —
-   * no timer of its own. Log-dedup only — NOT a lockout (removed in v1.31.0, stays removed).
-   * v1.37.0 (M3), one global window since audit 2026-09-25 (H5).
-   *
-   * @param ip Client IP, or null.
-   */
-  private logInvalidCredentials(ip: string | null): void {
-    const now = Date.now();
-    const w = this.invalidCreds;
-    const where = ip ? ` (IP ${ip})` : "";
-    if (w.windowStart !== 0 && now - w.windowStart <= REQUEST_ERROR_COOLDOWN_MS) {
-      w.suppressed++;
-      if (ip && w.addresses.size < REQUEST_ERROR_COOLDOWN_CAP) {
-        w.addresses.add(ip);
-      }
-      this.adapter.log.debug(`Invalid credentials (repeat)${where}`);
-      return;
-    }
-    const summary =
-      w.suppressed > 0
-        ? ` — ${w.suppressed} further attempt(s) from ${w.addresses.size} address(es) in the previous window were logged at debug`
-        : "";
-    this.adapter.log.warn(`Invalid credentials${where}${summary}`);
-    this.invalidCreds = { windowStart: now, suppressed: 0, addresses: new Set() };
   }
 
   private setupAuthRoutes(): void {
@@ -1056,7 +1069,11 @@ export class WebServer {
 
       const ip = WebServer.getClientIp(req);
       if (!this.credentialsValid(username, password)) {
-        this.logInvalidCredentials(ip);
+        // LogOnce: the first refusal of a window warns, every further one is debug — one key and
+        // one kind for every address, so a new address is no new warn (H5). Not a lockout.
+        this.invalidCredentials.report("invalid-credentials", `Invalid credentials${ip ? ` (IP ${ip})` : ""}`, {
+          kind: "invalid-credentials",
+        });
         reply.status(401).type("text/html");
         return renderAuthorizeForm(
           { clientId: v.clientId, redirectUri: v.redirectUri, state },
@@ -1116,7 +1133,10 @@ export class WebServer {
           const ip = WebServer.getClientIp(req);
           const { username, password } = req.body ?? {};
           if (!this.credentialsValid(username, password)) {
-            this.logInvalidCredentials(ip);
+            // The same LogOnce key and kind as the authorize form: one warn per window for both paths.
+            this.invalidCredentials.report("invalid-credentials", `Invalid credentials${ip ? ` (IP ${ip})` : ""}`, {
+              kind: "invalid-credentials",
+            });
             reply.status(400);
             return {
               type: "form",
@@ -1395,7 +1415,9 @@ export class WebServer {
 
   private setupNotFound(): void {
     this.app.setNotFoundHandler((req, reply) => {
-      this.adapter.log.debug(`404: ${req.method} ${req.url}`);
+      // Without the query: a client may carry a credential in it, and no log line names one
+      // (fleet rule, krobi 2026-11-11 18:17/18:20). The answer below goes to the requester only.
+      this.adapter.log.debug(`404: ${req.method} ${(req.url ?? "/").split("?")[0]}`);
       reply.status(404).send({ error: "Not Found", path: req.url });
     });
   }

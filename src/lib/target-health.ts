@@ -8,7 +8,7 @@ import type { AdapterInterface } from "./types";
  * Probe seam for {@link TargetHealth} — production uses {@link probeTarget},
  * tests inject a fake to steer reachability without sockets.
  */
-export type TargetProbe = (url: string, timeoutMs: number) => Promise<boolean>;
+export type TargetProbe = (url: string, timeoutMs: number, localAddress?: string) => Promise<boolean>;
 
 /**
  * One reachability probe of a redirect target (v1.39.0).
@@ -33,10 +33,14 @@ export type TargetProbe = (url: string, timeoutMs: number) => Promise<boolean>;
  * (A socket-inactivity `timeout` option existed briefly alongside it; the
  * mutation audit proved the signal always fires first, making it dead code.)
  *
- * @param url       Target URL as resolved for the display.
- * @param timeoutMs Abort the attempt after this many milliseconds.
+ * The connection goes out from `localAddress` when one is chosen — the only address the
+ * adapter connects on (krobi 2026-10-03, review 2026-11-07, R-20).
+ *
+ * @param url          Target URL as resolved for the display.
+ * @param timeoutMs    Abort the attempt after this many milliseconds.
+ * @param localAddress The chosen address to connect from; undefined lets the system pick.
  */
-export function probeTarget(url: string, timeoutMs: number): Promise<boolean> {
+export function probeTarget(url: string, timeoutMs: number, localAddress?: string): Promise<boolean> {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -55,10 +59,13 @@ export function probeTarget(url: string, timeoutMs: number): Promise<boolean> {
       }
     };
     const isHttps = parsed.protocol === "https:";
-    const options: { method: string; signal: AbortSignal; rejectUnauthorized?: boolean } = {
+    const options: { method: string; signal: AbortSignal; rejectUnauthorized?: boolean; localAddress?: string } = {
       method: "GET",
       signal: AbortSignal.timeout(timeoutMs),
     };
+    if (localAddress !== undefined) {
+      options.localAddress = localAddress;
+    }
     if (isHttps) {
       options.rejectUnauthorized = false;
     }

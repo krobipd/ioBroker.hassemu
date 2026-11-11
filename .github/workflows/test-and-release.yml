@@ -26,6 +26,10 @@ on:
   pull_request:
     branches:
       - main
+  # The prover's own trigger (round 51): the repochecker judges the LATEST run on the default branch (E3031).
+  # After a red run, a fix that only touches filtered files (a README the standard checks read) starts no run,
+  # and main stays red. The release run then starts this workflow on HEAD by hand — nothing else uses it.
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.ref }}
@@ -193,18 +197,68 @@ jobs:
             exit 1
           fi
 
+  release-tag-guard:
+    # Runs on every event and passes on anything but a release tag: ci-passed counts a skipped job as failed, so a
+    # job-level tag condition would turn every pull request red.
+    if: contains(github.event.head_commit.message, '[skip ci]') == false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: A release tag sits on the default branch and names the manifest version
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          # The deploy job publishes whatever package.json says, for whatever commit the tag points to
+          # (ioBroker/testing-action-deploy compares neither). The release script pushes the branch first and the
+          # tag second, so a real release tag is always on the default branch by the time this runs. What this job
+          # cannot see: whether the local release run (the stamp) happened — that stays the pre-push guard's job.
+          case "$GITHUB_REF" in
+            refs/tags/v*) ;;
+            *)
+              echo "not a release tag ($GITHUB_REF) — nothing to check"
+              exit 0
+              ;;
+          esac
+          TAG="${GITHUB_REF#refs/tags/}"
+          PKG="v$(jq -r '.version // ""' package.json)"
+          FAIL=0
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error ::Tag $TAG does not match package.json version $PKG — npm would publish $PKG"
+            FAIL=1
+          fi
+          # Every adapter carries io-package.json; a plain npm package (the check package itself) does not.
+          if [ -f io-package.json ]; then
+            IOPKG="v$(jq -r '.common.version // ""' io-package.json)"
+            if [ "$TAG" != "$IOPKG" ]; then
+              echo "::error ::Tag $TAG does not match io-package.json common.version $IOPKG"
+              FAIL=1
+            fi
+          fi
+          git fetch --no-tags origin "+refs/heads/${DEFAULT_BRANCH}:refs/remotes/origin/${DEFAULT_BRANCH}"
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" "origin/${DEFAULT_BRANCH}"; then
+            echo "::error ::Tag $TAG points to $GITHUB_SHA, which is not on ${DEFAULT_BRANCH} — a release is cut from the default branch only"
+            FAIL=1
+          fi
+          if [ "$FAIL" -ne 0 ]; then
+            exit 1
+          fi
+          echo "✓ $TAG is on ${DEFAULT_BRANCH} and matches the manifest version"
+
   ci-passed:
     # The one required check of the automerge ruleset: green only when every job that deploy waits for
     # is green (every matrix leg, every gate job); a job skipped because of a red dependency fails it.
     if: ${{ !cancelled() }}
-    needs: [check-and-lint, adapter-tests, repochecker-version-gate, workflow-lint, adapter-inventory]
+    needs: [check-and-lint, adapter-tests, repochecker-version-gate, workflow-lint, adapter-inventory, release-tag-guard]
     runs-on: ubuntu-latest
     steps:
       - name: Every job deploy waits for passed
         run: echo '${{ toJSON(needs.*.result) }}' | jq -e 'all(. == "success")'
 
   deploy:
-    needs: [check-and-lint, adapter-tests, repochecker-version-gate, workflow-lint, adapter-inventory]
+    needs: [check-and-lint, adapter-tests, repochecker-version-gate, workflow-lint, adapter-inventory, release-tag-guard]
     if: |
       contains(github.event.head_commit.message, '[skip ci]') == false &&
       github.event_name == 'push' &&

@@ -22,26 +22,26 @@ import type { AdapterInterface } from "./types";
 
 /**
  * Decides whether a reverse-DNS lookup should be attempted for a client IP. Skips when
- * the client already has a hostname, a lookup for that IP is already in flight, or the
- * IP resolved to no hostname within the negative-cache window (the LAN norm for DHCP
- * clients without a PTR record \u2014 L6). Pure so the negative-cache decision is unit-testable
- * without driving real DNS or timers. v1.38.0 (I8).
+ * a lookup already named the client at this IP during this run, a lookup for that IP is
+ * already in flight, or the IP resolved to no hostname within the negative-cache window
+ * (the LAN norm for DHCP clients without a PTR record \u2014 L6). Pure so the negative-cache
+ * decision is unit-testable without driving real DNS or timers. v1.38.0 (I8).
  *
  * @param opts                 Reverse-DNS decision inputs.
- * @param opts.hasHostname     True if the client already has a resolved hostname.
+ * @param opts.answered        True if a lookup already named the client at this IP during this run.
  * @param opts.inFlight        True if a lookup for this IP is already running.
  * @param opts.lastNegative    Timestamp (ms) of the last no-hostname result, or undefined.
  * @param opts.now             Current time in ms.
  * @param opts.negativeCacheMs Negative-cache window in ms.
  */
 export function shouldAttemptReverseDns(opts: {
-  hasHostname: boolean;
+  answered: boolean;
   inFlight: boolean;
   lastNegative: number | undefined;
   now: number;
   negativeCacheMs: number;
 }): boolean {
-  if (opts.hasHostname || opts.inFlight) {
+  if (opts.answered || opts.inFlight) {
     return false;
   }
   if (opts.lastNegative !== undefined && opts.now - opts.lastNegative < opts.negativeCacheMs) {
@@ -54,10 +54,8 @@ export function shouldAttemptReverseDns(opts: {
 export interface HostnameTarget {
   /** Short client id — used for log anchors only. */
   id: string;
-  /** Cookie identifying the client to the registry when the lookup returns. */
+  /** Cookie identifying the client to the registry when the lookup returns, and to {@link HostnameResolver}'s run memory. */
   cookie: string;
-  /** Whether this client already carries a hostname (then nothing is looked up). */
-  hasHostname: boolean;
 }
 
 /** Callback invoked with a successfully resolved hostname. */
@@ -70,6 +68,8 @@ export type HostnameSink = (cookie: string, hostname: string) => Promise<void>;
 export class HostnameResolver {
   private readonly adapter: AdapterInterface;
   private readonly sink: HostnameSink;
+  /** The reverse lookup — through a resolver bound to the chosen address when there is one. */
+  private readonly reverse: (ip: string) => Promise<string[]>;
   /**
    * Set by {@link dispose}: a lookup still running at the stop must not write anything
    * afterwards — its answer used to rename a display after "Web server stopped" (audit
@@ -78,6 +78,12 @@ export class HostnameResolver {
   private disposed = false;
   /** IPs whose reverse lookup is currently running — prevents duplicate work. */
   private readonly inFlight = new Set<string>();
+  /**
+   * Cookie → the IP a lookup named that display at during this run (K7). A display's host name is stored and names
+   * it from the start on; it is looked up once per run and IP, so a name changed in the network arrives without a
+   * lookup on every poll. Keyed by the cookie, which no other display ever holds; capped like {@link negativeCache}.
+   */
+  private readonly answered = new Map<string, string>();
   /**
    * IP → time a lookup last yielded no hostname. Re-queried only after
    * {@link DNS_NEGATIVE_CACHE_MS}; pruned by {@link prune}, dropped by {@link clear}.
@@ -89,9 +95,23 @@ export class HostnameResolver {
    * @param sink    Receives `(cookie, hostname)` for a successful lookup — the registry's
    *                update path, which is a no-op if the client vanished meanwhile (M5).
    */
-  constructor(adapter: AdapterInterface, sink: HostnameSink) {
+  /**
+   * @param adapter      Adapter surface (logging, timers).
+   * @param sink         Where a found hostname goes.
+   * @param localAddress The chosen address the lookups go out from — the only one the
+   *                     adapter sends on (krobi 2026-10-03, review 2026-11-07, R-20);
+   *                     undefined lets the system pick.
+   */
+  constructor(adapter: AdapterInterface, sink: HostnameSink, localAddress?: string) {
     this.adapter = adapter;
     this.sink = sink;
+    if (localAddress === undefined) {
+      this.reverse = ip => dns.reverse(ip);
+    } else {
+      const resolver = new dns.Resolver();
+      resolver.setLocalAddress(localAddress);
+      this.reverse = ip => resolver.reverse(ip);
+    }
   }
 
   /**
@@ -110,7 +130,7 @@ export class HostnameResolver {
     // negative-cache window is unit-testable without driving real DNS.
     if (
       !shouldAttemptReverseDns({
-        hasHostname: target.hasHostname,
+        answered: this.answered.get(target.cookie) === ip,
         inFlight: this.inFlight.has(ip),
         lastNegative: this.negativeCache.get(ip),
         now: Date.now(),
@@ -131,7 +151,7 @@ export class HostnameResolver {
         DNS_REVERSE_TIMEOUT_MS,
       );
     });
-    Promise.race([dns.reverse(ip), timeout])
+    Promise.race([this.reverse(ip), timeout])
       .then(names => {
         if (this.disposed) {
           return;
@@ -141,6 +161,9 @@ export class HostnameResolver {
           // v1.32.0 A4: the IP→hostname resolution is the anchor for "why does display X
           // have hostname Y?". L1(a): a PTR label is attacker-influenceable — flatten it.
           this.adapter.log.debug(`resolveHostname: ip=${ip} → hostname=${oneLine(name)}`);
+          this.answered.delete(target.cookie);
+          evictOldest(this.answered, DNS_NEGATIVE_CACHE_CAP);
+          this.answered.set(target.cookie, ip);
           this.sink(target.cookie, name).catch(err =>
             this.adapter.log.debug(`resolveHostname: persist for ${target.id} failed — ${errText(err)}`),
           );
@@ -154,6 +177,8 @@ export class HostnameResolver {
         }
         // v1.32.0 A3: reverse DNS fails on a LAN often and legitimately → debug, but with
         // a diagnostic anchor. L6: cache the failure so it is not retried every poll.
+        // A failure never clears a stored host name (K7): Node's reverse lookup answers a silent, failing or refusing
+        // resolver with the same ENOTFOUND as a missing PTR record (measured 2026-11-11, Node 22.22.2).
         this.rememberNegative(ip);
         this.adapter.log.debug(`resolveHostname: ip=${ip} failed — ${errText(err)}`);
       })
@@ -206,6 +231,7 @@ export class HostnameResolver {
     this.disposed = true;
     this.inFlight.clear();
     this.negativeCache.clear();
+    this.answered.clear();
   }
 
   /** In-flight lookup count — test seam. */

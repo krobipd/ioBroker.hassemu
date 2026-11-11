@@ -14,7 +14,7 @@
 
 import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
-import { oneLine } from "./coerce";
+import { isPlainObject, oneLine } from "./coerce";
 import { evictOldest } from "./object-utils";
 import { WEBHOOK_REGISTRATIONS_CAP } from "./constants";
 import type { AdapterInterface, ClientRecord } from "./types";
@@ -35,6 +35,12 @@ export interface MobileAppDeps {
   clientForBearer: (authorization: unknown) => ClientRecord | null;
   /** `/api/config`-shaped object — one source shared with the REST route and the WS. */
   buildHaConfig: () => Record<string, unknown>;
+  /**
+   * The app reported the device name the user gave it (K7) — in the registration and in every
+   * `update_registration` (Android 2026.11.1 `IntegrationRepositoryImpl.kt:121–127`, `:162–163`, `:712–733`:
+   * `device_name` of `RegisterDeviceRequest`). Only for a registration owned by a display; the value is untrusted.
+   */
+  onDeviceName: (clientId: string, deviceName: unknown) => void;
 }
 
 /**
@@ -105,6 +111,9 @@ export function registerMobileAppRoutes(app: FastifyInstance, deps: MobileAppDep
     deps.adapter.log.debug(
       `Mobile-App registration — client=${ownerId} app_id=${oneLine(body.app_id ?? "?")} device_name=${oneLine(body.device_name ?? "?")} → webhook=${webhookId.substring(0, 8)}…`,
     );
+    if (ownerId) {
+      deps.onDeviceName(ownerId, body.device_name);
+    }
 
     reply.status(201);
     return mobileRegResponse(webhookId);
@@ -181,8 +190,13 @@ export function registerMobileAppRoutes(app: FastifyInstance, deps: MobileAppDep
         return [];
       case "render_template":
         return {};
-      case "update_registration":
+      case "update_registration": {
+        const owner = deps.registrations.get(id);
+        if (owner && isPlainObject(body.data)) {
+          deps.onDeviceName(owner, body.data.device_name);
+        }
         return mobileRegResponse(id);
+      }
       case "register_sensor":
         return { success: true };
       case "update_sensor_states":

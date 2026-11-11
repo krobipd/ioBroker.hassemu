@@ -19,7 +19,7 @@ export interface InstanceObjectSchema {
 
 /** Default repair targets: (state id, expected `common.type`). L27: file-local (no external importer). */
 const DEFAULT_REPAIR_TARGETS: ReadonlyArray<readonly [string, string]> = [
-  ["global.mode", "mixed"],
+  ["global.mode", "string"],
   ["global.manualUrl", "string"],
 ];
 

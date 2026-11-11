@@ -1,3 +1,5 @@
+// Fleet master — the release run copies this file byte for byte into every adapter; change it in
+// Entwicklung/.consistency-master, never in an adapter.
 import config from "@iobroker/eslint-config";
 
 export default [
@@ -6,36 +8,57 @@ export default [
     languageOptions: {
       parserOptions: {
         projectService: {
-          // The vitest config is the only linted file outside every tsconfig include
-          // (`*.config.mjs` is ignored below, the ioBroker template files under `test/`
-          // are .js and ignored, the standards suite is covered by tsconfig.json and the
-          // inventory require-hook by test/tsconfig.json).
-          allowDefaultProject: ["vitest.config.mts"],
+          // Only files no tsconfig covers stand here — typescript-eslint refuses a file that is in both. The root
+          // tsconfig covers src/ and test/**/*.ts, test/tsconfig.json the test hooks (*.cjs, *.mjs).
+          allowDefaultProject: ["*.mjs", "*.mts", "scripts/*.mjs"],
         },
         tsconfigRootDir: import.meta.dirname,
       },
     },
   },
   {
+    // No finding is switched off in the code: an inline `eslint-disable` (or any other inline config) has no effect and
+    // lint names it, and `@ts-expect-error` is banned like `@ts-ignore` — a finding is fixed, or its exception goes
+    // through the workshop with krobi's go (round 109).
+    linterOptions: {
+      noInlineConfig: true,
+    },
     rules: {
       "@typescript-eslint/no-floating-promises": "error",
+      "@typescript-eslint/ban-ts-comment": [
+        "error",
+        { "ts-expect-error": true, "ts-ignore": true, "ts-nocheck": true, "ts-check": false },
+      ],
+    },
+  },
+  {
+    // JavaScript carries its types in JSDoc, and test/tsconfig.json type-checks the test hooks (round 154). The base
+    // applies the TypeScript preset to every file, whose `check-tag-names` (typed) calls @type/@typedef/@property
+    // redundant; for JavaScript the rule takes the form of the plugin's own preset for JS with TypeScript types
+    // (`flat/recommended-typescript-flavor`). The base already lifts `jsdoc/no-types` for these files. The option is
+    // spelled out: a bare severity keeps the options an earlier config gave the rule (flat config).
+    files: ["**/*.js", "**/*.cjs", "**/*.mjs"],
+    rules: {
+      "jsdoc/check-tag-names": ["warn", { typed: false }],
     },
   },
   {
     ignores: [
-      // Session files of the note-taking hook: its cooldown marker
-      // tmp/last-ndc.ts is a timestamp, not TypeScript — never lint them.
+      // Session files of the note-taking hook: its cooldown marker tmp/last-ndc.ts is a timestamp, not TypeScript.
       ".remember/**",
       ".dev-server/",
       ".vscode/",
       "*.test.js",
-      // Only the ioBroker template files stay out — the synchronised standards suite
-      // test/standards/repo-standards.test.ts is linted like every test file.
+      // The ioBroker template files and the mocha inventory harness under test/ run outside the TypeScript project.
       "test/*.js",
       "*.config.mjs",
+      "tasks.js",
       "build",
-      "admin",
+      // Generated coverage report (npm run coverage) — never lint it.
       "coverage",
+      "admin",
+      // The admin component is its own project with its own eslint.config.mjs.
+      "src-admin",
       "node_modules",
       "**/adapter-config.d.ts",
     ],

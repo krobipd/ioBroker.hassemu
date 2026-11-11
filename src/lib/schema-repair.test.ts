@@ -42,7 +42,7 @@ const INSTANCE_OBJECTS: InstanceObjectSchema[] = [
   {
     _id: "global.mode",
     type: "state",
-    common: { type: "mixed", name: "Mode", role: "state", read: true, write: true, def: 0 },
+    common: { type: "string", name: "Mode", role: "text", read: true, write: true, def: "0" },
     native: {},
   },
   {
@@ -57,11 +57,21 @@ describe("schema-repair", () => {
   describe("repairGlobalSchemas", () => {
     it("skips well-formed objects (no extendObject write)", async () => {
       const { adapter, extendCalls } = mockAdapter({
-        "global.mode": { type: "state", common: { type: "mixed" } },
+        "global.mode": { type: "state", common: { type: "string" } },
         "global.manualUrl": { type: "state", common: { type: "string" } },
       });
       await repairGlobalSchemas(adapter, INSTANCE_OBJECTS);
       expect(extendCalls).to.have.length(0);
+    });
+
+    it("an existing `mixed` global.mode (the old manifest) is brought to the text schema (R-17)", async () => {
+      const { adapter, extendCalls } = mockAdapter({
+        "global.mode": { type: "state", common: { type: "mixed" } },
+        "global.manualUrl": { type: "state", common: { type: "string" } },
+      });
+      await repairGlobalSchemas(adapter, INSTANCE_OBJECTS);
+      expect(extendCalls.map(c => c.id)).to.deep.equal(["global.mode"]);
+      expect(extendCalls[0].obj.common).to.deep.equal(INSTANCE_OBJECTS[0].common);
     });
 
     it("repairs a partial object (wrong/missing common.type) from the instanceObjects schema", async () => {
@@ -99,7 +109,7 @@ describe("schema-repair", () => {
 
     it("defaults native to {} when the schema has no native field", async () => {
       const { adapter, extendCalls } = mockAdapter({
-        "global.mode": { type: "state", common: { type: "mixed" } }, // ok
+        "global.mode": { type: "state", common: { type: "string" } }, // ok
         "global.manualUrl": { type: "state", common: {} }, // needs repair, schema has no native
       });
       await repairGlobalSchemas(adapter, INSTANCE_OBJECTS);

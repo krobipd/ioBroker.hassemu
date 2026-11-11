@@ -104,7 +104,7 @@ export function parseModeWrite(rawValue: unknown, allowedSentinels: readonly str
  *  - `'stale'` — lastSeen more than the TTL behind the reference → remove
  *  - `'keep'` — recent enough
  *
- * @param lastSeen  Untyped value (the broker's `native.lastSeen`).
+ * @param lastSeen  The client's stored `lastSeen` (data file), undefined without one.
  * @param reference The time the age is measured against: the most recently seen display, not
  *   the clock — while the adapter was off nobody could be seen (audit 2026-09-25, L3).
  * @param ttlMs     Stale TTL in ms.

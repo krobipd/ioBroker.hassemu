@@ -12,6 +12,7 @@ import {
   LASTSEEN_FLUSH_INTERVAL_MS,
   STALE_CLIENT_TTL_MS,
 } from "./constants";
+import { APP_BRIDGE_SCRIPT } from "./external-bridge";
 
 describe("constants", () => {
   describe("HA_VERSION", () => {
@@ -104,9 +105,11 @@ describe("constants", () => {
     });
   });
 
-  it("HA_VERSION stays below 2026.8.0 — from there both Companion apps wait for `frontend/loaded`, which the wrapper never sends (U3)", () => {
+  it("HA_VERSION from 2026.8.0 on needs the bridge to send `frontend/loaded` — both Companion apps wait for it (U3, K17)", () => {
     const [major, minor, patch] = HA_VERSION.split(".").map(Number);
     const cmp = major - 2026 || minor - 8 || patch - 0;
-    expect(cmp).to.be.lessThan(0);
+    if (cmp >= 0) {
+      expect(APP_BRIDGE_SCRIPT).to.include('type:"frontend/loaded"');
+    }
   });
 });

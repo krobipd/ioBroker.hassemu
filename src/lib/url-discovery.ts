@@ -10,7 +10,8 @@
 
 import { coerceFiniteNumber, coerceSafeUrl, coerceString, isPlainObject } from "./coerce";
 import { errText } from "./err-text";
-import { getLocalIp, isWildcardBind } from "./network";
+import { chosenAddress } from "./network-address";
+import { getLocalIp } from "./network";
 import type { AdapterInterface, UrlStates } from "./types";
 
 /** Minimal adapter interface the discovery needs — allows easy mocking in tests. */
@@ -110,14 +111,22 @@ export class UrlDiscovery {
    * two passes replaced the same `.mode` objects concurrently (audit 2026-09-15, E5).
    */
   private inflight: Promise<UrlStates> | null = null;
+  /** This host's address for a dashboard that listens on every address. */
+  private readonly hostAddress: () => string;
 
   /**
-   * @param adapter  Adapter instance used to read broker state.
-   * @param onChange Optional callback fired after every successful refresh.
+   * @param adapter     Adapter instance used to read broker state.
+   * @param onChange    Optional callback fired after every successful refresh.
+   * @param hostAddress This host's address for a dashboard on every address — the address
+   *                    hassemu itself is reached at (main.ts: the chosen one, else the LAN
+   *                    address); before, it was always the first address the host listed,
+   *                    so a display in the chosen network got URLs of another network
+   *                    (review 2026-11-07, R-05).
    */
-  constructor(adapter: DiscoveryAdapter, onChange?: UrlStatesListener) {
+  constructor(adapter: DiscoveryAdapter, onChange?: UrlStatesListener, hostAddress: () => string = getLocalIp) {
     this.adapter = adapter;
     this.onChange = onChange;
+    this.hostAddress = hostAddress;
   }
 
   /**
@@ -163,7 +172,7 @@ export class UrlDiscovery {
 
   private async collectOnce(): Promise<UrlStates> {
     const result: UrlStates = {};
-    const hostIp = getLocalIp();
+    const hostIp = this.hostAddress();
     // v1.32.0 B2: per-adapter tracking for the discovery summary instead of N silent skips.
     // Every skip site adds to `skipped`; one final line per collect() sums it up.
     const skipped: SkipEntry[] = [];
@@ -391,12 +400,9 @@ export class UrlDiscovery {
       skipped.push({ adapter: adapterName, reason: "port-null" });
       return;
     }
-    // No `!` here: a null bind IS a wildcard bind (isWildcardBind returns true for it), so
-    // the fallback covers it — but the compiler cannot see that through the helper, and an
-    // assertion is a claim a reader has to verify by hand. `?? hostIp` states the same
-    // guarantee in a way the type system checks.
-    const bindRaw = coerceString(native.bind);
-    const ip = isWildcardBind(bindRaw) ? hostIp : (bindRaw ?? hostIp);
+    // "Every address" (empty, 0.0.0.0, ::) is read by the fleet master — the dashboard is
+    // then reached at this host's address.
+    const ip = chosenAddress(native.bind) ?? hostIp;
     const protocol = native.secure === true ? "https" : "http";
 
     let entries: unknown[] = [];
@@ -683,8 +689,7 @@ function resolveOne(token: string, ctx: ResolveContext): string | null {
     case "ip":
       return ctx.hostIp;
     case "bind": {
-      const b = coerceString(ctx.native.bind);
-      return isWildcardBind(b) ? ctx.hostIp : b;
+      return chosenAddress(ctx.native.bind) ?? ctx.hostIp;
     }
     case "port": {
       const p = coerceFiniteNumber(ctx.native.port);
@@ -719,8 +724,7 @@ function resolveOne(token: string, ctx: ResolveContext): string | null {
       return null;
     }
     if (field === "bind") {
-      const b = coerceString(refNative.bind);
-      return isWildcardBind(b) ? ctx.hostIp : b;
+      return chosenAddress(refNative.bind) ?? ctx.hostIp;
     }
     if (field === "port") {
       const p = coerceFiniteNumber(refNative.port);

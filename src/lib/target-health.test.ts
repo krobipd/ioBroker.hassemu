@@ -128,6 +128,24 @@ describe("target-health", () => {
       }
     });
 
+    // The probe goes out from the chosen address (review 2026-11-07, R-20): from an address
+    // the host carries it connects, from one it does not carry it cannot.
+    it("connects from the chosen local address", async () => {
+      const server = createServer((req, res) => {
+        res.end(req.socket.remoteAddress ?? "");
+      });
+      const port = await listen(server);
+      try {
+        expect(await probeTarget(`http://127.0.0.1:${port}/`, 2000, "127.0.0.1")).to.equal(true);
+        expect(
+          await probeTarget(`http://127.0.0.1:${port}/`, 2000, "192.0.2.1"),
+          "TEST-NET-1 is no local address",
+        ).to.equal(false);
+      } finally {
+        server.close();
+      }
+    });
+
     it("treats connection-refused as unreachable", async () => {
       // Grab a port that WAS free a moment ago, then close it again.
       const server = createServer();

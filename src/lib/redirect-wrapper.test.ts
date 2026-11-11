@@ -9,7 +9,8 @@ vi.mock("@iobroker/adapter-core", async () => {
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { runInThisContext } from "node:vm";
-import { decidePollAction, renderRedirectWrapper } from "./redirect-wrapper";
+import { runPage, settle } from "../../test/unit/page-runner";
+import { decidePollAction, FRONTEND_LOADED_CAP_MS, renderRedirectWrapper } from "./redirect-wrapper";
 
 describe("redirect-wrapper", () => {
   describe("renderRedirectWrapper", () => {
@@ -50,10 +51,30 @@ describe("redirect-wrapper", () => {
         expect(rule, card).to.include("bottom:var(--app-safe-area-inset-bottom,0px)");
         expect(rule, card).to.not.include("width:100vw");
       }
-      // No env() — on the Android 7 WebViews of the legacy Shelly models an unknown env()
-      // makes the declaration invalid at computed-value time; no viewport-fit either.
-      expect(html).to.not.include("env(");
-      expect(html).to.not.include("viewport-fit");
+    });
+
+    it("repeats the insets with the frontend's env() fallback only inside @supports — the legacy Android 7 Shelly WebViews skip it (K17)", () => {
+      const html = renderRedirectWrapper("https://x.test/", "a1b2c3", "en");
+      const start = html.indexOf("@supports (top:env(safe-area-inset-top)){");
+      expect(start).to.be.above(-1);
+      // The block closes after its two rules; every env() of the page lies inside it.
+      const block = html.slice(start, html.indexOf("\n}", start) + 2);
+      const outside = html.slice(0, start) + html.slice(start + block.length);
+      expect(outside).to.not.include("env(");
+      const iframe = /\niframe\{[^}]*\}/.exec(block)![0];
+      const cards = /#hassemu-down,#hassemu-target-down\{[^}]*\}/.exec(block)![0];
+      for (const side of ["top", "left", "right", "bottom"]) {
+        const inset = `var(--app-safe-area-inset-${side},env(safe-area-inset-${side},0px))`;
+        expect(iframe, side).to.include(inset);
+        expect(cards, side).to.include(inset);
+      }
+      // The block comes after the base rules, so it wins where the browser reads it.
+      expect(start).to.be.above(html.indexOf("#hassemu-target-down{"));
+    });
+
+    it("declares viewport-fit=cover like the frontend's own viewport meta, so iOS reports the insets (K17)", () => {
+      const html = renderRedirectWrapper("https://x.test/", "a1b2c3", "en");
+      expect(html).to.match(/<meta name="viewport" content="[^"]*viewport-fit=cover[^"]*">/);
     });
 
     it("includes 30s polling JS with consecutive-fail threshold", () => {
@@ -109,7 +130,7 @@ describe("redirect-wrapper", () => {
     });
 
     it("omits the IP row when ip is loopback / empty / null", () => {
-      for (const ip of [null, "", "127.0.0.1", "127.0.0.5", "::1", "0.0.0.0"]) {
+      for (const ip of [null, "", "127.0.0.1", "127.0.0.5", "::1"]) {
         const html = renderRedirectWrapper("https://x.test/", "a1b2c3", "en", ip);
         expect(html, `ip=${ip ?? "null"}`).not.to.match(/<th scope="row">IP address<\/th>/);
       }
@@ -335,5 +356,79 @@ describe("redirect-wrapper", () => {
       expect(html).not.to.include("j.targetReachable===false");
       expect(html).not.to.include("typeof j.target==='string'");
     });
+  });
+});
+
+// The page RUN in node:vm with a fake V1 bridge: when the app gets `frontend/loaded` (K17). The
+// apps keep their own loader up until then (constants.ts, HA_VERSION) — the dashboard must send it
+// once the iframe has loaded, a card at once, and a hanging target before the apps' own 10 s.
+describe("frontend/loaded from the dashboard wrapper (K17)", () => {
+  const CONNECTED = { id: 1, type: "connection-status", payload: { event: "connected" } };
+  const LOADED = { id: 2, type: "frontend/loaded" };
+  const page = (reachable: boolean): string =>
+    renderRedirectWrapper("http://192.0.2.1:8082/vis-2/index.html", "a1b2c3", "en", "192.0.2.10", reachable);
+
+  it("sends connected at once, but loaded only when the iframe has loaded", () => {
+    const run = runPage(page(true));
+    expect(run.messages).toEqual([CONNECTED]);
+    run.iframeLoad();
+    expect(run.messages).toEqual([CONNECTED, LOADED]);
+  });
+
+  it("a second iframe load (the target navigates) sends nothing more", () => {
+    const run = runPage(page(true));
+    run.iframeLoad();
+    run.iframeLoad();
+    expect(run.messages).toEqual([CONNECTED, LOADED]);
+  });
+
+  it("an iframe that loaded before the scripts ran still gets loaded, once", () => {
+    const run = runPage(page(true), { iframeLoadsFirst: true });
+    expect(run.messages).toEqual([CONNECTED, LOADED]);
+  });
+
+  it(`a target that never finishes loading gets loaded after the cap — ${FRONTEND_LOADED_CAP_MS} ms, below the apps' 10 s`, () => {
+    expect(FRONTEND_LOADED_CAP_MS).to.be.below(10_000);
+    const run = runPage(page(true));
+    const cap = run.timers.find(t => t.ms === FRONTEND_LOADED_CAP_MS);
+    expect(cap).to.not.equal(undefined);
+    cap!.cb();
+    expect(run.messages).toEqual([CONNECTED, LOADED]);
+  });
+
+  it("the target-down card visible at render is a finished page: loaded at once", () => {
+    const run = runPage(page(false));
+    expect(run.messages).toEqual([CONNECTED, LOADED]);
+  });
+
+  it("the hassemu-offline card, once shown, sends loaded", async () => {
+    const run = runPage(page(true), { fetch: () => Promise.reject(new Error("down")) });
+    const poll = run.intervals[0];
+    for (let i = 0; i < 3; i++) {
+      poll.cb();
+      await settle();
+    }
+    expect(run.elements.get("hassemu-down")!.classes.has("visible")).to.equal(true);
+    expect(run.messages).toEqual([CONNECTED, LOADED]);
+  });
+
+  it("the target-down card, once shown by the poll, sends loaded", async () => {
+    const run = runPage(page(true), {
+      fetch: () =>
+        Promise.resolve({
+          json: () => Promise.resolve({ target: "http://192.0.2.1:8082/vis-2/index.html", targetReachable: false }),
+        }),
+    });
+    const poll = run.intervals[0];
+    for (let i = 0; i < 2; i++) {
+      poll.cb();
+      await settle();
+    }
+    expect(run.elements.get("hassemu-target-down")!.classes.has("visible")).to.equal(true);
+    expect(run.messages).toEqual([CONNECTED, LOADED]);
+  });
+
+  it("in a regular browser (no bridge) nothing throws", () => {
+    expect(() => runPage(page(true), { bridge: "none" }).iframeLoad()).not.toThrow();
   });
 });

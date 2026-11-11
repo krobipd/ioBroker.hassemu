@@ -39,3 +39,7 @@ build/
 
 # Session memory of the note-taking hook — never repository content
 .remember/
+
+# Object inventory: generated dumps, never repository content
+test/states.inventory.json
+test/objects.inventory.de.json

@@ -15,14 +15,15 @@ This page is the detailed guide. The [README](../../README.md) is the short vers
 ## Requirements
 
 - Node.js 22 or newer
-- ioBroker js-controller 7.2.2 or newer
-- ioBroker Admin 8.0.11 or newer
+- ioBroker js-controller 7.2.5 or newer
+- ioBroker Admin 8.3.5 or newer
 - The display and ioBroker on the same network
 
-The adapter listens on port 8123 because that is the port HA clients expect, and it is not
-configurable. So each ioBroker host normally runs one instance — a second one on the same host
-only works when each is bound to its own interface. Several ioBroker hosts in the network may
-each run one; the displays then see separate servers.
+The adapter listens on port 8123 by default, the port Home Assistant uses; the Home Assistant
+apps take the port from the address the server announces or the one you type in. Another port
+lets hassemu run on a host where 8123 is taken already, and a second instance on the same host
+needs its own port or its own interface. Several ioBroker hosts in the network may each run
+one; the displays then see separate servers.
 
 ## Shelly Wall Display
 
@@ -58,7 +59,8 @@ On the display, add a Home Assistant server.
 - **With mDNS on** the display finds the server by itself. It appears under the name in
   **Service Name** (default `ioBroker`).
 - **Without mDNS**, or when the display does not search, enter the address by hand:
-  `http://<ip-of-your-ioBroker>:8123`. It has to be `http` — see
+  `http://<ip-of-your-ioBroker>:8123` (with another port, that port). With HTTPS on it is
+  `https://<name in the certificate>:8123` — see
   [Authentication and your network](#authentication-and-your-network).
 
 **Android 17 and newer:** allow _local network access_ when the Home Assistant app asks.
@@ -72,7 +74,7 @@ authentication on, enter the user name and password from the instance settings.
 
 Behind that click the display and the adapter exchange a token, and the adapter stores a
 cookie on the display. That cookie is the display's identity from then on: it survives
-reboots, address changes and renaming, which is why a display keeps its page without being
+reboots, address changes and name changes, which is why a display keeps its page without being
 set up again.
 
 ### 4. The display is now waiting
@@ -132,7 +134,7 @@ hassemu.0.
 │   ├── mode            the page for every display set to Global URL
 │   └── manualUrl       free address, used when global.mode is Manual URL
 └── clients.
-    └── <id>            one entry per display, named after its host name or address
+    └── <id>            one entry per display, named after the app's device name, its host name or address
         ├── mode        what this display shows
         ├── manualUrl   free address, used when mode is Manual URL
         ├── resolvedUrl the address this display was actually sent to
@@ -200,14 +202,21 @@ are code.
 
 ## Authentication and your network
 
-**Everything on port 8123 is unencrypted HTTP.** That is not a shortcut, it is what the HA
-clients require on this flow; they will not do HTTPS here. Two consequences worth being
-clear about:
+**Plain HTTP is the default**, as with Home Assistant, and without HTTPS everything on the
+port is unencrypted. Two consequences worth being clear about:
 
-- Treat port 8123 as local to your network. Do not forward it in from the internet.
+- Treat the port as local to your network. Do not forward it in from the internet.
 - With authentication on, the user name, password and tokens travel your network
   unencrypted. Authentication stops other devices on your network from using the HA
   interface — it is not protection against exposure to the internet.
+
+**Use HTTPS** in the instance settings encrypts login, password and tokens with a certificate
+from ioBroker. HTTPS has rules of its own:
+
+- With HTTPS the displays reach hassemu under the name in the certificate instead of the IP address — that name must resolve on every display.
+- With ioBroker's default certificate (self-signed, issued for the computer name) an Android display needs both: the certificate installed as trusted, and a network that resolves the computer name.
+- A dashboard on plain HTTP cannot be shown inside an HTTPS page — choose an HTTPS address for it.
+- Switching HTTPS on changes the address of hassemu: every display shows up once as a new device and must be pointed at the new address.
 
 **Trust Reverse Proxy Headers** should stay off unless a reverse proxy really is in front of the adapter,
 terminating TLS and removing the `X-Forwarded-*` headers a client sent. Switched on without
@@ -221,29 +230,48 @@ the setting safe.
 
 ## Ports
 
-| Port       | Direction | What the adapter needs it for                  |
-| ---------- | --------- | ---------------------------------------------- |
-| 8123 / TCP | inbound   | the HA interface the display talks to          |
-| 5353 / UDP | inbound   | mDNS, so displays find the server on their own |
+| Port       | Direction | What the adapter needs it for                                    |
+| ---------- | --------- | ---------------------------------------------------------------- |
+| 8123 / TCP | inbound   | the HA interface the display talks to (default port, changeable) |
+| 5353 / UDP | inbound   | mDNS, so displays find the server on their own                   |
 
-For uptime monitors and container health checks use `http://<ip-of-your-ioBroker>:8123/health`.
+For uptime monitors and container health checks use `http://<ip-of-your-ioBroker>:8123/health`
+(with HTTPS `https://`, with another port that port).
 It answers without creating anything. A `GET /` is what a display sends on its first visit,
 so a monitor pointed there would show up as a new display; a `HEAD /` creates nothing.
 
+## Updating from 1.x
+
+Version 2.0.0 gives every display a new object ID once: `clients.61c3a1` becomes
+`clients.display-c3a1` — `display` followed by the last four characters of the old ID. The move
+happens by itself at the first start: values, rooms, functions and aliases move along, recorded
+history continues in its old series, and the display stays recognised, so nothing has to be set up
+again. The log names every move. Scripts and visualisations that use the old IDs must be updated.
+Do not go back to 1.x afterwards.
+
+A display that connects for the first time gets the model its Home Assistant app reports followed
+by four characters hassemu picks itself, for example `clients.pixel-tablet-02b7`; when the display
+reports no model, the ID starts with `display`. An ID never changes once it is given.
+
+Every display is named after its app's device name, its host name or its address; a name typed
+into the object browser gives way to it. A display named after its host name shows its address
+until it connects for the first time after the update.
+
 ## Questions that come up
 
-**Can I run two instances?** Not on the same interface. Port 8123 is fixed by the HA clients,
-so two instances on one host only work when each is bound to its own interface. Two ioBroker
-hosts may each run one; the displays then see two separate servers.
+**Can I run two instances?** Yes, on one host each with its own port or its own interface.
+Two ioBroker hosts may each run one; the displays then see two separate servers.
 
 **Does the display have to stay connected to the adapter?** Yes. It fetches its page through
 the adapter, and the offline page and the target check depend on it. If the adapter stops,
 the dashboard stays on screen for about 1.5 minutes; then the display shows the offline page
 and returns to the dashboard by itself once the adapter is back.
 
-**Can I rename a display?** Yes — rename the `clients.<id>` object in the object browser.
-The adapter keeps your name and will not overwrite it, even when the display's address or
-host name changes.
+**Can I rename a display?** The name comes from the display itself: the device name set in
+its Home Assistant app, otherwise its host name in the network, otherwise its address. To
+change it, rename the device in the app or give it a host name in your router. A name typed
+into the object browser does not hold — the adapter writes the display's name back at the next
+start or change.
 
 **Why is there a second entry for the same display?** The display did not send back its
 cookie — usually a factory reset, a cleared browser or WebView cache (Shelly firmware 2.7.0 and

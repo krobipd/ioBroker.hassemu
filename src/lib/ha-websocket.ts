@@ -114,7 +114,7 @@ function frameToText(raw: Buffer | ArrayBuffer | Buffer[]): string {
  *   what real HA returns for an unregistered command type.
  *
  * The command SET is verified against home-assistant/android WebSocketRepositoryImpl at
- * tag 2026.9.0 and home-assistant/iOS HATypedRequest+App.swift at release/2026.9.2; the
+ * tag 2026.9.0 and home-assistant/iOS HATypedRequest+App.swift at release/2026.10.3/2026.3322; the
  * shapes and error codes against home-assistant/core at tag 2026.9.3 (websocket_api/const.py:38
  * ERR_NOT_FOUND, :42 ERR_UNKNOWN_COMMAND). Commands the apps may send but hassemu deliberately
  * leaves unanswered with `unknown_command`: subscribe_trigger, render_template,

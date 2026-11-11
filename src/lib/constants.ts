@@ -3,18 +3,27 @@
  */
 
 /**
- * Emulated Home Assistant version — a BEHAVIOUR SWITCH of the Companion apps, not cosmetic
- * (audit 2026-09-25, U3; sources at android tag 2026.9.0 and iOS release/2026.9.2):
+ * Emulated Home Assistant version — a BEHAVIOUR SWITCH of the Companion apps, not cosmetic.
+ * Rule (krobi 2026-11-11, K17): the reported version rises only as far as hassemu delivers
+ * everything the apps expect from that version. Every gate of the apps up to this value, read at
+ * android tag 2026.11.1 and iOS release/2026.10.3/2026.3322 (upstream.json):
  * - ≥ 2026.2.0 Android draws edge to edge and injects `--app-safe-area-inset-*`
- *   (FrontendViewModel.kt:1204-1206) — the wrapper and landing page honour those (U2);
- * - ≥ 2026.4.2 Android registers only the V2 bridge (FrontendJsBridge.kt:351) — the bridge
- *   script serves both;
+ *   (FrontendViewModel.kt:1256-1257) — every page keeps to those (html-shared.ts);
+ * - ≥ 2026.4.2 Android registers only the V2 bridge (FrontendJsBridge.kt:144-160 and 369) — the
+ *   bridge script serves V2, V1 and iOS (external-bridge.ts);
+ * - ≥ 2026.6.0 iOS adds `in_zones` to `update_location` (HAAPI.swift:765) — the webhook answers
+ *   that type without reading it (mobile-app-routes.ts, default branch);
+ * - ≥ 2026.7.0 Android sends `matter/commission/finish` (CommandMessage.kt:122) — only after a
+ *   Matter commissioning the frontend starts; hassemu's pages never start one;
  * - ≥ 2026.8.0 Android AND iOS keep their loader up until the page sends `frontend/loaded`
- *   (FrontendViewModel.kt:1221-1223, iOS AppConstants.swift:462), which the wrapper does not
- *   send: every page load would stall for 10 s. Raising the value past 2026.8.0 requires
- *   sending `frontend/loaded` from external-bridge.ts first; a unit test guards the limit.
+ *   (FrontendViewModel.kt:1273-1290; AppConstants.swift:528, HomeAssistantViewModel.swift:189-196)
+ *   — every page sends it (external-bridge.ts); iOS draws edge to edge on a phone
+ *   (AppConstants.swift:530, WebViewController+Settings.swift:78-86) — the pages keep to the safe
+ *   area through `env()` (html-shared.ts `safeAreaInset`).
+ * The next gate (iOS 2026.10.0, AppConstants.swift:532 — a `limit` on
+ * `usage_prediction/common_control`, used by a widget) is a WebSocket command hassemu does not serve.
  */
-export const HA_VERSION = "2026.4.0";
+export const HA_VERSION = "2026.8.0";
 
 /**
  * Default mDNS service name / HTTP `location_name` when the user leaves the
@@ -85,7 +94,7 @@ export const DNS_NEGATIVE_CACHE_CAP = 500;
 /** Stale-Client-GC threshold: lastSeen older than this → the client is forgotten, tokens or not. */
 export const STALE_CLIENT_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
-/** `native.lastSeen` is rewritten at most once per this window per client (GC input). */
+/** A client's `lastSeen` (data file, client-store.ts) is rewritten at most once per this window (GC input). */
 export const LASTSEEN_FLUSH_INTERVAL_MS = 60 * 60 * 1000;
 
 /** Browser cookie lifetime (10 years) — clients keep their identity essentially forever. */
@@ -181,8 +190,11 @@ export const NEW_CLIENT_BURST_WARN_THRESHOLD = 3;
  * `lastSeen` (2023) made `gcStaleClients` delete every seeded display at start and the
  * fixtures measured their own freshly created objects, which always carry the current
  * texts. Measured by reverting this constant: the suite stayed green.
+ *
+ * Revision 4 (review 2026-11-07, R-17/R-19): `mode` became `string`/`text` and the device
+ * carries its pictogram — the version write of an existing display brings the icon along, once.
  */
-export const CLIENT_OBJECTS_VERSION = 3;
+export const CLIENT_OBJECTS_VERSION = 4;
 
 /**
  * Resolver sentinels for `client.mode` and `global.mode`. `'global'` means:
@@ -247,6 +259,17 @@ export const HTTP_CONNECTIONS_CHECK_INTERVAL_MS = 30_000;
  * to cost a state and an object write (audit 2026-09-25, H4).
  */
 export const IP_CHANGE_MIN_INTERVAL_MS = 60 * 1000;
+
+/**
+ * Longest device name hassemu takes from a Companion app (K7) — the name the user gave the device in the app, sent
+ * as `device_name` in the registration and in every `update_registration` (Android 2026.11.1
+ * `IntegrationRepositoryImpl.kt:121–127`, `:162–163`, `:712–733`). It becomes the display's name in the object tree;
+ * a longer value is cut.
+ */
+export const DEVICE_NAME_MAX = 64;
+
+/** Longest host name hassemu takes from a reverse lookup — the longest name DNS allows (RFC 1035 §2.3.4, 253 in text form). */
+export const HOSTNAME_MAX = 253;
 
 /**
  * OAuth2 authorization-code lifetime — HA core `auth/__init__.py:473` at 2026.9.3 (valid below

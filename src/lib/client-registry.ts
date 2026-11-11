@@ -1,22 +1,42 @@
 /**
  * Client Registry — persistent multi-client store.
  *
- * Each client gets a channel `clients.<id>` with native.cookie / native.token
- * and states mode / manualUrl / ip / remove. Cookie is the primary identity
+ * Each client gets a device `clients.<id>` (id rule: display-id.ts) with the states mode / manualUrl / ip /
+ * resolvedUrl / remove. Cookie is the primary identity
  * (auto-sent by browsers on page navigation), IP is only advisory.
  *
- * Registry state is dual-homed: in-memory maps for hot lookups, ioBroker
- * objects for persistence and user-visible config.
+ * Registry state lives in three places: in-memory maps for hot lookups, ioBroker
+ * objects for the user-visible config, and `identities.json` in the instance data
+ * folder for what the adapter generates and tracks — the server id, and per display
+ * cookie, tokens, lastSeen (client-store.ts; never in an object's `native`).
  */
 
 import crypto from "node:crypto";
-import { coerceSafeUrl, coerceString, coerceUuid, isPlainObject, oneLine } from "./coerce";
+import { join } from "node:path";
+import {
+  hasLegacyNative,
+  LEGACY_NATIVE_KEYS,
+  readStore,
+  STORE_FILE,
+  storedClientFrom,
+  type StoredClient,
+  writeStore,
+} from "./client-store";
+import {
+  coerceDeviceName,
+  coerceHostname,
+  coerceSafeUrl,
+  coerceString,
+  coerceUuid,
+  isPlainObject,
+  oneLine,
+} from "./coerce";
 import {
   evictOldest,
+  getStateOrNull,
   isBareStringName,
   nameText,
   parseAdapterStateId,
-  safeGetState,
   shallowStatesEqual,
 } from "./object-utils";
 import { buildDropdownStates, parseManualUrlWrite, parseModeWrite } from "./state-write-rules";
@@ -34,9 +54,11 @@ import {
   OAUTH_ACCESS_TOKEN_TTL_S,
   IP_CHANGE_MIN_INTERVAL_MS,
 } from "./constants";
+import { displayIcon } from "./device-icon";
+import { LEGACY_DISPLAY_ID, movedDisplayId, newDisplayId, randomIdTail } from "./display-id";
+import { moveAllWithEnums } from "./enum-carry";
 import { errText } from "./err-text";
 import { resolveLabel, tName, tRaw } from "./i18n";
-import { generateClientId } from "./network";
 import { replaceObjectPreservingValue } from "./object-repair";
 import type { AdapterInterface, ClientRecord, UrlStates } from "./types";
 
@@ -46,6 +68,8 @@ export type RegistryAdapter = AdapterInterface &
     ioBroker.Adapter,
     | "namespace"
     | "getForeignObjectsAsync"
+    | "getForeignObjectAsync"
+    | "getAdapterObjectsAsync"
     | "getStateAsync"
     | "getObjectAsync"
     | "setObjectNotExistsAsync"
@@ -60,6 +84,112 @@ const CLIENTS_PREFIX = "clients.";
 
 /** Provides the default mode value for a freshly created client. */
 export type NewClientModeProvider = () => string;
+
+/** A display that moves to the id rule of K7 (display-id.ts). */
+interface DisplayMove {
+  /** The id it has. */
+  from: string;
+  /** The id it gets. */
+  to: string;
+  /** The journal at the old device names the target already — a move an earlier start began. */
+  journaled: boolean;
+}
+
+/** A move journal names a display id: lower-case letters, digits and hyphens. */
+const MOVE_TARGET = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/**
+ * The id an object has after a display moved, or undefined when it is not part of the moved display.
+ *
+ * @param id       A full object id.
+ * @param fromFull The old device id, namespace included.
+ * @param toFull   The new device id, namespace included.
+ */
+export function movedObjectId(id: string, fromFull: string, toFull: string): string | undefined {
+  if (id === fromFull) {
+    return toFull;
+  }
+  return id.startsWith(`${fromFull}.`) ? `${toFull}${id.slice(fromFull.length)}` : undefined;
+}
+
+/**
+ * A copy of one object of a moving display, as it is written under the new id — its `common` (the user's
+ * recording settings in `common.custom` included) and `native`, with what names the old id rewritten: the move
+ * journal stays at the old object, a name that is the old id becomes the new id, and an enabled recording without
+ * an alias id of its own records on under the old id (`aliasId`), so influxdb, history and sql keep the series the
+ * datapoint always had (as in yamaha 3.0.0, `device-move.ts`).
+ *
+ * @param id        The object's old full id.
+ * @param obj       The object as read.
+ * @param move      The move.
+ * @param move.from The old display id.
+ * @param move.to   The new display id.
+ * @param fromFull  The old device id, namespace included.
+ */
+export function movedObject(
+  id: string,
+  obj: ioBroker.Object,
+  move: { from: string; to: string },
+  fromFull: string,
+): ioBroker.SettableObject {
+  // An object without `common` (a broken one) or `native` moves with an empty one.
+  const copy = structuredClone({ type: obj.type, common: obj.common ?? {}, native: obj.native ?? {} }) as {
+    type: ioBroker.Object["type"];
+    common: Record<string, unknown>;
+    native: Record<string, unknown>;
+  };
+  if (id === fromFull) {
+    delete copy.native.movingTo;
+    if (nameText(copy.common.name) === move.from) {
+      copy.common.name = tRaw(move.to);
+    }
+  }
+  const custom = copy.common.custom;
+  if (copy.type === "state" && isPlainObject(custom)) {
+    for (const settings of Object.values(custom)) {
+      if (
+        isPlainObject(settings) &&
+        settings.enabled &&
+        (typeof settings.aliasId !== "string" || settings.aliasId === "")
+      ) {
+        settings.aliasId = id;
+      }
+    }
+  }
+  return copy as unknown as ioBroker.SettableObject;
+}
+
+/**
+ * An alias target with the moved display followed — a plain id, or the read/write pair (as in homeconnect,
+ * `device-move.ts` `movedAliasTarget`).
+ *
+ * @param target   `common.alias.id` as stored.
+ * @param fromFull The old device id, namespace included.
+ * @param toFull   The new device id, namespace included.
+ * @returns The new target, or undefined when it points at nothing of the moved display.
+ */
+export function movedAliasTarget(target: unknown, fromFull: string, toFull: string): unknown {
+  if (typeof target === "string") {
+    return movedObjectId(target, fromFull, toFull);
+  }
+  if (isPlainObject(target)) {
+    const read = typeof target.read === "string" ? movedObjectId(target.read, fromFull, toFull) : undefined;
+    const write = typeof target.write === "string" ? movedObjectId(target.write, fromFull, toFull) : undefined;
+    if (read === undefined && write === undefined) {
+      return undefined;
+    }
+    return { ...target, ...(read !== undefined ? { read } : {}), ...(write !== undefined ? { write } : {}) };
+  }
+  return undefined;
+}
+
+/** What the restore of one display found. */
+interface RestoredClient {
+  /** Display id. */
+  id: string;
+  /** The device `native` still carries a key an earlier version stored there. */
+  legacyNative: boolean;
+}
 
 /** Persistent multi-client store: cookie → channel, with in-memory lookup maps. */
 export class ClientRegistry {
@@ -81,12 +211,30 @@ export class ClientRegistry {
   private readonly pendingByIp = new Map<string, Promise<ClientRecord>>();
   /**
    * Throttle for lastSeen-updates per client. Keyed by client id, value is the
-   * last `Date.now()` we wrote `native.lastSeen` to ioBroker. Throttle window
-   * is one hour — saves us extendObject roundtrips on every request.
+   * last `Date.now()` stored as the client's `lastSeen` in the data file. Throttle
+   * window is one hour — saves a file write on every request.
    */
   private readonly lastSeenFlushedAt = new Map<string, number>();
+  /** The instance data folder that holds {@link STORE_FILE}. */
+  private readonly dataDir: string;
+  /** The server id the displays know hassemu by — set by {@link restore}, stored in {@link STORE_FILE}. */
+  private serverId: string | null = null;
+  /**
+   * Entries of the data file that are not (yet) tracked displays — every entry while the
+   * restore runs, afterwards only those of a display whose restore failed or whose objects
+   * could not be listed. Every write of the file carries them, so a failed restore never
+   * costs the identities it could not load.
+   */
+  private readonly carried = new Map<string, StoredClient>();
   /** When each display's address last changed — the window of {@link IP_CHANGE_MIN_INTERVAL_MS}. */
   private readonly ipChangedAt = new Map<string, number>();
+  /** The device name each display's Companion app reported (K7), stored in {@link STORE_FILE}. */
+  private readonly appNames = new Map<string, string>();
+  /**
+   * The device name hassemu last wrote for each display (K7), in memory only: a name is written when its sources
+   * name the display differently, never read back from the tree (see applyName). The start fills it (restoreChannel).
+   */
+  private readonly writtenNames = new Map<string, string>();
   /**
    * v1.19.0 (G5): per-IP burst tracking for broken-cookie displays. v1.37.0 (M4):
    * the window is now SLIDING — keyed on `lastActivity`, not a fixed start — so an
@@ -118,9 +266,13 @@ export class ClientRegistry {
    */
   private readonly legacyVisUrls = new Map<string, unknown>();
 
-  /** @param adapter Adapter instance used for object/state I/O. */
-  constructor(adapter: RegistryAdapter) {
+  /**
+   * @param adapter Adapter instance used for object/state I/O.
+   * @param dataDir The instance data folder (`utils.getAbsoluteInstanceDataDir`, declared as `common.dataFolder`).
+   */
+  constructor(adapter: RegistryAdapter, dataDir: string) {
     this.adapter = adapter;
+    this.dataDir = dataDir;
   }
 
   /**
@@ -133,9 +285,75 @@ export class ClientRegistry {
     this.newClientModeProvider = provider;
   }
 
-  /** Loads existing clients from ioBroker objects into memory. Call once on adapter start. */
-  async restore(): Promise<void> {
-    let objects: Record<string, ioBroker.Object> = {};
+  /**
+   * The server id the displays know hassemu by — the same for the web server and mDNS. Available once
+   * {@link restore} has run.
+   */
+  get serverUuid(): string {
+    if (this.serverId === null) {
+      throw new Error("the server id is read by restore() first");
+    }
+    return this.serverId;
+  }
+
+  /**
+   * Loads the server id and the existing clients from the data file and the ioBroker objects into memory, and
+   * writes the data file back. Call once on adapter start.
+   *
+   * Throws — the start fails and js-controller restarts it (K16) — when the data file exists but cannot be used,
+   * when the objects or a display's states cannot be read, and when the data file cannot be written: a read error
+   * must not make every display re-onboard or overwrite a setting, and a run from memory would lose the identities
+   * at the next start. The write at every start is that check (ST1 of the start-failure standard).
+   *
+   * @param legacyServerUuid Reads the server id where 1.46.1 kept it (`info.serverUuid`); asked only while the data
+   *   file holds none. Its value moves into the file once; without a valid one a new id is generated. Default: none.
+   */
+  async restore(legacyServerUuid: () => Promise<unknown> = () => Promise.resolve(null)): Promise<void> {
+    const read = readStore(this.dataDir);
+    if (read.error !== undefined) {
+      throw new Error(
+        `the stored identities ${join(this.dataDir, STORE_FILE)} cannot be used (${read.error}) — no display was touched`,
+      );
+    }
+    this.serverId = read.server ?? null;
+    for (const [id, entry] of read.clients) {
+      this.carried.set(id, entry);
+    }
+    let objects = await this.listDisplayObjects();
+    if (this.serverId === null) {
+      // A read error propagates (design decision 2): a new id would make every display onboard again.
+      // Resolved before the moves below: each of them stores the identities it re-keys.
+      const moved = coerceUuid(await legacyServerUuid());
+      this.serverId = moved ?? crypto.randomUUID();
+      this.adapter.log.debug(moved ? "Server id moved into the data file" : "Server id generated");
+    }
+    objects = await this.moveToDisplayIds(objects);
+
+    // All displays in parallel — restoreChannel shares nothing between displays except
+    // synchronous Map writes; an error of one display fails the start (K16). Serial, this was N × (five
+    // reads + five existence checks + one object read) before the port was bound
+    // (audit 2026-09-15, D1).
+    const restored = await Promise.all(
+      Object.entries(objects).map(([fullId, obj]) => this.restoreChannel(fullId, obj)),
+    );
+    // An entry whose display has no object any more (removed in the object browser, or the
+    // removal's file write failed) is dropped.
+    const listed = new Set(Object.keys(objects).map(fullId => this.clientIdOf(fullId)));
+    const orphanEntries = [...this.carried.keys()].filter(id => !listed.has(id));
+    for (const id of orphanEntries) {
+      this.carried.delete(id);
+    }
+    const legacy = restored.filter((r): r is RestoredClient => r !== null && r.legacyNative).map(r => r.id);
+    await this.settleStore(legacy);
+    this.adapter.log.debug(`client-registry: restored ${this.byId.size} client(s)`);
+  }
+
+  /**
+   * Every `clients.<id>` container — devices, and the channels of an install before 1.37.0.
+   *
+   * Throws when the objects cannot be read (K16, ST1): running on would re-create every known display as a new one.
+   */
+  private async listDisplayObjects(): Promise<Record<string, ioBroker.Object>> {
     try {
       // Query each client-container type EXPLICITLY and merge. A string pattern with
       // NO type argument resolves to js-controller's `state` object view
@@ -152,171 +370,387 @@ export class ClientRegistry {
         this.adapter.getForeignObjectsAsync(pattern, "device"),
         this.adapter.getForeignObjectsAsync(pattern, "channel"),
       ]);
-      objects = { ...(channels ?? {}), ...(devices ?? {}) };
+      return { ...(channels ?? {}), ...(devices ?? {}) };
     } catch (err) {
-      // A total restore failure is user-visible: every known display is re-created
-      // as a fresh client (duplicate objects, "lost" config). Warn, not debug —
-      // the operator needs the anchor when "New client connected" lines pile up
-      // for long-known displays. v1.37.0 (L4).
-      this.adapter.log.warn(
-        `client-registry: restore failed — known displays will be re-created as new clients: ${errText(err)}`,
+      // Running on would re-create every known display as a new one (duplicate objects, its settings
+      // gone). The start fails instead and the controller restarts the instance (K16, ST1: no access to
+      // ioBroker is a failed start; before, this warned and went on).
+      throw new Error(`reading the display objects failed (${errText(err)}) — no display was touched`);
+    }
+  }
+
+  /**
+   * Move every display of the id form before K7 (`clients.61c3a1`) to `display-<its last four characters>`, once
+   * (acceptance page K7, krobi 2026-11-11 19:51 "k7 ist ok"), and finish a move an earlier start began. Runs before
+   * any display is restored, so nothing reads a display under its old id afterwards.
+   *
+   * Each step can be repeated, and nothing is lost when the process ends between two of them (as in yamaha 3.0.0,
+   * `migrateDeviceIds`): the journal (`native.movingTo` at the old device) first; then the copy of the device and its
+   * datapoints with their values; then every alias that points at the old datapoints pointed at the new ones (like the
+   * fleet's id moves); then the identity re-keyed in the data file; then every datapoint below the old
+   * device deleted with its rooms and functions carried to the new ids (`moveAllWithEnums` — a recursive delete would
+   * take the device and its journal first); the old device last. A step that fails fails the start (K16): the journal
+   * stays, and the restart finishes the move.
+   *
+   * @param objects The display containers as listed.
+   * @returns The display containers after the moves.
+   */
+  private async moveToDisplayIds(objects: Record<string, ioBroker.Object>): Promise<Record<string, ioBroker.Object>> {
+    const moves = this.planMoves(objects);
+    if (moves.length === 0) {
+      return objects;
+    }
+    const all = (await this.adapter.getAdapterObjectsAsync()) as Record<string, ioBroker.Object | null | undefined>;
+    for (const move of moves) {
+      await this.moveDisplay(move, all);
+    }
+    return this.listDisplayObjects();
+  }
+
+  /**
+   * Which displays move, and where to: first every journal (a move an earlier start began), then every display of
+   * the old id form, both by id, so two displays whose old ids end alike get the same new ids on every start. A
+   * display without an identity does not move — restoreChannel removes it as an orphan.
+   *
+   * @param objects The display containers as listed.
+   */
+  private planMoves(objects: Record<string, ioBroker.Object>): DisplayMove[] {
+    const containers = Object.entries(objects)
+      .map(([fullId, obj]) => [this.clientIdOf(fullId), obj] as const)
+      .filter(([id]) => id !== "" && !id.includes("."))
+      .sort(([a], [b]) => a.localeCompare(b));
+    const taken = new Set(containers.map(([id]) => id));
+    const moves: DisplayMove[] = [];
+    const moving = new Set<string>();
+    for (const [id, obj] of containers) {
+      const journal = isPlainObject(obj.native) ? obj.native.movingTo : undefined;
+      if (
+        typeof journal === "string" &&
+        MOVE_TARGET.test(journal) &&
+        journal !== id &&
+        !moves.some(m => m.to === journal)
+      ) {
+        moves.push({ from: id, to: journal, journaled: true });
+        moving.add(id);
+        taken.add(journal);
+      }
+    }
+    for (const [id, obj] of containers) {
+      if (moving.has(id) || !LEGACY_DISPLAY_ID.test(id)) {
+        continue;
+      }
+      const native = isPlainObject(obj.native) ? obj.native : {};
+      if (!(this.carried.get(id) ?? storedClientFrom(native))) {
+        continue;
+      }
+      const to = movedDisplayId(id, other => taken.has(other));
+      taken.add(to);
+      moves.push({ from: id, to, journaled: false });
+    }
+    return moves;
+  }
+
+  /**
+   * One move (see {@link moveToDisplayIds}).
+   *
+   * @param move The move.
+   * @param all  Every object of the instance, read once before the moves.
+   */
+  private async moveDisplay(move: DisplayMove, all: Record<string, ioBroker.Object | null | undefined>): Promise<void> {
+    const ns = this.adapter.namespace;
+    const fromFull = `${ns}.${CLIENTS_PREFIX}${move.from}`;
+    const toFull = `${ns}.${CLIENTS_PREFIX}${move.to}`;
+    const local = (fullId: string): string => fullId.slice(ns.length + 1);
+    if (!move.journaled) {
+      await this.adapter.extendObject(`${CLIENTS_PREFIX}${move.from}`, { native: { movingTo: move.to } });
+    }
+    // The device first, then what lies below it — every parent exists before its child.
+    const tree = Object.entries(all)
+      .filter(
+        (entry): entry is [string, ioBroker.Object] =>
+          !!entry[1] && movedObjectId(entry[0], fromFull, toFull) !== undefined,
+      )
+      .sort(([a], [b]) => a.length - b.length || a.localeCompare(b));
+    for (const [id, obj] of tree) {
+      await this.adapter.setForeignObject(movedObjectId(id, fromFull, toFull)!, movedObject(id, obj, move, fromFull));
+    }
+    for (const [id, obj] of tree) {
+      if (obj.type !== "state") {
+        continue;
+      }
+      // A read error propagates (K16): the restart finishes the move from the journal.
+      const state = await getStateOrNull(this.adapter, local(id));
+      if (!state || state.val === undefined) {
+        continue;
+      }
+      await this.adapter.setState(local(movedObjectId(id, fromFull, toFull)!), {
+        val: state.val,
+        ack: state.ack,
+        ...(typeof state.ts === "number" ? { ts: state.ts } : {}),
+        ...(typeof state.lc === "number" ? { lc: state.lc } : {}),
+        ...(typeof state.q === "number" ? { q: state.q } : {}),
+      });
+    }
+    await this.retargetAliases(fromFull, toFull);
+    // The identity follows before the old device goes: the file must name the display under its new id first.
+    const entry = this.carried.get(move.from);
+    if (entry) {
+      this.carried.delete(move.from);
+      this.carried.set(move.to, entry);
+    }
+    this.persist();
+    const below = tree
+      .map(([id]) => id)
+      .filter(id => id !== fromFull)
+      .sort((a, b) => b.length - a.length);
+    await moveAllWithEnums(
+      this.adapter,
+      id => {
+        const next = movedObjectId(id, fromFull, toFull);
+        return next ? [next] : [];
+      },
+      async () => {
+        for (const id of below) {
+          await this.adapter.delObjectAsync(local(id));
+        }
+      },
+      errText,
+    );
+    await this.adapter.delObjectAsync(`${CLIENTS_PREFIX}${move.from}`);
+    this.adapter.log.info(
+      `Display ${move.from} is now ${move.to} — scripts and visualisations that use clients.${move.from} need the new id`,
+    );
+  }
+
+  /**
+   * Point every alias whose target lies in the moving display at the new id — in both forms of `common.alias.id`.
+   * Repeatable: an alias already on the new id is left alone, so a restart from the journal does it again safely.
+   * A read or write error propagates (K16): the restart finishes the move.
+   *
+   * @param fromFull The old device id, namespace included.
+   * @param toFull   The new device id, namespace included.
+   */
+  private async retargetAliases(fromFull: string, toFull: string): Promise<void> {
+    const aliases = (await this.adapter.getForeignObjectsAsync("alias.*", "state")) ?? {};
+    for (const [id, obj] of Object.entries(aliases)) {
+      const alias = (obj?.common as { alias?: { id?: unknown } } | undefined)?.alias;
+      if (!obj || !isPlainObject(alias)) {
+        continue;
+      }
+      const moved = movedAliasTarget(alias.id, fromFull, toFull);
+      if (moved === undefined) {
+        continue;
+      }
+      await this.adapter.setForeignObject(id, {
+        ...obj,
+        common: { ...obj.common, alias: { ...alias, id: moved } },
+      } as ioBroker.SettableObject);
+    }
+  }
+
+  /**
+   * After the restore: write the data file — the server id, the identities, and what an earlier version kept
+   * in the device objects — and only once the file holds it remove those copies from the objects. A file that
+   * cannot be written fails the start (K16) with the objects left as they are.
+   *
+   * @param legacy Ids of restored displays whose device `native` still carries a key of {@link LEGACY_NATIVE_KEYS}.
+   */
+  private async settleStore(legacy: string[]): Promise<void> {
+    try {
+      this.persist();
+    } catch (err) {
+      throw new Error(
+        `the identities could not be stored in ${join(this.dataDir, STORE_FILE)} (${errText(err)}) — no display was touched`,
+      );
+    }
+    await Promise.all(legacy.map(id => this.dropLegacyNative(id)));
+  }
+
+  /**
+   * Remove the keys an earlier version stored in `clients.<id>.native` — in ONE full write: `extendObject`
+   * merges, so a key written as `null` would stay in the object.
+   *
+   * @param id Display id.
+   */
+  private async dropLegacyNative(id: string): Promise<void> {
+    let obj: ioBroker.Object | null | undefined;
+    try {
+      obj = await this.adapter.getObjectAsync(`clients.${id}`);
+    } catch (err) {
+      this.adapter.log.debug(
+        `client-registry: reading clients.${id} to drop its old native keys failed: ${errText(err)}`,
       );
       return;
     }
+    if (!obj || !isPlainObject(obj.native) || !hasLegacyNative(obj.native)) {
+      return;
+    }
+    for (const key of LEGACY_NATIVE_KEYS) {
+      delete obj.native[key];
+    }
+    await replaceObjectPreservingValue(this.adapter, `clients.${id}`, obj);
+  }
 
-    // All displays in parallel — restoreChannel shares nothing between displays except
-    // synchronous Map writes, and each has its own try/catch. Serial, this was N × (five
-    // reads + five existence checks + one object read) before the port was bound
-    // (audit 2026-09-15, D1).
-    await Promise.all(Object.entries(objects).map(([fullId, obj]) => this.restoreChannel(fullId, obj)));
-    this.adapter.log.debug(`client-registry: restored ${this.byId.size} client(s)`);
+  /**
+   * The display id of a full `clients.<id>` object id.
+   *
+   * @param fullId Full object id (`<namespace>.clients.<id>`).
+   */
+  private clientIdOf(fullId: string): string {
+    return fullId.substring(`${this.adapter.namespace}.${CLIENTS_PREFIX}`.length);
   }
 
   /**
    * Restore a single `clients.<id>` channel into the in-memory registry. Extracted
    * from restore() (I11 v1.37.0) so restore() reads as a thin loop over the channels.
-   * Per-client try/catch (HE1 v1.28.3): one broken channel — a corrupt state during a
-   * jsonl-store migration, a missing object — costs only itself, never the whole restore.
+   * An error of one display fails the start (K16): the per-display catch of HE1 (v1.28.3) let a read
+   * error pass as an empty value, and the restore wrote `"0"` over the display's mode.
+   *
+   * The identity comes from the data file; a display an earlier version stored keeps it in its
+   * device `native`, taken over here once (settleStore moves it into the file).
    *
    * @param fullId Full object id (`<namespace>.clients.<id>`).
    * @param obj    The client object (channel or device) read from the objects DB.
+   * @returns What was found, or null when the object is no restorable display.
    */
-  private async restoreChannel(fullId: string, obj: ioBroker.Object): Promise<void> {
-    const id = fullId.substring(`${this.adapter.namespace}.${CLIENTS_PREFIX}`.length);
+  private async restoreChannel(fullId: string, obj: ioBroker.Object): Promise<RestoredClient | null> {
+    const id = this.clientIdOf(fullId);
     if (!id || id.includes(".")) {
-      return;
+      return null;
     }
-    try {
-      const native = isPlainObject(obj.native) ? obj.native : {};
-      const cookie = coerceUuid(native.cookie);
-      if (!cookie) {
-        // A clients.<id> channel with no valid cookie cannot belong to any
-        // display — the cookie is the identity and is written at creation. Such
-        // a channel can only be an orphan left by an object write that raced a
-        // remove(). restore() runs before the web server starts, so nothing is
-        // mid-creation here; delete it so it stops lingering in the object tree
-        // (where nothing ever reaps it — it has no cookie to restore). v1.37.0 (M5).
-        this.adapter.log.warn(`client-registry: removing orphaned client channel without cookie: ${id}`);
-        try {
-          await this.adapter.delObjectAsync(`clients.${id}`, { recursive: true });
-        } catch (err) {
-          this.adapter.log.debug(`client-registry: orphan cleanup failed for ${id}: ${errText(err)}`);
-        }
-        return;
+    const native = isPlainObject(obj.native) ? obj.native : {};
+    const fromFile = this.carried.get(id);
+    const identity = fromFile ?? storedClientFrom(native);
+    if (!identity) {
+      // A clients.<id> device with no valid cookie — neither in the data file
+      // nor (from an earlier version) in its object — cannot belong to any
+      // display: the cookie is the identity and is stored at creation. Such a
+      // device can only be an orphan left by an object write that raced a
+      // remove(). restore() runs before the web server starts, so nothing is
+      // mid-creation here, and an unreadable file stopped the start before
+      // this point; delete it so it stops lingering in the object tree (where
+      // nothing ever reaps it — it has no cookie to restore). v1.37.0 (M5).
+      this.adapter.log.warn(`client-registry: removing orphaned client channel without cookie: ${id}`);
+      try {
+        await this.adapter.delObjectAsync(`clients.${id}`, { recursive: true });
+      } catch (err) {
+        this.adapter.log.debug(`client-registry: orphan cleanup failed for ${id}: ${errText(err)}`);
       }
-      // I22 (v1.37.0): migrate a legacy `channel` client object to `device` in place —
-      // preserves cookie/token/name/states, no re-onboarding. New clients are already
-      // created as devices by ensureObjects().
-      if (obj.type === "channel") {
-        try {
-          await this.adapter.extendObject(`clients.${id}`, { type: "device" });
-        } catch (err) {
-          this.adapter.log.debug(`client-registry: channel→device migration failed for ${id}: ${errText(err)}`);
-        }
-      }
-      // v1.9.0 (D8): the reads of one display run in parallel; since the audit of
-      // 2026-09-15 the displays themselves do too (restore() above), so a start costs
-      // one round of round-trips instead of one per display.
-      // The fifth read is the pre-1.2.0 `visUrl` the migration needs. It rides along in
-      // the batch that already runs here instead of costing the migration its own
-      // sequential round-trip per client on every start (see legacyVisUrls).
-      const [modeRaw, manualUrlRaw, ipRaw, hostnameRaw, legacyVisUrlRaw] = await Promise.all([
-        this.readState(`${id}.mode`),
-        this.readState(`${id}.manualUrl`),
-        this.readState(`${id}.ip`),
-        this.readState(`${id}.hostname`),
-        this.readState(`${id}.visUrl`),
-      ]);
-      if (legacyVisUrlRaw !== null && legacyVisUrlRaw !== undefined && legacyVisUrlRaw !== "") {
-        this.legacyVisUrls.set(id, legacyVisUrlRaw);
-      }
-      const mode = typeof modeRaw === "string" ? modeRaw : "";
-      // A pre-v1.43.0 install may still hold "" in the state; normalise on the way in so
-      // exactly one form lives in memory.
-      const normalisedMode = mode === "" ? NO_CHOICE : mode;
-      const manualUrl = coerceSafeUrl(manualUrlRaw);
-      const ip = coerceString(ipRaw);
-      const token = coerceUuid(native.token);
-      const refreshToken = coerceUuid(native.refreshToken);
-      // The lastSeen throttle window survives a restart: the persisted stamp IS the last
-      // flush. Without this every display's first contact after a restart re-wrote a
-      // `lastSeen` that was seconds old — N object writes per restart for nothing
-      // (audit 2026-09-15, C1). A stamp older than the window is refreshed as before.
-      // gcStaleClients reads the same map instead of re-reading every object (D1).
-      if (typeof native.lastSeen === "number" && Number.isFinite(native.lastSeen)) {
-        this.lastSeenFlushedAt.set(id, native.lastSeen);
-      }
-      // v1.36.0 (S5): restore the persisted access-token expiry so a token that
-      // already expired before the restart is rejected by getByToken on next use.
-      const tokenExpiresAt = token && typeof native.tokenExpiresAt === "number" ? native.tokenExpiresAt : null;
-
-      // Legacy migration (<=1.1.1): hostname lived in its own state. If present,
-      // move the value into common.name and drop the state.
-      const legacyHostname = coerceString(hostnameRaw);
-      // `nameText`, not `coerceString`: the name is a bare string on every client created
-      // before v1.41.0 and a translation object afterwards — reading only the string form
-      // would make an already-converted client look nameless and re-stamp its IP over the
-      // hostname on the next restore.
-      const rawChannelName = obj.common?.name;
-      let channelName = nameText(rawChannelName);
-      // v1.41.0: convert a client created before this version to a translation object.
-      // The TEXT is kept exactly as it stands — it is the display's hostname, or a name
-      // the user typed in the admin UI; only the form changes (core team, nut2 #15).
-      // Guarded on the bare-string form, so an already-converted client is left alone
-      // and this costs one write once per client, not one per start.
-      if (isBareStringName(rawChannelName)) {
-        await this.adapter.extendObject(`clients.${id}`, { common: { name: tRaw(rawChannelName) } });
-      }
-      if (legacyHostname) {
-        this.adapter.log.debug(
-          `restore: legacy hostname migration for client ${id} — '${legacyHostname}' moved to common.name`,
-        );
-        if (legacyHostname !== channelName) {
-          await this.adapter.extendObject(`clients.${id}`, { common: { name: tRaw(legacyHostname) } });
-          channelName = legacyHostname;
-        }
-        try {
-          await this.adapter.delObjectAsync(`clients.${id}.hostname`);
-        } catch {
-          /* best effort — ignore */
-        }
-      }
-      const hostname = channelName && channelName !== ip && channelName !== id ? channelName : null;
-
-      const record: ClientRecord = {
-        id,
-        cookie,
-        token,
-        tokenExpiresAt,
-        refreshToken,
-        mode: normalisedMode,
-        manualUrl,
-        ip,
-        hostname,
-        persistent: true,
-      };
-      this.trackInMemory(record);
-      // Text revision this client's objects were last written with. Missing/older →
-      // ensureObjects refreshes the texts once and re-stamps; equal → it only guarantees
-      // the objects EXIST and writes nothing (see CLIENT_OBJECTS_VERSION).
-      const storedVersion = typeof native.objectsVersion === "number" ? native.objectsVersion : 0;
-      // Legacy clients (v1.1.x) only had `visUrl` + `ip` + `remove` objects;
-      // ensure the v1.2.0+ objects (`mode`, `manualUrl`) exist before any
-      // state writes from migration land — otherwise js-controller logs
-      // "State has no existing object" warnings.
-      await this.ensureObjects(record, false, storedVersion);
-      // Promote a blank mode value to the string "0" so the dropdown renders the
-      // `0='---'` option as selected. v1.2.0 installs left the value as `''`
-      // which matches no common.states entry. Reuses `mode` from the parallel
-      // read above (which is `''` for both a blank and a missing value) —
-      // ensureObjects() only writes objects, never the mode value, so a second
-      // getState would return the same thing. v1.37.0 (L24).
-      if (mode === "") {
-        await this.adapter.setState(`clients.${id}.mode`, { val: NO_CHOICE, ack: true });
-      }
-    } catch (err) {
-      this.adapter.log.debug(`client-registry: skipping ${id} during restore — ${errText(err)}`);
+      return null;
     }
+    const { cookie, token, refreshToken } = identity;
+    // I22 (v1.37.0): migrate a legacy `channel` client object to `device` in place —
+    // preserves cookie/token/name/states, no re-onboarding. New clients are already
+    // created as devices by ensureObjects().
+    if (obj.type === "channel") {
+      try {
+        await this.adapter.extendObject(`clients.${id}`, { type: "device" });
+      } catch (err) {
+        this.adapter.log.debug(`client-registry: channel→device migration failed for ${id}: ${errText(err)}`);
+      }
+    }
+    // v1.9.0 (D8): the reads of one display run in parallel; since the audit of
+    // 2026-09-15 the displays themselves do too (restore() above), so a start costs
+    // one round of round-trips instead of one per display.
+    // The fifth read is the pre-1.2.0 `visUrl` the migration needs. It rides along in
+    // the batch that already runs here instead of costing the migration its own
+    // sequential round-trip per client on every start (see legacyVisUrls).
+    const [modeRaw, manualUrlRaw, ipRaw, hostnameRaw, legacyVisUrlRaw] = await Promise.all([
+      this.readState(`${id}.mode`),
+      this.readState(`${id}.manualUrl`),
+      this.readState(`${id}.ip`),
+      this.readState(`${id}.hostname`),
+      this.readState(`${id}.visUrl`),
+    ]);
+    if (legacyVisUrlRaw !== null && legacyVisUrlRaw !== undefined && legacyVisUrlRaw !== "") {
+      this.legacyVisUrls.set(id, legacyVisUrlRaw);
+    }
+    const mode = typeof modeRaw === "string" ? modeRaw : "";
+    // A pre-v1.43.0 install may still hold "" in the state; normalise on the way in so
+    // exactly one form lives in memory.
+    const normalisedMode = mode === "" ? NO_CHOICE : mode;
+    const manualUrl = coerceSafeUrl(manualUrlRaw);
+    const ip = coerceString(ipRaw);
+    // The lastSeen throttle window survives a restart: the persisted stamp IS the last
+    // flush. Without this every display's first contact after a restart re-wrote a
+    // `lastSeen` that was seconds old — N writes per restart for nothing
+    // (audit 2026-09-15, C1). A stamp older than the window is refreshed as before.
+    // gcStaleClients reads the same map instead of re-reading every object (D1).
+    if (identity.lastSeen !== undefined) {
+      this.lastSeenFlushedAt.set(id, identity.lastSeen);
+    }
+    // v1.36.0 (S5): the persisted access-token expiry comes back, so a token that
+    // already expired before the restart is rejected by getByToken on next use.
+    const { tokenExpiresAt } = identity;
+
+    // Legacy migration (<=1.1.1): hostname lived in its own state. If present,
+    // move the value into common.name and drop the state.
+    const legacyHostname = coerceHostname(hostnameRaw);
+    if (legacyHostname) {
+      this.adapter.log.debug(
+        `restore: legacy hostname migration for client ${id} — '${legacyHostname}' becomes the host name`,
+      );
+      try {
+        await this.adapter.delObjectAsync(`clients.${id}.hostname`);
+      } catch {
+        /* best effort — ignore */
+      }
+    }
+    // The sources of the name (K7): the app's device name and the host name from the data file — or the host name of
+    // a datapoint up to 1.1.1, which hassemu wrote itself. The name in the tree is never one: a display stored before
+    // K7 is named by its address until its host name resolves at the first contact.
+    const { appName } = identity;
+    const hostname = identity.hostname ?? legacyHostname;
+    if (appName !== undefined) {
+      this.appNames.set(id, appName);
+    }
+
+    const record: ClientRecord = {
+      id,
+      cookie,
+      token,
+      tokenExpiresAt,
+      refreshToken,
+      mode: normalisedMode,
+      manualUrl,
+      ip,
+      hostname,
+      persistent: true,
+    };
+    // The start brings the name in the tree to what the sources name the display (K7) — also over a name typed in
+    // the object tree, which is no source: a user has no business in an adapter's datapoints (krobi 2026-09-02,
+    // fleet rule; 2026-11-11 22:40 „Adapter hat sich an die Flotte zu halten!“). A bare string from before v1.41.0
+    // becomes a translation object in the same write (core team, nut2 #15). Compared by text (`nameText`), so a
+    // display whose name is current costs no write.
+    const want = this.wantName(record);
+    const rawName = obj.common?.name;
+    if (isBareStringName(rawName) || nameText(rawName) !== want) {
+      await this.adapter.extendObject(`clients.${id}`, { common: { name: tRaw(want) } });
+    }
+    this.writtenNames.set(id, want);
+    this.trackInMemory(record);
+    // Tracked: from here every write of the file takes the entry from the record.
+    this.carried.delete(id);
+    const restored: RestoredClient = { id, legacyNative: hasLegacyNative(native) };
+    // Text revision this client's objects were last written with. Missing/older →
+    // ensureObjects refreshes the texts once and re-stamps; equal → it only guarantees
+    // the objects EXIST and writes nothing (see CLIENT_OBJECTS_VERSION).
+    const storedVersion = typeof native.objectsVersion === "number" ? native.objectsVersion : 0;
+    // Legacy clients (v1.1.x) only had `visUrl` + `ip` + `remove` objects;
+    // ensure the v1.2.0+ objects (`mode`, `manualUrl`) exist before any
+    // state writes from migration land — otherwise js-controller logs
+    // "State has no existing object" warnings.
+    await this.ensureObjects(record, false, storedVersion);
+    // Promote a blank mode value to the string "0" so the dropdown renders the
+    // `0='---'` option as selected. v1.2.0 installs left the value as `''`
+    // which matches no common.states entry. Reuses `mode` from the parallel
+    // read above (which is `''` for both a blank and a missing value) —
+    // ensureObjects() only writes objects, never the mode value, so a second
+    // getState would return the same thing. v1.37.0 (L24).
+    if (mode === "") {
+      await this.adapter.setState(`clients.${id}.mode`, { val: NO_CHOICE, ack: true });
+    }
+    return restored;
   }
 
   /**
@@ -407,7 +841,7 @@ export class ClientRegistry {
           throw err;
         });
       }
-      const promise = this.createClient(ip, hostname);
+      const promise = this.createClient(ip, hostname, userAgent);
       this.pendingByIp.set(bucketKey, promise);
       try {
         return await promise;
@@ -419,7 +853,7 @@ export class ClientRegistry {
         this.pendingByIp.delete(bucketKey);
       }
     }
-    return this.createClient(ip, hostname);
+    return this.createClient(ip, hostname, userAgent);
   }
 
   /**
@@ -517,37 +951,36 @@ export class ClientRegistry {
   }
 
   /**
-   * Updates in-memory token and persists to channel.native. Old token is freed.
+   * Updates the in-memory token and stores it in the data file. Old token is freed.
    *
    * @param id    Client id.
    * @param token New bearer token, or null to clear.
+   * @returns Settles once the file holds the token; rejects when it cannot be written.
    */
-  async setToken(id: string, token: string | null): Promise<void> {
+  setToken(id: string, token: string | null): Promise<void> {
     const record = this.byId.get(id);
     if (!record) {
-      return;
+      return Promise.resolve();
     }
     this.trackToken(record, token);
-    await this.adapter.extendObject(`clients.${id}`, {
-      native: { token, tokenExpiresAt: record.tokenExpiresAt },
-    });
+    return this.persisted();
   }
 
   /**
-   * Sets access AND refresh token in one object write — the onboarding grant and the
-   * revoke both change the pair, and two extendObject calls on the same object per
-   * onboarding were one too many (audit 2026-09-15, G1). The refresh token is stored
-   * plain-text in `clients.<id>.native.refreshToken` — same exposure profile as the
-   * access token (see {@link ClientRecord.refreshToken}).
+   * Sets access AND refresh token in one write — the onboarding grant and the revoke
+   * both change the pair (audit 2026-09-15, G1). The refresh token is stored plain-text
+   * in the data file — same exposure profile as the access token (see
+   * {@link ClientRecord.refreshToken}).
    *
    * @param id           Client id.
    * @param token        New bearer token, or null to clear.
    * @param refreshToken New refresh token, or null to clear.
+   * @returns Settles once the file holds both tokens; rejects when it cannot be written.
    */
-  async setTokens(id: string, token: string | null, refreshToken: string | null): Promise<void> {
+  setTokens(id: string, token: string | null, refreshToken: string | null): Promise<void> {
     const record = this.byId.get(id);
     if (!record) {
-      return;
+      return Promise.resolve();
     }
     this.trackToken(record, token);
     if (record.refreshToken) {
@@ -557,9 +990,57 @@ export class ClientRegistry {
     if (refreshToken) {
       this.byRefreshToken.set(refreshToken, record);
     }
-    await this.adapter.extendObject(`clients.${id}`, {
-      native: { token, tokenExpiresAt: record.tokenExpiresAt, refreshToken },
-    });
+    return this.persisted();
+  }
+
+  /**
+   * Write every identity this registry holds to the data file — the tracked displays and
+   * the {@link carried} entries — as one synchronous replacement, so two writes can never
+   * interleave. Throws when the file cannot be written.
+   */
+  private persist(): void {
+    const clients = new Map(this.carried);
+    for (const record of this.byId.values()) {
+      const lastSeen = this.lastSeenFlushedAt.get(record.id);
+      const appName = this.appNames.get(record.id);
+      clients.set(record.id, {
+        cookie: record.cookie,
+        token: record.token,
+        tokenExpiresAt: record.tokenExpiresAt,
+        refreshToken: record.refreshToken,
+        ...(lastSeen === undefined ? {} : { lastSeen }),
+        ...(appName === undefined ? {} : { appName }),
+        ...(record.hostname === null ? {} : { hostname: record.hostname }),
+      });
+    }
+    writeStore(this.dataDir, this.serverUuid, clients);
+  }
+
+  /**
+   * {@link persist} for the token setters, whose callers await them and answer the display
+   * only once the identity is stored (Auth-Flow step 4): a failed write rejects.
+   */
+  private persisted(): Promise<void> {
+    try {
+      this.persist();
+      return Promise.resolve();
+    } catch (err) {
+      return Promise.reject(err instanceof Error ? err : new Error(errText(err)));
+    }
+  }
+
+  /**
+   * {@link persist} where a failed write costs only a stamp or a stale entry the next start
+   * drops — logged on debug.
+   *
+   * @param context What the write was for (log line).
+   */
+  private persistQuietly(context: string): void {
+    try {
+      this.persist();
+    } catch (err) {
+      this.adapter.log.debug(`client-registry: ${context} — the data file could not be written: ${errText(err)}`);
+    }
   }
 
   /**
@@ -630,9 +1111,9 @@ export class ClientRegistry {
         this.adapter.log.debug(`Client ${id}: mode → '${result.value}' (sentinel)`);
         return;
       case "rejected-unsafe-url":
-        // L1(b): raw is an unvalidated state value — flatten and cap it so a
-        // multi-MB / multi-line script write can't flood or inject the log.
-        this.adapter.log.warn(`Client ${id}: rejected unsafe mode value "${oneLine(result.raw).substring(0, 120)}"`);
+        // The value stays out of the log: coerceSafeUrl rejects an address with user:pass@,
+        // and echoing it put the password into the log (fleet rule, krobi 2026-11-11 18:17/18:20).
+        this.adapter.log.warn(`Client ${id}: rejected unsafe mode value`);
         // L37: revert to `record.mode || 0` (not bare `record.mode`) so a blank
         // mode reverts to the string "0" the dropdown renders, matching the other
         // revert paths — a bare "" regresses the dropdown to no selection.
@@ -722,6 +1203,7 @@ export class ClientRegistry {
       return;
     }
     this.untrack(record);
+    this.persistQuietly(`forgetting ${id}`);
     let objectRemoved = true;
     try {
       await this.adapter.delObjectAsync(`clients.${id}`, { recursive: true });
@@ -802,6 +1284,8 @@ export class ClientRegistry {
     // after years) it would suppress the new display's first lastSeen write; plus a small leak.
     this.lastSeenFlushedAt.delete(record.id);
     this.ipChangedAt.delete(record.id);
+    this.appNames.delete(record.id);
+    this.writtenNames.delete(record.id);
   }
 
   private trackInMemory(record: ClientRecord): void {
@@ -816,34 +1300,42 @@ export class ClientRegistry {
   }
 
   /**
-   * A random id no tracked client holds. Shared by the persistent and the transient
-   * path: a transient id that collided with a live display used to make that display's
-   * `byId` checks succeed for a stranger's request (audit 2026-09-15, B3).
+   * The id of a new display (K7, display-id.ts) that no display holds — neither a tracked one nor one the data file
+   * still carries. Shared by the persistent and the transient path: a transient id that collided with a live display
+   * used to make that display's `byId` checks succeed for a stranger's request (audit 2026-09-15, B3).
+   *
+   * @param userAgent The User-Agent of the display's first request — the model in it starts the id.
    */
-  private freshClientId(): string {
-    let id = generateClientId();
-    while (this.byId.has(id)) {
-      id = generateClientId();
-    }
-    return id;
+  private freshClientId(userAgent: string | null): string {
+    return newDisplayId(userAgent, randomIdTail(), id => this.byId.has(id) || this.carried.has(id));
   }
 
-  private async createClient(ip: string | null, hostname: string | null): Promise<ClientRecord> {
-    const record = this.buildRecord(this.freshClientId(), ip, hostname, true);
+  private async createClient(
+    ip: string | null,
+    hostname: string | null,
+    userAgent: string | null,
+  ): Promise<ClientRecord> {
+    const record = this.buildRecord(this.freshClientId(userAgent), ip, hostname, true);
     const { id } = record;
     // Tracked BEFORE the objects are written: freshClientId() checks byId, so a second
     // display arriving meanwhile cannot draw the same id.
     this.trackInMemory(record);
+    // The first lastSeen stamp goes into the same write as the cookie; the device is created with the name below.
+    this.lastSeenFlushedAt.set(id, Date.now());
+    this.writtenNames.set(id, this.wantName(record));
     try {
+      // The identity is stored before the objects exist — a display is never handed a
+      // cookie the next start would not know.
+      this.persist();
       await this.createObjects(record);
     } catch (err) {
-      // A display whose objects could not be written must not stay in the lookup maps: it
-      // would answer byId/byCookie with no object behind it, grow the maps with every retry,
-      // and neither throttle would count it (audit 2026-09-25, L6).
+      // A display whose identity or objects could not be written must not stay in the lookup
+      // maps: it would answer byId/byCookie with no object behind it, grow the maps with every
+      // retry, and neither throttle would count it (audit 2026-09-25, L6).
       this.untrack(record);
+      this.persistQuietly(`rolling back the new display ${id}`);
       throw err;
     }
-    this.touchLastSeen(record);
     this.adapter.log.info(
       ip ? `New client connected: ${id} (${oneLine(hostname ?? ip)})` : `New client connected: ${id}`,
     );
@@ -941,7 +1433,7 @@ export class ClientRegistry {
    * @param hostname Reverse-DNS hostname, if any.
    */
   private transientRecord(ip: string | null, hostname: string | null): ClientRecord {
-    return this.buildRecord(this.freshClientId(), ip, hostname, false);
+    return this.buildRecord(this.freshClientId(null), ip, hostname, false);
   }
 
   /**
@@ -1006,19 +1498,18 @@ export class ClientRegistry {
   }
 
   /**
-   * Updates `native.lastSeen` on the channel, throttled to once per hour per
-   * client. Used for the stale-client-GC: clients without token + lastSeen
-   * older than 30 days get auto-removed on adapter start.
+   * Stores the client's `lastSeen` in the data file, throttled to once per hour per
+   * client. Used for the stale-client-GC: clients whose lastSeen lies 30 days
+   * behind the most recently seen display get auto-removed on adapter start.
    *
-   * Fire-and-forget — failures only debug-logged.
+   * Failures only debug-logged.
    *
    * @param record Client whose lastSeen-timestamp should be refreshed.
    */
   private touchLastSeen(record: ClientRecord): void {
     // Only for persistent, tracked records. A transient (throttled) record owns no
-    // objects, and a record removed while a request was still in flight must not be
-    // resurrected by this fire-and-forget upsert — extendObject would re-create
-    // the channel as a cookie-less orphan. v1.37.0 (M5).
+    // identity, and a record removed while a request was still in flight must not be
+    // resurrected by a stamp. v1.37.0 (M5).
     if (!record.persistent || !this.byId.has(record.id)) {
       return;
     }
@@ -1028,35 +1519,31 @@ export class ClientRegistry {
       return; // throttle: once per flush interval
     }
     this.lastSeenFlushedAt.set(record.id, now);
-    this.adapter
-      .extendObject(`clients.${record.id}`, { native: { lastSeen: now } })
-      .catch(err => this.adapter.log.debug(`touchLastSeen failed for ${record.id}: ${errText(err)}`));
+    this.persistQuietly(`lastSeen of ${record.id}`);
   }
 
   /**
    * v1.19.0 (F11): the one path that seeds lastSeen. main.ts gcStaleClients used to
-   * carry its own extendObject call with the same native format — a duplicate that
-   * would break the day the format changes. Both paths use this method now. The
-   * throttle map is updated too, so the next touchLastSeen does not overwrite the
-   * seed right away.
+   * carry its own write with the same format — a duplicate that would break the day
+   * the format changes. Both paths use this method now. The throttle map is updated
+   * too, so the next touchLastSeen does not overwrite the seed right away.
    *
    * @param id  Client id (short segment, without the `clients.` prefix).
    * @param now Optional timestamp for tests; default Date.now().
    */
-  async seedLastSeen(id: string, now: number = Date.now()): Promise<void> {
-    this.lastSeenFlushedAt.set(id, now);
-    try {
-      await this.adapter.extendObject(`clients.${id}`, { native: { lastSeen: now } });
-    } catch (err) {
-      this.adapter.log.debug(`seedLastSeen failed for ${id}: ${errText(err)}`);
+  seedLastSeen(id: string, now: number = Date.now()): void {
+    if (!this.byId.has(id)) {
+      return;
     }
+    this.lastSeenFlushedAt.set(id, now);
+    this.persistQuietly(`seeding lastSeen of ${id}`);
   }
 
   /**
-   * The last `native.lastSeen` this registry knows for a client — restored from the
-   * object on start, advanced by every flush. `undefined` for a client that never got
-   * a stamp (pre-1.2.0) — the stale-GC seeds one then. Lets the GC decide without a
-   * second object read per display (audit 2026-09-15, D1).
+   * The last `lastSeen` this registry knows for a client — restored from the data file
+   * (or an earlier version's device object) on start, advanced by every flush. `undefined`
+   * for a client that never got a stamp (pre-1.2.0) — the stale-GC seeds one then. Lets
+   * the GC decide without a second read per display (audit 2026-09-15, D1).
    *
    * @param id Client id.
    */
@@ -1106,7 +1593,7 @@ export class ClientRegistry {
    *                       Defaults to 0 (unknown) so `createClient` always writes in full.
    */
   private async ensureObjects(record: ClientRecord, refreshStates = true, storedVersion = 0): Promise<void> {
-    const { id, cookie, ip, hostname } = record;
+    const { id } = record;
     const mergedStates = this.buildModeStates();
     // Whether the four per-client texts have to be (re)written this start. See
     // CLIENT_OBJECTS_VERSION: v1.41.0 wrote them unconditionally — four broker calls per
@@ -1126,10 +1613,17 @@ export class ClientRegistry {
     // objects are written with the current texts below, so the separate stamp write
     // and the second name write of the old create path were two writes for nothing
     // (audit 2026-09-15, G2). On restore the object exists and this is a no-op.
+    // The pictogram (R-19) is an INPUT of this create, the stored device gets it through the
+    // version write below — once, then the stamp is current (CLAUDE_PATTERNS.md § Geräte-Piktogramme).
+    const icon = displayIcon();
     await this.adapter.setObjectNotExistsAsync(`clients.${id}`, {
       type: "device",
-      common: { name: tRaw(hostname ?? ip ?? id) },
-      native: { cookie, token: null, objectsVersion: CLIENT_OBJECTS_VERSION },
+      common: {
+        name: tRaw(this.wantName(record)),
+        ...(icon === undefined ? {} : { icon }),
+      },
+      // Only the text revision: cookie, tokens and lastSeen live in the data file (client-store.ts).
+      native: { objectsVersion: CLIENT_OBJECTS_VERSION },
     });
 
     // States:
@@ -1151,10 +1645,11 @@ export class ClientRegistry {
       // right on the datapoint. New/repaired objects carry it; existing valid objects
       // are intentionally not rewritten just to add a doc field (would defeat L1).
       desc: tName("clientModeDesc"),
-      // 'mixed' future-proofs against the upcoming js-controller
-      // strict-type cast (see govee-smart v1.11.0 pattern).
-      type: "mixed",
-      role: "state",
+      // Every value is text — "0", `global`, `manual` or a URL (review 2026-11-07, R-17: the
+      // inventory gate's `native-type` and `fallback-role` rules); an older `mixed`/`state`
+      // object is repaired by the schema check below.
+      type: "string",
+      role: "text",
       read: true,
       write: true,
       // I19: no-choice sentinel is the STRING "0" everywhere (matches the dropdown key
@@ -1180,7 +1675,7 @@ export class ClientRegistry {
       // is the single states authority, so on restore we repair only a broken schema
       // and never touch states.
       const c = existing.common;
-      const schemaOk = existing.type === "state" && c?.type === "mixed" && c.role === "state";
+      const schemaOk = existing.type === "state" && c?.type === "string" && c.role === "text";
       const statesOk = refreshStates ? shallowStatesEqual(c?.states, mergedStates) : true;
       if (schemaOk && statesOk) {
         return;
@@ -1274,7 +1769,10 @@ export class ClientRegistry {
     // it actually moved — otherwise this would be the very write it exists to avoid.
     if (!textsCurrent) {
       await this.adapter
-        .extendObject(`clients.${id}`, { native: { objectsVersion: CLIENT_OBJECTS_VERSION } })
+        .extendObject(`clients.${id}`, {
+          ...(icon === undefined ? {} : { common: { icon } }),
+          native: { objectsVersion: CLIENT_OBJECTS_VERSION },
+        })
         .catch(err => this.adapter.log.debug(`client-registry: version stamp failed for ${id}: ${errText(err)}`));
     }
   }
@@ -1292,28 +1790,15 @@ export class ClientRegistry {
   }
 
   /**
-   * Store a display's new address, and carry it into the device name while that name is still
-   * the previous auto-address.
+   * Store a display's new address — without an app name and a host name it is also the device name (K7).
    *
    * @param record The display.
    * @param ip     Its new address.
    */
   private async applyIpChange(record: ClientRecord, ip: string): Promise<void> {
-    const previousIp = record.ip;
     record.ip = ip;
     await this.adapter.setState(`clients.${record.id}.ip`, { val: ip, ack: true });
-    // If no hostname is known, common.name falls back to the IP. Only refresh it
-    // when the channel name is STILL the old auto-IP — never clobber a name the
-    // user set in the admin UI (the README documents the channel name as the
-    // user-owned display label). onObjectChange does not observe clients.* renames,
-    // so record.hostname stays null and this read-before-overwrite is the only
-    // guard protecting a user rename across an IP change. v1.36.0 (C4).
-    if (!record.hostname) {
-      // Only the previous auto-IP counts as "auto" here — deliberately NOT record.id:
-      // a web request always carries an IP, so a client is never id-named in practice,
-      // and keeping the set minimal preserves the exact pre-v1.38.0 behavior. L4.
-      await this.applyAutoName(record.id, ip, [previousIp]);
-    }
+    await this.applyName(record);
   }
 
   private async updateIpHostname(record: ClientRecord, ip: string | null, hostname: string | null): Promise<void> {
@@ -1330,7 +1815,7 @@ export class ClientRegistry {
         await this.applyIpChange(record, ip);
       }
     }
-    if (hostname && hostname !== record.hostname) {
+    if (hostname) {
       await this.applyHostname(record, hostname);
     }
   }
@@ -1344,66 +1829,87 @@ export class ClientRegistry {
    * as an update channel. v1.37.0 (M5).
    *
    * @param cookie   Cookie of the client whose hostname resolved.
-   * @param hostname Reverse-DNS hostname.
+   * @param hostname Reverse-DNS hostname (untrusted).
    */
   async updateHostname(cookie: string, hostname: string): Promise<void> {
     const record = this.getByCookie(cookie);
-    if (!record || !hostname || hostname === record.hostname) {
+    if (record) {
+      await this.applyHostname(record, hostname);
+    }
+  }
+
+  /**
+   * Store a display's resolved host name in the data file — the start names the display by it (K7) — and make it the
+   * device name unless the app reported one.
+   *
+   * @param record Tracked client record.
+   * @param raw    Resolved host name (untrusted: a PTR label is attacker-influenceable, L1(a)).
+   */
+  private async applyHostname(record: ClientRecord, raw: string): Promise<void> {
+    const hostname = coerceHostname(raw);
+    if (hostname === null || hostname === record.hostname) {
       return;
     }
-    await this.applyHostname(record, hostname);
-  }
-
-  /**
-   * Writes the reverse-DNS hostname to the record and the channel's common.name,
-   * but only when common.name still holds an auto value (the previous hostname,
-   * the current IP, or the id) — never clobber a name the user set in the admin
-   * UI. onObjectChange does not observe clients.* renames, so record.hostname
-   * stays null and this read-before-overwrite is the only guard protecting a user
-   * rename across a late-resolving reverse-DNS result. The IP branch above guards
-   * the same way; before v1.37.0 this hostname branch overwrote unconditionally.
-   * v1.36.0 (C4) / v1.37.0 (M1).
-   *
-   * @param record   Tracked client record.
-   * @param hostname Resolved hostname (already non-empty and != record.hostname).
-   */
-  private async applyHostname(record: ClientRecord, hostname: string): Promise<void> {
-    const previousHostname = record.hostname;
     record.hostname = hostname;
-    await this.applyAutoName(record.id, hostname, [previousHostname, record.ip, record.id]);
+    this.persistQuietly(`the host name of ${record.id}`);
+    await this.applyName(record);
   }
 
   /**
-   * Write `newName` to the client channel's `common.name`, but ONLY when the current
-   * name is still an auto-assigned value (one of `autoValues`, or unset) — never clobber
-   * a name the user set in the admin UI. onObjectChange does not observe clients.* renames,
-   * so record.hostname can't be relied on; this read-before-overwrite is the guard. The IP
-   * branch and the reverse-DNS branch shared this logic verbatim before it was consolidated
-   * here. v1.36.0 (C4) / v1.37.0 (M1) / v1.38.0 (L4).
+   * Store the device name a display's Companion app reported (K7) and make it the display's name — it follows every
+   * change in the app. Never rejects: the webhook answers regardless.
    *
-   * @param recordId   Client id (channel is `clients.<recordId>`).
-   * @param newName    Name to write when the current one is still auto.
-   * @param autoValues Values considered auto-assigned (a null entry never matches a string name).
+   * @param id  Client id.
+   * @param raw The app's `device_name` (untrusted).
    */
-  private async applyAutoName(recordId: string, newName: string, autoValues: (string | null)[]): Promise<void> {
-    const obj = await this.adapter.getObjectAsync(`clients.${recordId}`);
-    const currentName = obj?.common?.name;
-    // v1.41.0: the name is a translation object now, so the "is it still auto?" test
-    // reads the TEXT out of either form (`nameText`). Comparing the raw value would
-    // never match once converted — every display would look user-renamed and the
-    // hostname/IP update would silently stop working.
-    const currentText = nameText(currentName);
-    const isAutoName = currentName === undefined || (currentText !== null && autoValues.includes(currentText));
-    if (isAutoName) {
-      await this.adapter.extendObject(`clients.${recordId}`, { common: { name: tRaw(newName) } });
+  async setAppName(id: string, raw: unknown): Promise<void> {
+    try {
+      const record = this.byId.get(id);
+      const name = coerceDeviceName(raw);
+      if (!record || name === null || name === this.appNames.get(id)) {
+        return;
+      }
+      this.appNames.set(id, name);
+      this.persistQuietly(`the app's device name of ${id}`);
+      await this.applyName(record);
+    } catch (err) {
+      this.adapter.log.debug(`client-registry: the app's device name of ${id} could not be applied: ${errText(err)}`);
     }
+  }
+
+  /**
+   * The name hassemu names a display by (K7): the device name its Companion app reported, else the host name its
+   * address resolved to, else the address, else the id.
+   *
+   * @param record The display.
+   */
+  private wantName(record: ClientRecord): string {
+    return this.appNames.get(record.id) ?? record.hostname ?? record.ip ?? record.id;
+  }
+
+  /**
+   * Write the display's name ({@link wantName}) when its sources changed it — compared with the name hassemu last
+   * wrote, never with the tree: the name belongs to the adapter, a name typed in the object tree is no source and
+   * does not stay (krobi 2026-09-02, fleet rule; 2026-11-11 22:40 „Adapter hat sich an die Flotte zu halten!“ — up
+   * to 1.46.1 a read-before-write kept it, v1.36.0 C4 / v1.37.0 M1). Written as a translation object (v1.41.0).
+   *
+   * @param record Tracked client record.
+   */
+  private async applyName(record: ClientRecord): Promise<void> {
+    if (this.byId.get(record.id) !== record) {
+      return;
+    }
+    const want = this.wantName(record);
+    if (this.writtenNames.get(record.id) === want) {
+      return;
+    }
+    await this.adapter.extendObject(`clients.${record.id}`, { common: { name: tRaw(want) } });
+    this.writtenNames.set(record.id, want);
   }
 
   private async readState(subId: string): Promise<unknown> {
-    // v1.20.0 (F10): the shared helper (object-utils.ts) — global-config.safeGetState
-    // used to duplicate it (same try/catch + null fallback, only the path prefix
-    // differed).
-    const s = await safeGetState(this.adapter, `clients.${subId}`);
+    // A read error propagates (K16): read as "empty", the restore wrote "0" over the mode.
+    const s = await getStateOrNull(this.adapter, `clients.${subId}`);
     return s?.val ?? null;
   }
 }

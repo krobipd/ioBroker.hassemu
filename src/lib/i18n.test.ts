@@ -69,7 +69,6 @@ describe("i18n completeness", () => {
     const stateKeys = [
       "info",
       "connection",
-      "serverUuid",
       "refreshUrls",
       "clients",
       "global",
@@ -81,7 +80,6 @@ describe("i18n completeness", () => {
       "clientIp",
       "clientRemove",
       "clientRemoveDesc",
-      "serverUuidDesc",
       "refreshUrlsDesc",
       "globalUrl",
       "manualUrl",

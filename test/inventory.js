@@ -185,6 +185,7 @@ async function seedLegacyDisplay(harness) {
  */
 function request(method, urlPath, opts = {}) {
   return new Promise((resolve, reject) => {
+    /** @type {Record<string, string>} */
     const headers = {};
     if (opts.cookie) headers.cookie = `hassemu_client=${opts.cookie}`;
     if (opts.ip) headers["x-forwarded-for"] = opts.ip;
@@ -197,7 +198,7 @@ function request(method, urlPath, opts = {}) {
       res.on("end", () => {
         const setCookie = (res.headers["set-cookie"] ?? []).join("; ");
         const match = /hassemu_client=([^;]+)/.exec(setCookie);
-        resolve({ status: res.statusCode, cookie: match ? match[1] : null, body: text });
+        resolve({ status: res.statusCode ?? 0, cookie: match ? match[1] : null, body: text });
       });
     });
     req.on("error", reject);
@@ -219,7 +220,9 @@ async function waitForServer(timeoutMs) {
       return;
     } catch (err) {
       if (Date.now() > deadline) {
-        throw new Error(`adapter did not open ${PORT} within ${timeoutMs} ms: ${err.message}`);
+        throw new Error(
+          `adapter did not open ${PORT} within ${timeoutMs} ms: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
       await new Promise(r => setTimeout(r, 250));
     }
@@ -505,6 +508,7 @@ tests.integration(ADAPTER_DIR, {
   defineAdditionalTests({ suite }) {
     suite("object inventory", getHarness => {
       let harness;
+      /** @type {Record<string, string>} */
       let idMap = {};
       before(async function () {
         this.timeout(180000);
@@ -569,6 +573,7 @@ tests.integration(ADAPTER_DIR, {
     if (previousFile && fs.existsSync(previousFile)) {
       suite("upgrade from the previous release", getHarness => {
         let harness;
+        /** @type {Record<string, string>} */
         let idMap = {};
         const previous = JSON.parse(fs.readFileSync(previousFile, "utf8"));
         // One cookie per seeded display, in inventory order — the identity the fixtures

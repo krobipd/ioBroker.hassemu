@@ -11,8 +11,8 @@
  * The resolver delegates: a client whose `mode === 'global'` ends up here.
  */
 
-import { coerceBoolean, coerceSafeUrl, oneLine } from "./coerce";
-import { parseAdapterStateId, safeGetState, shallowStatesEqual } from "./object-utils";
+import { coerceBoolean, coerceSafeUrl } from "./coerce";
+import { getStateOrNull, parseAdapterStateId, shallowStatesEqual } from "./object-utils";
 import { buildDropdownStates, parseManualUrlWrite, parseModeWrite } from "./state-write-rules";
 import { MODE_MANUAL, NO_CHOICE } from "./constants";
 import { resolveLabel } from "./i18n";
@@ -39,12 +39,15 @@ export class GlobalConfig {
     this.adapter = adapter;
   }
 
-  /** Loads the current global.* values from the broker. Call once on adapter start. */
+  /**
+   * Loads the current global.* values from the broker. Call once on adapter start. A read error propagates
+   * and fails the start (K16) — read as "empty" it made the promotion below write `"0"` over the user's mode.
+   */
   async restore(): Promise<void> {
     const [modeState, manualState, enabledState] = await Promise.all([
-      safeGetState(this.adapter, "global.mode"),
-      safeGetState(this.adapter, "global.manualUrl"),
-      safeGetState(this.adapter, "global.enabled"),
+      getStateOrNull(this.adapter, "global.mode"),
+      getStateOrNull(this.adapter, "global.manualUrl"),
+      getStateOrNull(this.adapter, "global.enabled"),
     ]);
     const restoredMode = typeof modeState?.val === "string" ? modeState.val : "";
     // Normalise the pre-v1.43.0 blank form on the way in (D5).
@@ -124,8 +127,9 @@ export class GlobalConfig {
         this.adapter.log.debug(`global.mode → '${result.value}' (sentinel)`);
         return;
       case "rejected-unsafe-url":
-        // L1(b): raw is an unvalidated state value — flatten + cap it for the log.
-        this.adapter.log.warn(`global.mode rejected — unsafe URL value "${oneLine(result.raw).substring(0, 120)}"`);
+        // The value stays out of the log: coerceSafeUrl rejects an address with user:pass@,
+        // and echoing it put the password into the log (fleet rule, krobi 2026-11-11 18:17/18:20).
+        this.adapter.log.warn(`global.mode rejected — unsafe URL`);
         // L37: revert to `this.mode || "0"` so a blank mode reverts to the dropdown's `0='---'`.
         await this.adapter.setState("global.mode", { val: this.mode || NO_CHOICE, ack: true });
         return;
@@ -234,9 +238,6 @@ export class GlobalConfig {
     await this.adapter.setState("global.mode", { val: safeMode, ack: true });
     await this.adapter.setState("global.manualUrl", { val: safeManual ?? "", ack: true });
   }
-
-  // v1.20.0 (F10): the private safeGetState duplicated the shared one — now imported
-  // from object-utils.ts.
 }
 
 /**

@@ -6,7 +6,6 @@
       "_note": "The info channel was the one unmapped manifest object of the fleet run on 2026-09-05; admin/i18n already carried the key.",
       "info": "info",
       "info.connection": "connection",
-      "info.serverUuid": "serverUuid",
       "info.refreshUrls": "refreshUrls",
       "clients": "clients",
       "global": "global",
@@ -15,7 +14,6 @@
       "global.manualUrl": "globalManualUrl"
     },
     "desc": {
-      "info.serverUuid": "serverUuidDesc",
       "info.refreshUrls": "refreshUrlsDesc",
       "global.mode": "globalModeDesc",
       "global.enabled": "globalEnabledDesc",
@@ -23,13 +21,57 @@
     }
   },
   "forumThread": "https://forum.iobroker.net/topic/84711/test-adapter-hassemu-1.34",
-  "_listenPorts": "The HA emulation listens on TCP 8123 — the port every HA client expects (design decision 3); the admin's port-conflict check reads native.port + native.bind.",
+  "_listenPorts": "The HA emulation listens on the TCP port of native.port — default 8123 like Home Assistant, changeable since K3 (krobi 2026-11-11 19:31); the admin's port-conflict check reads native.port + native.bind.",
   "listenPorts": [
     {
       "key": "port",
       "protocol": "tcp",
-      "role": "primary",
-      "fixed": 8123
+      "role": "primary"
     }
-  ]
+  ],
+  "_deviceIds": "Package check device-id-scheme: a display names no serial number on its first request, and often no model. hassemu assigns the id on that request (acceptance page K7, krobi 2026-11-11 19:51): the model the Android app names in its User-Agent, else `display`, then a hyphen and four characters hassemu draws itself, a counter when the id is taken; bound to the display's cookie, it never changes. Up to 1.46.1 the id was six random hex characters; such a display moves once to `display-<its last four>`.",
+  "deviceIds": {
+    "assigned": "src/lib/display-id.ts newDisplayId (model from the Android app's User-Agent, else `display`, plus randomIdTail: crypto.randomBytes(2), four hex characters, a counter when taken), called by src/lib/client-registry.ts freshClientId and bound to the display's cookie"
+  },
+  "_suites": "Fleet suites of test/fleet-suites.js. connectionTest and groupSwitches: the settings page has no sendTo field, no device manager and no switch that adds or removes a group of datapoints. rename: under INVENTORY_RENAME=1 the fixture's reverse DNS gives one display a new hostname, and the display's automatic name follows it (client-registry applyHostname). dropDevice: no datapoint says whether a display is reachable — hassemu cannot know whether a display is connected right now (krobi 2026-08-27), so no display can be shown as gone. rejectLogin: hassemu logs in nowhere — the password in native protects the emulation itself, the displays log in to it.",
+  "suites": {
+    "connectionTest": {
+      "none": "the settings page has no sendTo field and the adapter has no device manager — there is no connection test to press"
+    },
+    "groupSwitches": {
+      "none": "no setting adds or removes a group of datapoints — the tree is one device per display"
+    },
+    "rename": true,
+    "rejectLogin": {
+      "none": "hassemu logs in to no counterpart — its password protects the emulation itself, and the displays log in to hassemu"
+    },
+    "dropDevice": {
+      "none": "no datapoint says whether a display is reachable — hassemu cannot know whether a display is connected right now (krobi 2026-08-27)"
+    }
+  },
+  "serverTest": {
+    "_why": "Proves the emulation answers on the server: the web server is up, every known display still reports its address, and a display setting written by hand is taken and confirmed. The server id lives in the instance data folder since B3 (krobi 2026-11-11 19:31) and is no datapoint to read.",
+    "observeSeconds": 60,
+    "connectSeconds": 30,
+    "startSpacingSeconds": 0,
+    "reads": [
+      {
+        "id": "info.connection",
+        "expect": "true"
+      },
+      {
+        "id": "clients.*.ip",
+        "expect": "nonEmpty"
+      }
+    ],
+    "commands": [
+      {
+        "id": "clients.*.manualUrl",
+        "value": "https://www.iobroker.net/",
+        "timeoutSeconds": 30
+      }
+    ]
+  },
+  "_noDeviceSources": "Gate A15: hassemu has no device catalog to keep current — every Home Assistant client (companion app on a wall display, tablet or phone) is served the same way and keyed by its cookie, never by a model. Needs krobi's grant ($fleetNone), requested through the Werkbank.",
+  "noDeviceSources": "hassemu keeps no device catalog — every Home Assistant client is served the same way and identified by its cookie, never by a model"
 }

@@ -1,6 +1,22 @@
 import crypto from "node:crypto";
 import type { EventEmitter } from "node:events";
-import { MDNSService } from "./mdns";
+import type BonjourModule from "bonjour-service";
+
+// The REAL bonjour-service runs (I23, below); the subclass only notes the options each
+// instance is built with — the socket the announcement goes out on (R-20).
+const { builtWith } = vi.hoisted(() => ({ builtWith: [] as unknown[] }));
+vi.mock("bonjour-service", async importOriginal => {
+  // bonjour-service is `export =`: the class is the module, vitest hands it over as `default`
+  const real = await importOriginal<{ default: typeof BonjourModule }>();
+  class Noting extends real.default {
+    constructor(...args: ConstructorParameters<typeof real.default>) {
+      builtWith.push(args[0]);
+      super(...args);
+    }
+  }
+  return { ...real, default: Noting };
+});
+import { MDNSService, mdnsSocketOptions } from "./mdns";
 import { HA_VERSION } from "./constants";
 import type { AdapterConfig } from "./types";
 
@@ -446,5 +462,40 @@ describe("MDNSService cross-platform", () => {
     expect(localAdapter._logs.some(l => l.level === "warn" && l.msg === "mDNS async publish error: bind failed")).to.be
       .true;
     await local.stop();
+  });
+});
+
+// The chosen address is the only one the adapter sends on (review 2026-11-07, R-20): the
+// group is joined and the announcement sent on that interface; every address keeps
+// bonjour's default (all interfaces).
+describe("mdnsSocketOptions", () => {
+  it("the announcement goes out on the socket of the effective bind", async () => {
+    builtWith.length = 0;
+    const local = new MDNSService(
+      createMockAdapter() as never,
+      {
+        port: 8123,
+        bind: "192.0.2.10",
+        authRequired: false,
+        username: "admin",
+        password: "",
+        mdnsEnabled: true,
+        serviceName: "TestService",
+      },
+      crypto.randomUUID(),
+    );
+    local.start();
+    await local.stop();
+    expect(builtWith).to.deep.equal([{ interface: "192.0.2.10", bind: "0.0.0.0" }]);
+  });
+
+  it("sends on the chosen interface, the socket on every address", () => {
+    expect(mdnsSocketOptions("192.0.2.10")).to.deep.equal({ interface: "192.0.2.10", bind: "0.0.0.0" });
+  });
+
+  it("every address keeps bonjour's default", () => {
+    for (const bind of [undefined, "", "0.0.0.0", "::"]) {
+      expect(mdnsSocketOptions(bind), `bind=${JSON.stringify(bind)}`).to.deep.equal({});
+    }
   });
 });

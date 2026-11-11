@@ -115,22 +115,23 @@ ${opts.cardInner}
  * `<meta http-equiv="refresh">` as a fallback for clients without JS, though
  * the HA Companion App and Shelly Wall Display WebView both have JS enabled.
  *
- * @param target The fully-built `redirect_uri?code=…&state=…` URL.
+ * @param target   The fully-built `redirect_uri?code=…&state=…` URL.
+ * @param language System language for the visible line (`en` fallback) — the fleet rule on the
+ *                 system language holds for a page shown only for a moment, too (BS-3).
  */
-export function renderAuthorizeRedirect(target: string): string {
+export function renderAuthorizeRedirect(target: string, language = "en"): string {
+  const t = makePageTranslator(language);
   const a = escapeHtml(target);
   // M8: shared jsStringLiteral escapes `</script>` breakout (JSON.stringify alone
   // does not neutralise `<`, which would close the inline <script> at the HTML
   // tokenizer level before JS parses the string literal).
   const j = jsStringLiteral(target);
   return htmlShell({
-    // Momentary auto-redirect page (sub-second) — kept in English on purpose; only the
-    // login form + error page (which a user actually reads) are localized. L7.
-    lang: "en",
+    lang: language,
     title: "Home Assistant",
     headExtra: `<meta http-equiv="refresh" content="0; URL=${a}">`,
     cardInner: `<h1>Home Assistant</h1>
-<p class="loading">Signing in…</p>`,
+<p class="loading">${escapeHtml(t("authSigningIn"))}</p>`,
     bodyExtra: `<script>(function(){document.location.assign(${j});})();</script>`,
   });
 }
@@ -203,25 +204,37 @@ ${errBlock}
 }
 
 /**
+ * The OAuth2 error codes `/auth/authorize` answers with, each with the key of the sentence that
+ * explains it on the error page. The code itself stays as the protocol names it (BS-5).
+ */
+export const AUTHORIZE_ERRORS = {
+  unsupported_response_type: "authErrorResponseType",
+  invalid_request: "authErrorRequest",
+  invalid_redirect_uri: "authErrorRedirectUri",
+} as const;
+
+/** One OAuth2 error code of {@link AUTHORIZE_ERRORS}. */
+export type AuthorizeErrorReason = keyof typeof AUTHORIZE_ERRORS;
+
+/**
  * Render the authorization error page. Used when query params are malformed
  * or when `redirect_uri` fails validation. NEVER auto-redirects — we don't
  * want to leak codes to attacker-controlled URIs by accident.
  *
- * @param reason   Short OAuth2 error code (e.g. `invalid_request`).
- * @param detail   Human-readable explanation.
+ * @param reason   The OAuth2 error code; its explanation comes from {@link AUTHORIZE_ERRORS}.
  * @param language System language for the visible strings (`en` fallback). L7.
  */
-export function renderAuthorizeError(reason: string, detail: string, language = "en"): string {
+export function renderAuthorizeError(reason: AuthorizeErrorReason, language = "en"): string {
   const t = makePageTranslator(language);
   return htmlShell({
     lang: language,
     title: `Home Assistant — ${escapeHtml(reason)}`,
     headExtra: `<meta name="viewport" content="width=device-width, initial-scale=1">`,
-    // Localized title + a user-readable hint; the technical `detail`/`reason` stay for
-    // support diagnostics. L7 (v1.38.0).
+    // Title, hint and the explanation of the code in the system language; the code below
+    // stays as the protocol names it, for support diagnostics.
     cardInner: `<h1>${escapeHtml(t("authErrorTitle"))}</h1>
 <p class="subtitle">${escapeHtml(t("authErrorHint"))}</p>
-<div class="err">${escapeHtml(detail)}</div>
+<div class="err">${escapeHtml(t(AUTHORIZE_ERRORS[reason]))}</div>
 <p class="subtitle">${escapeHtml(reason)}</p>`,
   });
 }

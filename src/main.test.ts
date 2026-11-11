@@ -7,11 +7,23 @@
  */
 
 import crypto from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import type * as NetworkAddress from "./lib/network-address";
+
+// The addresses the fake host carries — whether an interface carries an address is the
+// fleet master's question (network-address.test.ts judges it), here a fact the test sets.
+const { carried } = vi.hoisted(() => ({ carried: new Set<string>(["192.0.2.10"]) }));
+vi.mock("./lib/network-address", async importOriginal => ({
+  ...(await importOriginal<typeof NetworkAddress>()),
+  carriesAddress: (address: string) => carried.has(address),
+}));
 
 vi.mock("@iobroker/adapter-core", async () => {
   // The factory is hoisted above the imports — the shared broker semantics come in here.
   const { brokerExtend, brokerDelObject } = await import("../test/unit/broker-stub.js");
   const { realI18n } = await import("../test/unit/i18n-stub.js");
+  const { freshDataDir } = await import("../test/unit/data-dir.js");
   // The real exit codes (the value js-controller reads), not a copy that could drift.
   const { EXIT_CODES } = await import("@iobroker/adapter-core/exitCodes");
   interface ObjEntry {
@@ -23,6 +35,8 @@ vi.mock("@iobroker/adapter-core", async () => {
   class StubAdapter {
     namespace = "hassemu.0";
     adapterDir = "/stub-adapter-dir";
+    /** The instance data folder (identities.json) — what getAbsoluteInstanceDataDir answers for this stub. */
+    dataDir = freshDataDir();
     config: Record<string, unknown> = {};
     handlers = new Map<string, (...args: unknown[]) => unknown>();
     objects = new Map<string, ObjEntry>();
@@ -63,6 +77,20 @@ vi.mock("@iobroker/adapter-core", async () => {
     getStateAsync(id: string): Promise<{ val: unknown; ack: boolean } | null> {
       const state = this.states.get(this.fullId(id));
       return Promise.resolve(state ? structuredClone(state) : null);
+    }
+
+    // Like js-controller: writes only when value or ack differ from the stored state.
+    setStateChangedAsync(
+      id: string,
+      state: { val: unknown; ack?: boolean },
+    ): Promise<{ id: string; notChanged: boolean }> {
+      const prev = this.states.get(this.fullId(id));
+      const ack = state.ack ?? false;
+      if (prev && prev.val === state.val && prev.ack === ack) {
+        return Promise.resolve({ id, notChanged: true });
+      }
+      this.states.set(this.fullId(id), { val: state.val, ack });
+      return Promise.resolve({ id, notChanged: false });
     }
 
     // A COPY, like the broker: only a write reaches the store (see client-registry.test.ts).
@@ -115,6 +143,17 @@ vi.mock("@iobroker/adapter-core", async () => {
       return Promise.resolve();
     }
 
+    // Like the controller: every object of this instance, whatever its type.
+    getAdapterObjectsAsync(): Promise<Record<string, ObjEntry>> {
+      const out: Record<string, ObjEntry> = {};
+      for (const [id, obj] of this.objects) {
+        if (id.startsWith(`${this.namespace}.`)) {
+          out[id] = structuredClone(obj);
+        }
+      }
+      return Promise.resolve(out);
+    }
+
     getForeignObjectsAsync(pattern: string, type?: string): Promise<Record<string, ObjEntry>> {
       const prefix = pattern.replace("*", "");
       const out: Record<string, ObjEntry> = {};
@@ -162,6 +201,20 @@ vi.mock("@iobroker/adapter-core", async () => {
 
     clearTimeout(_handle: unknown): void {}
 
+    /** The named certificates the controller hands out; `null`: none configured. */
+    certificates: { key: string; cert: string } | null = null;
+
+    // Like js-controller 7.2.5 CertificateManager: not configured → its own error line, then ERROR_NOT_FOUND.
+    getCertificatesAsync(publicName?: string, privateName?: string, chainedName?: string): Promise<unknown> {
+      if (!this.certificates) {
+        this.log.error(
+          `${this.namespace} Cannot configure secure web server, because no certificates found: ${publicName}, ${privateName}, ${chainedName}`,
+        );
+        return Promise.reject(new Error("Not exists"));
+      }
+      return Promise.resolve([this.certificates, false]);
+    }
+
     // adapter-core: terminate(reason?, exitCode?) — also accepts the code alone.
     terminate(reasonOrCode?: string | number, code?: number): void {
       this.terminations.push(typeof reasonOrCode === "number" ? reasonOrCode : (code ?? 0));
@@ -171,6 +224,7 @@ vi.mock("@iobroker/adapter-core", async () => {
   return {
     Adapter: StubAdapter,
     EXIT_CODES,
+    getAbsoluteInstanceDataDir: (adapter: StubAdapter): string => adapter.dataDir,
     // The REAL admin/i18n texts (test/unit/i18n-stub.ts): the object refresh exists to land
     // the actual user-visible text in an existing tree.
     I18n: { init: vi.fn(async () => {}), ...realI18n() },
@@ -180,11 +234,26 @@ vi.mock("@iobroker/adapter-core", async () => {
 import * as mainModule from "./main";
 import type { ClientRegistry } from "./lib/client-registry";
 import type { GlobalConfig } from "./lib/global-config";
+import { readStore, type StoredClient, writeStore } from "./lib/client-store";
 import { CLIENT_OBJECTS_VERSION, MODE_GLOBAL, MODE_MANUAL } from "./lib/constants";
 import { resolveRedirect } from "./lib/redirect-resolver";
 import { migrateLegacyDefaultVisUrl, migrateVisUrlToMode, type MigrationAdapter } from "./lib/legacy-migration";
+import type { TlsSetup } from "./lib/tls";
 import type { AdapterConfig } from "./lib/types";
 import iobrokerPackage from "../io-package.json";
+import { removeDataDirs } from "../test/unit/data-dir";
+
+/**
+ * Rewrite the displays of the data file, keeping its server id (a fresh one before the first write).
+ *
+ * @param dir     The instance data folder.
+ * @param clients Display id → entry.
+ */
+function rewriteClients(dir: string, clients: ReadonlyMap<string, StoredClient>): void {
+  writeStore(dir, readStore(dir).server ?? crypto.randomUUID(), clients);
+}
+
+afterAll(removeDataDirs);
 
 interface ObjEntry {
   type: string;
@@ -195,6 +264,9 @@ interface ObjEntry {
 /** Stub surface added by the adapter-core mock (see vi.mock factory above). */
 interface StubSurface {
   config: Record<string, unknown>;
+  certificates: { key: string; cert: string } | null;
+  /** The instance data folder — identities.json lives here. */
+  dataDir: string;
   objects: Map<string, ObjEntry>;
   states: Map<string, { val: unknown; ack: boolean }>;
   logs: { level: string; msg: string }[];
@@ -237,7 +309,6 @@ interface Internal {
   onStateChange: (id: string, state: { val: unknown; ack: boolean } | null | undefined) => Promise<void>;
   onObjectChange: (id: string, obj: { type?: string; common?: Record<string, unknown> } | null | undefined) => void;
   onUnload: (callback: () => void) => void;
-  getOrCreateServerUuid: () => Promise<string>;
   readSystemLanguage: () => Promise<string>;
   computeNewClientMode: () => string;
   gcStaleClients: () => Promise<void>;
@@ -248,8 +319,8 @@ interface Internal {
   urlDiscovery: FakeDiscovery | null;
   webServer: FakeWebServer | null;
   mdnsService: FakeMdns | null;
-  makeWebServer: (instanceUuid: string) => FakeWebServer;
-  makeMdnsService: (instanceUuid: string) => FakeMdns;
+  makeWebServer: (instanceUuid: string, tls: TlsSetup | null) => FakeWebServer;
+  makeMdnsService: (instanceUuid: string, tls: TlsSetup | null) => FakeMdns;
   makeUrlDiscovery: (onChange: unknown) => FakeDiscovery;
   makeRegistry: () => ClientRegistry;
   makeGlobalConfig: () => GlobalConfig;
@@ -260,7 +331,7 @@ interface Internal {
 
 const BASE_CONFIG = {
   port: 8123,
-  bind: "127.0.0.1",
+  bind: "192.0.2.10",
   authRequired: false,
   username: "admin",
   password: "secret",
@@ -321,11 +392,10 @@ describe("HassEmu refreshInstanceObjects (v1.41.0)", () => {
   // refresh forgets fails this suite instead of quietly reaching fresh installs only.
   const MANIFEST_IDS = (iobrokerPackage as { instanceObjects: { _id: string }[] }).instanceObjects.map(o => o._id);
 
-  it("the manifest still declares the nine objects this suite expects", () => {
+  it("the manifest still declares the eight objects this suite expects", () => {
     expect(MANIFEST_IDS).to.have.members([
       "info",
       "info.connection",
-      "info.serverUuid",
       "info.refreshUrls",
       "clients",
       "global",
@@ -430,9 +500,36 @@ describe("HassEmu onReady", () => {
     expect(stub.states.get("hassemu.0.info.connection")).toEqual({ val: true, ack: true });
     expect(stub.stateSubscriptions).toEqual(["clients.*", "global.*", "info.refreshUrls"]);
     expect(stub.objectSubscriptions).toEqual(["system.adapter.*"]);
-    expect(logsOf(stub, "info").some(m => m.includes("HA emulation running on 127.0.0.1:8123"))).toBe(true);
+    expect(logsOf(stub, "info").some(m => m.includes("HA emulation running on 192.0.2.10:8123"))).toBe(true);
     expect(stub.terminations).toEqual([]);
     expect(logsOf(stub, "error")).toEqual([]);
+    expect(logsOf(stub, "warn")).toEqual([]);
+  });
+
+  // The chosen address is the only one the adapter listens on (krobi 2026-10-03 00:27); one the
+  // host does not carry falls back to every address with exactly one warning — the fleet rule in
+  // the head of the master network-address.ts (fakeroku F-05/F-06) — and the server and mDNS then
+  // get `0.0.0.0` through the config.
+  it("a chosen address the host does not carry: every address, exactly one warning", async () => {
+    const { internal, stub } = setup({ bind: "192.0.2.99" });
+    await internal.onReady();
+
+    expect(logsOf(stub, "warn")).toEqual([
+      "Address 192.0.2.99 does not exist on this host — listening on all addresses; choose another address in the instance settings",
+    ]);
+    expect(stub.config.bind).toBe("0.0.0.0");
+    expect(logsOf(stub, "info").some(m => m.includes("HA emulation running on 0.0.0.0:8123"))).toBe(true);
+    expect(stub.terminations).toEqual([]);
+  });
+
+  it("every address (empty, the wildcards) stays every address, without a warning", async () => {
+    for (const bind of ["", "0.0.0.0", "::"]) {
+      const { internal, stub } = setup({ bind });
+      await internal.onReady();
+
+      expect(logsOf(stub, "warn"), `bind=${JSON.stringify(bind)}`).toEqual([]);
+      expect(stub.config.bind, `bind=${JSON.stringify(bind)}`).toBe("0.0.0.0");
+    }
   });
 
   it("starts the web server BEFORE creating subscriptions (D11 v1.13.0)", async () => {
@@ -477,9 +574,23 @@ describe("HassEmu onReady", () => {
   });
 
   it("webserver start failure → a restarting exit code (6, never 11), no subscriptions, no connection=true", async () => {
-    const { internal, stub, webServer } = setup();
+    const { internal, stub, webServer, discovery } = setup();
     webServer.start.mockRejectedValue(new Error("EADDRINUSE"));
+    const order: string[] = [];
+    webServer.stop.mockImplementation(() => {
+      order.push("stop");
+      return Promise.resolve();
+    });
+    discovery.cancelRefresh.mockImplementation(() => void order.push("cancelRefresh"));
+    const terminate = (stub as unknown as { terminate: (...a: unknown[]) => void }).terminate.bind(stub);
+    (stub as unknown as { terminate: (...a: unknown[]) => void }).terminate = (...a: unknown[]) => {
+      order.push("terminate");
+      terminate(...a);
+    };
     await internal.onReady();
+
+    // What the start opened is closed BEFORE the end (start-failure standard ST5, K16).
+    expect(order).toEqual(["cancelRefresh", "stop", "terminate"]);
 
     // 11 = ADAPTER_REQUESTED_TERMINATION: js-controller 7.2.2 never restarts it (controller
     // main.ts 4231/4305); 6 = UNCAUGHT_EXCEPTION restarts after 30 s (audit 2026-09-25, L1).
@@ -490,26 +601,6 @@ describe("HassEmu onReady", () => {
     // a friendly error, so main.ts must not print a second error line for the same failure.
     expect(logsOf(stub, "error").some(m => m.includes("Web server failed to start"))).toBe(false);
     expect(logsOf(stub, "debug").some(m => m.includes("Web server failed to start"))).toBe(true);
-  });
-
-  it("web server and mDNS get the SAME server UUID — the one stored in info.serverUuid (DD2, T5)", async () => {
-    const { internal, stub, webServer, mdns } = setup({ mdnsEnabled: true });
-    const stored = "12345678-1234-4234-8234-123456789abc";
-    stub.states.set("hassemu.0.info.serverUuid", { val: stored, ack: true });
-    const seen: { web?: string; mdns?: string } = {};
-    internal.makeWebServer = uuid => {
-      seen.web = uuid;
-      return webServer;
-    };
-    internal.makeMdnsService = uuid => {
-      seen.mdns = uuid;
-      return mdns;
-    };
-
-    await internal.onReady();
-
-    expect(seen.web).toBe(stored);
-    expect(seen.mdns).toBe(stored);
   });
 
   it("mdnsEnabled=true + active mDNS → 'mDNS started' suffix in the running log", async () => {
@@ -672,53 +763,180 @@ describe("a stop that arrives while onReady is still running (L4)", () => {
   });
 });
 
-describe("getOrCreateServerUuid", () => {
-  it("reuses an existing valid UUID from info.serverUuid", async () => {
-    const { internal, stub } = setup();
-    const existing = "12345678-1234-1234-1234-123456789abc";
-    stub.states.set("hassemu.0.info.serverUuid", { val: existing, ack: true });
-    expect(await internal.getOrCreateServerUuid()).toBe(existing);
-  });
+describe("server id (design decision 2, B3: it lives in the data file)", () => {
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-  it("generates + persists a fresh UUID when the state is empty", async () => {
-    const { internal, stub } = setup();
-    const uuid = await internal.getOrCreateServerUuid();
-    expect(uuid).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
-    expect(stub.states.get("hassemu.0.info.serverUuid")).toEqual({ val: uuid, ack: true });
-    expect(logsOf(stub, "info").some(m => m.includes("Server UUID generated"))).toBe(true);
-  });
-
-  it("rejects a malformed stored value and generates a fresh one", async () => {
-    const { internal, stub } = setup();
-    stub.states.set("hassemu.0.info.serverUuid", { val: "not-a-uuid", ack: true });
-    const uuid = await internal.getOrCreateServerUuid();
-    expect(uuid).not.toBe("not-a-uuid");
-    expect(uuid).toMatch(/^[0-9a-f-]{36}$/);
-  });
-
-  it("persist failure → warn, fresh UUID still returned (no crash)", async () => {
-    const { internal, stub } = setup();
-    const original = stub.setState.bind(stub);
-    stub.setState = async (id, state) => {
-      if (id.includes("serverUuid")) {
-        throw new Error("write refused");
-      }
-      return original(id, state);
+  /**
+   * Record the id the start hands to the web server and to mDNS.
+   *
+   * @param s The test adapter.
+   */
+  function captureIds(s: Setup): { web: string[]; mdns: string[] } {
+    const seen = { web: [] as string[], mdns: [] as string[] };
+    s.internal.makeWebServer = id => {
+      seen.web.push(id);
+      return s.webServer;
     };
-    const uuid = await internal.getOrCreateServerUuid();
-    expect(uuid).toMatch(/^[0-9a-f-]{36}$/);
-    expect(logsOf(stub, "warn").some(m => m.includes("Could not save server UUID"))).toBe(true);
-    // No line claiming a save that did not happen (audit 2026-09-25, L8).
-    expect(logsOf(stub, "info").some(m => m.includes("generated and saved"))).toBe(false);
+    s.internal.makeMdnsService = id => {
+      seen.mdns.push(id);
+      return s.mdns;
+    };
+    return seen;
+  }
+
+  it("a 1.46.1 installation: the id of info.serverUuid moves into the data file — web server and mDNS get the SAME one (T5) — and the state object goes", async () => {
+    const s = setup({ mdnsEnabled: true });
+    const seen = captureIds(s);
+    const existing = "12345678-1234-4234-9234-123456789abc";
+    s.stub.objects.set("hassemu.0.info.serverUuid", { type: "state" });
+    s.stub.states.set("hassemu.0.info.serverUuid", { val: existing, ack: true });
+
+    await s.internal.onReady();
+
+    expect(readStore(s.stub.dataDir).server).toBe(existing);
+    expect(seen.web, "the web server gets the moved id").toEqual([existing]);
+    expect(seen.mdns, "mDNS gets the same id").toEqual([existing]);
+    expect(s.stub.objects.has("hassemu.0.info.serverUuid"), "no second copy").toBe(false);
+    expect(s.stub.terminations).toEqual([]);
   });
 
-  it("a READ error is not a fresh install: it propagates and no new identity is written (N4)", async () => {
-    const { internal, stub } = setup();
-    const adapter = internal as unknown as { getStateAsync: (id: string) => Promise<unknown> };
-    adapter.getStateAsync = () => Promise.reject(new Error("states db not ready"));
+  it("a fresh installation generates the id once; the next start keeps it", async () => {
+    const first = setup();
+    const seenFirst = captureIds(first);
+    await first.internal.onReady();
+    const generated = readStore(first.stub.dataDir).server;
+    expect(generated).toMatch(UUID);
+    expect(seenFirst.web).toEqual([generated]);
 
-    await expect(internal.getOrCreateServerUuid()).rejects.toThrow("states db not ready");
-    expect(stub.states.has("hassemu.0.info.serverUuid")).toBe(false);
+    const second = setup();
+    second.stub.dataDir = first.stub.dataDir;
+    const seenSecond = captureIds(second);
+    await second.internal.onReady();
+    expect(seenSecond.web, "the same id after a restart").toEqual([generated]);
+  });
+
+  it("a malformed info.serverUuid is not taken over — a new id is generated", async () => {
+    const s = setup();
+    s.stub.states.set("hassemu.0.info.serverUuid", { val: "not-a-uuid", ack: true });
+    await s.internal.onReady();
+    const server = readStore(s.stub.dataDir).server;
+    expect(server).toMatch(UUID);
+    expect(server).not.toBe("not-a-uuid");
+  });
+
+  it("an id the data file already holds wins — info.serverUuid is not read", async () => {
+    const s = setup();
+    const seen = captureIds(s);
+    const stored = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
+    writeStore(s.stub.dataDir, stored, new Map());
+    s.stub.states.set("hassemu.0.info.serverUuid", { val: "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb", ack: true });
+    await s.internal.onReady();
+    expect(seen.web).toEqual([stored]);
+    expect(readStore(s.stub.dataDir).server).toBe(stored);
+  });
+
+  it("a READ error is not a fresh install: the start fails and no id is written (N4, K16)", async () => {
+    const s = setup();
+    const adapter = s.internal as unknown as { getStateAsync: (id: string, ...rest: unknown[]) => Promise<unknown> };
+    const real = adapter.getStateAsync.bind(adapter);
+    adapter.getStateAsync = (id: string, ...rest: unknown[]) =>
+      id === "info.serverUuid" ? Promise.reject(new Error("states db not ready")) : real(id, ...rest);
+
+    await s.internal.onReady();
+
+    expect(s.stub.terminations).toEqual([6]);
+    expect(logsOf(s.stub, "error").some(m => m.includes("states db not ready"))).toBe(true);
+    expect(readStore(s.stub.dataDir).server, "no new identity").toBeUndefined();
+  });
+});
+
+describe("HTTPS start (K4)", () => {
+  // Test-only certificates (test/fixtures/tls/README.md).
+  const tlsDir = join(__dirname, "../test/fixtures/tls");
+  const pair = (n: string): { key: string; cert: string } => ({
+    key: readFileSync(join(tlsDir, `${n}.key`), "utf8"),
+    cert: readFileSync(join(tlsDir, `${n}.crt`), "utf8"),
+  });
+
+  /**
+   * Record the HTTPS part the start hands to the web server.
+   *
+   * @param s The test adapter.
+   */
+  function captureTls(s: Setup): { tls: (TlsSetup | null)[] } {
+    const seen = { tls: [] as (TlsSetup | null)[] };
+    s.internal.makeWebServer = (_id, tls) => {
+      seen.tls.push(tls);
+      return s.webServer;
+    };
+    return seen;
+  }
+
+  it("without a configured certificate the controller's line is the only error line; code 6, nothing listens", async () => {
+    const s = setup({ secure: true } as never);
+    await s.internal.onReady();
+
+    expect(logsOf(s.stub, "error")).toEqual([
+      "hassemu.0 Cannot configure secure web server, because no certificates found: defaultPublic, defaultPrivate, undefined",
+    ]);
+    expect(s.stub.terminations).toEqual([6]);
+    expect(s.webServer.start).not.toHaveBeenCalled();
+    expect(s.stub.stateSubscriptions).toEqual([]);
+  });
+
+  it("with a certificate the web server gets the HTTPS part, and mDNS advertises https with the certificate's name", async () => {
+    const s = setup({ secure: true, mdnsEnabled: true } as never);
+    s.stub.certificates = pair("named");
+    const seen = captureTls(s);
+    await s.internal.onReady();
+
+    expect(s.stub.terminations).toEqual([]);
+    expect(seen.tls).toHaveLength(1);
+    expect(seen.tls[0]?.name).toBe("display-test.example");
+    expect(s.stub.objectSubscriptions, "no collection, no subscription").not.toContain("system.certificates");
+
+    // The real mDNS factory of a fresh instance: its advertised base URL follows the HTTPS part.
+    const fresh = new HassEmu() as unknown as Internal & { config: Record<string, unknown> };
+    fresh.config = { ...BASE_CONFIG };
+    const mdns = (fresh.makeMdnsService as unknown as (id: string, tls: TlsSetup | null) => unknown)("u", seen.tls[0]);
+    expect((mdns as { baseUrlOf: () => string }).baseUrlOf()).toBe("https://display-test.example:8123");
+  });
+
+  it("without HTTPS nothing is loaded and the web server gets no HTTPS part", async () => {
+    const s = setup();
+    const seen = captureTls(s);
+    await s.internal.onReady();
+    expect(seen.tls).toEqual([null]);
+  });
+
+  it("a Let's Encrypt collection: subscribed, a renewal reaches the server, an unusable one keeps the old with one warning", async () => {
+    const s = setup({ secure: true, leCollection: "home" } as never);
+    s.stub.certificates = pair("named");
+    const le = pair("le");
+    s.stub.objects.set("system.certificates", {
+      type: "config",
+      native: { collections: { home: { ...le, domains: ["le.example"] } } },
+    });
+    const seen = captureTls(s);
+    await s.internal.onReady();
+
+    const tls = seen.tls[0]!;
+    expect(tls.name).toBe("le.example");
+    expect(s.stub.objectSubscriptions).toContain("system.certificates");
+    const update = vi.spyOn(tls, "update");
+
+    s.internal.onObjectChange("system.certificates", {
+      type: "config",
+      native: { collections: { home: { ...le, domains: ["le.example", "www.le.example"] } } },
+    } as never);
+    expect(update).toHaveBeenCalledTimes(1);
+    expect([...update.mock.calls[0][0].get("home")!.domains]).toEqual(["le.example", "www.le.example"]);
+
+    s.internal.onObjectChange("system.certificates", { type: "config", native: { collections: {} } } as never);
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(logsOf(s.stub, "warn")).toEqual([
+      'HTTPS keeps its current certificate — the renewed collection cannot be used: the certificate collection "home" does not exist or holds no usable certificate',
+    ]);
   });
 });
 
@@ -940,7 +1158,8 @@ async function seedRestoredClient(
     stub.objects.set(`hassemu.0.clients.${id}.visUrl`, { type: "state" });
   }
   await internal.registry!.restore();
-  const rec = internal.registry!.getById(id);
+  // A display from before 1.2.0 carries the id form before K7 — the restore moves it, its visUrl along.
+  const rec = internal.registry!.getById("display-ffee");
   if (!rec) {
     throw new Error("seedRestoredClient: restore did not load the client");
   }
@@ -952,6 +1171,7 @@ describe("migrateVisUrlToMode", () => {
     const { internal, stub } = setup();
     internal.globalConfig = internal.makeGlobalConfig();
     internal.registry = internal.makeRegistry();
+    await internal.registry.restore(); // like onReady: restore() reads the server id first (K16)
     stub.states.set("hassemu.0.global.visUrl", { val: "http://old.local/vis", ack: true });
     stub.objects.set("hassemu.0.global.visUrl", { type: "state" });
 
@@ -967,6 +1187,7 @@ describe("migrateVisUrlToMode", () => {
     const { internal, stub } = setup();
     internal.globalConfig = internal.makeGlobalConfig();
     internal.registry = internal.makeRegistry();
+    await internal.registry.restore(); // like onReady: restore() reads the server id first (K16)
     stub.states.set("hassemu.0.global.visUrl", { val: "javascript:alert(1)", ack: true });
 
     await migrateVisUrlToMode(internal as unknown as MigrationAdapter, internal.globalConfig, internal.registry);
@@ -980,6 +1201,7 @@ describe("migrateVisUrlToMode", () => {
     const { internal } = setup();
     internal.globalConfig = internal.makeGlobalConfig();
     internal.registry = internal.makeRegistry();
+    await internal.registry.restore(); // like onReady: restore() reads the server id first (K16)
     await internal.registry.identifyOrCreate(null, "10.0.0.9");
     // No legacy visUrl anywhere — this is the state of EVERY start after the
     // first one, so a blind delObject here is a wasted broker round-trip per
@@ -1033,6 +1255,7 @@ describe("migrateVisUrlToMode", () => {
     const { internal, stub } = setup();
     internal.globalConfig = internal.makeGlobalConfig();
     internal.registry = internal.makeRegistry();
+    await internal.registry.restore(); // like onReady: restore() reads the server id first (K16)
     stub.states.set("hassemu.0.global.visUrl", { val: "http://old.local/vis", ack: true });
     stub.objects.set("hassemu.0.global.visUrl", { type: "state" });
     const original = stub.setState.bind(stub);
@@ -1073,6 +1296,7 @@ describe("migrateVisUrlToMode", () => {
     const { internal, stub } = setup();
     internal.globalConfig = internal.makeGlobalConfig();
     internal.registry = internal.makeRegistry();
+    await internal.registry.restore(); // like onReady: restore() reads the server id first (K16)
     await migrateVisUrlToMode(internal as unknown as MigrationAdapter, internal.globalConfig, internal.registry);
     expect(stub.states.has("hassemu.0.global.mode")).toBe(false);
     expect(logsOf(stub, "warn")).toEqual([]);
@@ -1082,32 +1306,36 @@ describe("migrateVisUrlToMode", () => {
 
 describe("gcStaleClients", () => {
   /**
-   * Seeds a display the way an existing installation holds it — a device object with
-   * the given `lastSeen` (or none) — and restores the registry from it. The GC reads
-   * the stamps the restore loaded, not the objects (audit 2026-09-15, D1), so a test
-   * that patched the stored object AFTER the restore would test nothing.
+   * Seeds a display the way an existing installation holds it — a device object and its
+   * entry in the data file with the given `lastSeen` (or none) — and restores the registry
+   * from it. The GC reads the stamps the restore loaded, not the file (audit 2026-09-15,
+   * D1), so a test that patched the stored stamp AFTER the restore would test nothing.
    *
    * @param stub Object store of the stub adapter
    * @param id Display id
    * @param lastSeen Persisted stamp, or undefined for a pre-1.2.0 display without one
-   * @param extraNative Further native fields (tokens) for the display
+   * @param tokens Token fields of the display's entry, if it is signed in
    */
   function seedDisplay(
     stub: StubSurface,
     id: string,
     lastSeen: number | undefined,
-    extraNative: Record<string, unknown> = {},
+    tokens: Partial<Pick<StoredClient, "token" | "tokenExpiresAt" | "refreshToken">> = {},
   ): void {
+    const stored = readStore(stub.dataDir).clients;
+    stored.set(id, {
+      cookie: crypto.randomUUID(),
+      token: null,
+      tokenExpiresAt: null,
+      refreshToken: null,
+      ...tokens,
+      ...(lastSeen === undefined ? {} : { lastSeen }),
+    });
+    rewriteClients(stub.dataDir, stored);
     stub.objects.set(`hassemu.0.clients.${id}`, {
       type: "device",
       common: { name: { en: `10.0.0.${id.length}` } },
-      native: {
-        cookie: crypto.randomUUID(),
-        token: null,
-        objectsVersion: CLIENT_OBJECTS_VERSION,
-        ...(lastSeen === undefined ? {} : { lastSeen }),
-        ...extraNative,
-      },
+      native: { objectsVersion: CLIENT_OBJECTS_VERSION },
     });
     for (const leaf of ["mode", "manualUrl", "ip", "resolvedUrl", "remove"]) {
       stub.objects.set(`hassemu.0.clients.${id}.${leaf}`, { type: "state", common: { name: leaf }, native: {} });
@@ -1124,7 +1352,7 @@ describe("gcStaleClients", () => {
     await internal.gcStaleClients();
 
     expect(internal.registry.getById("a1")).not.toBeNull();
-    expect(typeof stub.objects.get("hassemu.0.clients.a1")!.native!.lastSeen).toBe("number");
+    expect(typeof readStore(stub.dataDir).clients.get("a1")?.lastSeen).toBe("number");
   });
 
   it("stale client (30d behind the most recently seen display) is removed with an info log", async () => {
@@ -1244,6 +1472,7 @@ describe("applyMasterSwitch", () => {
   it("enabled=true → every client follows 'global'", async () => {
     const { internal, stub } = setup();
     internal.registry = internal.makeRegistry();
+    await internal.registry.restore(); // like onReady: restore() reads the server id first (K16)
     const a = await internal.registry.identifyOrCreate(null, "10.0.0.1");
     const b = await internal.registry.identifyOrCreate(null, "10.0.0.2");
     a.mode = "http://somewhere/";
@@ -1261,6 +1490,7 @@ describe("applyMasterSwitch", () => {
   it("enabled=false → every client drops to '0' (no-choice → landing page)", async () => {
     const { internal, stub } = setup();
     internal.registry = internal.makeRegistry();
+    await internal.registry.restore(); // like onReady: restore() reads the server id first (K16)
     const a = await internal.registry.identifyOrCreate(null, "10.0.0.1");
     const b = await internal.registry.identifyOrCreate(null, "10.0.0.2");
     a.mode = MODE_GLOBAL;
@@ -1283,12 +1513,13 @@ describe("applyMasterSwitch", () => {
 });
 
 describe("onStateChange routing", () => {
-  function readySetup(): Promise<Setup> {
+  async function readySetup(): Promise<Setup> {
     const s = setup();
     s.internal.registry = s.internal.makeRegistry();
+    await s.internal.registry.restore(); // like onReady: restore() reads the server id first (K16)
     s.internal.globalConfig = s.internal.makeGlobalConfig();
     s.internal.urlDiscovery = s.discovery;
-    return Promise.resolve(s);
+    return s;
   }
 
   it("ignores acked states and null states", async () => {

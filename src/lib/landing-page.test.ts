@@ -6,6 +6,7 @@ vi.mock("@iobroker/adapter-core", async () => {
   return { I18n: realI18n() };
 });
 
+import { runPage } from "../../test/unit/page-runner";
 import { renderLandingPage } from "./landing-page";
 
 describe("landing-page", () => {
@@ -58,7 +59,7 @@ describe("landing-page", () => {
     });
 
     it("skips loopback IPs in landing page (E3 v1.16.0)", () => {
-      for (const loopback of ["127.0.0.1", "::1", "0.0.0.0", "127.0.0.5", "   "]) {
+      for (const loopback of ["127.0.0.1", "::1", "127.0.0.5", "   "]) {
         const html = renderLandingPage("abc", "hassemu.0", "en", loopback);
         expect(html, `loopback ${loopback}`).to.not.include("IP address");
         expect(html, `loopback ${loopback} value`).to.not.include(`<td>${loopback}`);
@@ -102,12 +103,11 @@ describe("landing-page", () => {
       it("escapes namespace injection attempts", () => {
         const html = renderLandingPage("abc", 'hassemu.0"><script>x</script>');
         // Raw injected payload must never appear unescaped — that's the XSS guarantee.
-        // The page legitimately contains one </script> (the notifyConnected
-        // block at the bottom); the injected one would be a second.
+        // The page legitimately carries its own script blocks (the app bridge at the
+        // bottom); an injected one would add a `</script>` to those.
         expect(html).to.not.include('"><script>');
-        // Count `</script>` occurrences — only our legitimate one is allowed.
-        const scriptCloseCount = (html.match(/<\/script>/g) ?? []).length;
-        expect(scriptCloseCount).to.equal(1);
+        const closes = (page: string): number => (page.match(/<\/script>/g) ?? []).length;
+        expect(closes(html)).to.equal(closes(renderLandingPage("abc", "hassemu.0")));
         // The injected `<script>x` raw payload must not appear
         expect(html).to.not.include("<script>x</script>");
       });
@@ -164,20 +164,16 @@ describe("landing-page", () => {
       });
     });
 
-    describe("Companion-App bridge signal (v1.29.3)", () => {
-      it("emits connection-status:connected to V1 and V2 bridges from the landing page too", () => {
-        // Without this, FW 2.6.0+ Companion App shows the
-        // "Unable to connect to Home Assistant." popup even when
-        // the landing page is the displayed content (no URL configured).
-        const html = renderLandingPage("abc123", "hassemu.0");
-        expect(html).to.include("window.externalApp");
-        expect(html).to.include("externalBus");
-        expect(html).to.include("window.externalAppV2");
-        expect(html).to.include("postMessage");
-        expect(html).to.include('type:"connection-status"');
-        expect(html).to.include('event:"connected"');
-        // Retry pattern (slow-bridge-attach)
-        expect(html).to.match(/setTimeout\(notifyConnected,\s*\d+\)/);
+    describe("Companion-App bridge signal (v1.29.3, K17)", () => {
+      it("sends connected and, the page being complete, loaded at once — the app drops its loader", () => {
+        // Without connected, FW 2.6.0+ Companion App shows the "Unable to connect to Home
+        // Assistant." popup; without loaded, an app talking to a 2026.8.0 server keeps its own
+        // loader up for 10 s on every 15-s reload of this page (constants.ts, HA_VERSION).
+        const run = runPage(renderLandingPage("abc123", "hassemu.0"));
+        expect(run.messages).toEqual([
+          { id: 1, type: "connection-status", payload: { event: "connected" } },
+          { id: 2, type: "frontend/loaded" },
+        ]);
       });
     });
   });
@@ -186,7 +182,20 @@ describe("landing-page", () => {
     const html = renderLandingPage("a1b2c3", "hassemu.0", "en", "10.0.0.5");
     expect(html).to.match(/padding: 1\.5rem;\s+padding: calc\(1\.5rem \+ var\(--app-safe-area-inset-top, 0px\)\)/);
     expect(html).to.include("calc(1.5rem + var(--app-safe-area-inset-bottom, 0px))");
-    expect(html).to.not.include("env(");
-    expect(html).to.not.include("viewport-fit");
+  });
+
+  it("repeats the padding with the frontend's env() fallback only inside @supports, after the base rules (K17)", () => {
+    const html = renderLandingPage("a1b2c3", "hassemu.0", "en", "10.0.0.5");
+    const start = html.indexOf("@supports (top:env(safe-area-inset-top)) {");
+    expect(start).to.be.above(html.indexOf("@media (max-width: 30rem)"));
+    const block = html.slice(start, html.indexOf("</style>"));
+    expect(html.slice(0, start)).to.not.include("env(");
+    for (const side of ["top", "right", "bottom", "left"]) {
+      const inset = `var(--app-safe-area-inset-${side},env(safe-area-inset-${side},0px))`;
+      expect(block, side).to.include(`calc(1.5rem + ${inset})`);
+    }
+    // The narrow-screen padding (no 1.5rem) is repeated inside the block too, so it still wins there.
+    expect(block).to.match(/@media \(max-width: 30rem\) \{\s+body \{\s+padding: var\(--app-safe-area-inset-top,env\(/);
+    expect(html).to.match(/<meta name="viewport" content="[^"]*viewport-fit=cover[^"]*">/);
   });
 });

@@ -29,7 +29,7 @@ Typical clients: the Shelly Wall Display family (legacy models Stargate and X2, 
 - Auto-discovery via mDNS, plus auto-detect of every VIS / VIS-2 / Aura instance installed on the host (see [Supported dashboards](#supported-dashboards) below)
 - Two HA login flows in parallel — the classic JSON `login_flow` for older clients, plus the browser-OAuth2 flow of the Home Assistant app (also the one built into Shelly Wall Display firmware 2.6.0 and newer)
 - Mobile-App registration emulation so the HA Companion App finishes onboarding
-- Cookie-based: displays keep their URL across reboots, IP changes, renames
+- Cookie-based: displays keep their URL across reboots, IP changes, name changes
 
 ---
 
@@ -60,30 +60,37 @@ Want to add a URL the adapter doesn't auto-detect? Set `manual` and paste it.
 ## Requirements
 
 - Node.js ≥ 22
-- ioBroker js-controller ≥ 7.2.2
-- ioBroker Admin ≥ 8.0.11
+- ioBroker js-controller ≥ 7.2.5
+- ioBroker Admin ≥ 8.3.5
 
 ---
 
 ## Ports
 
-| Port       | Use                                 |
-| ---------- | ----------------------------------- |
-| 8123 / TCP | HA emulation (fixed, HA standard)   |
-| 5353 / UDP | mDNS broadcast (only if mDNS is on) |
+| Port       | Use                                     |
+| ---------- | --------------------------------------- |
+| 8123 / TCP | HA emulation (default port, changeable) |
+| 5353 / UDP | mDNS broadcast (only if mDNS is on)     |
 
-Port 8123 is fixed by the HA clients, so each ioBroker host normally runs one instance — a second one on the same host only works when each is bound to its own interface. Several ioBroker hosts in the LAN may each run one; the displays then see separate servers.
+8123 is Home Assistant's default port; the Home Assistant apps take the port from the address hassemu announces or the one you type in. Another port lets hassemu run on a host where 8123 is taken already, and a second instance on the same host needs its own port or its own interface. Several ioBroker hosts in the LAN may each run one; the displays then see separate servers.
 
-**Monitoring:** point uptime monitors and container health checks at `http://<ioBroker-IP>:8123/health` — it answers without creating a display entry. A `GET /` counts as a display's first visit; a `HEAD /` creates nothing.
+**Monitoring:** point uptime monitors and container health checks at `http://<ioBroker-IP>:8123/health` (with HTTPS `https://`, with another port that port) — it answers without creating a display entry. A `GET /` counts as a display's first visit; a `HEAD /` creates nothing.
 
-**All traffic is plain HTTP** — HA clients do not support HTTPS on this flow. Treat port 8123 as LAN-only and never forward it to the internet. With authentication on, the username, password and tokens travel unencrypted over your LAN, so Auth guards the HA API against other LAN devices — it is not internet-exposure protection.
+**Plain HTTP is the default**, as with Home Assistant. Without HTTPS everything on the port travels unencrypted — with authentication on, the username, password and tokens too. Treat the port as LAN-only and never forward it to the internet; Auth guards the HA API against other LAN devices — it is not internet-exposure protection.
+
+**Use HTTPS** in the instance settings encrypts login, password and tokens with a certificate from ioBroker. HTTPS has rules of its own:
+
+- With HTTPS the displays reach hassemu under the name in the certificate instead of the IP address — that name must resolve on every display.
+- With ioBroker's default certificate (self-signed, issued for the computer name) an Android display needs both: the certificate installed as trusted, and a network that resolves the computer name.
+- A dashboard on plain HTTP cannot be shown inside an HTTPS page — choose an HTTPS address for it.
+- Switching HTTPS on changes the address of hassemu: every display shows up once as a new device and must be pointed at the new address.
 
 ---
 
 ## First steps
 
 1. Start the hassemu instance in ioBroker.
-2. On the display, add a Home Assistant server. With mDNS on it appears automatically; otherwise enter `http://<ioBroker-IP>:8123` by hand.
+2. On the display, add a Home Assistant server. With mDNS on it appears automatically; otherwise enter `http://<ioBroker-IP>:8123` by hand (with HTTPS `https://<name in the certificate>:8123`, with another port that port).
 
    > **Android 17 and newer:** allow _local network access_ when the Home Assistant app asks. Without it the app neither finds hassemu nor can reach it on your network — hassemu is LAN-only, there is no cloud fallback.
 
@@ -98,15 +105,19 @@ Want the same URL on every display? Set `global.mode` (plus `global.manualUrl` f
 
 ## Configuration
 
-| Option              | What                                                                              | Default   |
-| ------------------- | --------------------------------------------------------------------------------- | --------- |
-| Port                        | Fixed at 8123 — every HA client expects it; the form warns if another instance holds it | 8123      |
-| Bind to Interface           | Network interface                                                                       | 0.0.0.0   |
-| Service Name                | Name the display sees                                                                   | ioBroker  |
-| Enable mDNS Discovery       | LAN auto-discovery. Off → set `http://<ioBroker-IP>:8123` on the display by hand.       | on        |
-| Require Authentication      | Login required (guards the HA API on the LAN; credentials travel in plain HTTP)         | off       |
-| Username / Password         | When authentication is on                                                               | admin / — |
-| Trust Reverse Proxy Headers | Only behind a trusted reverse proxy that terminates TLS and strips X-Forwarded-*        | off       |
+| Option                      | What                                                                                                              | Default   |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------- | --------- |
+| Port                        | The port the displays connect to — 8123 like Home Assistant; the form warns if another instance holds it          | 8123      |
+| Bind to Interface           | The address hassemu listens, announces and connects on — all addresses when empty                                 | 0.0.0.0   |
+| Service Name                | Name the display sees                                                                                             | ioBroker  |
+| Enable mDNS Discovery       | LAN auto-discovery. Off → set `http://<ioBroker-IP>:8123` on the display by hand.                                 | on        |
+| Require Authentication      | Login required (guards the HA API on the LAN; credentials travel in plain HTTP)                                   | off       |
+| Username / Password         | When authentication is on                                                                                         | admin / — |
+| Use HTTPS                   | Encrypts login, password and tokens with a certificate from ioBroker — see [Ports](#ports) for its rules          | off       |
+| Certificates                | Public, private and chained certificate, or a Let's Encrypt collection, from ioBroker's certificates (with HTTPS) | —         |
+| Trust Reverse Proxy Headers | Only behind a trusted reverse proxy that terminates TLS and strips X-Forwarded-*                                  | off       |
+
+hassemu answers only displays in its own networks: with an interface chosen, the network of that interface; with all addresses, every network the host sits in. A display or reverse proxy in another network — a routed VLAN, for example — gets no answer; choose the interface of that network instead. A chosen address the host does not carry falls back to all addresses with one warning in the log.
 
 Leave _Trust Reverse Proxy Headers_ off unless that proxy really exists: without it any client can fake its address on every request. Since 1.40.0 a global per-hour ceiling on new display entries limits the damage, but it does not make the setting safe.
 
@@ -125,7 +136,7 @@ hassemu.0.
 │   ├── mode            — URL choice used by every client whose mode is `global`
 │   └── manualUrl       — free-text URL, used when global.mode = `manual`
 └── clients.
-    └── <id>            — one device per display (named after its hostname or IP)
+    └── <id>            — one device per display (named after the app's device name, its hostname or IP)
         ├── mode        — per-client URL choice
         ├── manualUrl   — free-text URL, used when mode = `manual`
         ├── resolvedUrl — the URL this display was actually sent to (read-only)
@@ -186,6 +197,8 @@ Set the instance log level to `debug` first — since v1.31.1 the adapter traces
 
 Migration runs automatically when the adapter starts.
 
+**Updating from 1.x:** version 2.0.0 gives every display a new object ID once — `clients.61c3a1` becomes `clients.display-c3a1`. Values, rooms, functions and aliases move along, recorded history continues in its old series, and the display stays recognised. Update the old IDs in scripts and visualisations, and do not go back to 1.x. New displays get the model their app reports plus four characters hassemu picks (`clients.pixel-tablet-02b7`), or `display` when they report no model. Every display is named after its app's device name, its host name or its address — a name typed into the object browser gives way to it. Details: [Updating from 1.x](docs/en/README.md#updating-from-1x).
+
 Got scripts that still write to `visUrl`? Update them — write to `manualUrl` instead and set `mode` to `manual`.
 
 **Coming from a Shelly Wall Display on firmware 2.6.0 or newer?** Make sure you're on hassemu **≥ 1.29.2**. The on-device HA app introduced in firmware 2.6.0 needs a server-identity probe, a mobile-app registration step and a WebView "connected" signal — all three came in with v1.29.0–v1.29.2. After upgrading, run the display through the on-device HA onboarding once more. Firmware 2.7.0 lifted the deprecation of the built-in Home Assistant page, so both ways are supported again; hassemu serves both.
@@ -198,6 +211,25 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
     Placeholder for the next version (at the beginning of the line):
     ### **WORK IN PROGRESS**
 -->
+
+### **WORK IN PROGRESS**
+
+- Changed: every display gets a new object ID once — `clients.61c3a1` becomes `clients.display-c3a1`; values, rooms, functions and aliases move along
+- Changed: a new display gets the model its app reports plus four characters as its ID, for example `clients.pixel-tablet-02b7`
+- Changed: a display is named after the device name set in its Home Assistant app, otherwise its host name or address; a name typed into the object browser gives way
+- New: the port is configurable, 8123 stays the default
+- New: optional HTTPS with a certificate from ioBroker
+- New: hassemu reports Home Assistant 2026.8.0 — the apps keep their loading screen until the dashboard is there, and the iPhone app shows it edge to edge
+- Changed: only displays in the host's own networks get an answer, and a chosen address is the only one hassemu listens, announces and connects on
+- Changed: the server ID and each display's cookie and tokens live in a file in the instance data folder; the datapoint `info.serverUuid` is gone
+- Changed: the redirect mode datapoints are of type text
+- New: every display carries a display pictogram in the object tree
+- Changed: a new instance is created disabled
+- Changed: the master switch, the dashboard refresh and the remove button log their result on debug
+- Fixed: the password of a rejected address with credentials no longer appears in the log
+- Fixed: the sign-in pages show their text in the system language
+- Fixed: an update from 1.0 or 1.1 with several displays keeps the room and function assignments of every display
+- Fixed: known security advisories in bundled libraries are closed
 
 ### 1.46.1 (2026-09-25) — stable
 
@@ -272,4 +304,4 @@ SOFTWARE.
 
 ---
 
-*Developed with assistance from Claude.ai*
+_Developed with assistance from Claude.ai_

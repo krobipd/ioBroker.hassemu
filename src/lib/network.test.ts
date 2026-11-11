@@ -9,16 +9,8 @@ vi.mock("node:os", async importOriginal => {
   return { ...actual, default: { ...actual, networkInterfaces }, networkInterfaces };
 });
 
-import crypto from "node:crypto";
 import type * as os from "node:os";
-import {
-  advertisedBaseUrl,
-  generateClientId,
-  getLocalIp,
-  hostForUrl,
-  isWildcardBind,
-  resolveAdvertisedHost,
-} from "./network";
+import { advertisedBaseUrl, getLocalIp, hostForUrl, resolveAdvertisedHost } from "./network";
 
 /**
  * Build one interface entry with only the fields getLocalIp reads.
@@ -123,22 +115,6 @@ describe("network", () => {
     });
   });
 
-  describe("isWildcardBind", () => {
-    it("treats falsy / 0.0.0.0 / :: as wildcard", () => {
-      expect(isWildcardBind("")).to.be.true;
-      expect(isWildcardBind(undefined)).to.be.true;
-      expect(isWildcardBind(null)).to.be.true;
-      expect(isWildcardBind("0.0.0.0")).to.be.true;
-      expect(isWildcardBind("::")).to.be.true;
-    });
-
-    it("treats a specific bind address as non-wildcard", () => {
-      expect(isWildcardBind("192.168.1.10")).to.be.false;
-      expect(isWildcardBind("127.0.0.1")).to.be.false;
-      expect(isWildcardBind("::1")).to.be.false;
-    });
-  });
-
   describe("resolveAdvertisedHost", () => {
     it("advertises a concrete bind address verbatim", () => {
       expect(resolveAdvertisedHost("192.168.1.10")).to.equal("192.168.1.10");
@@ -156,25 +132,6 @@ describe("network", () => {
       expect(resolveAdvertisedHost(null)).to.equal(local);
       expect(resolveAdvertisedHost("0.0.0.0")).to.equal(local);
       expect(resolveAdvertisedHost("::")).to.equal(local);
-    });
-  });
-
-  describe("generateClientId", () => {
-    it("produces a 6-character lowercase hex string", () => {
-      const id = generateClientId();
-      expect(id).to.match(/^[0-9a-f]{6}$/);
-    });
-
-    it("takes its three bytes from crypto.randomBytes", () => {
-      // Deterministic instead of drawing 100 ids and expecting no repeat: that test failed
-      // by chance in about 0.03 % of runs (birthday bound, 100 draws from 16.7M ids).
-      const spy = vi.spyOn(crypto, "randomBytes").mockImplementation(() => Buffer.from([0x0a, 0xbc, 0xde]));
-      try {
-        expect(generateClientId()).to.equal("0abcde");
-        expect(spy).toHaveBeenCalledWith(3);
-      } finally {
-        spy.mockRestore();
-      }
     });
   });
 });

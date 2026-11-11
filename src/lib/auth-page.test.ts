@@ -7,7 +7,14 @@ vi.mock("@iobroker/adapter-core", async () => {
   return { I18n: realI18n() };
 });
 
-import { buildRedirectUrl, renderAuthorizeError, renderAuthorizeForm, renderAuthorizeRedirect } from "./auth-page";
+import {
+  AUTHORIZE_ERRORS,
+  type AuthorizeErrorReason,
+  buildRedirectUrl,
+  renderAuthorizeError,
+  renderAuthorizeForm,
+  renderAuthorizeRedirect,
+} from "./auth-page";
 
 describe("auth-page", () => {
   describe("buildRedirectUrl", () => {
@@ -37,7 +44,7 @@ describe("auth-page", () => {
     });
   });
 
-  describe("renderAuthorizeForm / renderAuthorizeError escape user-controlled fields", () => {
+  describe("renderAuthorizeForm escapes user-controlled fields", () => {
     it("escapes client_id / redirect_uri / state in the hidden inputs", () => {
       const html = renderAuthorizeForm({
         clientId: 'x"><script>1</script>',
@@ -46,12 +53,6 @@ describe("auth-page", () => {
       });
       expect(html).to.not.include('"><script>');
       expect(html).to.include("&quot;&gt;&lt;script&gt;");
-    });
-
-    it("escapes reason / detail on the error page", () => {
-      const html = renderAuthorizeError("inv<script>", "bad <b>thing</b>");
-      expect(html).to.not.include("<script>");
-      expect(html).to.include("&lt;script&gt;");
     });
   });
 
@@ -65,10 +66,35 @@ describe("auth-page", () => {
     });
 
     it("renders a localized error title + user hint but keeps the technical reason", () => {
-      const html = renderAuthorizeError("invalid_request", "malformed redirect_uri", "de");
+      const html = renderAuthorizeError("invalid_request", "de");
       expect(html).to.include("Autorisierung fehlgeschlagen"); // authErrorTitle
       expect(html).to.include("Bitte prüfe die Server-Adresse"); // authErrorHint
-      expect(html).to.include("invalid_request"); // technical reason retained for support
+      expect(html).to.include('<p class="subtitle">invalid_request</p>'); // technical reason retained for support
+    });
+
+    it("explains every error code in the system language, English by default (BS-5)", () => {
+      const de: Record<AuthorizeErrorReason, string> = {
+        unsupported_response_type: "Dieser Server nimmt nur Anmeldeanfragen mit response_type=code an.",
+        invalid_request: "Der Anmeldeanfrage fehlt client_id oder redirect_uri, oder einer der beiden ist ungültig.",
+        invalid_redirect_uri:
+          "Die Adresse, zu der die Anmeldung zurückführen soll (redirect_uri), ist für diese App nicht erlaubt.",
+      };
+      for (const reason of Object.keys(AUTHORIZE_ERRORS) as AuthorizeErrorReason[]) {
+        expect(renderAuthorizeError(reason, "de"), reason).to.include(`<div class="err">${de[reason]}</div>`);
+      }
+      expect(renderAuthorizeError("invalid_redirect_uri")).to.include(
+        '<div class="err">The address the sign-in should return to (redirect_uri) is not allowed for this app.</div>',
+      );
+    });
+
+    it("shows the sign-in line of the redirect page in the system language, English by default (BS-3)", () => {
+      const de = renderAuthorizeRedirect("homeassistant://auth-callback?code=c", "de");
+      expect(de).to.include('<p class="loading">Anmeldung läuft…</p>');
+      expect(de).to.include('lang="de"');
+      expect(de).to.include("<h1>Home Assistant</h1>"); // brand stays hardcoded
+      const en = renderAuthorizeRedirect("homeassistant://auth-callback?code=c");
+      expect(en).to.include('<p class="loading">Signing in…</p>');
+      expect(en).to.include('lang="en"');
     });
   });
 });
