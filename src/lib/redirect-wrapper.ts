@@ -47,12 +47,16 @@ const IFRAME_ONLOAD =
 
 /**
  * The iframe and both cards again with the frontend's inset expression (`env()` as the second
- * fallback), only where the browser knows `env()` — see {@link SAFE_AREA_ENV_QUERY}.
+ * fallback), only where the browser knows `env()` — see {@link SAFE_AREA_ENV_QUERY}. Built at
+ * render time: loading this module calls none of its imports (redirect-wrapper.test.ts runs the
+ * shipped build's poll decision in a module wrapper whose `require` returns nothing).
  */
-const SAFE_AREA_ENV_CSS = `${SAFE_AREA_ENV_QUERY}{
+function safeAreaEnvCss(): string {
+  return `${SAFE_AREA_ENV_QUERY}{
 iframe{top:${safeAreaInset("top")};left:${safeAreaInset("left")};width:calc(100vw - ${safeAreaInset("left")} - ${safeAreaInset("right")});height:calc(100vh - ${safeAreaInset("top")} - ${safeAreaInset("bottom")});}
 #hassemu-down,#hassemu-target-down{top:${safeAreaInset("top")};left:${safeAreaInset("left")};right:${safeAreaInset("right")};bottom:${safeAreaInset("bottom")};}
 }`;
+}
 
 /** What one poll tick decides to do. */
 export type PollAction = "reload" | "show-target-down" | "none";
@@ -237,7 +241,7 @@ ${cardTableCss(
 #hassemu-down button:hover,#hassemu-target-down button:hover{background:#0ea5e9;}
 #hassemu-target-down td.target-url{word-break:break-all;}
 @media (max-width:30rem){#hassemu-down,#hassemu-target-down{padding:0;}#hassemu-down .card,#hassemu-target-down .card{border-radius:0;}#hassemu-down th,#hassemu-target-down th{width:auto;}}
-${SAFE_AREA_ENV_CSS}
+${safeAreaEnvCss()}
 </style>
 </head>
 <body>
