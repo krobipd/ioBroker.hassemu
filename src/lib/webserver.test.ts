@@ -458,7 +458,7 @@ describe("WebServer", () => {
       const client = registry.getByCookie(cookie);
       expect(client?.token).to.equal(tokens.access_token);
 
-      // Refresh token must be stored via registry — persisted in clients.<id>.native.refreshToken
+      // Refresh token must be stored via registry — persisted in the instance's identities.json
       expect(client?.refreshToken).to.equal(tokens.refresh_token);
       expect(registry.getByRefreshToken(tokens.refresh_token)?.id).to.equal(client!.id);
     });
@@ -1769,7 +1769,7 @@ describe("WebServer", () => {
     });
 
     it("refresh_token persists across adapter restart (v1.31.0)", async () => {
-      // End-to-end: token lives in clients.<id>.native.refreshToken — a fresh
+      // End-to-end: token lives in the instance's identities.json — a fresh
       // WebServer + ClientRegistry sharing the SAME ioBroker mock-store finds
       // the token via registry.restore() and accepts the refresh-grant.
       const built = createMockAdapter();
@@ -1789,7 +1789,7 @@ describe("WebServer", () => {
       s1["setupRoutes"]();
       await s1["app"].ready();
       try {
-        // Initial OAuth → obtain refresh_token persisted to native.refreshToken
+        // Initial OAuth → obtain refresh_token persisted to identities.json
         const r1 = await s1.inject({ method: "POST", url: "/auth/login_flow", payload: {} });
         const cookie = extractCookie(r1.headers["set-cookie"])!;
         const flowId = r1.json().flow_id;

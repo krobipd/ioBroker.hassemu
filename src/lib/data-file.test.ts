@@ -1,6 +1,16 @@
 // Fleet master (.consistency-master/src/lib/data-file.test.ts) — never edit the copy in an adapter.
 import type * as NodeFs from "node:fs";
-import { fsyncSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  fsyncSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,7 +19,12 @@ import { listDataFiles, readDataFile, removeDataFile, setAsideDataFile, writeDat
 // the real file system, watched: the order of the flush and the rename is what a power cut decides on
 vi.mock("node:fs", async importOriginal => {
   const fs = await importOriginal<typeof NodeFs>();
-  return { ...fs, fsyncSync: vi.fn(fs.fsyncSync), renameSync: vi.fn(fs.renameSync) };
+  return {
+    ...fs,
+    fsyncSync: vi.fn(fs.fsyncSync),
+    readdirSync: vi.fn(fs.readdirSync),
+    renameSync: vi.fn(fs.renameSync),
+  };
 });
 
 let dir: string;
@@ -73,6 +88,16 @@ describe("writeDataFile", () => {
     );
   });
 
+  it("leaves the old file whole while the new one is not complete", () => {
+    // a crash before the rename: what was stored before is still there, whole — never a file written in place
+    writeDataFile(dir, "state.json", { a: 1 });
+    vi.mocked(renameSync).mockImplementationOnce(() => {
+      throw new Error("power cut");
+    });
+    expect(() => writeDataFile(dir, "state.json", { a: 2 })).toThrow("power cut");
+    expect(readDataFile(dir, "state.json")).toEqual({ value: { a: 1 } });
+  });
+
   it("replaces the old content as a whole", () => {
     writeDataFile(dir, "state.json", { a: 1, b: 2 });
     writeDataFile(dir, "state.json", { a: 3 });
@@ -123,6 +148,15 @@ describe("listDataFiles", () => {
     writeDataFile(dir, "b.json", 2);
     writeDataFile(dir, "a.json", 1);
     mkdirSync(join(dir, "sub"));
+    expect(listDataFiles(dir)).toEqual(["a.json", "b.json"]);
+  });
+
+  it("lists the files in order whatever order the disk gives them in", () => {
+    writeDataFile(dir, "a.json", 1);
+    writeDataFile(dir, "b.json", 2);
+    const entries = readdirSync(dir, { withFileTypes: true });
+    const backwards = [...entries].sort((x, y) => y.name.localeCompare(x.name));
+    vi.mocked(readdirSync).mockReturnValueOnce(backwards as never);
     expect(listDataFiles(dir)).toEqual(["a.json", "b.json"]);
   });
 
