@@ -237,6 +237,7 @@ import type { GlobalConfig } from "./lib/global-config";
 import { readStore, type StoredClient, writeStore } from "./lib/client-store";
 import { CLIENT_OBJECTS_VERSION, MODE_GLOBAL, MODE_MANUAL } from "./lib/constants";
 import { resolveRedirect } from "./lib/redirect-resolver";
+import { UrlDiscovery, type UrlStatesListener } from "./lib/url-discovery";
 import { migrateLegacyDefaultVisUrl, migrateVisUrlToMode, type MigrationAdapter } from "./lib/legacy-migration";
 import type { TlsSetup } from "./lib/tls";
 import type { AdapterConfig } from "./lib/types";
@@ -499,7 +500,7 @@ describe("HassEmu onReady", () => {
     expect(discovery.collect).toHaveBeenCalledTimes(1);
     expect(stub.states.get("hassemu.0.info.connection")).toEqual({ val: true, ack: true });
     expect(stub.stateSubscriptions).toEqual(["clients.*", "global.*", "info.refreshUrls"]);
-    expect(stub.objectSubscriptions).toEqual(["system.adapter.*"]);
+    expect(stub.objectSubscriptions).toEqual(["system.adapter.*", "system.config"]);
     expect(logsOf(stub, "info").some(m => m.includes("HA emulation running on 192.0.2.10:8123"))).toBe(true);
     expect(stub.terminations).toEqual([]);
     expect(logsOf(stub, "error")).toEqual([]);
@@ -1713,6 +1714,19 @@ describe("onObjectChange filter (H4 v1.13.0 / R2 v1.30.0)", () => {
     expect(discovery.scheduleRefresh).toHaveBeenCalledTimes(1);
   });
 
+  it("system.config and an instance that advertises links schedule a refresh", () => {
+    // The start page's hidden tiles and link cards live in system.config; switching the devices adapter on or off
+    // changes its instance object, which carries a welcomeScreen link.
+    const { internal, discovery } = setup();
+    internal.urlDiscovery = discovery;
+    internal.onObjectChange("system.config", { type: "config", common: { intro: ["devices.0 cloud_8082/x"] } });
+    internal.onObjectChange("system.adapter.devices.0", {
+      type: "instance",
+      common: { host: "h", enabled: false, welcomeScreen: [{ link: "devices/index.html" }] },
+    });
+    expect(discovery.scheduleRefresh).toHaveBeenCalledTimes(2);
+  });
+
   it("unrelated adapter reconfiguration does NOT schedule a refresh", () => {
     const { internal, discovery } = setup();
     internal.urlDiscovery = discovery;
@@ -1735,6 +1749,55 @@ describe("onObjectChange filter (H4 v1.13.0 / R2 v1.30.0)", () => {
   });
 });
 
+describe("the dashboard list follows the admin start page (K11)", () => {
+  // hm-rega 6.1.0 advertises `localLinks._default: "%webinterfaceProtocol%://%homematicAddress%:%webinterfacePort%"`;
+  // admin 8.3.5 keys its tile `hm-rega.0_443` in `system.config.common.intro` once it is hidden on the start page.
+  const TILE = "https://192.0.2.4:443";
+
+  it("a display whose target the start page hides keeps its target and goes on loading it", async () => {
+    const s = setup();
+    s.internal.makeUrlDiscovery = onChange =>
+      new UrlDiscovery(s.stub as never, onChange as UrlStatesListener, () => "192.0.2.10") as never;
+    s.stub.objects.set("system.adapter.hm-rega.0", {
+      type: "instance",
+      common: {
+        enabled: true,
+        localLinks: { _default: "%webinterfaceProtocol%://%homematicAddress%:%webinterfacePort%" },
+      },
+      native: { homematicAddress: "192.0.2.4", webinterfacePort: 443, webinterfaceProtocol: "https" },
+    });
+    s.stub.objects.set("system.config", { type: "config", common: { intro: [] }, native: {} });
+    await s.internal.onReady();
+    const rec = await s.internal.registry!.identifyOrCreate(null, "192.0.2.51");
+    const modeId = `hassemu.0.clients.${rec.id}.mode`;
+    const listed = (): boolean => Object.keys(s.stub.objects.get(modeId)?.common?.states ?? {}).includes(TILE);
+    const listedBefore = listed();
+    await s.internal.onStateChange(modeId, { val: TILE, ack: false });
+
+    s.stub.objects.set("system.config", { type: "config", common: { intro: ["hm-rega.0_443"] }, native: {} });
+    await s.internal.onStateChange("hassemu.0.info.refreshUrls", { val: true, ack: false });
+
+    const record = s.internal.registry!.getById(rec.id)!;
+    expect({
+      listedBefore,
+      listedAfter: listed(),
+      mode: s.stub.states.get(modeId)?.val,
+      recordMode: record.mode,
+      redirect: resolveRedirect(record, s.internal.globalConfig!.redirect),
+      warnings: logsOf(s.stub, "warn"),
+      errors: logsOf(s.stub, "error"),
+    }).toEqual({
+      listedBefore: true,
+      listedAfter: false,
+      mode: TILE,
+      recordMode: TILE,
+      redirect: TILE,
+      warnings: [],
+      errors: [],
+    });
+  });
+});
+
 describe("onUnload", () => {
   it("tears everything down and always calls the callback", async () => {
     const { internal, stub, webServer, mdns, discovery } = setup();
@@ -1753,7 +1816,7 @@ describe("onUnload", () => {
     expect(mdns.stop).toHaveBeenCalledTimes(1);
     expect(discovery.cancelRefresh).toHaveBeenCalledTimes(1);
     expect(stub.stateUnsubscriptions).toEqual(["clients.*", "global.*", "info.refreshUrls"]);
-    expect(stub.objectUnsubscriptions).toEqual(["system.adapter.*"]);
+    expect(stub.objectUnsubscriptions).toEqual(["system.adapter.*", "system.config"]);
     expect(internal.webServer).toBeNull();
     expect(internal.mdnsService).toBeNull();
     expect(internal.registry).toBeNull();

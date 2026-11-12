@@ -32,6 +32,8 @@ import type { AdapterInterface, UrlStates } from "./types";
 export interface DiscoveryAdapter extends AdapterInterface {
   /** Mirrors `ioBroker.Adapter.getForeignObjectsAsync`. Result narrowed at runtime (see above). */
   getForeignObjectsAsync: (pattern: string, type: "instance") => Promise<Record<string, unknown>>;
+  /** Mirrors `ioBroker.Adapter.getForeignObjectAsync` — reads `system.config`. Result narrowed at runtime. */
+  getForeignObjectAsync: (id: string) => Promise<unknown>;
   /** Mirrors `ioBroker.Adapter.readDirAsync`. Entries narrowed with `isPlainObject` (see above). */
   readDirAsync: (adapterName: string, path: string) => Promise<unknown[]>;
   /** Mirrors `ioBroker.Adapter.readFileAsync`; the Buffer|string union is narrowed at the call site. */
@@ -86,6 +88,165 @@ export const URL_SOURCE_PREFIXES = Object.freeze([
 const AURA_PREFIX = "aura.";
 
 /**
+ * The adapter part of a short instance id (`vis-2.0` → `vis-2`).
+ *
+ * @param instanceId Short instance id like `web.0`.
+ */
+function adapterOf(instanceId: string): string {
+  return instanceId.replace(/\.\d+$/, "");
+}
+
+/**
+ * True for an adapter whose own links never become an entry of the dropdown. Admin 8.3.5 (`Intro`,
+ * `getInstances`) shows no tile of `web`, of a vis widget set (`vis-*` except `vis-2` and `vis-web-admin`) or of an
+ * icon set (`icons-*`). The projects of `vis` and `vis-2` and the aura frontend come from their own sources in
+ * `collect()`, so their tiles (editor, bare runtime, aura backend) stay out as well.
+ *
+ * @param adapter Adapter name like `web` or `vis-2`.
+ */
+function isNoTileAdapter(adapter: string): boolean {
+  if (adapter === "web" || adapter === "vis" || adapter === "vis-2" || adapter === "aura") {
+    return true;
+  }
+  if (adapter.startsWith("icons-")) {
+    return true;
+  }
+  return adapter.startsWith("vis-") && adapter !== "vis-web-admin";
+}
+
+/**
+ * Admin 8.3.5 (`Intro`, `normalizeLinks`) shows a welcomeScreen and a welcomeScreenPro link on the web server:
+ * `%web_protocol%://%web_bind%:%web_port%/<link>`. devices 4.3.2 advertises `devices/index.html`.
+ */
+const WEB_SERVER_BASE = "%web_protocol%://%web_bind%:%web_port%/";
+
+/**
+ * A relative localLink/localLinks link opens beside the admin page (echarts 6.3.0
+ * `/adapter/echarts/preview/index.html`); the list takes the lowest enabled admin instance, the rule of
+ * `%<adapter>_<field>%` without an instance number.
+ */
+const ADMIN_SERVER_BASE = "%admin_protocol%://%admin_bind%:%admin_port%/";
+
+/** The object that carries the start page's hidden tiles (`common.intro`) and its own link cards (`native.introLinks`). */
+export const SYSTEM_CONFIG_ID = "system.config";
+
+/**
+ * The path of a relative link — one that names neither a scheme nor a placeholder nor a host (`//…`) — without its
+ * leading slashes, or null for any other link.
+ *
+ * @param link Link template.
+ */
+function relativePath(link: string): string | null {
+  if (/^(?:[a-z][a-z0-9+.-]*:|%|\/\/)/i.test(link)) {
+    return null;
+  }
+  return link.replace(/^\/+/, "");
+}
+
+/**
+ * True when a server bound to `bind` answers on this machine only — aura 0.113.2 `lib/serverBind.js`
+ * `isLoopbackOnly`: 127.x.x.x, `::1` and `localhost`.
+ *
+ * @param bind The instance's `native.bind`.
+ */
+function isLoopbackOnly(bind: unknown): boolean {
+  const address = chosenAddress(bind);
+  return (
+    address !== undefined && (address === "::1" || address === "localhost" || /^127\.\d+\.\d+\.\d+$/.test(address))
+  );
+}
+
+/**
+ * The address of a web extension's path on the web instance it runs in (admin 8.3.5 `getWebExtensionLinks`): the
+ * named instance, or for `*` the lowest enabled one. A web instance that is switched off serves nothing — then null.
+ *
+ * @param webInstance `native.webInstance` of the extension (`web.0` or `*`).
+ * @param path        The path the extension is mounted on (`aura/`).
+ * @param crossRefs   Instances by short id.
+ * @param hostIp      This host's address.
+ */
+function webExtensionUrl(
+  webInstance: string,
+  path: string,
+  crossRefs: Map<string, Record<string, unknown>>,
+  hostIp: string,
+): string | null {
+  const web =
+    webInstance === "*"
+      ? instanceFor("web", { instanceId: "", native: {}, crossRefs, hostIp })
+      : (crossRefs.get(webInstance) ?? null);
+  if (!web || !isPlainObject(web.common) || web.common.enabled !== true || !isPlainObject(web.native)) {
+    return null;
+  }
+  const port = coerceFiniteNumber(web.native.port);
+  if (port === null || port <= 0) {
+    return null;
+  }
+  const protocol = web.native.secure === true ? "https" : "http";
+  return `${protocol}://${instanceAddress(web.native, hostIp)}:${port}/${path}`;
+}
+
+/**
+ * The address an instance answers on, as admin 8.3.5 reads `%ip%`/`%bind%` (`native.bind`, else `native.ip`):
+ * the address it is bound to, this host's address while it listens on every address.
+ *
+ * @param native The instance's `native`.
+ * @param hostIp This host's address.
+ */
+function instanceAddress(native: Record<string, unknown>, hostIp: string): string {
+  const bind = typeof native.bind === "string" && native.bind.trim() !== "" ? native.bind : native.ip;
+  return chosenAddress(bind) ?? hostIp;
+}
+
+/**
+ * The name admin 8.3.5 keys a tile by in `system.config.common.intro` (`Intro`, `getInstances`): the link without
+ * its scheme, cut after the last `:` that comes before any `_` — the same string operations, in the same order.
+ *
+ * @param link The resolved link.
+ */
+function introLinkName(link: string): string {
+  return link
+    .replace("https://", "")
+    .replace("http://", "")
+    .replace(/^[^_]+:/, "");
+}
+
+/**
+ * The tiles the start page hides, read from `system.config.common.intro` (`<tile id>_<link name>`).
+ *
+ * @param config The `system.config` object, or null.
+ */
+function hiddenTiles(config: Record<string, unknown> | null): Set<string> {
+  const intro = config && isPlainObject(config.common) ? config.common.intro : undefined;
+  return new Set(Array.isArray(intro) ? intro.filter((key): key is string => typeof key === "string") : []);
+}
+
+/**
+ * The instance an instance-less `%<adapter>_<field>%` placeholder means, as admin 8.3.5 `replaceLink` reads it: the
+ * own instance when the adapter is the own one, else the enabled instance of that adapter with the lowest number (the
+ * start page keeps one link of several). A disabled instance serves nothing, so it is never taken.
+ *
+ * @param adapter Adapter name from the placeholder.
+ * @param ctx     Lookup context.
+ */
+function instanceFor(adapter: string, ctx: ResolveContext): Record<string, unknown> | null {
+  if (adapterOf(ctx.instanceId) === adapter) {
+    return { native: ctx.native };
+  }
+  const candidates = Array.from(ctx.crossRefs.entries())
+    .filter(([shortName, instance]) => {
+      return (
+        adapterOf(shortName) === adapter &&
+        /\.\d+$/.test(shortName) &&
+        isPlainObject(instance.common) &&
+        instance.common.enabled === true
+      );
+    })
+    .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }));
+  return candidates.length > 0 ? candidates[0][1] : null;
+}
+
+/**
  * True when an `objectChange` event for `id` belongs to an adapter whose
  * config can influence the URL discovery output. Used by main.ts to decide
  * whether to debounce-schedule a refresh.
@@ -94,6 +255,30 @@ const AURA_PREFIX = "aura.";
  */
 export function isUrlSourceAdapterEvent(id: string): boolean {
   return URL_SOURCE_PREFIXES.some(p => id.startsWith(p));
+}
+
+/**
+ * True when an `objectChange` event can change what the dropdown lists: an object of a URL source adapter,
+ * `system.config` (the start page's hidden tiles and link cards), or an instance that advertises links of its own
+ * (switching the devices adapter on or off reaches the list without a press on "Refresh URL discovery").
+ *
+ * @param id  Full object id from the `objectChange` event.
+ * @param obj The new object, or null/undefined when it was deleted.
+ */
+export function isUrlSourceObjectChange(id: string, obj: unknown): boolean {
+  if (id === SYSTEM_CONFIG_ID || isUrlSourceAdapterEvent(id)) {
+    return true;
+  }
+  if (!/^system\.adapter\.[^.]+\.\d+$/.test(id) || !isPlainObject(obj) || !isPlainObject(obj.common)) {
+    return false;
+  }
+  const common = obj.common;
+  return (
+    typeof common.localLink === "string" ||
+    isPlainObject(common.localLinks) ||
+    Boolean(common.welcomeScreen) ||
+    Boolean(common.welcomeScreenPro)
+  );
 }
 
 /** Callback invoked after each successful refresh with the newly collected URL states. */
@@ -197,9 +382,23 @@ export class UrlDiscovery {
 
     const crossRefs = buildCrossRefs(instances);
 
-    for (const [id, obj] of Object.entries(instances)) {
-      collectFromInstance(id, obj, crossRefs, hostIp, result, skipped);
+    // The start page's hidden tiles and its own link cards. Unreadable, the list goes on without them — the tiles
+    // are what it is built from.
+    let config: Record<string, unknown> | null = null;
+    try {
+      const raw = await this.adapter.getForeignObjectAsync(SYSTEM_CONFIG_ID);
+      config = isPlainObject(raw) ? raw : null;
+    } catch (err) {
+      this.adapter.log.debug(`url-discovery: ${SYSTEM_CONFIG_ID} not readable: ${errText(err)}`);
     }
+    const hidden = hiddenTiles(config);
+
+    // Instances in numeric order, so the lowest one wins an address several tiles share (admin 8.3.5 `addLinks`).
+    const ordered = Object.entries(instances).sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }));
+    for (const [id, obj] of ordered) {
+      collectFromInstance(id, obj, crossRefs, hostIp, result, skipped, hidden);
+    }
+    collectLinkCards(config, crossRefs, hostIp, result);
 
     // v1.17.0 (E10): iterate over every `web.*` instance instead of a hard-coded
     // `web.0`. Users with `web.1` (a second web instance, e.g. one just for VIS)
@@ -305,7 +504,7 @@ export class UrlDiscovery {
     const auraInstances = enabledInstances(AURA_PREFIX);
     const showAuraSuffix = auraInstances.length > 1;
     for (const [shortName, obj] of auraInstances) {
-      this.addAuraInstance(result, obj, hostIp, shortName, showAuraSuffix, skipped);
+      this.addAuraInstance(result, obj, crossRefs, hostIp, shortName, showAuraSuffix, skipped);
     }
 
     this.cached = result;
@@ -333,17 +532,19 @@ export class UrlDiscovery {
   }
 
   /**
-   * Add a single aura adapter instance to the dropdown.
+   * Add a single aura adapter instance to the dropdown — at the address aura answers on.
    *
-   * Aura is a React+vite single-page dashboard with its own HTTP server.
-   * Unlike vis/vis-2 it does NOT register a web extension — the dashboard
-   * is served at `/` on the configured `native.port` (default 8095).
-   * Multi-instance setups get a `(aura.X)` suffix on the label so users
-   * can distinguish them. `native.customUrl` overrides everything (used
-   * for reverse-proxy / external-URL setups).
+   * Aura is a React+vite single-page dashboard with its own HTTP server, served at `/` on `native.port`
+   * (default 8095) and bound to `native.bind` (aura 0.113.2 `lib/serverBind.js`: empty = every address,
+   * 127.x/::1/localhost = this machine only). With `native.webInstance` set, aura is also served by that web
+   * instance under `/aura/` (`lib/webExtension.js`), and admin 8.3.5 (`replaceLink`, `getWebExtensionLinks`) shows
+   * that address — so does the list. A loopback-only aura without a web instance is no target for a display.
+   * Multi-instance setups get a `(aura.X)` suffix on the label so users can distinguish them. `native.customUrl`
+   * overrides everything (used for reverse-proxy / external-URL setups).
    *
    * @param result       Output map — mutated with the resolved URL.
    * @param obj          Raw `system.adapter.aura.<n>` instance object.
+   * @param crossRefs    Instances, for the web instance aura runs in.
    * @param hostIp       Local host IP for the URL.
    * @param shortName    Short instance id like `aura.0`.
    * @param showSuffix   If true, append `(aura.X)` to the label.
@@ -352,6 +553,7 @@ export class UrlDiscovery {
   private addAuraInstance(
     result: UrlStates,
     obj: Record<string, unknown>,
+    crossRefs: Map<string, Record<string, unknown>>,
     hostIp: string,
     shortName: string,
     showSuffix: boolean,
@@ -359,14 +561,21 @@ export class UrlDiscovery {
   ): void {
     const native = isPlainObject(obj.native) ? obj.native : {};
     const customUrl = typeof native.customUrl === "string" ? native.customUrl.trim() : "";
+    const webInstance = typeof native.webInstance === "string" ? native.webInstance.trim() : "";
+    const viaWeb = webInstance ? webExtensionUrl(webInstance, "aura/", crossRefs, hostIp) : null;
     let url: string;
     if (customUrl) {
       url = customUrl.endsWith("/") ? customUrl : `${customUrl}/`;
+    } else if (viaWeb) {
+      url = viaWeb;
+    } else if (isLoopbackOnly(native.bind)) {
+      skipped.push({ adapter: shortName, reason: "loopback-only" });
+      return;
     } else {
       const port = coerceFiniteNumber(native.port);
       const finalPort = port !== null && port > 0 ? port : 8095;
       const protocol = native.secure === true ? "https" : "http";
-      url = `${protocol}://${hostIp}:${finalPort}/`;
+      url = `${protocol}://${instanceAddress(native, hostIp)}:${finalPort}/`;
     }
     const safe = coerceSafeUrl(url);
     if (!safe) {
@@ -568,6 +777,7 @@ export function buildCrossRefs(instances: Record<string, unknown>): Map<string, 
  * @param hostIp    Local host IP used for wildcard binds.
  * @param result    Output map — mutated with discovered URL → label entries.
  * @param skipped   v1.32.0 B2: optional collector — receives `{adapter, reason}` for the summary log.
+ * @param hidden    Tiles the start page hides (`system.config.common.intro`), keyed `<tile id>_<link name>`.
  */
 export function collectFromInstance(
   id: string,
@@ -576,6 +786,7 @@ export function collectFromInstance(
   hostIp: string,
   result: UrlStates,
   skipped: SkipEntry[],
+  hidden: ReadonlySet<string> = new Set(),
 ): void {
   if (!isPlainObject(obj)) {
     return;
@@ -605,57 +816,73 @@ export function collectFromInstance(
   // (instead of `%port%`) AND advertises a `backend` link to `#/admin` —
   // both undesirable for hassemu's display dropdown. We handle aura
   // explicitly in addAuraInstances() with native.port + frontend-only.
-  if (instanceId.startsWith(AURA_PREFIX)) {
+  // web, vis, vis-2, the vis widget sets and the icon sets give no entry either (isNoTileAdapter).
+  if (instanceId.startsWith(AURA_PREFIX) || isNoTileAdapter(adapterOf(instanceId))) {
     return;
   }
 
   const native = isPlainObject(obj.native) ? obj.native : {};
   const ctx: ResolveContext = { instanceId, native, crossRefs, hostIp };
 
-  // New format: common.localLinks = { key: {link, name, ...}, ... }
+  // In the order admin 8.3.5 `normalizeLinks` reads them: `localLink`, `localLinks`, `welcomeScreen`,
+  // `welcomeScreenPro`. Admin shows a `localLink` beside `localLinks` (hm-rega 6.1.0 carries both); a plain string
+  // entry of `localLinks` is a link of its own (hm-rega `_default`). Each tile carries the id admin keys it by in
+  // `system.config.common.intro`.
+  if (typeof common.localLink === "string") {
+    addTile({ link: common.localLink }, instanceId, ADMIN_SERVER_BASE, ctx, hidden, result);
+  }
   if (isPlainObject(common.localLinks)) {
-    for (const entry of Object.values(common.localLinks)) {
-      addFromEntry(entry, ctx, result);
+    for (const [key, entry] of Object.entries(common.localLinks)) {
+      const tileId = typeof entry === "string" || key === "_default" ? instanceId : `${instanceId} ${key}`;
+      addTile(typeof entry === "string" ? { link: entry } : entry, tileId, ADMIN_SERVER_BASE, ctx, hidden, result);
     }
   }
-
-  // Legacy format: common.localLink = "template string"
-  if (typeof common.localLink === "string" && !isPlainObject(common.localLinks)) {
-    const resolved = resolvePlaceholders(common.localLink, ctx);
-    if (resolved) {
-      const safe = coerceSafeUrl(resolved);
-      if (safe) {
-        result[safe] = instanceId;
-      }
-    }
-  }
-
-  // welcomeScreen / welcomeScreenPro — array or single object
-  for (const key of ["welcomeScreen", "welcomeScreenPro"] as const) {
+  // A welcomeScreen or welcomeScreenPro path (`devices/index.html`) is served by the web server.
+  for (const [key, suffix] of [
+    ["welcomeScreen", "cloud"],
+    ["welcomeScreenPro", "pro"],
+  ] as const) {
     const ws = common[key];
     const entries = Array.isArray(ws) ? ws : isPlainObject(ws) ? [ws] : [];
     for (const entry of entries) {
-      addFromEntry(entry, ctx, result);
+      addTile(entry, `${instanceId} ${suffix}`, WEB_SERVER_BASE, ctx, hidden, result);
     }
   }
 }
 
-// L48: instanceId comes from ctx (ctx.instanceId) — the separate parameter was
-// always the same value the caller had already put into ctx.
-function addFromEntry(entry: unknown, ctx: ResolveContext, result: UrlStates): void {
+/**
+ * Adds one tile to the list unless the start page hides it or an earlier tile has the same address — admin 8.3.5
+ * (`addLinks`) shows one tile per address, the first it meets, and it meets instances in their order.
+ *
+ * @param entry   The link entry (`{link, name}`).
+ * @param tileId  The id admin keys the tile by (`web.0`, `vis-2.0 Runtime`, `devices.0 cloud`).
+ * @param base    Where a relative link of this kind opens (web server or admin).
+ * @param ctx     Lookup context of the instance.
+ * @param hidden  Hidden tiles from `system.config.common.intro`.
+ * @param result  Output map.
+ */
+function addTile(
+  entry: unknown,
+  tileId: string,
+  base: string,
+  ctx: ResolveContext,
+  hidden: ReadonlySet<string>,
+  result: UrlStates,
+): void {
   if (!isPlainObject(entry)) {
     return;
   }
-  const linkTpl = coerceString(entry.link);
-  if (!linkTpl) {
+  const link = coerceString(entry.link);
+  if (!link) {
     return;
   }
-  const resolved = resolvePlaceholders(linkTpl, ctx);
-  if (!resolved) {
+  const path = relativePath(link);
+  const resolved = resolvePlaceholders(path === null ? link : `${base}${path}`, ctx);
+  if (!resolved || hidden.has(`${tileId}_${introLinkName(resolved)}`)) {
     return;
   }
   const safe = coerceSafeUrl(resolved);
-  if (!safe) {
+  if (!safe || safe in result) {
     return;
   }
   const name = coerceString(entry.name);
@@ -663,10 +890,51 @@ function addFromEntry(entry: unknown, ctx: ResolveContext, result: UrlStates): v
 }
 
 /**
+ * Adds the start page's own link cards (`system.config.native.introLinks`) that are switched on — admin 8.3.5
+ * (`Intro`, `getLinkCards`) shows those, each opening its `link`; a relative link opens beside the admin page.
+ * A card with the address of a tile already in the list adds nothing.
+ *
+ * @param config    The `system.config` object, or null.
+ * @param crossRefs Instances for the admin address of a relative link.
+ * @param hostIp    This host's address.
+ * @param result    Output map.
+ */
+export function collectLinkCards(
+  config: Record<string, unknown> | null,
+  crossRefs: Map<string, Record<string, unknown>>,
+  hostIp: string,
+  result: UrlStates,
+): void {
+  const cards = config && isPlainObject(config.native) ? config.native.introLinks : undefined;
+  if (!Array.isArray(cards)) {
+    return;
+  }
+  const ctx: ResolveContext = { instanceId: "", native: {}, crossRefs, hostIp };
+  for (const card of cards) {
+    if (!isPlainObject(card) || card.enabled !== true) {
+      continue;
+    }
+    const link = coerceString(card.link);
+    if (!link) {
+      continue;
+    }
+    const path = relativePath(link);
+    const target = path === null ? link : resolvePlaceholders(`${ADMIN_SERVER_BASE}${path}`, ctx);
+    const safe = target ? coerceSafeUrl(target) : null;
+    if (!safe || safe in result) {
+      continue;
+    }
+    result[safe] = coerceString(card.name) ?? safe;
+  }
+}
+
+/**
  * Resolves `%token%` placeholders in a template string. Returns null if any token cannot be resolved.
  *
  * Supported tokens: %ip%, %bind%, %port%, %protocol%, %secure%, %instance%, %instanceNumeric%,
- * %native_<field>%, %<adapter>.<inst>_<field>% (cross-instance, e.g. %web.0_port%).
+ * %native_<field>%, %<adapter>.<inst>_<field>% (cross-instance, e.g. %web.0_port%), %<adapter>_<field>% (the own
+ * instance or the lowest enabled one of that adapter, e.g. %web_port%) and %<field>% (a field of the own native,
+ * e.g. hm-rega's %homematicAddress%) — the forms admin 8.3.5 `replaceLink` resolves.
  *
  * @param template Link template containing `%...%` placeholders.
  * @param ctx      Lookup context (instance native, cross-refs, host IP).
@@ -687,10 +955,8 @@ export function resolvePlaceholders(template: string, ctx: ResolveContext): stri
 function resolveOne(token: string, ctx: ResolveContext): string | null {
   switch (token) {
     case "ip":
-      return ctx.hostIp;
-    case "bind": {
-      return chosenAddress(ctx.native.bind) ?? ctx.hostIp;
-    }
+    case "bind":
+      return instanceAddress(ctx.native, ctx.hostIp);
     case "port": {
       const p = coerceFiniteNumber(ctx.native.port);
       return p !== null ? String(p) : null;
@@ -715,28 +981,46 @@ function resolveOne(token: string, ctx: ResolveContext): string | null {
   const crossMatch = token.match(/^([a-zA-Z0-9-]+\.\d+)_(.+)$/);
   if (crossMatch) {
     const [, refKey, field] = crossMatch;
-    const refInstance = ctx.crossRefs.get(refKey);
-    if (!refInstance) {
-      return null;
-    }
-    const refNative = isPlainObject(refInstance.native) ? refInstance.native : null;
-    if (!refNative) {
-      return null;
-    }
-    if (field === "bind") {
-      return chosenAddress(refNative.bind) ?? ctx.hostIp;
-    }
-    if (field === "port") {
-      const p = coerceFiniteNumber(refNative.port);
-      return p !== null ? String(p) : null;
-    }
-    if (field === "protocol") {
-      return refNative.secure === true ? "https" : "http";
-    }
-    return primitiveToString(refNative[field]);
+    return fieldOf(ctx.crossRefs.get(refKey) ?? null, field, ctx.hostIp);
+  }
+
+  const adapterMatch = token.match(/^([a-zA-Z0-9-]+)_(.+)$/);
+  if (adapterMatch) {
+    const [, adapter, field] = adapterMatch;
+    return fieldOf(instanceFor(adapter, ctx), field, ctx.hostIp);
+  }
+
+  // A token without `_` is a field of the own native (admin 8.3.5 `replaceLink`, last branch).
+  if (!token.includes("_")) {
+    return primitiveToString(ctx.native[token]);
   }
 
   return null;
+}
+
+/**
+ * One field of a referenced instance, read the way the cross-instance placeholders read it.
+ *
+ * @param refInstance The referenced instance object, or null when there is none.
+ * @param field       Field name after the `_`.
+ * @param hostIp      This host's address for a dashboard on every address.
+ */
+function fieldOf(refInstance: Record<string, unknown> | null, field: string, hostIp: string): string | null {
+  const refNative = refInstance && isPlainObject(refInstance.native) ? refInstance.native : null;
+  if (!refNative) {
+    return null;
+  }
+  if (field === "bind" || field === "ip") {
+    return instanceAddress(refNative, hostIp);
+  }
+  if (field === "port") {
+    const p = coerceFiniteNumber(refNative.port);
+    return p !== null ? String(p) : null;
+  }
+  if (field === "protocol") {
+    return refNative.secure === true ? "https" : "http";
+  }
+  return primitiveToString(refNative[field]);
 }
 
 function primitiveToString(v: unknown): string | null {

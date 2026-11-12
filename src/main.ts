@@ -16,7 +16,7 @@ import { carriesAddress, chosenAddress } from "./lib/network-address";
 import { resolveRedirect } from "./lib/redirect-resolver";
 import { type InstanceObjectSchema, repairGlobalSchemas } from "./lib/schema-repair";
 import { CERTIFICATES_OBJECT_ID, isCertificateNotFound, loadTls, selectCollections, type TlsSetup } from "./lib/tls";
-import { isUrlSourceAdapterEvent, UrlDiscovery, type UrlStatesListener } from "./lib/url-discovery";
+import { isUrlSourceObjectChange, SYSTEM_CONFIG_ID, UrlDiscovery, type UrlStatesListener } from "./lib/url-discovery";
 import { WebServer } from "./lib/webserver";
 import type { AdapterConfig } from "./lib/types";
 // v1.25.0 (F3): instanceObjects as the single source of truth — repairGlobalSchemas
@@ -320,6 +320,7 @@ class HassEmu extends utils.Adapter {
       // not yet running. Plus: when webServer.start() throws, no subscription exists
       // yet (no cleanup path needed in the catch block).
       await this.subscribeForeignObjectsAsync("system.adapter.*");
+      await this.subscribeForeignObjectsAsync(SYSTEM_CONFIG_ID);
       await this.subscribeStatesAsync("clients.*");
       await this.subscribeStatesAsync("global.*");
       await this.subscribeStatesAsync("info.refreshUrls");
@@ -733,17 +734,15 @@ class HassEmu extends utils.Adapter {
       // v1.13.0 (H4): narrow filter — earlier EVERY objectChange in the
       // `system.adapter.*` namespace triggered a scheduleRefresh, even from an
       // adapter changing discovery-irrelevant config. Now it triggers only when the
-      // changed object belongs to a URL-source adapter (isUrlSourceAdapterEvent)
-      // OR looks like an instance add/remove (obj deleted, or an instance object
-      // without a resolved host). The 2s debounce coalesces bursts.
-      if (!id?.startsWith("system.adapter.")) {
+      // changed object can change the list (isUrlSourceObjectChange: a URL-source adapter,
+      // `system.config`, an instance that advertises links) OR looks like an instance
+      // add/remove (obj deleted, or an instance object without a resolved host). The 2s
+      // debounce coalesces bursts.
+      if (!id?.startsWith("system.adapter.") && id !== SYSTEM_CONFIG_ID) {
         return;
       }
-      // v1.30.0 (R2): adapter prefix list lives in url-discovery.ts
-      // alongside the actual discovery logic. Single source of truth —
-      // adding a new URL-source adapter only requires updating the
-      // exported `URL_SOURCE_PREFIXES` (plus `collect()`).
-      const isUrlSourceAdapter = isUrlSourceAdapterEvent(id);
+      // v1.30.0 (R2): the rule lives in url-discovery.ts alongside the actual discovery logic.
+      const isUrlSourceAdapter = isUrlSourceObjectChange(id, obj);
       // Only an INSTANCE id (`system.adapter.<name>.<n>`, four segments) counts as an
       // add/remove. `!obj` alone also fired for every deleted state below a foreign
       // instance (`system.adapter.influxdb.0.memRss` on uninstall) and scheduled a full
@@ -793,6 +792,7 @@ class HassEmu extends utils.Adapter {
         this.unsubscribeStatesAsync("global.*"),
         this.unsubscribeStatesAsync("info.refreshUrls"),
         this.unsubscribeForeignObjectsAsync("system.adapter.*"),
+        this.unsubscribeForeignObjectsAsync(SYSTEM_CONFIG_ID),
       );
       if (this.tlsSetup && this.tlsSetup.collectionChoice !== false) {
         pending.push(this.unsubscribeForeignObjectsAsync(CERTIFICATES_OBJECT_ID));

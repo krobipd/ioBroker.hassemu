@@ -4,6 +4,7 @@ import {
   buildCrossRefs,
   collectFromInstance,
   isUrlSourceAdapterEvent,
+  isUrlSourceObjectChange,
   resolvePlaceholders,
   type DiscoveryAdapter,
 } from "./url-discovery";
@@ -16,6 +17,8 @@ interface MockAdapter {
   _dirs: Record<string, unknown[] | Error>;
   _files: Record<string, string | Buffer | Error>;
   _logs: string[];
+  _config: Record<string, unknown> | Error | null;
+  getForeignObjectAsync: (id: string) => Promise<unknown>;
   getForeignObjectsAsync: (pattern: string, type: "instance") => Promise<Record<string, unknown>>;
   readDirAsync: (adapterName: string, path: string) => Promise<unknown[]>;
   readFileAsync: (
@@ -34,6 +37,7 @@ function createMockAdapter(): MockAdapter & DiscoveryAdapter {
     _dirs: {} as Record<string, unknown[] | Error>,
     _files: {} as Record<string, string | Buffer | Error>,
     _logs: logs,
+    _config: null as Record<string, unknown> | Error | null,
     log: {
       debug: (m: string): void => {
         logs.push(`[debug] ${m}`);
@@ -81,6 +85,15 @@ function createMockAdapter(): MockAdapter & DiscoveryAdapter {
         }
       }
       return Promise.resolve(structuredClone(out));
+    },
+    // Only `system.config` is read one by one — the hidden tiles and the link cards of the start page.
+    getForeignObjectAsync: (id: string): Promise<unknown> => {
+      if (id !== "system.config") {
+        return Promise.resolve(null);
+      }
+      return mock._config instanceof Error
+        ? Promise.reject(mock._config)
+        : Promise.resolve(structuredClone(mock._config));
     },
     readDirAsync: (adapterName: string): Promise<unknown[]> => {
       const d = mock._dirs[adapterName];
@@ -156,6 +169,25 @@ describe("url-discovery helpers", () => {
     });
   });
 
+  describe("isUrlSourceObjectChange", () => {
+    it("takes system.config, a URL-source adapter and an instance that advertises links", () => {
+      expect(isUrlSourceObjectChange("system.config", { type: "config", common: {} })).to.be.true;
+      expect(isUrlSourceObjectChange("system.adapter.web.0", { type: "instance", common: {} })).to.be.true;
+      const devices = { type: "instance", common: { welcomeScreen: [{ link: "devices/index.html" }] } };
+      expect(isUrlSourceObjectChange("system.adapter.devices.0", devices)).to.be.true;
+      const hmRega = { type: "instance", common: { localLink: "http://%homematicAddress%" } };
+      expect(isUrlSourceObjectChange("system.adapter.hm-rega.0", hmRega)).to.be.true;
+    });
+
+    it("leaves an instance without links and an object below an instance alone", () => {
+      expect(isUrlSourceObjectChange("system.adapter.influxdb.0", { type: "instance", common: { host: "h" } })).to.be
+        .false;
+      const links = { type: "state", common: { localLink: "http://x/" } };
+      expect(isUrlSourceObjectChange("system.adapter.devices.0.alive", links)).to.be.false;
+      expect(isUrlSourceObjectChange("system.adapter.devices.0", null)).to.be.false;
+    });
+  });
+
   describe("buildCrossRefs", () => {
     it("extracts short keys from system.adapter.* IDs", () => {
       const refs = buildCrossRefs({
@@ -186,8 +218,13 @@ describe("url-discovery helpers", () => {
       hostIp: "192.168.1.99",
     };
 
-    it("resolves %ip%", () => {
-      expect(resolvePlaceholders("http://%ip%/", ctx)).to.equal("http://192.168.1.99/");
+    // Admin 8.3.5 `replaceLink`: `%ip%` is the instance's `bind` (else `ip`), this host while it listens everywhere.
+    it("resolves %ip% to the instance's bind, the host address while it listens on every address", () => {
+      expect(resolvePlaceholders("http://%ip%/", ctx)).to.equal("http://192.168.1.10/");
+      const wild = { ...ctx, native: { ...ctx.native, bind: "0.0.0.0" } };
+      expect(resolvePlaceholders("http://%ip%/", wild)).to.equal("http://192.168.1.99/");
+      const legacy = { ...ctx, native: { ip: "192.0.2.7" } };
+      expect(resolvePlaceholders("http://%ip%/", legacy)).to.equal("http://192.0.2.7/");
     });
 
     it("resolves %bind% to instance native bind", () => {
@@ -249,6 +286,59 @@ describe("url-discovery helpers", () => {
       const bad = { ...ctx, native: { ...ctx.native, port: "abc" } };
       expect(resolvePlaceholders("%port%", bad)).to.be.null;
     });
+
+    // Admin 8.3.5 `replaceLink` (adminWww index bundle): a token without `_` is a field of the instance's
+    // own `native` — hm-rega 6.1.0 advertises `%webinterfaceProtocol%://%homematicAddress%:%webinterfacePort%`.
+    it("resolves a bare token from the instance's own native, as admin does (hm-rega)", () => {
+      const hmRega = {
+        ...ctx,
+        instanceId: "hm-rega.0",
+        native: { homematicAddress: "192.0.2.4", webinterfacePort: 443, webinterfaceProtocol: "https" },
+      };
+      expect(resolvePlaceholders("%webinterfaceProtocol%://%homematicAddress%:%webinterfacePort%", hmRega)).to.equal(
+        "https://192.0.2.4:443",
+      );
+      expect(resolvePlaceholders("http://%homematicAddress%:%missingField%", hmRega)).to.be.null;
+    });
+
+    // Admin 8.3.5 `replaceLink`: `%<adapter>_<field>%` without an instance number takes the enabled instances
+    // of that adapter (the own instance when the adapter is the own one), and the start page keeps the lowest
+    // by numeric order. vis-2 2.20.9 and vis 1.5.6 advertise `%web_protocol%://%ip%:%web_port%/…`.
+    describe("%<adapter>_<field>% without an instance number", () => {
+      const web = (enabled: boolean, native: Record<string, unknown>): Record<string, unknown> => ({
+        common: { enabled },
+        native,
+      });
+
+      it("takes the lowest enabled instance by numeric order", () => {
+        const crossRefs = new Map<string, Record<string, unknown>>([
+          ["web.10", web(true, { port: 8090, bind: "192.0.2.30", secure: false })],
+          ["web.2", web(true, { port: 8089, bind: "0.0.0.0", secure: true })],
+          ["web.1", web(false, { port: 8088, bind: "192.0.2.20", secure: false })],
+        ]);
+        const c = { ...ctx, instanceId: "vis-2.0", native: {}, crossRefs };
+        expect(resolvePlaceholders("%web_protocol%://%web_bind%:%web_port%/", c)).to.equal(
+          "https://192.168.1.99:8089/",
+        );
+      });
+
+      it("means the own instance when the adapter is the own one", () => {
+        const crossRefs = new Map<string, Record<string, unknown>>([
+          ["web.0", web(true, { port: 8082, bind: "192.0.2.10", secure: false })],
+          ["web.1", web(true, { port: 8088, bind: "192.0.2.20", secure: false })],
+        ]);
+        const c = { ...ctx, instanceId: "web.1", native: { port: 8088 }, crossRefs };
+        expect(resolvePlaceholders("%web_port%", c)).to.equal("8088");
+      });
+
+      it("returns null when the adapter has no enabled instance", () => {
+        const crossRefs = new Map<string, Record<string, unknown>>([
+          ["web.0", web(false, { port: 8082, bind: "192.0.2.10", secure: false })],
+        ]);
+        const c = { ...ctx, instanceId: "vis-2.0", native: {}, crossRefs };
+        expect(resolvePlaceholders("%web_port%", c)).to.be.null;
+      });
+    });
   });
 
   describe("collectFromInstance", () => {
@@ -290,7 +380,8 @@ describe("url-discovery helpers", () => {
       expect(result["http://192.168.1.99:8081/"]).to.equal("admin.0");
     });
 
-    it("prefers localLinks over legacy localLink when both present", () => {
+    // Admin 8.3.5 `normalizeLinks` shows both (hm-rega 6.1.0 carries `localLink` and `localLinks`).
+    it("takes localLink beside localLinks", () => {
       const result: Record<string, string> = {};
       collectFromInstance(
         "system.adapter.admin.0",
@@ -307,23 +398,25 @@ describe("url-discovery helpers", () => {
         result,
         [],
       );
-      expect(result["http://192.168.1.99:8081/new/"]).to.equal("admin.0: Admin");
-      expect(result["http://192.168.1.99:8081/"]).to.be.undefined;
+      expect(result).to.deep.equal({
+        "http://192.168.1.99:8081/": "admin.0",
+        "http://192.168.1.99:8081/new/": "admin.0: Admin",
+      });
     });
 
     it("extracts welcomeScreen (single object)", () => {
       const result: Record<string, string> = {};
       collectFromInstance(
-        "system.adapter.vis.0",
+        "system.adapter.material.0",
         enabledInstance({
-          common: { welcomeScreen: { link: "http://%ip%/vis/", name: "VIS Main" } },
+          common: { welcomeScreen: { link: "http://%ip%/material/", name: "Material" } },
         }),
         crossRefs,
         hostIp,
         result,
         [],
       );
-      expect(result["http://192.168.1.99/vis/"]).to.equal("vis.0: VIS Main");
+      expect(result["http://192.168.1.99/material/"]).to.equal("material.0: Material");
     });
 
     it("extracts welcomeScreen (array)", () => {
@@ -404,6 +497,206 @@ describe("url-discovery helpers", () => {
         [],
       );
       expect(result["http://192.168.1.99/"]).to.equal("x.0");
+    });
+
+    describe("the forms the admin start page shows (admin 8.3.5 Intro + replaceLink)", () => {
+      const host = "192.0.2.99";
+      const webServer = new Map<string, Record<string, unknown>>([
+        ["web.0", { common: { enabled: true }, native: { port: 8082, bind: "0.0.0.0", secure: false } }],
+      ]);
+      const collected = (id: string, obj: Record<string, unknown>, refs = webServer): Record<string, string> => {
+        const result: Record<string, string> = {};
+        collectFromInstance(`system.adapter.${id}`, obj, refs, host, result, []);
+        return result;
+      };
+
+      it("takes a localLinks entry that is a plain string (hm-rega 6.1.0)", () => {
+        const result = collected(
+          "hm-rega.0",
+          enabledInstance({
+            common: { localLinks: { _default: "%webinterfaceProtocol%://%homematicAddress%:%webinterfacePort%" } },
+            native: { homematicAddress: "192.0.2.4", webinterfacePort: 443, webinterfaceProtocol: "https" },
+          }),
+        );
+        expect(result).to.deep.equal({ "https://192.0.2.4:443": "hm-rega.0" });
+      });
+
+      // Admin 8.3.5 `normalizeLinks` turns every welcomeScreen link into
+      // `%web_protocol%://%web_bind%:%web_port%/<link>`; devices 4.3.2 advertises exactly this entry.
+      it("places a relative welcomeScreen link on the web server (devices 4.3.2)", () => {
+        const result = collected(
+          "devices.0",
+          enabledInstance({
+            common: {
+              welcomeScreen: [
+                { link: "devices/index.html", name: "Devices", img: "devices.svg", color: "#2196F3", order: 10 },
+              ],
+            },
+          }),
+        );
+        expect(result).to.deep.equal({ "http://192.0.2.99:8082/devices/index.html": "devices.0: Devices" });
+      });
+
+      it("drops a relative welcomeScreen link while no web instance is enabled", () => {
+        const noWeb = new Map<string, Record<string, unknown>>([
+          ["web.0", { common: { enabled: false }, native: { port: 8082, bind: "0.0.0.0", secure: false } }],
+        ]);
+        const result = collected(
+          "devices.0",
+          enabledInstance({ common: { welcomeScreen: [{ link: "devices/index.html", name: "Devices" }] } }),
+          noWeb,
+        );
+        expect(result).to.deep.equal({});
+      });
+
+      // echarts 6.3.0 advertises `localLinks._default.link: "/adapter/echarts/preview/index.html"` — admin opens
+      // it relative to its own page, not on the web server.
+      it("does not put a relative localLinks link on the web server (echarts 6.3.0)", () => {
+        const result = collected(
+          "echarts.0",
+          enabledInstance({
+            common: { localLinks: { _default: { link: "/adapter/echarts/preview/index.html", name: "Echarts" } } },
+          }),
+        );
+        expect(result).to.deep.equal({});
+      });
+
+      it("places a relative welcomeScreenPro link on the web server too", () => {
+        const result = collected(
+          "devices.0",
+          enabledInstance({ common: { welcomeScreenPro: [{ link: "devices/index.html", name: "Devices" }] } }),
+        );
+        expect(result).to.deep.equal({ "http://192.0.2.99:8082/devices/index.html": "devices.0: Devices" });
+      });
+
+      // echarts 6.3.0: a relative localLinks link opens beside the admin page — on the lowest enabled admin instance.
+      it("puts a relative localLinks link on the lowest enabled admin instance (echarts 6.3.0)", () => {
+        const refs = new Map<string, Record<string, unknown>>([
+          ...webServer,
+          ["admin.1", { common: { enabled: true }, native: { port: 8089, bind: "0.0.0.0", secure: false } }],
+          ["admin.0", { common: { enabled: false }, native: { port: 8081, bind: "0.0.0.0", secure: false } }],
+          ["admin.2", { common: { enabled: true }, native: { port: 8090, bind: "192.0.2.20", secure: true } }],
+        ]);
+        const result = collected(
+          "echarts.0",
+          enabledInstance({
+            common: { localLinks: { _default: { link: "/adapter/echarts/preview/index.html", name: "Echarts" } } },
+          }),
+          refs,
+        );
+        expect(result).to.deep.equal({
+          "http://192.0.2.99:8089/adapter/echarts/preview/index.html": "echarts.0: Echarts",
+        });
+      });
+
+      // Admin 8.3.5 `getInstancesCards` hides `<tile id>_<link name>` from `system.config.common.intro`; the tile id
+      // is the instance for `localLink` and `localLinks._default`/string entries, `<instance> <key>` for another key,
+      // `<instance> cloud` / `<instance> pro` for welcomeScreen / welcomeScreenPro.
+      it("leaves out the tiles the start page hides, keyed as admin keys them", () => {
+        const hidden = new Set([
+          "hm-rega.0_192.0.2.4",
+          "x.0 Runtime_8082/x/index.html",
+          "devices.0 cloud_8082/devices/index.html",
+        ]);
+        const result: Record<string, string> = {};
+        collectFromInstance(
+          "system.adapter.hm-rega.0",
+          enabledInstance({
+            common: {
+              localLink: "http://%homematicAddress%",
+              localLinks: { _default: "%webinterfaceProtocol%://%homematicAddress%:%webinterfacePort%" },
+            },
+            native: { homematicAddress: "192.0.2.4", webinterfacePort: 443, webinterfaceProtocol: "https" },
+          }),
+          webServer,
+          host,
+          result,
+          [],
+          hidden,
+        );
+        collectFromInstance(
+          "system.adapter.x.0",
+          enabledInstance({
+            common: {
+              localLinks: {
+                _default: { link: "%web_protocol%://%web_bind%:%web_port%/x/edit.html", name: "Editor" },
+                Runtime: { link: "%web_protocol%://%web_bind%:%web_port%/x/index.html", name: "Runtime" },
+              },
+            },
+          }),
+          webServer,
+          host,
+          result,
+          [],
+          hidden,
+        );
+        collectFromInstance(
+          "system.adapter.devices.0",
+          enabledInstance({ common: { welcomeScreen: [{ link: "devices/index.html", name: "Devices" }] } }),
+          webServer,
+          host,
+          result,
+          [],
+          hidden,
+        );
+        expect(result).to.deep.equal({
+          "https://192.0.2.4:443": "hm-rega.0",
+          "http://192.0.2.99:8082/x/edit.html": "x.0: Editor",
+        });
+      });
+
+      it("keeps the first tile of an address, as the start page shows one tile per address", () => {
+        const result: Record<string, string> = {};
+        collectFromInstance(
+          "system.adapter.x.0",
+          enabledInstance({ common: { localLinks: { _default: { link: "http://192.0.2.5/", name: "First" } } } }),
+          webServer,
+          host,
+          result,
+          [],
+        );
+        collectFromInstance(
+          "system.adapter.y.0",
+          enabledInstance({ common: { localLink: "http://192.0.2.5/" } }),
+          webServer,
+          host,
+          result,
+          [],
+        );
+        expect(result).to.deep.equal({ "http://192.0.2.5/": "x.0: First" });
+      });
+
+      // Admin 8.3.5 `getInstances` hides `web`, the vis widget sets (`vis-*` except `vis-2` and `vis-web-admin`)
+      // and `icons-*`; the projects of vis and vis-2 come from their own source below.
+      it("takes no tile of web, vis, vis-2, a vis widget set or an icon set", () => {
+        const sources: Array<[string, Record<string, unknown>]> = [
+          ["web.0", { localLinks: { _default: "%web_protocol%://%ip%:%web_port%/" } }],
+          [
+            "vis.0",
+            {
+              localLinks: { _default: "%web_protocol%://%ip%:%web_port%/vis/edit.html" },
+              welcomeScreen: { link: "vis/index.html", name: "vis runtime" },
+              welcomeScreenPro: { link: "vis/edit.html", name: "vis editor" },
+            },
+          ],
+          [
+            "vis-2.0",
+            {
+              localLinks: {
+                _default: { link: "%web_protocol%://%ip%:%web_port%/vis-2/edit.html", name: { en: "vis-2 Editor" } },
+                Runtime: { link: "%web_protocol%://%ip%:%web_port%/vis-2/index.html", name: { en: "vis-2 Runtime" } },
+              },
+              welcomeScreen: [{ link: "vis-2/index.html", name: "vis 2 runtime" }],
+              welcomeScreenPro: [{ link: "vis-2/edit.html", name: "vis 2 editor" }],
+            },
+          ],
+          ["vis-materialdesign.0", { welcomeScreen: [{ link: "vis-materialdesign/index.html", name: "Material" }] }],
+          ["icons-mfd-svg.0", { welcomeScreen: [{ link: "icons-mfd-svg/index.html", name: "Icons" }] }],
+        ];
+        for (const [id, common] of sources) {
+          expect(collected(id, enabledInstance({ common })), id).to.deep.equal({});
+        }
+      });
     });
   });
 });
@@ -759,6 +1052,136 @@ describe("UrlDiscovery", () => {
       const result = await discovery.collect();
       const anyUrl = Object.keys(result).find(u => u.includes("jarvis"));
       expect(anyUrl).to.match(/^http:\/\/[\d.]+:8082\/jarvis\/$/);
+    });
+
+    it("lists devices on the web server beside the VIS-2 projects, without a vis-2 editor or runtime tile", async () => {
+      // Instance shapes from the packages: web 9.5.1, vis-2 2.20.9 and devices 4.3.2 (links as published).
+      adapter._instances = {
+        "system.adapter.web.0": enabledInstance({
+          common: { localLinks: { _default: "%web_protocol%://%ip%:%web_port%/" } },
+          native: { port: 8082, bind: "192.0.2.10", secure: true },
+        }),
+        "system.adapter.vis-2.0": enabledInstance({
+          common: {
+            localLinks: {
+              _default: { link: "%web_protocol%://%ip%:%web_port%/vis-2/edit.html", name: { en: "vis-2 Editor" } },
+            },
+            welcomeScreen: [{ link: "vis-2/index.html", name: "vis 2 runtime" }],
+            welcomeScreenPro: [{ link: "vis-2/edit.html", name: "vis 2 editor" }],
+          },
+        }),
+        "system.adapter.devices.0": enabledInstance({
+          common: { welcomeScreen: [{ link: "devices/index.html", name: "Devices", order: 10 }] },
+        }),
+      };
+      adapter._dirs["vis-2.0"] = [{ file: "main", isDir: true }];
+      const result = await discovery.collect();
+      expect(result).to.deep.equal({
+        "https://192.0.2.10:8082/devices/index.html": "devices.0: Devices",
+        "https://192.0.2.10:8082/vis-2/index.html?main": "VIS-2: main",
+      });
+    });
+
+    describe("the start page's own link cards and hidden tiles (system.config)", () => {
+      it("takes the link cards that are switched on, a relative one beside the lowest enabled admin", async () => {
+        adapter._instances = {
+          "system.adapter.admin.0": enabledInstance({ native: { port: 8081, bind: "192.0.2.10", secure: true } }),
+        };
+        adapter._config = {
+          common: {},
+          native: {
+            introLinks: [
+              { name: "Grafana", link: "http://192.0.2.30:3000/d/home", enabled: true, camera: "text" },
+              { name: "Off", link: "http://192.0.2.31/", enabled: false },
+              { name: "Camera", link: "http://192.0.2.32/live", enabled: true, camera: "custom" },
+              { name: "Files", link: "/files/index.html", enabled: true },
+              { name: "Bad", link: "javascript:alert(1)", enabled: true },
+            ],
+          },
+        };
+        const result = await discovery.collect();
+        expect(result).to.deep.equal({
+          "http://192.0.2.30:3000/d/home": "Grafana",
+          "http://192.0.2.32/live": "Camera",
+          "https://192.0.2.10:8081/files/index.html": "Files",
+        });
+      });
+
+      it("leaves out a tile the start page hides and goes on without system.config when it cannot be read", async () => {
+        adapter._instances = {
+          "system.adapter.rest-api.0": enabledInstance({
+            common: { localLinks: { _default: "%protocol%://%ip%:%port%/" } },
+            native: { port: 8093, bind: "0.0.0.0", secure: false },
+          }),
+        };
+        adapter._config = { common: { intro: ["rest-api.0_8093/"] }, native: {} };
+        expect(await discovery.collect()).to.deep.equal({});
+        adapter._config = new Error("objects db down");
+        expect(Object.keys(await discovery.collect())).to.have.lengthOf(1);
+      });
+
+      it("keeps the tile of the lowest instance when two instances advertise the same address", async () => {
+        adapter._instances = {
+          "system.adapter.x.10": enabledInstance({ common: { localLink: "http://192.0.2.5/" } }),
+          "system.adapter.x.2": enabledInstance({ common: { localLink: "http://192.0.2.5/" } }),
+        };
+        expect(await discovery.collect()).to.deep.equal({ "http://192.0.2.5/": "x.2" });
+      });
+    });
+
+    describe("aura at the address it answers on (aura 0.113.2 serverBind.js, webExtension.js)", () => {
+      const web = (enabled: boolean, port: number, bind: string, secure = false): Record<string, unknown> => ({
+        common: { enabled },
+        native: { port, bind, secure },
+      });
+
+      it("uses aura's own bind instead of the host address", async () => {
+        adapter._instances = {
+          "system.adapter.aura.0": enabledInstance({ native: { port: 8095, bind: "192.0.2.40", customUrl: "" } }),
+        };
+        expect(await discovery.collect()).to.deep.equal({ "http://192.0.2.40:8095/": "Aura" });
+      });
+
+      it("leaves out an aura that answers on this machine only and runs in no web instance", async () => {
+        adapter._instances = {
+          "system.adapter.aura.0": enabledInstance({ native: { port: 8095, bind: "127.0.0.1", customUrl: "" } }),
+        };
+        expect(await discovery.collect()).to.deep.equal({});
+        expect(adapter._logs.some(l => l.includes("aura.0=loopback-only"))).to.be.true;
+      });
+
+      it("takes the web address when aura runs in a web instance, also on a loopback bind", async () => {
+        adapter._instances = {
+          "system.adapter.web.0": web(true, 8082, "192.0.2.10", true),
+          "system.adapter.aura.0": enabledInstance({
+            native: { port: 8095, bind: "127.0.0.1", webInstance: "web.0", customUrl: "" },
+          }),
+        };
+        expect(await discovery.collect()).to.deep.equal({ "https://192.0.2.10:8082/aura/": "Aura" });
+      });
+
+      it("takes the lowest enabled web instance for webInstance '*'", async () => {
+        adapter._instances = {
+          "system.adapter.web.0": web(false, 8082, "192.0.2.10"),
+          "system.adapter.web.3": web(true, 8084, "0.0.0.0"),
+          "system.adapter.web.12": web(true, 8085, "192.0.2.12"),
+          "system.adapter.aura.0": enabledInstance({ native: { port: 8095, webInstance: "*", customUrl: "" } }),
+        };
+        const result = await discovery.collect();
+        expect(Object.entries(result).find(([, label]) => label === "Aura")?.[0]).to.match(
+          /^http:\/\/[\d.]+:8084\/aura\/$/,
+        );
+      });
+
+      it("stays on its own port when the named web instance is switched off", async () => {
+        adapter._instances = {
+          "system.adapter.web.0": web(false, 8082, "192.0.2.10"),
+          "system.adapter.aura.0": enabledInstance({
+            native: { port: 8095, bind: "192.0.2.40", webInstance: "web.0", customUrl: "" },
+          }),
+        };
+        expect(await discovery.collect()).to.deep.equal({ "http://192.0.2.40:8095/": "Aura" });
+      });
     });
 
     describe("aura adapter (v1.29.2)", () => {
