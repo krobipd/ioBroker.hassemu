@@ -1,5 +1,6 @@
 "use strict";
-// Loaded into the adapter process by test/inventory.js (`adapterEnv()`, first `--require`). It only observes: when the
+// Loaded into the adapter process by test/inventory.js (`adapterEnv()`, first `--require`). It observes (and keeps one
+// thing out: a datagram from the network around the test, round 173 — see `fromThisMachine` below): when the
 // process exits, it records every timer, server and socket the adapter or one of its own dependencies left open after
 // onUnload. js-controller (with everything it loads) and a test hook are not the adapter's and are left out.
 // A start marker is written at load: a process that never reaches its exit (killed, crashed) has no report.
@@ -200,6 +201,42 @@ if (dir) {
       land("udp", host, args[portAt]);
     }
     return sendDatagram.apply(this, args);
+  };
+  // Round 173 (a responder measured on a Mac in a LAN with searching devices: 47 datagrams of real devices on its port,
+  // two of them answered — connections that left the machine, .lands): a datagram whose source is no address of this
+  // machine comes from the real network around the test and never arrives — the run answers no real device and reads the
+  // same on every machine. The rule stands here because every start loads this file (R173-44: in the network hook alone it
+  // missed every start without that hook). A link-local IPv6 address is this machine's only with its zone, as node names
+  // it by interface name or number (R173-45: `fe80::1%en0` is the router, `fe80::1%lo0` the loopback of a Mac); the
+  // addresses are read when a source is unknown — one that came up after the load —, at most once a second (R173-47).
+  const MACHINE_READ_MS = 1000;
+  let machine = new Set();
+  let machineRead = 0;
+  const fromThisMachine = address => {
+    const plain = address.replace(/^::ffff:/i, "");
+    if (plain.startsWith("127.") || machine.has(plain)) {
+      return true;
+    }
+    if (Date.now() - machineRead < MACHINE_READ_MS) {
+      return false;
+    }
+    machineRead = Date.now();
+    machine = new Set(
+      Object.entries(require("node:os").networkInterfaces()).flatMap(([name, list]) =>
+        (list ?? []).flatMap(i =>
+          i.family === "IPv6" && i.scopeid ? [`${i.address}%${name}`, `${i.address}%${i.scopeid}`] : [i.address],
+        ),
+      ),
+    );
+    return machine.has(plain);
+  };
+  module.exports.fromThisMachine = fromThisMachine;
+  const emitDatagram = /** @type {(this: unknown, ...args: any[]) => any} */ (dgram.Socket.prototype.emit);
+  dgram.Socket.prototype.emit = function (event, ...args) {
+    if (event === "message" && args[1] && typeof args[1].address === "string" && !fromThisMachine(args[1].address)) {
+      return false;
+    }
+    return emitDatagram.call(this, event, ...args);
   };
   // a server or socket gets its handle in an internal nextTick — its owner is whoever calls listen/connect/bind
   const OWNER = Symbol("resourceProbeOwner");

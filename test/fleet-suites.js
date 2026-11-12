@@ -36,9 +36,11 @@
 //   "every call to a hung counterpart ends" D21 a start with every counterpart hung, held until each call of its first
 //                                       window ended or outlived the deadline: every call that hung — there and in the
 //                                       hang suites of the template — ended within the deadline while its process lived
-//   "every writable datapoint reaches the adapter" D10 (no start) every writable state of the inventory reached the
-//                                       adapter's stateChange in this run (resource probe; the commands of the
-//                                       template's suite "a command nobody answers stays unconfirmed")
+//   "every writable datapoint reaches the adapter" D10 every writable state of the inventory reached the adapter's
+//                                       stateChange (resource probe): with the template's suite "a command nobody
+//                                       answers stays unconfirmed" in the run its commands, read over the whole run (no
+//                                       start); without it (round 173) a start of its own and one write to every
+//                                       writable datapoint, read from that start on
 //   "every limit holds when it is pressed" (round 171) every window of every counterpart in src/lib/api-limits.json
 //                                       once more with a lowered maximum (press-hook.js: half the most calls one lane
 //                                       held in the calibration, round 172 — the same play with the declared table),
@@ -1414,12 +1416,14 @@ function calibrationGroup(declared) {
  * @param {object[]} declared the counterparts of src/lib/api-limits.json
  * @param {Set<string>} [called] the counterparts the calibration called (R172-20: a counterpart with error windows only
  *   has no peak without an error; without it, those with a peak)
+ * @param {Record<string, string[]>} [shared] sharedCalls() of the calibration — counterparts one call fits together are
+ *   never lowered in one installation (R173-12)
  * @returns {{ groups: { name: string, key: string, max: number, peak: number }[][], idle: string[], unreached: string[] }}
  *   idle: windows a lane never held two calls in, error windows declared below two — nothing to lower, the run's own
  *   demand holds them; unreached (R172-20): the windows of every counterpart the calibration never called — unproven,
  *   the suite is red on each
  */
-function pressPlan(peaks, declared, called = new Set(peaks.map(p => p.name))) {
+function pressPlan(peaks, declared, called = new Set(peaks.map(p => p.name)), shared = {}) {
   const most = new Map();
   for (const p of peaks.filter(q => !q.key.endsWith(" errors"))) {
     const id = `${p.name}\u0000${p.key}`;
@@ -1456,11 +1460,21 @@ function pressPlan(peaks, declared, called = new Set(peaks.map(p => p.name))) {
     }
   }
   const order = key => (key === "concurrent" ? Infinity : Number.parseFloat(key));
+  // R173-12: a window never shares its installation with another window of its counterpart, nor with one of a counterpart
+  // a call of it fits too (sharedCalls names each pair both ways) — without such a pair group k holds the k-th window of
+  // every counterpart
+  const apart = (a, b) => a === b || (shared[a] ?? []).includes(b);
   const groupsOf = byWindows => {
     const groups = [];
     for (const windows of byWindows.values()) {
       windows.sort((a, b) => order(a.key) - order(b.key));
-      windows.forEach((w, k) => (groups[k] = [...(groups[k] ?? []), w]));
+      let k = 0;
+      for (const w of windows) {
+        while ((groups[k] ?? []).some(other => apart(other.name, w.name))) {
+          k++;
+        }
+        groups[k] = [...(groups[k] ?? []), w];
+      }
     }
     return groups;
   };
@@ -1475,6 +1489,26 @@ function pressPlan(peaks, declared, called = new Set(peaks.map(p => p.name))) {
     }
   }
   return { groups: [...groupsOf(byName), ...groupsOf(errorsByName)], idle, unreached };
+}
+
+/**
+ * Round 173 (R173-12, govee 2026-11-10: its host-wide REST counterpart takes every call of its device-control counterpart):
+ * the counterparts one call of the calibration fits together. Lowered in one installation, the wider window turns away
+ * the calls the narrower one needs to reach its lowered maximum — "the press proved nothing", whatever the limiter does;
+ * pressPlan keeps them apart.
+ *
+ * @param {object[]} declared the counterparts of src/lib/api-limits.json
+ * @param {object[]} calls the calls of the calibration
+ * @returns {Record<string, string[]>} per counterpart the others a call of it fits too
+ */
+function sharedCalls(declared, calls) {
+  /** @type {Record<string, string[]>} */
+  const shared = {};
+  for (const d of declared) {
+    const theirs = calls.filter(c => fits(c, d.match));
+    shared[d.name] = declared.filter(e => e.name !== d.name && theirs.some(c => fits(c, e.match))).map(e => e.name);
+  }
+  return shared;
 }
 
 /** Round 171: whether a press group lowers error windows — its installation answers every call with a 500. */
@@ -1672,6 +1706,31 @@ function skippedTests(suite) {
     ...suite.tests.filter(test => test.isPending()).map(test => test.fullTitle()),
     ...suite.suites.flatMap(skippedTests),
   ];
+}
+
+/**
+ * D10 (round 173): what a writable datapoint without a value is written with where this file plays the writes itself —
+ * the first entry of its list, false, its minimum (0 without one), an empty list or object as text (as the template's
+ * commandValue, R173-48), else an empty text.
+ *
+ * @param {Record<string, any>} common the state's common
+ */
+function plainValue(common) {
+  const states = common.states && typeof common.states === "object" ? common.states : {};
+  const keys = Array.isArray(states) ? states.map(String) : Object.keys(states);
+  if (keys.length > 0) {
+    return common.type === "number" ? Number(keys[0]) : common.type === "boolean" ? keys[0] === "true" : keys[0];
+  }
+  if (common.type === "boolean") {
+    return false;
+  }
+  if (common.type === "number") {
+    return typeof common.min === "number" ? common.min : 0;
+  }
+  if (common.type === "array") {
+    return "[]";
+  }
+  return common.type === "json" || common.type === "object" ? "{}" : "";
 }
 
 module.exports = function fleetSuites(templateSuite, ctx) {
@@ -2597,24 +2656,48 @@ module.exports = function fleetSuites(templateSuite, ctx) {
     });
   });
 
-  // No start of its own: the template's suite "a command nobody answers stays unconfirmed" writes every writable state
-  // once; the resource probe notes each state the adapter's stateChange got.
-  suite("every writable datapoint reaches the adapter", () => {
-    it("hands every writable datapoint of the inventory to the adapter (D10)", function () {
-      const inventory = JSON.parse(fs.readFileSync(path.join(ADAPTER_DIR, "test", "objects.inventory.json"), "utf8"));
-      const writable = Object.entries(inventory)
+  // The template's suite "a command nobody answers stays unconfirmed" writes every writable state once, and the resource
+  // probe notes each state the adapter's stateChange got: with that suite in the run this one has no start of its own and
+  // reads the whole run. Round 173 (a responder without a counterpart, run 20261111-084613-771139-hand): an adapter
+  // without a counterpart carries no such suite — nobody wrote, and a datapoint it subscribes and handles read "not
+  // subscribed". Without that suite in the run this one starts the adapter itself, writes every writable datapoint once
+  // (commandEveryWritable; one without a value gets plainValue) and reads from its own start on, no earlier suite.
+  const COMMAND_SUITE = "a command nobody answers stays unconfirmed";
+  suite("every writable datapoint reaches the adapter", getHarness => {
+    const writable = () =>
+      Object.entries(JSON.parse(fs.readFileSync(path.join(ADAPTER_DIR, "test", "objects.inventory.json"), "utf8")))
         .filter(([, o]) => o?.type === "state" && o.common?.write === true)
         .map(([id]) => id);
-      if (writable.length === 0) {
+    // 0: the command suite wrote, somewhere in the run — else the start of this suite's own installation
+    let since = 0;
+    const handOver = () => {
+      const delivered = new Set(probeLines(".delivered", since).map(r => r.id));
+      return { delivered: delivered.size, missed: writable().filter(id => !delivered.has(id)) };
+    };
+    before(async function () {
+      if (protocolledTitles.has(COMMAND_SUITE) || writable().length === 0) {
+        return;
+      }
+      this.timeout(SETTLE_MS + 240000);
+      const harness = getHarness();
+      since = Date.now();
+      await start(harness, FIRST_LANGUAGE);
+      await commandEveryWritable(harness, plainValue);
+      await waitWindow("D10 every write handed over", SETTLE_MS, () => handOver().missed.length === 0, 250);
+    });
+
+    it("hands every writable datapoint of the inventory to the adapter (D10)", function () {
+      if (writable().length === 0) {
         console.log("      the inventory holds no writable datapoint — nothing to hand over");
         return;
       }
-      const delivered = new Set(probeLines(".delivered").map(r => r.id));
+      const { delivered, missed } = handOver();
       assert.ok(
-        delivered.size > 0,
-        'no write reached the adapter in this run — the suite "a command nobody answers stays unconfirmed" did not play its commands',
+        delivered > 0,
+        since === 0
+          ? 'no write reached the adapter in this run — the suite "a command nobody answers stays unconfirmed" did not play its commands'
+          : "none of this suite's own writes reached the adapter's stateChange",
       );
-      const missed = writable.filter(id => !delivered.has(id));
       assert.deepStrictEqual(
         missed,
         [],
@@ -2648,8 +2731,14 @@ module.exports = function fleetSuites(templateSuite, ctx) {
       quietFrom,
     );
 
-  // R172-3: one command to every writable datapoint — a button pressed, every other one its own value once more
-  async function commandEveryWritable(harness) {
+  /**
+   * R172-3: one command to every writable datapoint — a button pressed, every other one its own value once more; one
+   * without a value gets none, unless `valueless` gives it one (D10 without the template's command suite, round 173).
+   *
+   * @param {any} harness the test harness
+   * @param {(common: Record<string, any>) => string | number | boolean | undefined} [valueless] the value of a datapoint without one
+   */
+  async function commandEveryWritable(harness, valueless = () => undefined) {
     const objects = await dumpObjects(harness);
     for (const [id, o] of Object.entries(objects)) {
       if (o?.type !== "state" || o.common?.write !== true) {
@@ -2659,15 +2748,16 @@ module.exports = function fleetSuites(templateSuite, ctx) {
         await harness.states.setStateAsync(id, { val: true, ack: false });
         continue;
       }
-      const now = (await harness.states.getStateAsync(id))?.val;
+      const now = (await harness.states.getStateAsync(id))?.val ?? valueless(o.common);
       if (now !== null && now !== undefined) {
         await harness.states.setStateAsync(id, { val: now, ack: false });
       }
     }
   }
   // R172-3: the press play, one counted installation — the calibration plays it with the declared table, each press group
-  // with its lowered one; every phase ends as pressPhaseOver says, asked against the table of that installation
-  async function playPress(harness, group, label) {
+  // with its lowered one; every phase ends as pressPhaseOver says, asked against the table of that installation.
+  // `mayHold`: a press group, whose adapter may hold its work back by a lowered window it keeps (R173-12)
+  async function playPress(harness, group, label, mayHold) {
     clearInstanceData(harness);
     countThisInstallation();
     const since = Date.now();
@@ -2697,6 +2787,15 @@ module.exports = function fleetSuites(templateSuite, ctx) {
     );
     await feedFixtures(harness);
     await restarts.done;
+    // R173-12 (govee 2026-11-10: it subscribes at the end of its start, the calibration's commands came before and none
+    // reached it): the commands after the adapter's work, as every other suite's start waits for it — a pressed adapter
+    // may hold that work back by the window it keeps, which is what the play judges: its wait ends, the play goes on
+    await waitForAdapterWork(harness).catch(err => {
+      if (!mayHold) {
+        throw err;
+      }
+      console.log(`      ${label}: the adapter held its work back — ${err.message}`);
+    });
     await commandEveryWritable(harness);
     await waitWindow(
       `${label}: a start and one command to every writable datapoint`,
@@ -2713,7 +2812,8 @@ module.exports = function fleetSuites(templateSuite, ctx) {
     const back = Date.now();
     await waitWindow(`${label}: the counterparts back`, PRESS_DEADLINE_MS, pressedOrQuiet(group, back, back));
     await restartAsTheHost(harness, null, `${label}: a restart like the host's`, PRESS_HOOK, ...NET);
-    await feedFixtures(harness);
+    // R173-12 (homeconnect 2026-11-10: "only 0 of 2 appliances came online" after it held its day window over the restart):
+    // no fixtures fed after the restart — feeding may wait for fresh values, which a window the adapter rightly holds forbids
     const again = Date.now();
     await waitWindow(`${label}: after the restart`, PRESS_DEADLINE_MS, pressedOrQuiet(group, again, again));
     await withinDeadline(harness.stopAdapter(), STOP_MS, "the adapter did not stop");
@@ -2735,7 +2835,7 @@ module.exports = function fleetSuites(templateSuite, ctx) {
       const harness = getHarness();
       try {
         fs.rmSync(PRESS_FILE, { force: true });
-        const calibration = await playPress(harness, calibrationGroup(declaredLimits()), "calibration");
+        const calibration = await playPress(harness, calibrationGroup(declaredLimits()), "calibration", false);
         from = calibration.since;
         // what one lane held in the calibration, a window longer than a phase within one phase (R171-49)
         const measured = limitCalls(RESOURCE_DIR, readCalls(from), false, from).filter(
@@ -2749,6 +2849,7 @@ module.exports = function fleetSuites(templateSuite, ctx) {
               .filter(d => measured.some(c => fits(c, d.match)))
               .map(d => d.name),
           ),
+          sharedCalls(declaredLimits(), measured),
         );
         this.timeout((plan.groups.length + 1) * installation + 60000);
         for (const group of plan.groups) {
@@ -2763,7 +2864,7 @@ module.exports = function fleetSuites(templateSuite, ctx) {
             fs.writeFileSync(PRESS_ERRORS_FILE, JSON.stringify(pressedMatches(declaredLimits(), group)));
             fs.writeFileSync(FAULT_FLAG, "500press");
           }
-          const { install } = await playPress(harness, group, "pressed");
+          const { install } = await playPress(harness, group, "pressed", true);
           fs.rmSync(FAULT_FLAG, { force: true });
           fs.rmSync(PRESS_ERRORS_FILE, { force: true });
           pressed.push({ group, install });
@@ -2897,6 +2998,7 @@ module.exports.reachedAt = reachedAt;
 module.exports.peaksOf = peaksOf;
 module.exports.overLimits = overLimits;
 module.exports.pressPlan = pressPlan;
+module.exports.sharedCalls = sharedCalls;
 module.exports.calibrationGroup = calibrationGroup;
 module.exports.pressVerdict = pressVerdict;
 module.exports.pressPhaseOver = pressPhaseOver;
@@ -2914,10 +3016,13 @@ module.exports.recordLines = recordLines;
 module.exports.stateText = stateText;
 module.exports.leftBehind = leftBehind;
 module.exports.tally = tally;
+module.exports.plainValue = plainValue;
 // Round 165: the suites that judge the records of the whole run — pre-release.py's run of single suites reads it through
 // scripts/inventory-suites.mjs. "every" judges each record of every process (it runs along with every partial run, and a
 // move of its own code runs D06 whole); a list names the suites whose records it needs (it runs with them, and they with
-// it). Every other suite that reads an earlier suite's records needs every suite before it.
+// it). Every other suite that reads an earlier suite's records needs every suite before it. Round 173: a listed suite
+// the template does not carry is no source — the suite that names it plays that part itself and reads its own start
+// only (D10 without the command suite); with no source left it is a suite like every other.
 module.exports.RUN_WIDE = {
   "every call to a hung counterpart ends": "every",
   "every writable datapoint reaches the adapter": ["a command nobody answers stays unconfirmed"],
