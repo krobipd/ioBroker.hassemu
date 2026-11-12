@@ -251,14 +251,26 @@ jobs:
     # The one required check of the automerge ruleset: green only when every job that deploy waits for
     # is green (every matrix leg, every gate job); a job skipped because of a red dependency fails it.
     if: ${{ !cancelled() }}
-    needs: [check-and-lint, adapter-tests, repochecker-version-gate, workflow-lint, adapter-inventory, release-tag-guard]
+    needs:
+      - check-and-lint
+      - adapter-tests
+      - repochecker-version-gate
+      - workflow-lint
+      - adapter-inventory
+      - release-tag-guard
     runs-on: ubuntu-latest
     steps:
       - name: Every job deploy waits for passed
         run: echo '${{ toJSON(needs.*.result) }}' | jq -e 'all(. == "success")'
 
   deploy:
-    needs: [check-and-lint, adapter-tests, repochecker-version-gate, workflow-lint, adapter-inventory, release-tag-guard]
+    needs:
+      - check-and-lint
+      - adapter-tests
+      - repochecker-version-gate
+      - workflow-lint
+      - adapter-inventory
+      - release-tag-guard
     if: |
       contains(github.event.head_commit.message, '[skip ci]') == false &&
       github.event_name == 'push' &&
