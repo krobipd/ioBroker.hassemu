@@ -12,7 +12,7 @@
 - **Repository PR:** ioBroker/ioBroker.repositories#5793
 - **Vorher:** homeassistant-bridge (umbenannt wegen irreführendem Namen)
 - **Runtime-Deps:** `@iobroker/adapter-core`, `fastify`, `@fastify/cookie`, `@fastify/formbody`, `@fastify/websocket`, `bonjour-service`
-- **Keine harte Adapter-Abhängigkeit** — URL-Discovery liest optional `web.*`-Instance-Konfiguration für VIS/VIS-2-URLs; ohne web bleiben nur VIS-URLs leer, Admin-Tiles/Aura/Manual funktionieren weiter.
+- **Keine harte Adapter-Abhängigkeit** — URL-Discovery liest optional `web.*`-Instance-Konfiguration; ohne web fehlen VIS/VIS-2 und die welcomeScreen-Kacheln (ihr Pfad liegt auf dem web-Server), localLinks-Kacheln, Link-Karten, Aura und Manual bleiben.
 - **Test-Setup:** Tests unter `src/lib/*.test.ts` via **vitest** (seit v1.32.0; vorher mocha+ts-node, vitest löst den ESM-Loader-Bug strukturell und ist ~10× schneller). `test/package.js` + `test/integration.js` bleiben mocha (`@iobroker/testing` ist mocha-only).
 - **`@types/node` an `engines.node`-Min gekoppelt:** `^22.x` weil `engines.node: ">=22"`
 

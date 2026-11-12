@@ -188,12 +188,16 @@ The adapter searches the ioBroker host for pages worth offering:
 - **VIS and VIS-2** — one entry per project, and one per view inside it, for every `web`
   instance you have
 - **Aura** — one entry per running instance, using the port that instance is actually
-  configured with
-- **Admin tiles** — anything an adapter advertises for the ioBroker start page (Grafana,
-  jarvis, material, your own web UI…)
+  configured with; an Aura served by a `web` instance points there, and an Aura that only
+  listens on its own machine gets no entry, because no display could reach it
+- **Admin tiles** — the tiles the ioBroker start page shows: the devices page, Grafana,
+  jarvis, material, your own web UI, and the link cards you added to the start page. A tile
+  you hid on the start page stays out of the list, and two tiles with the same address are
+  one entry
 
 The search runs at start and whenever an adapter instance is added, removed or
-reconfigured. After creating or renaming a VIS-2 project or view, set **info.refreshUrls**
+reconfigured, or the start page settings change. A display keeps its page even when that
+page drops out of the list. After creating or renaming a VIS-2 project or view, set **info.refreshUrls**
 to `true` to search again without restarting the adapter.
 
 If something is not found, it is not lost: choose `Manual URL` and paste the address.

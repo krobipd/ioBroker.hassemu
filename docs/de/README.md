@@ -192,12 +192,17 @@ Der Adapter durchsucht den ioBroker-Rechner nach Seiten, die sich anzubieten loh
 - **VIS und VIS-2** — ein Eintrag je Projekt und einer je Ansicht darin, für jede vorhandene
   `web`-Instanz
 - **Aura** — ein Eintrag je laufender Instanz, mit dem Port, auf den diese Instanz
-  tatsächlich eingestellt ist
-- **Admin-Kacheln** — alles, was ein Adapter für die ioBroker-Startseite anbietet (Grafana,
-  jarvis, material, deine eigene Web-Oberfläche …)
+  tatsächlich eingestellt ist; ein Aura, das eine `web`-Instanz ausliefert, zeigt dorthin,
+  und ein Aura, das nur auf dem eigenen Rechner lauscht, bekommt keinen Eintrag, weil kein
+  Display es erreichen könnte
+- **Admin-Kacheln** — die Kacheln, die die ioBroker-Startseite zeigt: die Geräte-Seite,
+  Grafana, jarvis, material, deine eigene Web-Oberfläche und die Link-Karten, die du auf der
+  Startseite angelegt hast. Eine Kachel, die du auf der Startseite ausgeblendet hast, bleibt
+  aus der Liste, und zwei Kacheln mit derselben Adresse sind ein Eintrag
 
 Gesucht wird beim Start und immer dann, wenn eine Adapter-Instanz dazukommt, verschwindet
-oder umkonfiguriert wird. Nach dem Anlegen oder Umbenennen eines VIS-2-Projekts oder einer
+oder umkonfiguriert wird oder sich die Einstellungen der Startseite ändern. Ein Display
+behält seine Seite, auch wenn sie aus der Liste fällt. Nach dem Anlegen oder Umbenennen eines VIS-2-Projekts oder einer
 Ansicht setzt du **info.refreshUrls** auf `true`, um ohne Adapter-Neustart neu zu suchen.
 
 Wird etwas nicht gefunden, ist es nicht verloren: `Manuelle URL` wählen und die Adresse
