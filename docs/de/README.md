@@ -192,13 +192,18 @@ Der Adapter durchsucht den ioBroker-Rechner nach Seiten, die sich anzubieten loh
 - **VIS und VIS-2** — ein Eintrag je Projekt und einer je Ansicht darin, für jede vorhandene
   `web`-Instanz
 - **Aura** — ein Eintrag je laufender Instanz, mit dem Port, auf den diese Instanz
-  tatsächlich eingestellt ist; ein Aura, das eine `web`-Instanz ausliefert, zeigt dorthin,
-  und ein Aura, das nur auf dem eigenen Rechner lauscht, bekommt keinen Eintrag, weil kein
+  tatsächlich eingestellt ist; ein Aura, das eine `web`-Instanz ausliefert, zeigt dorthin
+  (oder auf Auras eigenen Port, solange diese `web`-Instanz nur auf dem eigenen Rechner
+  lauscht), und ein Aura, das nur auf dem eigenen Rechner lauscht, bekommt keinen Eintrag, weil kein
   Display es erreichen könnte
 - **Admin-Kacheln** — die Kacheln, die die ioBroker-Startseite zeigt: die Geräte-Seite,
   Grafana, jarvis, material, deine eigene Web-Oberfläche und die Link-Karten, die du auf der
   Startseite angelegt hast. Eine Kachel, die du auf der Startseite ausgeblendet hast, bleibt
   aus der Liste, und zwei Kacheln mit derselben Adresse sind ein Eintrag
+
+Eine Adresse, die nur auf dem ioBroker-Rechner selbst gilt (`127.0.0.1`, `::1`, `localhost`),
+wird nie ein Eintrag, egal aus welcher Quelle sie kommt: Ein Display ist immer ein anderes
+Gerät, und von dort aus erreicht eine solche Adresse nichts.
 
 Gesucht wird beim Start und immer dann, wenn eine Adapter-Instanz dazukommt, verschwindet
 oder umkonfiguriert wird oder sich die Einstellungen der Startseite ändern. Ein Display

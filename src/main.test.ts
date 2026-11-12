@@ -1796,6 +1796,54 @@ describe("the dashboard list follows the admin start page (K11)", () => {
       errors: [],
     });
   });
+
+  it("a display that chose an address of this machine only keeps it across a restart and goes on loading it", async () => {
+    // Until this release a tile on loopback was listed; a display that chose it keeps it after the update.
+    const LOCAL = "http://localhost:9000/";
+    const withDiscovery = (s: Setup): Setup => {
+      s.internal.makeUrlDiscovery = onChange =>
+        new UrlDiscovery(s.stub as never, onChange as UrlStatesListener, () => "192.0.2.10") as never;
+      s.stub.objects.set("system.adapter.x.0", {
+        type: "instance",
+        common: { enabled: true, localLink: LOCAL },
+        native: {},
+      });
+      return s;
+    };
+    const first = withDiscovery(setup());
+    await first.internal.onReady();
+    const rec = await first.internal.registry!.identifyOrCreate(null, "192.0.2.51");
+    const modeId = `hassemu.0.clients.${rec.id}.mode`;
+    await first.internal.onStateChange(modeId, { val: LOCAL, ack: false });
+
+    const second = withDiscovery(setup());
+    second.stub.dataDir = first.stub.dataDir;
+    for (const [id, obj] of first.stub.objects) {
+      second.stub.objects.set(id, structuredClone(obj));
+    }
+    for (const [id, state] of first.stub.states) {
+      second.stub.states.set(id, structuredClone(state));
+    }
+    await second.internal.onReady();
+    await second.internal.onStateChange("hassemu.0.info.refreshUrls", { val: true, ack: false });
+
+    const record = second.internal.registry!.getById(rec.id)!;
+    expect({
+      listed: Object.keys(second.stub.objects.get(modeId)?.common?.states ?? {}).includes(LOCAL),
+      mode: second.stub.states.get(modeId)?.val,
+      recordMode: record.mode,
+      redirect: resolveRedirect(record, second.internal.globalConfig!.redirect),
+      warnings: logsOf(second.stub, "warn"),
+      errors: logsOf(second.stub, "error"),
+    }).toEqual({
+      listed: false,
+      mode: LOCAL,
+      recordMode: LOCAL,
+      redirect: LOCAL,
+      warnings: [],
+      errors: [],
+    });
+  });
 });
 
 describe("onUnload", () => {

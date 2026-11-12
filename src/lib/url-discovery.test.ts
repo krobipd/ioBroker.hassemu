@@ -1184,6 +1184,115 @@ describe("UrlDiscovery", () => {
       });
     });
 
+    describe("a link to this machine only adds no entry — a display is always another device", () => {
+      const tiles = (links: Record<string, string>): Record<string, unknown> =>
+        Object.fromEntries(Object.entries(links).map(([key, link]) => [key, { link, name: key }]));
+      /** The skip entries of the discovery summary line, as `<adapter>=<reason>`. */
+      const skips = (): string[] => {
+        const summary = adapter._logs.filter(l => l.includes("URL discovery:")).pop() ?? "";
+        return summary.split("skipped: ")[1]?.split(", ") ?? [];
+      };
+
+      it("leaves out the tile of an instance that listens on this machine only (%ip% from its bind)", async () => {
+        adapter._instances = {
+          "system.adapter.x.0": enabledInstance({
+            common: { localLinks: { _default: "http://%ip%:%port%/" } },
+            native: { port: 3000, bind: "127.0.0.1" },
+          }),
+          "system.adapter.y.0": enabledInstance({
+            common: { localLinks: { _default: "http://%ip%:%port%/" } },
+            native: { port: 8093, bind: "192.0.2.10" },
+          }),
+        };
+        expect(await discovery.collect()).to.deep.equal({ "http://192.0.2.10:8093/": "y.0" });
+        expect(skips()).to.deep.equal(["x.0=loopback-only"]);
+      });
+
+      it("leaves out a link that names localhost, 127.x or ::1 itself, and names the instance once", async () => {
+        adapter._instances = {
+          "system.adapter.x.0": enabledInstance({
+            common: {
+              localLinks: tiles({
+                a: "http://localhost:9000/",
+                b: "http://LocalHost:9001/",
+                c: "http://127.0.1.1:9002/",
+                d: "http://[::1]:9003/",
+                e: "http://192.0.2.5:9004/",
+              }),
+            },
+          }),
+        };
+        expect(await discovery.collect()).to.deep.equal({ "http://192.0.2.5:9004/": "x.0: e" });
+        expect(skips()).to.deep.equal(["x.0=loopback-only"]);
+      });
+
+      it("leaves out the welcomeScreen path of a web instance that listens on this machine only", async () => {
+        adapter._instances = {
+          "system.adapter.web.0": enabledInstance({ native: { port: 8082, bind: "127.0.0.1" } }),
+          "system.adapter.devices.0": enabledInstance({
+            common: { welcomeScreen: { link: "devices/index.html", name: "Devices" } },
+          }),
+        };
+        expect(await discovery.collect()).to.deep.equal({});
+        expect(skips()).to.deep.equal(["devices.0=loopback-only"]);
+      });
+
+      it("leaves out a link card for this machine only", async () => {
+        adapter._config = {
+          common: {},
+          native: {
+            introLinks: [
+              { name: "Node-RED", link: "http://localhost:1880/", enabled: true },
+              { name: "Grafana", link: "http://192.0.2.30:3000/", enabled: true },
+            ],
+          },
+        };
+        expect(await discovery.collect()).to.deep.equal({ "http://192.0.2.30:3000/": "Grafana" });
+        expect(skips()).to.deep.equal(["system.config=loopback-only"]);
+      });
+
+      for (const bind of ["127.0.0.1", "::1", "localhost"]) {
+        it(`lists no VIS project of a web instance bound to ${bind}`, async () => {
+          adapter._instances = {
+            "system.adapter.web.0": enabledInstance({ native: { port: 8082, bind } }),
+          };
+          adapter._dirs["vis-2.0"] = [{ file: "main", isDir: true }];
+          expect(await discovery.collect()).to.deep.equal({});
+          expect(skips()).to.deep.equal(["vis-2.0=loopback-only"]);
+        });
+      }
+
+      it("takes aura's own port when its web instance listens on this machine only — aura's server always runs", async () => {
+        // aura 0.113.2 main.js: `server.listen(port, bindAddr)` on every start, the web instance is a second way in
+        adapter._instances = {
+          "system.adapter.web.0": enabledInstance({ native: { port: 8082, bind: "127.0.0.1" } }),
+          "system.adapter.aura.0": enabledInstance({
+            native: { port: 8095, bind: "192.0.2.40", webInstance: "web.0", customUrl: "" },
+          }),
+        };
+        expect(await discovery.collect()).to.deep.equal({ "http://192.0.2.40:8095/": "Aura" });
+      });
+
+      it("leaves out aura when both its web instance and its own server listen on this machine only", async () => {
+        adapter._instances = {
+          "system.adapter.web.0": enabledInstance({ native: { port: 8082, bind: "127.0.0.1" } }),
+          "system.adapter.aura.0": enabledInstance({
+            native: { port: 8095, bind: "127.0.0.1", webInstance: "web.0", customUrl: "" },
+          }),
+        };
+        expect(await discovery.collect()).to.deep.equal({});
+        expect(skips()).to.deep.equal(["aura.0=loopback-only"]);
+      });
+
+      it("leaves out an aura customUrl for this machine only", async () => {
+        adapter._instances = {
+          "system.adapter.aura.0": enabledInstance({ native: { port: 8095, customUrl: "http://localhost:8095" } }),
+        };
+        expect(await discovery.collect()).to.deep.equal({});
+        expect(skips()).to.deep.equal(["aura.0=loopback-only"]);
+      });
+    });
+
     describe("aura adapter (v1.29.2)", () => {
       it("discovers a default aura instance at its own port (frontend only)", async () => {
         adapter._instances = {

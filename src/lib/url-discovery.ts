@@ -156,6 +156,38 @@ function isLoopbackOnly(bind: unknown): boolean {
   );
 }
 
+/** The reason in the discovery summary for a source whose link reaches this machine only. */
+const LOOPBACK_ONLY = "loopback-only";
+
+/**
+ * True when a link reaches this machine only: its host is a loopback address, read as {@link isLoopbackOnly} reads a
+ * bind. A display is always another device — from there such a link reaches nothing, whichever source gave it (a tile
+ * of an instance bound to loopback, a link that names `localhost`, a web instance on loopback, an aura address).
+ *
+ * @param url A link that passed `coerceSafeUrl`.
+ */
+function reachesThisMachineOnly(url: string): boolean {
+  let host: string;
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    return false;
+  }
+  return isLoopbackOnly(host.replace(/^\[(.*)\]$/, "$1"));
+}
+
+/**
+ * Records in the discovery summary that a source gave a link for this machine only — once per source.
+ *
+ * @param skipped The summary's skip list.
+ * @param source  The instance (or `system.config`) the link came from.
+ */
+function skipLoopback(skipped: SkipEntry[], source: string): void {
+  if (!skipped.some(s => s.adapter === source && s.reason === LOOPBACK_ONLY)) {
+    skipped.push({ adapter: source, reason: LOOPBACK_ONLY });
+  }
+}
+
 /**
  * The address of a web extension's path on the web instance it runs in (admin 8.3.5 `getWebExtensionLinks`): the
  * named instance, or for `*` the lowest enabled one. A web instance that is switched off serves nothing — then null.
@@ -398,7 +430,7 @@ export class UrlDiscovery {
     for (const [id, obj] of ordered) {
       collectFromInstance(id, obj, crossRefs, hostIp, result, skipped, hidden);
     }
-    collectLinkCards(config, crossRefs, hostIp, result);
+    collectLinkCards(config, crossRefs, hostIp, result, skipped);
 
     // v1.17.0 (E10): iterate over every `web.*` instance instead of a hard-coded
     // `web.0`. Users with `web.1` (a second web instance, e.g. one just for VIS)
@@ -538,7 +570,10 @@ export class UrlDiscovery {
    * (default 8095) and bound to `native.bind` (aura 0.113.2 `lib/serverBind.js`: empty = every address,
    * 127.x/::1/localhost = this machine only). With `native.webInstance` set, aura is also served by that web
    * instance under `/aura/` (`lib/webExtension.js`), and admin 8.3.5 (`replaceLink`, `getWebExtensionLinks`) shows
-   * that address — so does the list. A loopback-only aura without a web instance is no target for a display.
+   * that address — so does the list. Aura's own server listens on every start (`main.js` `server.listen(port,
+   * bindAddr)`), so a web instance that answers on this machine only leaves the own port. An address of this machine
+   * only — aura bound to loopback without a usable web instance, a `customUrl` naming `localhost` — is no target for a
+   * display.
    * Multi-instance setups get a `(aura.X)` suffix on the label so users can distinguish them. `native.customUrl`
    * overrides everything (used for reverse-proxy / external-URL setups).
    *
@@ -562,14 +597,15 @@ export class UrlDiscovery {
     const native = isPlainObject(obj.native) ? obj.native : {};
     const customUrl = typeof native.customUrl === "string" ? native.customUrl.trim() : "";
     const webInstance = typeof native.webInstance === "string" ? native.webInstance.trim() : "";
-    const viaWeb = webInstance ? webExtensionUrl(webInstance, "aura/", crossRefs, hostIp) : null;
+    const webUrl = webInstance ? webExtensionUrl(webInstance, "aura/", crossRefs, hostIp) : null;
+    const viaWeb = webUrl && !reachesThisMachineOnly(webUrl) ? webUrl : null;
     let url: string;
     if (customUrl) {
       url = customUrl.endsWith("/") ? customUrl : `${customUrl}/`;
     } else if (viaWeb) {
       url = viaWeb;
     } else if (isLoopbackOnly(native.bind)) {
-      skipped.push({ adapter: shortName, reason: "loopback-only" });
+      skipLoopback(skipped, shortName);
       return;
     } else {
       const port = coerceFiniteNumber(native.port);
@@ -580,6 +616,10 @@ export class UrlDiscovery {
     const safe = coerceSafeUrl(url);
     if (!safe) {
       skipped.push({ adapter: shortName, reason: "unsafe-url" });
+      return;
+    }
+    if (reachesThisMachineOnly(safe)) {
+      skipLoopback(skipped, shortName);
       return;
     }
     const suffix = showSuffix ? ` (${shortName})` : "";
@@ -612,6 +652,10 @@ export class UrlDiscovery {
     // "Every address" (empty, 0.0.0.0, ::) is read by the fleet master — the dashboard is
     // then reached at this host's address.
     const ip = chosenAddress(native.bind) ?? hostIp;
+    if (isLoopbackOnly(ip)) {
+      skipLoopback(skipped, adapterName);
+      return;
+    }
     const protocol = native.secure === true ? "https" : "http";
 
     let entries: unknown[] = [];
@@ -829,12 +873,13 @@ export function collectFromInstance(
   // entry of `localLinks` is a link of its own (hm-rega `_default`). Each tile carries the id admin keys it by in
   // `system.config.common.intro`.
   if (typeof common.localLink === "string") {
-    addTile({ link: common.localLink }, instanceId, ADMIN_SERVER_BASE, ctx, hidden, result);
+    addTile({ link: common.localLink }, instanceId, ADMIN_SERVER_BASE, ctx, hidden, result, skipped);
   }
   if (isPlainObject(common.localLinks)) {
     for (const [key, entry] of Object.entries(common.localLinks)) {
       const tileId = typeof entry === "string" || key === "_default" ? instanceId : `${instanceId} ${key}`;
-      addTile(typeof entry === "string" ? { link: entry } : entry, tileId, ADMIN_SERVER_BASE, ctx, hidden, result);
+      const link = typeof entry === "string" ? { link: entry } : entry;
+      addTile(link, tileId, ADMIN_SERVER_BASE, ctx, hidden, result, skipped);
     }
   }
   // A welcomeScreen or welcomeScreenPro path (`devices/index.html`) is served by the web server.
@@ -845,14 +890,15 @@ export function collectFromInstance(
     const ws = common[key];
     const entries = Array.isArray(ws) ? ws : isPlainObject(ws) ? [ws] : [];
     for (const entry of entries) {
-      addTile(entry, `${instanceId} ${suffix}`, WEB_SERVER_BASE, ctx, hidden, result);
+      addTile(entry, `${instanceId} ${suffix}`, WEB_SERVER_BASE, ctx, hidden, result, skipped);
     }
   }
 }
 
 /**
- * Adds one tile to the list unless the start page hides it or an earlier tile has the same address — admin 8.3.5
- * (`addLinks`) shows one tile per address, the first it meets, and it meets instances in their order.
+ * Adds one tile to the list unless the start page hides it, an earlier tile has the same address — admin 8.3.5
+ * (`addLinks`) shows one tile per address, the first it meets, and it meets instances in their order — or it reaches
+ * this machine only.
  *
  * @param entry   The link entry (`{link, name}`).
  * @param tileId  The id admin keys the tile by (`web.0`, `vis-2.0 Runtime`, `devices.0 cloud`).
@@ -860,6 +906,7 @@ export function collectFromInstance(
  * @param ctx     Lookup context of the instance.
  * @param hidden  Hidden tiles from `system.config.common.intro`.
  * @param result  Output map.
+ * @param skipped The discovery summary's skip list.
  */
 function addTile(
   entry: unknown,
@@ -868,6 +915,7 @@ function addTile(
   ctx: ResolveContext,
   hidden: ReadonlySet<string>,
   result: UrlStates,
+  skipped: SkipEntry[],
 ): void {
   if (!isPlainObject(entry)) {
     return;
@@ -882,7 +930,14 @@ function addTile(
     return;
   }
   const safe = coerceSafeUrl(resolved);
-  if (!safe || safe in result) {
+  if (!safe) {
+    return;
+  }
+  if (reachesThisMachineOnly(safe)) {
+    skipLoopback(skipped, ctx.instanceId);
+    return;
+  }
+  if (safe in result) {
     return;
   }
   const name = coerceString(entry.name);
@@ -892,18 +947,20 @@ function addTile(
 /**
  * Adds the start page's own link cards (`system.config.native.introLinks`) that are switched on — admin 8.3.5
  * (`Intro`, `getLinkCards`) shows those, each opening its `link`; a relative link opens beside the admin page.
- * A card with the address of a tile already in the list adds nothing.
+ * A card with the address of a tile already in the list adds nothing, nor does one that reaches this machine only.
  *
  * @param config    The `system.config` object, or null.
  * @param crossRefs Instances for the admin address of a relative link.
  * @param hostIp    This host's address.
  * @param result    Output map.
+ * @param skipped   The discovery summary's skip list.
  */
 export function collectLinkCards(
   config: Record<string, unknown> | null,
   crossRefs: Map<string, Record<string, unknown>>,
   hostIp: string,
   result: UrlStates,
+  skipped: SkipEntry[],
 ): void {
   const cards = config && isPlainObject(config.native) ? config.native.introLinks : undefined;
   if (!Array.isArray(cards)) {
@@ -921,7 +978,14 @@ export function collectLinkCards(
     const path = relativePath(link);
     const target = path === null ? link : resolvePlaceholders(`${ADMIN_SERVER_BASE}${path}`, ctx);
     const safe = target ? coerceSafeUrl(target) : null;
-    if (!safe || safe in result) {
+    if (!safe) {
+      continue;
+    }
+    if (reachesThisMachineOnly(safe)) {
+      skipLoopback(skipped, SYSTEM_CONFIG_ID);
+      continue;
+    }
+    if (safe in result) {
       continue;
     }
     result[safe] = coerceString(card.name) ?? safe;
