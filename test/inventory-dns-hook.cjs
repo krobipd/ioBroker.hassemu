@@ -1,6 +1,6 @@
 "use strict";
-// Loaded into the ADAPTER process via NODE_OPTIONS=--require (the harness passes `env`
-// through to it). Runs before any adapter module, so the reverse-DNS lookup the adapter
+// Loaded into the ADAPTER process via NODE_OPTIONS=--require (FIXTURE_HOOKS in test/inventory.js, every start of the
+// inventory run). Runs before any adapter module, so the reverse-DNS lookup the adapter
 // starts for every display IP is answered here, not by the machine's resolver.
 //
 // Why: what a PTR lookup returns is the runner's business — for the loopback address the
@@ -13,20 +13,27 @@
 // record ends: with no hostname. The adapter knows neither the hook nor that it runs in
 // fixture mode; the negative cache is the code path a real installation takes every day.
 //
-// A fixture display can still HAVE a PTR record: INVENTORY_PTR carries a JSON map
-// address → name (set by test/inventory.js from the fixtures), so the auto-naming after the
-// reverse-DNS hostname is part of the inventory too (audit 2026-09-25, T8).
+// A fixture display can still HAVE a PTR record: the `ptr` of its entry in
+// test/fixtures/inventory/displays.json, read here, so the auto-naming after the
+// reverse-DNS hostname is part of the inventory too (audit 2026-09-25, T8). Under
+// INVENTORY_RENAME=1 — set by the fleet suite "a renamed device keeps its name" before the
+// restart it plays — an entry with `renamedPtr` answers that name instead: the source renamed
+// the display between two starts.
 const dns = require("node:dns");
 const dnsPromises = require("node:dns/promises");
+const fs = require("node:fs");
+const path = require("node:path");
 
-// address → PTR name
-const PTR = (() => {
-  try {
-    return JSON.parse(process.env.INVENTORY_PTR || "{}");
-  } catch {
-    return {};
-  }
-})();
+/** @type {{ displays: { ip: string, ptr?: string, renamedPtr?: string }[] }} */
+const FIXTURES = JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", "inventory", "displays.json"), "utf8"));
+const RENAMED = process.env.INVENTORY_RENAME === "1";
+/** @type {Record<string, string>} address → PTR name */
+const PTR = Object.fromEntries(
+  FIXTURES.displays
+    .map(d => [d.ip, RENAMED && d.renamedPtr ? d.renamedPtr : d.ptr])
+    .filter(([, name]) => name)
+    .map(([ip, name]) => [ip, String(name)]),
+);
 
 /**
  * The error a resolver gives for an address without a PTR record.

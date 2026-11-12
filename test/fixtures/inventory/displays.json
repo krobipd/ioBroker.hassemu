@@ -6,8 +6,10 @@
     "auto-naming and the stored tokens depend on. Each display reaches the adapter from its",
     "own address (X-Forwarded-For with trustProxy on — the only way to give a loopback",
     "harness several source addresses); `ptr` is its reverse-DNS answer, served by",
-    "test/inventory-dns-hook.cjs. The adapter mints a random id per display; the inventory",
-    "maps those to stable `display-N` keys, so two runs stay byte-identical.",
+    "test/inventory-dns-hook.cjs. hassemu picks the last four characters of a new display's",
+    "id by chance (K7); in the inventory run test/inventory-id-hook.cjs gives them in a",
+    "fixed sequence (`display-0001` for the first new display of a process, and so on), so",
+    "two runs stay byte-identical.",
     "Not here on purpose: authRequired — it changes no object (only the auth guard), and a",
     "second controller run for it would add nothing the unit tests do not cover.",
     "Every address is from 192.0.2.0/24 (RFC 5737, never routed): the adapter probes the",
@@ -23,7 +25,8 @@
     {
       "ip": "192.0.2.32",
       "ptr": "wall-display-kitchen.lan",
-      "comment": "Auto-named after its reverse-DNS hostname.",
+      "renamedPtr": "wall-display-hallway.lan",
+      "comment": "Auto-named after its reverse-DNS hostname. Under INVENTORY_RENAME=1 (the fleet suite \"a renamed device keeps its name\") its PTR answers `renamedPtr`, and the name follows.",
       "mode": "manual",
       "manualUrl": "http://192.0.2.10:8082/vis-2/index.html?kitchen"
     },
@@ -39,7 +42,7 @@
     },
     {
       "ip": "192.0.2.46",
-      "comment": "A Companion app that went through the sign-in — its tokens are stored on the device object.",
+      "comment": "A Companion app that went through the sign-in — its tokens are stored in identities.json in the instance data folder (DD 37).",
       "mode": "global",
       "onboard": true
     }

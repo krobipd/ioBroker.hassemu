@@ -19,7 +19,7 @@
     },
     "native": {}
   },
-  "hassemu.0.clients.display-1": {
+  "hassemu.0.clients.display-0001": {
     "type": "device",
     "common": {
       "name": {
@@ -40,9 +40,9 @@
     "native": {
       "objectsVersion": 4
     },
-    "_id": "hassemu.0.clients.display-1"
+    "_id": "hassemu.0.clients.display-0001"
   },
-  "hassemu.0.clients.display-1.ip": {
+  "hassemu.0.clients.display-0001.ip": {
     "type": "state",
     "common": {
       "name": {
@@ -65,9 +65,9 @@
       "def": ""
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-1.ip"
+    "_id": "hassemu.0.clients.display-0001.ip"
   },
-  "hassemu.0.clients.display-1.manualUrl": {
+  "hassemu.0.clients.display-0001.manualUrl": {
     "type": "state",
     "common": {
       "name": {
@@ -103,9 +103,9 @@
       "def": ""
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-1.manualUrl"
+    "_id": "hassemu.0.clients.display-0001.manualUrl"
   },
-  "hassemu.0.clients.display-1.mode": {
+  "hassemu.0.clients.display-0001.mode": {
     "type": "state",
     "common": {
       "name": {
@@ -150,9 +150,9 @@
       }
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-1.mode"
+    "_id": "hassemu.0.clients.display-0001.mode"
   },
-  "hassemu.0.clients.display-1.remove": {
+  "hassemu.0.clients.display-0001.remove": {
     "type": "state",
     "common": {
       "name": {
@@ -188,9 +188,9 @@
       "def": false
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-1.remove"
+    "_id": "hassemu.0.clients.display-0001.remove"
   },
-  "hassemu.0.clients.display-1.resolvedUrl": {
+  "hassemu.0.clients.display-0001.resolvedUrl": {
     "type": "state",
     "common": {
       "name": {
@@ -226,9 +226,9 @@
       "def": ""
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-1.resolvedUrl"
+    "_id": "hassemu.0.clients.display-0001.resolvedUrl"
   },
-  "hassemu.0.clients.display-2": {
+  "hassemu.0.clients.display-0002": {
     "type": "device",
     "common": {
       "name": {
@@ -249,9 +249,9 @@
     "native": {
       "objectsVersion": 4
     },
-    "_id": "hassemu.0.clients.display-2"
+    "_id": "hassemu.0.clients.display-0002"
   },
-  "hassemu.0.clients.display-2.ip": {
+  "hassemu.0.clients.display-0002.ip": {
     "type": "state",
     "common": {
       "name": {
@@ -274,9 +274,9 @@
       "def": ""
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-2.ip"
+    "_id": "hassemu.0.clients.display-0002.ip"
   },
-  "hassemu.0.clients.display-2.manualUrl": {
+  "hassemu.0.clients.display-0002.manualUrl": {
     "type": "state",
     "common": {
       "name": {
@@ -312,9 +312,9 @@
       "def": ""
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-2.manualUrl"
+    "_id": "hassemu.0.clients.display-0002.manualUrl"
   },
-  "hassemu.0.clients.display-2.mode": {
+  "hassemu.0.clients.display-0002.mode": {
     "type": "state",
     "common": {
       "name": {
@@ -359,9 +359,9 @@
       }
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-2.mode"
+    "_id": "hassemu.0.clients.display-0002.mode"
   },
-  "hassemu.0.clients.display-2.remove": {
+  "hassemu.0.clients.display-0002.remove": {
     "type": "state",
     "common": {
       "name": {
@@ -397,9 +397,9 @@
       "def": false
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-2.remove"
+    "_id": "hassemu.0.clients.display-0002.remove"
   },
-  "hassemu.0.clients.display-2.resolvedUrl": {
+  "hassemu.0.clients.display-0002.resolvedUrl": {
     "type": "state",
     "common": {
       "name": {
@@ -435,9 +435,9 @@
       "def": ""
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-2.resolvedUrl"
+    "_id": "hassemu.0.clients.display-0002.resolvedUrl"
   },
-  "hassemu.0.clients.display-3": {
+  "hassemu.0.clients.display-0003": {
     "type": "device",
     "common": {
       "name": {
@@ -458,9 +458,9 @@
     "native": {
       "objectsVersion": 4
     },
-    "_id": "hassemu.0.clients.display-3"
+    "_id": "hassemu.0.clients.display-0003"
   },
-  "hassemu.0.clients.display-3.ip": {
+  "hassemu.0.clients.display-0003.ip": {
     "type": "state",
     "common": {
       "name": {
@@ -483,9 +483,9 @@
       "def": ""
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-3.ip"
+    "_id": "hassemu.0.clients.display-0003.ip"
   },
-  "hassemu.0.clients.display-3.manualUrl": {
+  "hassemu.0.clients.display-0003.manualUrl": {
     "type": "state",
     "common": {
       "name": {
@@ -521,9 +521,9 @@
       "def": ""
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-3.manualUrl"
+    "_id": "hassemu.0.clients.display-0003.manualUrl"
   },
-  "hassemu.0.clients.display-3.mode": {
+  "hassemu.0.clients.display-0003.mode": {
     "type": "state",
     "common": {
       "name": {
@@ -568,9 +568,9 @@
       }
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-3.mode"
+    "_id": "hassemu.0.clients.display-0003.mode"
   },
-  "hassemu.0.clients.display-3.remove": {
+  "hassemu.0.clients.display-0003.remove": {
     "type": "state",
     "common": {
       "name": {
@@ -606,9 +606,9 @@
       "def": false
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-3.remove"
+    "_id": "hassemu.0.clients.display-0003.remove"
   },
-  "hassemu.0.clients.display-3.resolvedUrl": {
+  "hassemu.0.clients.display-0003.resolvedUrl": {
     "type": "state",
     "common": {
       "name": {
@@ -644,9 +644,9 @@
       "def": ""
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-3.resolvedUrl"
+    "_id": "hassemu.0.clients.display-0003.resolvedUrl"
   },
-  "hassemu.0.clients.display-4": {
+  "hassemu.0.clients.display-0004": {
     "type": "device",
     "common": {
       "name": {
@@ -667,9 +667,9 @@
     "native": {
       "objectsVersion": 4
     },
-    "_id": "hassemu.0.clients.display-4"
+    "_id": "hassemu.0.clients.display-0004"
   },
-  "hassemu.0.clients.display-4.ip": {
+  "hassemu.0.clients.display-0004.ip": {
     "type": "state",
     "common": {
       "name": {
@@ -692,9 +692,9 @@
       "def": ""
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-4.ip"
+    "_id": "hassemu.0.clients.display-0004.ip"
   },
-  "hassemu.0.clients.display-4.manualUrl": {
+  "hassemu.0.clients.display-0004.manualUrl": {
     "type": "state",
     "common": {
       "name": {
@@ -730,9 +730,9 @@
       "def": ""
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-4.manualUrl"
+    "_id": "hassemu.0.clients.display-0004.manualUrl"
   },
-  "hassemu.0.clients.display-4.mode": {
+  "hassemu.0.clients.display-0004.mode": {
     "type": "state",
     "common": {
       "name": {
@@ -777,9 +777,9 @@
       }
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-4.mode"
+    "_id": "hassemu.0.clients.display-0004.mode"
   },
-  "hassemu.0.clients.display-4.remove": {
+  "hassemu.0.clients.display-0004.remove": {
     "type": "state",
     "common": {
       "name": {
@@ -815,9 +815,9 @@
       "def": false
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-4.remove"
+    "_id": "hassemu.0.clients.display-0004.remove"
   },
-  "hassemu.0.clients.display-4.resolvedUrl": {
+  "hassemu.0.clients.display-0004.resolvedUrl": {
     "type": "state",
     "common": {
       "name": {
@@ -853,9 +853,9 @@
       "def": ""
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-4.resolvedUrl"
+    "_id": "hassemu.0.clients.display-0004.resolvedUrl"
   },
-  "hassemu.0.clients.display-5": {
+  "hassemu.0.clients.display-0005": {
     "type": "device",
     "common": {
       "name": {
@@ -876,9 +876,9 @@
     "native": {
       "objectsVersion": 4
     },
-    "_id": "hassemu.0.clients.display-5"
+    "_id": "hassemu.0.clients.display-0005"
   },
-  "hassemu.0.clients.display-5.ip": {
+  "hassemu.0.clients.display-0005.ip": {
     "type": "state",
     "common": {
       "name": {
@@ -901,9 +901,9 @@
       "def": ""
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-5.ip"
+    "_id": "hassemu.0.clients.display-0005.ip"
   },
-  "hassemu.0.clients.display-5.manualUrl": {
+  "hassemu.0.clients.display-0005.manualUrl": {
     "type": "state",
     "common": {
       "name": {
@@ -939,9 +939,9 @@
       "def": ""
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-5.manualUrl"
+    "_id": "hassemu.0.clients.display-0005.manualUrl"
   },
-  "hassemu.0.clients.display-5.mode": {
+  "hassemu.0.clients.display-0005.mode": {
     "type": "state",
     "common": {
       "name": {
@@ -986,9 +986,9 @@
       }
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-5.mode"
+    "_id": "hassemu.0.clients.display-0005.mode"
   },
-  "hassemu.0.clients.display-5.remove": {
+  "hassemu.0.clients.display-0005.remove": {
     "type": "state",
     "common": {
       "name": {
@@ -1024,9 +1024,9 @@
       "def": false
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-5.remove"
+    "_id": "hassemu.0.clients.display-0005.remove"
   },
-  "hassemu.0.clients.display-5.resolvedUrl": {
+  "hassemu.0.clients.display-0005.resolvedUrl": {
     "type": "state",
     "common": {
       "name": {
@@ -1062,9 +1062,9 @@
       "def": ""
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-5.resolvedUrl"
+    "_id": "hassemu.0.clients.display-0005.resolvedUrl"
   },
-  "hassemu.0.clients.display-legacy": {
+  "hassemu.0.clients.display-b2c3": {
     "type": "device",
     "common": {
       "name": {
@@ -1085,9 +1085,9 @@
     "native": {
       "objectsVersion": 4
     },
-    "_id": "hassemu.0.clients.display-legacy"
+    "_id": "hassemu.0.clients.display-b2c3"
   },
-  "hassemu.0.clients.display-legacy.ip": {
+  "hassemu.0.clients.display-b2c3.ip": {
     "type": "state",
     "common": {
       "name": {
@@ -1110,9 +1110,9 @@
       "def": ""
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-legacy.ip"
+    "_id": "hassemu.0.clients.display-b2c3.ip"
   },
-  "hassemu.0.clients.display-legacy.manualUrl": {
+  "hassemu.0.clients.display-b2c3.manualUrl": {
     "type": "state",
     "common": {
       "name": {
@@ -1148,9 +1148,9 @@
       "def": ""
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-legacy.manualUrl"
+    "_id": "hassemu.0.clients.display-b2c3.manualUrl"
   },
-  "hassemu.0.clients.display-legacy.mode": {
+  "hassemu.0.clients.display-b2c3.mode": {
     "type": "state",
     "common": {
       "name": {
@@ -1166,10 +1166,6 @@
         "uk": "Режим redirect",
         "zh-cn": "重定向模式"
       },
-      "type": "string",
-      "role": "text",
-      "read": true,
-      "write": true,
       "desc": {
         "de": "Wohin dieses Display weiterleitet: ein erkanntes Dashboard, Globale URL um der globalen Einstellung zu folgen, Manuelle URL um den manualUrl-Datenpunkt zu nutzen, oder --- für die Startseite.",
         "en": "Where this display redirects: a discovered dashboard, Global URL to follow the global setting, Manual URL to use the manualUrl datapoint, or --- to show the landing page.",
@@ -1183,6 +1179,10 @@
         "uk": "Куди перенаправляє цей дисплей: виявлена панель, Глобальний URL щоб слідувати глобальному налаштуванню, Ручний URL щоб використати датапоінт manualUrl, або --- щоб показати стартову сторінку.",
         "zh-cn": "此显示器重定向到哪里：已发现的仪表板、“全局 URL”跟随全局设置、“手动 URL”使用 manualUrl 数据点，或“---”显示落地页。"
       },
+      "type": "string",
+      "role": "text",
+      "read": true,
+      "write": true,
       "def": "0",
       "states": {
         "0": "---",
@@ -1195,9 +1195,9 @@
       }
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-legacy.mode"
+    "_id": "hassemu.0.clients.display-b2c3.mode"
   },
-  "hassemu.0.clients.display-legacy.remove": {
+  "hassemu.0.clients.display-b2c3.remove": {
     "type": "state",
     "common": {
       "name": {
@@ -1213,6 +1213,11 @@
         "uk": "Забути цей дисплей",
         "zh-cn": "忘记此显示器"
       },
+      "type": "boolean",
+      "role": "button",
+      "read": false,
+      "write": true,
+      "def": false,
       "desc": {
         "de": "Auf true setzen, um den Ordner dieses Displays samt aller Datenpunkte zu löschen — bei der nächsten Anfrage taucht es als neuer Eintrag mit der Startseite wieder auf.",
         "en": "Write true to delete this display's folder and all its states — on its next request it reappears as a new entry showing the landing page.",
@@ -1225,17 +1230,12 @@
         "ru": "Запишите true, чтобы удалить папку этого дисплея со всеми его состояниями — при следующем запросе он снова появится как новая запись со стартовой страницей.",
         "uk": "Запишіть true, щоб видалити теку цього дисплея з усіма його станами — при наступному запиті він знову з'явиться як новий запис зі стартовою сторінкою.",
         "zh-cn": "写入 true 以删除此显示器的文件夹及其所有数据点 — 在下次请求时它会作为新条目重新出现并显示起始页。"
-      },
-      "type": "boolean",
-      "role": "button",
-      "read": false,
-      "write": true,
-      "def": false
+      }
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-legacy.remove"
+    "_id": "hassemu.0.clients.display-b2c3.remove"
   },
-  "hassemu.0.clients.display-legacy.resolvedUrl": {
+  "hassemu.0.clients.display-b2c3.resolvedUrl": {
     "type": "state",
     "common": {
       "name": {
@@ -1271,7 +1271,7 @@
       "def": ""
     },
     "native": {},
-    "_id": "hassemu.0.clients.display-legacy.resolvedUrl"
+    "_id": "hassemu.0.clients.display-b2c3.resolvedUrl"
   },
   "hassemu.0.global": {
     "_id": "hassemu.0.global",
