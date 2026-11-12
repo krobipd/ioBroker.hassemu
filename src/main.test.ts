@@ -21,7 +21,7 @@ vi.mock("./lib/network-address", async importOriginal => ({
 
 vi.mock("@iobroker/adapter-core", async () => {
   // The factory is hoisted above the imports — the shared broker semantics come in here.
-  const { brokerExtend, brokerDelObject } = await import("../test/unit/broker-stub.js");
+  const { brokerExtend, brokerDelObject, brokerGetStates } = await import("../test/unit/broker-stub.js");
   const { realI18n } = await import("../test/unit/i18n-stub.js");
   const { freshDataDir } = await import("../test/unit/data-dir.js");
   // The real exit codes (the value js-controller reads), not a copy that could drift.
@@ -77,6 +77,11 @@ vi.mock("@iobroker/adapter-core", async () => {
     getStateAsync(id: string): Promise<{ val: unknown; ack: boolean } | null> {
       const state = this.states.get(this.fullId(id));
       return Promise.resolve(state ? structuredClone(state) : null);
+    }
+
+    // Like 7.2.5: only ids with a state object, keyed by full id (test/unit/broker-stub.ts).
+    getStatesAsync(pattern: string): Promise<Record<string, { val: unknown; ack: boolean } | null>> {
+      return Promise.resolve(brokerGetStates(this.objects, this.states, this.namespace, pattern));
     }
 
     // Like js-controller: writes only when value or ack differ from the stored state.
@@ -141,6 +146,18 @@ vi.mock("@iobroker/adapter-core", async () => {
     extendForeignObjectAsync(id: string, obj: Partial<ObjEntry>): Promise<void> {
       this.objects.set(id, brokerExtend(this.objects.get(id), obj, undefined, "instance"));
       return Promise.resolve();
+    }
+
+    // Like the controller: the rows between two ids, each value a copy (KnownObjects.load reads the own tree so).
+    getObjectListAsync(params: {
+      startkey: string;
+      endkey: string;
+    }): Promise<{ rows: Array<{ id: string; value: ObjEntry }> }> {
+      const rows = [...this.objects]
+        .filter(([id]) => id >= params.startkey && id <= params.endkey)
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([id, value]) => ({ id, value: structuredClone(value) }));
+      return Promise.resolve({ rows });
     }
 
     // Like the controller: every object of this instance, whatever its type.
@@ -406,20 +423,56 @@ describe("HassEmu refreshInstanceObjects (v1.41.0)", () => {
     ]);
   });
 
-  it("onReady REACHES the refresh — every manifest object is extended", async () => {
+  /**
+   * Seeds every manifest object well-formed, as an existing installation has it. In an empty store the schema
+   * repair extends global.mode/global.manualUrl itself, and an assertion could not tell the refresh from the
+   * repair (audit 2026-09-25, T10).
+   *
+   * @param stub the stub adapter
+   * @param name the name every object gets; the manifest's own when omitted
+   */
+  function seedManifest(stub: StubSurface, name?: string): void {
+    for (const o of (iobrokerPackage as { instanceObjects: (ObjEntry & { _id: string })[] }).instanceObjects) {
+      const common = structuredClone(o.common ?? {});
+      if (name !== undefined) {
+        common.name = name;
+      }
+      stub.objects.set(`hassemu.0.${o._id}`, { type: o.type, common, native: {} });
+    }
+  }
+
+  it("onReady REACHES the refresh — every manifest object with an old name is extended", async () => {
     // The point of this test: a refresh method nobody calls passes lint and tsc.
     const { internal, stub } = setup();
-    // Seed the manifest objects well-formed, as an existing installation has them. In an
-    // empty store the schema repair extends global.mode/global.manualUrl itself, and the
-    // assertion below could not tell the refresh from the repair (audit 2026-09-25, T10).
-    for (const o of (iobrokerPackage as { instanceObjects: (ObjEntry & { _id: string })[] }).instanceObjects) {
-      stub.objects.set(`hassemu.0.${o._id}`, { type: o.type, common: structuredClone(o.common), native: {} });
-    }
+    seedManifest(stub, "a name of an earlier version");
     await internal.onReady();
     const extended = stub.extendCalls.map(c => c.id);
     for (const id of MANIFEST_IDS) {
       expect(extended, `onReady extends ${id}`).toContain(id);
     }
+  });
+
+  it("rewrites no object that already carries the current name and description", async () => {
+    // extendObject always writes, stamps a new ts and sends an objectChange — the unconditional pass rewrote
+    // all eight objects on every start (inventory suite "rewrites no object unchanged", 2026-11-12).
+    const { internal, stub } = setup();
+    seedManifest(stub);
+    await internal.onReady();
+    const rewritten = stub.extendCalls.map(c => c.id).filter(id => MANIFEST_IDS.includes(id));
+    expect(rewritten).toEqual([]);
+  });
+
+  it("refreshes every object when the own tree cannot be read", async () => {
+    const { internal, stub, adapter } = setup();
+    seedManifest(stub);
+    (adapter as unknown as { getObjectListAsync: () => Promise<never> }).getObjectListAsync = () =>
+      Promise.reject(new Error("objects database down"));
+    await internal.onReady();
+    const extended = stub.extendCalls.map(c => c.id);
+    for (const id of MANIFEST_IDS) {
+      expect(extended, `onReady extends ${id}`).toContain(id);
+    }
+    expect(logsOf(stub, "debug").some(m => m.includes("Could not read the adapter's own objects"))).toBe(true);
   });
 
   it("lands the current name on an object that ALREADY exists with the old text", async () => {

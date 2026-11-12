@@ -136,3 +136,32 @@ export function brokerDelObject(
     }
   }
 }
+
+/**
+ * `getStates(pattern)` of the adapter against the stub maps, as js-controller 7.2.5 answers it (`adapter.ts`
+ * `getStates` → `_getForeignStates`): the pattern is prefixed with the namespace, only ids with a `state` OBJECT below
+ * it count (the object view `system/state`, `startkey`/`endkey` from the pattern), the answer is keyed by full id and
+ * carries `null` for a state object without a value. A value stored without an object is not part of the answer.
+ *
+ * @param objects The object store, keyed by full id.
+ * @param states The state store, keyed by full id.
+ * @param namespace The adapter namespace (`hassemu.0`).
+ * @param pattern The pattern relative to the namespace, ending in `*` (`clients.*`).
+ * @returns full id → a copy of the state, or null
+ */
+export function brokerGetStates<S>(
+  objects: Map<string, StubObject>,
+  states: Map<string, S>,
+  namespace: string,
+  pattern: string,
+): Record<string, S | null> {
+  const prefix = `${namespace}.${pattern.replace(/\*/g, "")}`;
+  const answer: Record<string, S | null> = {};
+  for (const [id, obj] of objects) {
+    if (obj.type === "state" && id.startsWith(prefix)) {
+      const state = states.get(id);
+      answer[id] = state === undefined ? null : structuredClone(state);
+    }
+  }
+  return answer;
+}

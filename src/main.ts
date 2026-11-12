@@ -8,6 +8,7 @@ import { decideGcAction } from "./lib/state-write-rules";
 import { MODE_GLOBAL, NO_CHOICE, STALE_CLIENT_TTL_MS } from "./lib/constants";
 import { GlobalConfig, parseGlobalStateId } from "./lib/global-config";
 import { tName } from "./lib/i18n";
+import { KnownObjects } from "./lib/known-objects";
 import { migrateLegacyDefaultVisUrl, migrateVisUrlToMode } from "./lib/legacy-migration";
 import { migrateNativeKeys } from "./lib/native-key-migration";
 import { MDNSService } from "./lib/mdns";
@@ -419,16 +420,22 @@ class HassEmu extends utils.Adapter {
    * stale URL keys) and a `desc` on the four objects that have nothing to explain
    * (fleet rule: an empty description is allowed, an invented sentence is not).
    *
-   * Nine unconditional writes per start are deliberate and cheap — hueemu does the same
-   * for its three; a read-before-write would cost the same round-trips.
+   * Each object is written only when the stored one does not already carry its name and
+   * description: `extendObject` always writes, stamps a new `ts` and sends an `objectChange` to
+   * every subscriber, so an unconditional pass rewrote all eight objects on every start of every
+   * installation. The tree is read once (the fleet master `KnownObjects`, one
+   * `getObjectListAsync` over the namespace) and every write goes through `known.extend`, which
+   * compares with js-controller's own merge (`coveredBy`). If that read fails, nothing is known
+   * and every object is written as before.
    */
   private async refreshInstanceObjects(): Promise<void> {
     // Tolerance per OBJECT, not per pass: if one write fails, the remaining objects must
     // still be refreshed — stopping at the first failure would leave everything after it
     // silently on the old text, which is exactly the defect this pass exists to fix.
-    // The id stays the literal first argument of `extendObject` so the consistency gate
+    // The id stays the literal first argument of `known.extend` so the package check
+    // (instance-objects-refresh, which counts the fleet master's extend like extendObject)
     // can verify coverage.
-    const tolerate = async (id: string, write: ioBroker.SetObjectPromise): Promise<void> => {
+    const tolerate = async (id: string, write: Promise<boolean>): Promise<void> => {
       try {
         await write;
       } catch (err: unknown) {
@@ -440,33 +447,39 @@ class HassEmu extends utils.Adapter {
     // object's shape — kind, value type, role, read/write, default, native — is the manifest's,
     // which js-controller applies on every start. A runtime copy of it is a second source that
     // drifts: a role or type changed in the manifest would be written back here on every start.
+    const known = new KnownObjects(this);
+    try {
+      await known.load();
+    } catch (err: unknown) {
+      this.log.debug(`Could not read the adapter's own objects, refreshing all of them: ${errText(err)}`);
+    }
     await Promise.all([
-      tolerate("info", this.extendObject("info", { common: { name: tName("info") } })),
-      tolerate("info.connection", this.extendObject("info.connection", { common: { name: tName("connection") } })),
+      tolerate("info", known.extend("info", { common: { name: tName("info") } })),
+      tolerate("info.connection", known.extend("info.connection", { common: { name: tName("connection") } })),
       tolerate(
         "info.refreshUrls",
-        this.extendObject("info.refreshUrls", {
+        known.extend("info.refreshUrls", {
           common: { name: tName("refreshUrls"), desc: tName("refreshUrlsDesc") },
         }),
       ),
-      tolerate("clients", this.extendObject("clients", { common: { name: tName("clients") } })),
-      tolerate("global", this.extendObject("global", { common: { name: tName("global") } })),
+      tolerate("clients", known.extend("clients", { common: { name: tName("clients") } })),
+      tolerate("global", known.extend("global", { common: { name: tName("global") } })),
       tolerate(
         "global.enabled",
-        this.extendObject("global.enabled", {
+        known.extend("global.enabled", {
           common: { name: tName("globalEnabled"), desc: tName("globalEnabledDesc") },
         }),
       ),
       // No `states` here — syncUrlDropdown is the single authority for the dropdown.
       tolerate(
         "global.mode",
-        this.extendObject("global.mode", {
+        known.extend("global.mode", {
           common: { name: tName("globalMode"), desc: tName("globalModeDesc") },
         }),
       ),
       tolerate(
         "global.manualUrl",
-        this.extendObject("global.manualUrl", {
+        known.extend("global.manualUrl", {
           common: { name: tName("globalManualUrl"), desc: tName("globalManualUrlDesc") },
         }),
       ),

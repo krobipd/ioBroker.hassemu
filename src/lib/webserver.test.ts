@@ -55,7 +55,7 @@ import { APP_BRIDGE_SCRIPT } from "./external-bridge";
 import type { TargetProbe } from "./target-health";
 import { buildTls } from "./tls";
 import type { AdapterConfig } from "./types";
-import { brokerDelObject, brokerExtend } from "../../test/unit/broker-stub";
+import { brokerDelObject, brokerExtend, brokerGetStates } from "../../test/unit/broker-stub";
 import { freshDataDir, removeDataDirs } from "../../test/unit/data-dir";
 
 afterAll(removeDataDirs);
@@ -94,6 +94,7 @@ interface MockAdapterApi {
   clearTimeout(): undefined;
   getForeignObjectsAsync(pattern: string, type?: string): Promise<Record<string, ObjEntry>>;
   getStateAsync(id: string): Promise<{ val: unknown; ack: boolean } | null>;
+  getStatesAsync(pattern: string): Promise<Record<string, { val: unknown; ack: boolean } | null>>;
   setObjectNotExistsAsync(id: string, obj: ObjEntry): Promise<void>;
   extendObject(id: string, obj: Partial<ObjEntry>, options?: Record<string, unknown>): Promise<void>;
   getObjectAsync(id: string): Promise<ObjEntry | null>;
@@ -161,6 +162,9 @@ function createMockAdapter(namespace = "hassemu.0"): {
         const state = store.states.get(`${namespace}.${id}`);
         return Promise.resolve(state ? structuredClone(state) : null);
       },
+      // Like 7.2.5: only ids with a state object, keyed by full id (test/unit/broker-stub.ts).
+      getStatesAsync: (pattern: string) =>
+        Promise.resolve(brokerGetStates(store.objects, store.states, namespace, pattern)),
       setObjectNotExistsAsync: (id: string, obj: ObjEntry) => {
         const full = `${namespace}.${id}`;
         if (!store.objects.has(full)) {

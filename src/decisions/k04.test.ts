@@ -125,6 +125,17 @@ vi.mock("@iobroker/adapter-core", () => {
     getStateAsync(id: string): Promise<ioBroker.State | null> {
       return Promise.resolve(structuredClone(this.states.get(this.full(id)) ?? null));
     }
+    getStatesAsync(pattern: string): Promise<Record<string, ioBroker.State | null>> {
+      // js-controller 7.2.5 getStates: every state object below the pattern, with its value or null.
+      const prefix = this.full(pattern.replace(/\*/g, ""));
+      const found: Record<string, ioBroker.State | null> = {};
+      for (const [id, obj] of this.objects) {
+        if (obj.type === "state" && id.startsWith(prefix)) {
+          found[id] = structuredClone(this.states.get(id) ?? null);
+        }
+      }
+      return Promise.resolve(found);
+    }
     setState(id: string, state: ioBroker.SettableState): Promise<string> {
       this.states.set(this.full(id), { ...(state as ioBroker.State), ts: Date.now(), lc: Date.now() });
       return Promise.resolve(this.full(id));

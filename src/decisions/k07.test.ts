@@ -147,6 +147,17 @@ vi.mock("@iobroker/adapter-core", () => {
     getStateAsync(id: string): Promise<ioBroker.State | null> {
       return Promise.resolve(structuredClone(db.states.get(full(id)) ?? null));
     }
+    getStatesAsync(pattern: string): Promise<Record<string, ioBroker.State | null>> {
+      // js-controller 7.2.5 getStates: every state object below the pattern, with its value or null.
+      const prefix = full(pattern.replace(/\*/g, ""));
+      const found: Record<string, ioBroker.State | null> = {};
+      for (const [id, obj] of db.objects) {
+        if (obj.type === "state" && id.startsWith(prefix)) {
+          found[id] = structuredClone(db.states.get(id) ?? null);
+        }
+      }
+      return Promise.resolve(found);
+    }
     setState(id: string, state: ioBroker.SettableState): Promise<string> {
       db.states.set(full(id), { ...(state as ioBroker.State), ts: Date.now(), lc: Date.now() });
       return Promise.resolve(full(id));
@@ -639,7 +650,17 @@ describe("K7: display ids and names", () => {
       common: { messages?: { condition?: { rules?: string[] }; text?: Record<string, string> }[] };
     };
 
+    // The move reads the old display's values once, and the start every display state once — never one by one.
+    const base = Object.getPrototypeOf(HassEmu.prototype) as ioBroker.Adapter;
+    const bulkReads = vi.spyOn(base, "getStatesAsync");
+    const singleReads = vi.spyOn(base, "getStateAsync");
     const first = await started();
+    const reads = {
+      bulk: bulkReads.mock.calls.map(call => call[0]),
+      single: singleReads.mock.calls.map(call => call[0]).filter(id => String(id).includes("clients.")),
+    };
+    bulkReads.mockRestore();
+    singleReads.mockRestore();
     const devicesAfterMove = devices();
     const oldLeft = [...db.objects.keys()].filter(id => id.startsWith(`${NS}.clients.61c3a1`));
     const values = {
@@ -661,6 +682,7 @@ describe("K7: display ids and names", () => {
     const devicesAfterSecondStart = devices();
     const recognisedAfterSecondStart = second.registry?.getByCookie(cookie)?.id;
 
+    expect(reads).toEqual({ bulk: ["clients.61c3a1.*", "clients.*"], single: [] });
     expect({ problems: db.problems, devicesAfterMove, oldLeft, values, rooms, functions }).toEqual({
       problems: [],
       devicesAfterMove: ["display-c3a1"],

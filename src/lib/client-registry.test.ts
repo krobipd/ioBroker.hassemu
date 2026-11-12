@@ -24,7 +24,7 @@ import {
   OAUTH_ACCESS_TOKEN_TTL_S,
 } from "./constants";
 import type { ClientRecord } from "./types";
-import { brokerDelObject, brokerExtend } from "../../test/unit/broker-stub";
+import { brokerDelObject, brokerExtend, brokerGetStates } from "../../test/unit/broker-stub";
 import { freshDataDir, removeDataDirs } from "../../test/unit/data-dir";
 
 /**
@@ -75,7 +75,7 @@ interface LogEntry {
 interface MockStore {
   namespace: string;
   objects: Map<string, ObjEntry>;
-  states: Map<string, { val: unknown; ack: boolean }>;
+  states: Map<string, { val: unknown; ack: boolean; q?: number; c?: string }>;
   logs: LogEntry[];
   /** The instance data folder of this stub installation (identities.json). */
   dataDir: string;
@@ -113,6 +113,7 @@ function createMockAdapter(namespace = "hassemu.0"): {
     getAdapterObjectsAsync: () => Promise<Record<string, ObjEntry>>;
     getForeignObjectAsync: (fullId: string) => Promise<ObjEntry | null>;
     getStateAsync: (id: string) => Promise<{ val: unknown; ack: boolean } | null>;
+    getStatesAsync: (pattern: string) => Promise<Record<string, { val: unknown; ack: boolean } | null>>;
     getObjectAsync: (id: string) => Promise<ObjEntry | null>;
     setForeignObject: (fullId: string, obj: ObjEntry) => Promise<void>;
     setObjectNotExistsAsync: (id: string, obj: ObjEntry) => Promise<void>;
@@ -173,6 +174,9 @@ function createMockAdapter(namespace = "hassemu.0"): {
         const state = store.states.get(`${namespace}.${id}`);
         return Promise.resolve(state ? structuredClone(state) : null);
       },
+      // Like 7.2.5: only ids with a state object, keyed by full id (test/unit/broker-stub.ts).
+      getStatesAsync: (pattern: string) =>
+        Promise.resolve(brokerGetStates(store.objects, store.states, namespace, pattern)),
       // A COPY, like the broker (objects travel serialised): mutating what a read
       // returned must not reach the store — only a write does. With a shared reference
       // the repair path's write was invisible to every test (v1.45.0).
@@ -233,6 +237,23 @@ function createMockAdapter(namespace = "hassemu.0"): {
  *
  * @param built The stub installation.
  */
+/**
+ * Seeds a datapoint value the way an installation holds it: with its state object. js-controller answers a pattern
+ * read only for ids with a state object (7.2.5 `getStates`), so a bare value would never reach the restore.
+ *
+ * @param store The mock store.
+ * @param fullId The full state id.
+ * @param state The value.
+ * @param state.val The stored value.
+ * @param state.ack Whether it is confirmed.
+ */
+function seedValue(store: MockStore, fullId: string, state: { val: unknown; ack: boolean }): void {
+  if (!store.objects.has(fullId)) {
+    store.objects.set(fullId, { type: "state", common: { type: "string", role: "state" }, native: {} });
+  }
+  store.states.set(fullId, state);
+}
+
 async function startedRegistry(built: ReturnType<typeof createMockAdapter>): Promise<ClientRegistry> {
   const reg = new ClientRegistry(built.adapter as never, built.store.dataDir);
   await reg.restore();
@@ -1059,9 +1080,9 @@ describe("ClientRegistry", () => {
         common: { name: "tablet.local" },
         native: { cookie, token: null },
       });
-      store.states.set(`hassemu.0.clients.${id}.mode`, { val: MODE_MANUAL, ack: true });
-      store.states.set(`hassemu.0.clients.${id}.manualUrl`, { val: "http://saved/", ack: true });
-      store.states.set(`hassemu.0.clients.${id}.ip`, { val: "192.168.1.20", ack: true });
+      seedValue(store, `hassemu.0.clients.${id}.mode`, { val: MODE_MANUAL, ack: true });
+      seedValue(store, `hassemu.0.clients.${id}.manualUrl`, { val: "http://saved/", ack: true });
+      seedValue(store, `hassemu.0.clients.${id}.ip`, { val: "192.168.1.20", ack: true });
 
       await registry.restore();
       const rec = registry.getById(id);
@@ -1114,7 +1135,7 @@ describe("ClientRegistry", () => {
         },
         native: {},
       });
-      store.states.set(`hassemu.0.clients.${id}.mode`, { val: "http://vis/", ack: true });
+      seedValue(store, `hassemu.0.clients.${id}.mode`, { val: "http://vis/", ack: true });
 
       await registry.restore();
 
@@ -1129,7 +1150,7 @@ describe("ClientRegistry", () => {
         type: "channel",
         native: { cookie },
       });
-      store.states.set(`hassemu.0.clients.${id}.mode`, { val: "http://direct/", ack: true });
+      seedValue(store, `hassemu.0.clients.${id}.mode`, { val: "http://direct/", ack: true });
       await registry.restore();
       expect(registry.getById(id)?.mode).to.equal("http://direct/");
     });
@@ -1142,7 +1163,7 @@ describe("ClientRegistry", () => {
         common: { name: "192.168.1.20" },
         native: { cookie },
       });
-      store.states.set(`hassemu.0.clients.${id}.ip`, { val: "192.168.1.20", ack: true });
+      seedValue(store, `hassemu.0.clients.${id}.ip`, { val: "192.168.1.20", ack: true });
       await registry.restore();
       const rec = registry.getById(id);
       expect(rec?.hostname).to.be.null;
@@ -1157,8 +1178,8 @@ describe("ClientRegistry", () => {
         native: { cookie },
       });
       store.objects.set(`hassemu.0.clients.${id}.hostname`, { type: "state" });
-      store.states.set(`hassemu.0.clients.${id}.ip`, { val: "10.0.0.5", ack: true });
-      store.states.set(`hassemu.0.clients.${id}.hostname`, { val: "tablet.local", ack: true });
+      seedValue(store, `hassemu.0.clients.${id}.ip`, { val: "10.0.0.5", ack: true });
+      seedValue(store, `hassemu.0.clients.${id}.hostname`, { val: "tablet.local", ack: true });
 
       await registry.restore();
       const rec = registry.getById(id);
@@ -1178,7 +1199,7 @@ describe("ClientRegistry", () => {
         common: { name: "tab" },
         native: { cookie, token, tokenExpiresAt: Date.now() - 60_000 }, // expired before the restart
       });
-      store.states.set(`hassemu.0.clients.${id}.mode`, { val: MODE_GLOBAL, ack: true });
+      seedValue(store, `hassemu.0.clients.${id}.mode`, { val: MODE_GLOBAL, ack: true });
       await registry.restore();
       expect(registry.getById(id), "client itself is restored").to.not.be.null;
       expect(registry.getByToken(token), "expired token rejected after restart").to.be.null;
@@ -1192,7 +1213,7 @@ describe("ClientRegistry", () => {
         type: "channel",
         native: { cookie, token }, // no tokenExpiresAt (pre-v1.36.0 install)
       });
-      store.states.set(`hassemu.0.clients.${id}.mode`, { val: MODE_GLOBAL, ack: true });
+      seedValue(store, `hassemu.0.clients.${id}.mode`, { val: MODE_GLOBAL, ack: true });
       await registry.restore();
       expect(registry.getByToken(token)?.id).to.equal(id);
     });
@@ -1252,8 +1273,8 @@ describe("ClientRegistry", () => {
       const id = "unsafe";
       const cookie = crypto.randomUUID();
       store.objects.set(`hassemu.0.clients.${id}`, { type: "channel", native: { cookie } });
-      store.states.set(`hassemu.0.clients.${id}.mode`, { val: MODE_MANUAL, ack: true });
-      store.states.set(`hassemu.0.clients.${id}.manualUrl`, { val: "javascript:bad", ack: true });
+      seedValue(store, `hassemu.0.clients.${id}.mode`, { val: MODE_MANUAL, ack: true });
+      seedValue(store, `hassemu.0.clients.${id}.manualUrl`, { val: "javascript:bad", ack: true });
       await registry.restore();
       expect(registry.getById(id)?.manualUrl).to.be.null;
     });
@@ -2218,6 +2239,7 @@ describe("ClientRegistry start cost (audit 2026-09-15 — C1, C2, D1)", () => {
     const a = built.adapter as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>;
     for (const m of [
       "getStateAsync",
+      "getStatesAsync",
       "getObjectAsync",
       "getForeignObjectsAsync",
       "setObjectNotExistsAsync",
@@ -2295,7 +2317,9 @@ describe("ClientRegistry start cost (audit 2026-09-15 — C1, C2, D1)", () => {
     return cookie;
   }
 
-  it("restoring N up-to-date displays writes nothing and reads one round per display, in parallel", async () => {
+  it("restoring N up-to-date displays writes nothing and reads every display state with ONE read", async () => {
+    // Before, each display cost five single reads, and the read-only resolvedUrl was read again before each write
+    // (inventory suite: "read-only states read one by one", 2026-11-12).
     const built = createMockAdapter();
     const N = 10;
     for (let i = 0; i < N; i++) {
@@ -2305,24 +2329,6 @@ describe("ClientRegistry start cost (audit 2026-09-15 — C1, C2, D1)", () => {
     const inode = fileInode(built);
     const storedBefore = readStore(built.store.dataDir);
     const reg = new ClientRegistry(built.adapter as never, built.store.dataDir);
-
-    // Parallelism, measured rather than asserted from the code: with reads that take a
-    // tick to answer, a serial loop never has more than one display's five reads in
-    // flight; the parallel restore has every display's reads in flight at once.
-    let inFlight = 0;
-    let maxInFlight = 0;
-    const a = built.adapter as unknown as { getStateAsync: (id: string) => Promise<unknown> };
-    const read = a.getStateAsync;
-    a.getStateAsync = (id: string) => {
-      inFlight++;
-      maxInFlight = Math.max(maxInFlight, inFlight);
-      return new Promise(resolve =>
-        setImmediate(() => {
-          inFlight--;
-          resolve(read(id));
-        }),
-      );
-    };
     await reg.restore();
 
     expect(reg.listAll()).to.have.lengthOf(N);
@@ -2330,9 +2336,29 @@ describe("ClientRegistry start cost (audit 2026-09-15 — C1, C2, D1)", () => {
     // The one file write of the start is its check that the identities can be stored (K16, ST1) — same content.
     expect(fileInode(built), "the start writes the data file once as its check").to.not.equal(inode);
     expect(readStore(built.store.dataDir), "with the same server id and identities").to.deep.equal(storedBefore);
-    expect(counts.getStateAsync).to.be.at.most(5 * N);
-    expect(counts.getObjectAsync).to.be.at.most(N);
-    expect(maxInFlight, "reads of all displays in flight together").to.equal(5 * N);
+    expect(counts.getStateAsync ?? 0, "no single read").to.equal(0);
+    expect(counts.getStatesAsync, "one read of every display state").to.equal(1);
+    expect(counts.getObjectAsync ?? 0).to.be.at.most(N);
+    const restored = reg.getById("display-0003");
+    expect(restored?.mode, "the values come from that read").to.equal("http://dash.local/");
+    expect(restored?.ip).to.equal("10.0.0.7");
+  });
+
+  it("fails the start when the display states cannot be read — no display is touched (K16)", async () => {
+    const built = createMockAdapter();
+    seedDisplay(built, "display-0001", Date.now() - 5000);
+    built.adapter.getStatesAsync = () => Promise.reject(new Error("states database down"));
+    const reg = new ClientRegistry(built.adapter as never, built.store.dataDir);
+    const counts = count(built);
+    let failure: unknown;
+    try {
+      await reg.restore();
+    } catch (err) {
+      failure = err;
+    }
+    expect(String(failure)).to.include("states database down");
+    expect(writes(counts), JSON.stringify(counts)).to.equal(0);
+    expect(built.store.states.get("hassemu.0.clients.display-0001.mode")?.val).to.equal("http://dash.local/");
   });
 
   it("first contact after a restart does NOT re-write a lastSeen that is inside the flush window (C1)", async () => {
@@ -2409,11 +2435,55 @@ describe("ClientRegistry start cost (audit 2026-09-15 — C1, C2, D1)", () => {
 
     await reg.setResolvedUrl("url001", "http://dash.local/");
     expect(writes(counts), JSON.stringify(counts)).to.equal(0);
-    expect(counts["setStateChanged:unchanged"]).to.equal(1);
+    expect(counts.getStateAsync ?? 0, "compared in memory, not read from the database").to.equal(0);
 
     await reg.setResolvedUrl("url001", null);
-    expect(counts["setStateChanged:written"]).to.equal(1);
+    expect(counts.setState).to.equal(1);
     expect(built.store.states.get("hassemu.0.clients.url001.resolvedUrl")?.val).to.equal("");
+    await reg.setResolvedUrl("url001", null);
+    expect(counts.setState, "the same answer again writes nothing").to.equal(1);
+  });
+
+  it("replaces the default js-controller put into a new resolvedUrl with the first answer, even when equal", async () => {
+    // 7.2.5 writes `def` with the quality "initial value" (0x20); setStateChangedAsync compared q and wrote — so does
+    // the comparison in memory: only what a write of hassemu leaves behind counts as written.
+    const built = createMockAdapter();
+    seedDisplay(built, "url002", Date.now() - 5000);
+    built.store.states.set("hassemu.0.clients.url002.resolvedUrl", { val: "", ack: true, q: 0x20 });
+    const reg = new ClientRegistry(built.adapter as never, built.store.dataDir);
+    await reg.restore();
+    const counts = count(built);
+    await reg.setResolvedUrl("url002", null);
+    expect(counts.setState).to.equal(1);
+    await reg.setResolvedUrl("url002", null);
+    expect(counts.setState).to.equal(1);
+  });
+
+  it("two answers arriving together write the new resolvedUrl once", async () => {
+    const built = createMockAdapter();
+    seedDisplay(built, "url003", Date.now() - 5000);
+    const reg = new ClientRegistry(built.adapter as never, built.store.dataDir);
+    await reg.restore();
+    const counts = count(built);
+    await Promise.all([
+      reg.setResolvedUrl("url003", "http://other.local/"),
+      reg.setResolvedUrl("url003", "http://other.local/"),
+    ]);
+    expect(counts.setState).to.equal(1);
+  });
+
+  it("a failed resolvedUrl write is a debug line, and the next answer writes it", async () => {
+    const built = createMockAdapter();
+    seedDisplay(built, "url004", Date.now() - 5000);
+    const reg = new ClientRegistry(built.adapter as never, built.store.dataDir);
+    await reg.restore();
+    const real = built.adapter.setState;
+    built.adapter.setState = () => Promise.reject(new Error("broker down"));
+    await reg.setResolvedUrl("url004", "http://other.local/");
+    expect(built.store.logs.some(l => l.level === "debug" && l.msg.includes("broker down"))).to.be.true;
+    built.adapter.setState = real;
+    await reg.setResolvedUrl("url004", "http://other.local/");
+    expect(built.store.states.get("hassemu.0.clients.url004.resolvedUrl")?.val).to.equal("http://other.local/");
   });
 });
 

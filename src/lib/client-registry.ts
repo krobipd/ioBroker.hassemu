@@ -31,14 +31,7 @@ import {
   isPlainObject,
   oneLine,
 } from "./coerce";
-import {
-  evictOldest,
-  getStateOrNull,
-  isBareStringName,
-  nameText,
-  parseAdapterStateId,
-  shallowStatesEqual,
-} from "./object-utils";
+import { evictOldest, isBareStringName, nameText, parseAdapterStateId, shallowStatesEqual } from "./object-utils";
 import { buildDropdownStates, parseManualUrlWrite, parseModeWrite } from "./state-write-rules";
 import {
   CLIENT_OBJECTS_VERSION,
@@ -71,11 +64,11 @@ export type RegistryAdapter = AdapterInterface &
     | "getForeignObjectAsync"
     | "getAdapterObjectsAsync"
     | "getStateAsync"
+    | "getStatesAsync"
     | "getObjectAsync"
     | "setObjectNotExistsAsync"
     | "extendObject"
     | "setState"
-    | "setStateChangedAsync"
     | "delObjectAsync"
     | "setForeignObject"
   >;
@@ -236,6 +229,13 @@ export class ClientRegistry {
    */
   private readonly writtenNames = new Map<string, string>();
   /**
+   * The value each display's read-only `resolvedUrl` holds, in memory only: only hassemu writes it, so the start reads
+   * it once with every other state of the displays (restore) and a later write compares here — a read of the
+   * datapoint before each write (`setStateChangedAsync`) cost one database read per changed answer
+   * (inventory suite, 2026-11-12). A display created after the start has no entry, so its first answer is written.
+   */
+  private readonly resolvedUrls = new Map<string, string>();
+  /**
    * v1.19.0 (G5): per-IP burst tracking for broken-cookie displays. v1.37.0 (M4):
    * the window is now SLIDING — keyed on `lastActivity`, not a fixed start — so an
    * IP that keeps spraying cookieless requests stays throttled instead of getting
@@ -328,13 +328,14 @@ export class ClientRegistry {
       this.adapter.log.debug(moved ? "Server id moved into the data file" : "Server id generated");
     }
     objects = await this.moveToDisplayIds(objects);
+    const states = await this.readDisplayStates();
 
     // All displays in parallel — restoreChannel shares nothing between displays except
     // synchronous Map writes; an error of one display fails the start (K16). Serial, this was N × (five
     // reads + five existence checks + one object read) before the port was bound
     // (audit 2026-09-15, D1).
     const restored = await Promise.all(
-      Object.entries(objects).map(([fullId, obj]) => this.restoreChannel(fullId, obj)),
+      Object.entries(objects).map(([fullId, obj]) => this.restoreChannel(fullId, obj, states)),
     );
     // An entry whose display has no object any more (removed in the object browser, or the
     // removal's file write failed) is dropped.
@@ -346,6 +347,29 @@ export class ClientRegistry {
     const legacy = restored.filter((r): r is RestoredClient => r !== null && r.legacyNative).map(r => r.id);
     await this.settleStore(legacy);
     this.adapter.log.debug(`client-registry: restored ${this.byId.size} client(s)`);
+  }
+
+  /**
+   * Every state below `clients.` with ONE read — before, each display cost five single reads, and a read-only
+   * datapoint (`ip`, `resolvedUrl`) was read again before each write.
+   *
+   * Throws when the states cannot be read (K16): read as "empty", the restore wrote "0" over the mode.
+   *
+   * @returns full state id → state, without the ids whose state is missing
+   */
+  private async readDisplayStates(): Promise<Map<string, ioBroker.State>> {
+    try {
+      const states = await this.adapter.getStatesAsync(`${CLIENTS_PREFIX}*`);
+      const found = new Map<string, ioBroker.State>();
+      for (const [id, state] of Object.entries(states ?? {})) {
+        if (state) {
+          found.set(id, state);
+        }
+      }
+      return found;
+    } catch (err) {
+      throw new Error(`reading the display states failed (${errText(err)}) — no display was touched`);
+    }
   }
 
   /**
@@ -474,12 +498,14 @@ export class ClientRegistry {
     for (const [id, obj] of tree) {
       await this.adapter.setForeignObject(movedObjectId(id, fromFull, toFull)!, movedObject(id, obj, move, fromFull));
     }
+    // Every value of the old display with ONE read (as restore reads the displays); a read error propagates (K16):
+    // the restart finishes the move from the journal.
+    const values = await this.adapter.getStatesAsync(`${CLIENTS_PREFIX}${move.from}.*`);
     for (const [id, obj] of tree) {
       if (obj.type !== "state") {
         continue;
       }
-      // A read error propagates (K16): the restart finishes the move from the journal.
-      const state = await getStateOrNull(this.adapter, local(id));
+      const state = values?.[id];
       if (!state || state.val === undefined) {
         continue;
       }
@@ -611,9 +637,14 @@ export class ClientRegistry {
    *
    * @param fullId Full object id (`<namespace>.clients.<id>`).
    * @param obj    The client object (channel or device) read from the objects DB.
+   * @param states Every state below `clients.`, read once by restore (readDisplayStates).
    * @returns What was found, or null when the object is no restorable display.
    */
-  private async restoreChannel(fullId: string, obj: ioBroker.Object): Promise<RestoredClient | null> {
+  private async restoreChannel(
+    fullId: string,
+    obj: ioBroker.Object,
+    states: ReadonlyMap<string, ioBroker.State>,
+  ): Promise<RestoredClient | null> {
     const id = this.clientIdOf(fullId);
     if (!id || id.includes(".")) {
       return null;
@@ -649,19 +680,24 @@ export class ClientRegistry {
         this.adapter.log.debug(`client-registry: channel→device migration failed for ${id}: ${errText(err)}`);
       }
     }
-    // v1.9.0 (D8): the reads of one display run in parallel; since the audit of
-    // 2026-09-15 the displays themselves do too (restore() above), so a start costs
-    // one round of round-trips instead of one per display.
-    // The fifth read is the pre-1.2.0 `visUrl` the migration needs. It rides along in
-    // the batch that already runs here instead of costing the migration its own
-    // sequential round-trip per client on every start (see legacyVisUrls).
-    const [modeRaw, manualUrlRaw, ipRaw, hostnameRaw, legacyVisUrlRaw] = await Promise.all([
-      this.readState(`${id}.mode`),
-      this.readState(`${id}.manualUrl`),
-      this.readState(`${id}.ip`),
-      this.readState(`${id}.hostname`),
-      this.readState(`${id}.visUrl`),
-    ]);
+    // The values come from the one read of every display state in restore() (readDisplayStates). The
+    // pre-1.2.0 `visUrl` the migration needs rides along instead of costing the migration its own
+    // round-trip per client on every start (see legacyVisUrls).
+    const valueOf = (kind: string): unknown => states.get(`${fullId}.${kind}`)?.val ?? null;
+    const [modeRaw, manualUrlRaw, ipRaw, hostnameRaw, legacyVisUrlRaw] = [
+      valueOf("mode"),
+      valueOf("manualUrl"),
+      valueOf("ip"),
+      valueOf("hostname"),
+      valueOf("visUrl"),
+    ];
+    // Remembered only what a write of hassemu leaves behind (ack, quality 0, no comment) — the default js-controller
+    // puts into a new datapoint carries the quality "initial value" and is replaced by the first answer, as
+    // setStateChangedAsync, which compares val, ack, q and c (7.2.5), did.
+    const resolved = states.get(`${fullId}.resolvedUrl`);
+    if (resolved?.ack === true && typeof resolved.val === "string" && !resolved.q && resolved.c === undefined) {
+      this.resolvedUrls.set(id, resolved.val);
+    }
     if (legacyVisUrlRaw !== null && legacyVisUrlRaw !== undefined && legacyVisUrlRaw !== "") {
       this.legacyVisUrls.set(id, legacyVisUrlRaw);
     }
@@ -915,8 +951,10 @@ export class ClientRegistry {
   /**
    * Persist the URL a display was just sent to.
    *
-   * Written only when the answer CHANGED (the caller already tracks that for its log line),
-   * so a display polling every 15–30 s costs no writes while nothing moves.
+   * Written only when the value differs from what the datapoint holds, so a display polling every 15–30 s costs
+   * no writes while nothing moves — and no reads: the value is compared with {@link resolvedUrls}, which the start
+   * fills from the datapoint (a display's first poll after a restart looked like a change to the caller, which only
+   * knows what it served since the restart; audit 2026-09-15, C2).
    *
    * @param id  Client id.
    * @param url The resolved URL, or null for the landing page.
@@ -925,13 +963,26 @@ export class ClientRegistry {
     if (!this.byId.has(id)) {
       return; // transient (throttled) record — it owns no objects
     }
-    // setStateChanged, not setState: the caller only knows what it served since the
-    // restart, so a display's first poll after a restart looked like a change and
-    // re-wrote the value already in the datapoint (audit 2026-09-15, C2). The controller
-    // compares against the stored state and writes nothing when it is equal.
-    await this.adapter
-      .setStateChangedAsync(`clients.${id}.resolvedUrl`, { val: url ?? "", ack: true })
-      .catch(err => this.adapter.log.debug(`setResolvedUrl failed for ${id}: ${errText(err)}`));
+    const val = url ?? "";
+    const before = this.resolvedUrls.get(id);
+    if (before === val) {
+      return;
+    }
+    // Remembered before the write, so a second answer arriving meanwhile writes nothing twice; a failed write takes
+    // it back, and the next answer tries again.
+    this.resolvedUrls.set(id, val);
+    try {
+      await this.adapter.setState(`clients.${id}.resolvedUrl`, { val, ack: true });
+    } catch (err) {
+      if (this.resolvedUrls.get(id) === val) {
+        if (before === undefined) {
+          this.resolvedUrls.delete(id);
+        } else {
+          this.resolvedUrls.set(id, before);
+        }
+      }
+      this.adapter.log.debug(`setResolvedUrl failed for ${id}: ${errText(err)}`);
+    }
   }
 
   /**
@@ -1286,6 +1337,7 @@ export class ClientRegistry {
     this.ipChangedAt.delete(record.id);
     this.appNames.delete(record.id);
     this.writtenNames.delete(record.id);
+    this.resolvedUrls.delete(record.id);
   }
 
   private trackInMemory(record: ClientRecord): void {
@@ -1905,12 +1957,6 @@ export class ClientRegistry {
     }
     await this.adapter.extendObject(`clients.${record.id}`, { common: { name: tRaw(want) } });
     this.writtenNames.set(record.id, want);
-  }
-
-  private async readState(subId: string): Promise<unknown> {
-    // A read error propagates (K16): read as "empty", the restore wrote "0" over the mode.
-    const s = await getStateOrNull(this.adapter, `clients.${subId}`);
-    return s?.val ?? null;
   }
 }
 

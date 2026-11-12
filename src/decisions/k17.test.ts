@@ -175,6 +175,17 @@ function memory(): Memory {
       Promise.resolve(structuredClone(Object.fromEntries([...objects].filter(([id]) => id.startsWith(`${NS}.`))))),
     getObjectAsync: (id: string) => Promise.resolve(structuredClone(objects.get(full(id)) ?? null)),
     getStateAsync: (id: string) => Promise.resolve(structuredClone(states.get(full(id)) ?? null)),
+    getStatesAsync: (pattern: string) => {
+      // js-controller 7.2.5 getStates: every state object below the pattern, with its value or null.
+      const prefix = full(pattern.replace(/\*/g, ""));
+      const found: Record<string, ioBroker.State | null> = {};
+      for (const [id, obj] of objects) {
+        if (obj.type === "state" && id.startsWith(prefix)) {
+          found[id] = structuredClone(states.get(id) ?? null);
+        }
+      }
+      return Promise.resolve(found);
+    },
     setObjectNotExistsAsync(id: string, obj: ioBroker.Object) {
       if (!objects.has(full(id))) {
         objects.set(full(id), { ...structuredClone(obj), _id: full(id) } as ioBroker.Object);
