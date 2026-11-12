@@ -186,8 +186,8 @@ class HassEmu extends utils.Adapter {
 
       this.registry = this.makeRegistry();
       // The server id and the display identities come from the data file; 1.46.1 kept the server id as the
-      // value of info.serverUuid, read here once to move it into the file (B3).
-      await this.registry.restore(async () => (await this.getStateAsync("info.serverUuid"))?.val);
+      // value of info.serverUuid, which the restore takes from its one read of every state to move it into the file (B3).
+      await this.registry.restore();
       await this.dropLegacyServerUuid();
 
       // Migrations run before subscriptions / webserver — first the legacy

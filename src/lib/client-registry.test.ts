@@ -12,6 +12,7 @@ import { ClientRegistry, parseClientStateId } from "./client-registry";
 import { readStore, STORE_FILE, type StoredClient, writeStore } from "./client-store";
 import { displayIcon } from "./device-icon";
 import * as displayId from "./display-id";
+import { tRaw } from "./i18n";
 import {
   CLIENT_OBJECTS_VERSION,
   GLOBAL_NEW_CLIENT_THROTTLE_PER_WINDOW,
@@ -1190,6 +1191,130 @@ describe("ClientRegistry", () => {
       expect(store.states.has(`hassemu.0.clients.${id}.hostname`)).to.be.false;
     });
 
+    it("drops an EMPTY legacy hostname datapoint too — 1.1.1 left it for a display without a reverse-DNS name", async () => {
+      // Before, only a non-empty value was migrated; the empty datapoint stayed in the tree for good.
+      const id = "legacy";
+      const cookie = crypto.randomUUID();
+      store.objects.set(`hassemu.0.clients.${id}`, {
+        type: "channel",
+        common: { name: "10.0.0.5" },
+        native: { cookie },
+      });
+      seedValue(store, `hassemu.0.clients.${id}.ip`, { val: "10.0.0.5", ack: true });
+      seedValue(store, `hassemu.0.clients.${id}.hostname`, { val: "", ack: true });
+
+      await registry.restore();
+
+      const rec = registry.getById(id);
+      expect(rec?.hostname).to.be.null;
+      expect(nameOf(store.objects.get(`hassemu.0.clients.${id}`)?.common?.name)).to.equal("10.0.0.5");
+      expect(store.objects.has(`hassemu.0.clients.${id}.hostname`)).to.be.false;
+      expect(store.states.has(`hassemu.0.clients.${id}.hostname`)).to.be.false;
+    });
+
+    it("hands an EMPTY legacy visUrl over to the migration — only a missing datapoint is not handed over", async () => {
+      const withEmpty = "legacy";
+      const without = "fresh1";
+      for (const id of [withEmpty, without]) {
+        store.objects.set(`hassemu.0.clients.${id}`, {
+          type: "channel",
+          common: { name: "10.0.0.5" },
+          native: { cookie: crypto.randomUUID() },
+        });
+      }
+      seedValue(store, `hassemu.0.clients.${withEmpty}.visUrl`, { val: "", ack: true });
+
+      await registry.restore();
+
+      expect([...registry.takeLegacyVisUrls()]).to.deep.equal([[withEmpty, ""]]);
+    });
+
+    it("brings a 1.1.1 display up to date with ONE write of its device — kind, name, pictogram and stamp", async () => {
+      // Three writes before (channel→device, name, stamp with the pictogram), each an objectChange, on top of the
+      // move and the identity leaving `native` (inventory: "writes no object more than MAX_OBJECT_WRITES times",
+      // 2026-11-12). The id of the old form moves to the K7 form within the restore.
+      const deviceId = "hassemu.0.clients.a1b2c3";
+      const movedId = "hassemu.0.clients.display-b2c3";
+      store.objects.set(deviceId, {
+        type: "channel",
+        common: { name: "10.0.0.5" },
+        native: { cookie: crypto.randomUUID() },
+      });
+      seedValue(store, `${deviceId}.ip`, { val: "10.0.0.5", ack: true });
+
+      await registry.restore();
+
+      const deviceWrites = store.writes.filter(w => w.id === movedId);
+      expect(
+        deviceWrites.map(w => w.method),
+        "the move, the one update, the identity leaving native",
+      ).to.deep.equal(["setForeignObject", "extendObject", "setForeignObject"]);
+      const write = deviceWrites[1];
+      expect(write.obj.type).to.equal("device");
+      expect(nameOf(write.obj.common?.name)).to.equal("10.0.0.5");
+      expect(write.obj.common?.icon).to.match(/^data:image\/svg\+xml;base64,/);
+      expect((write.obj.native as Record<string, unknown>)?.objectsVersion).to.equal(CLIENT_OBJECTS_VERSION);
+      expect(store.objects.get(movedId)?.native).to.deep.equal({ objectsVersion: CLIENT_OBJECTS_VERSION });
+    });
+
+    it("writes NOTHING to a device that is already current", async () => {
+      const id = "current1";
+      const deviceId = `hassemu.0.clients.${id}`;
+      // As a start after 2.0.0 finds it: identity in the data file, name and stamp current.
+      rewriteClients(
+        store.dataDir,
+        new Map([[id, { cookie: crypto.randomUUID(), token: null, tokenExpiresAt: null, refreshToken: null }]]),
+      );
+      store.objects.set(deviceId, {
+        type: "device",
+        common: { name: tRaw("10.0.0.5"), icon: displayIcon() },
+        native: { objectsVersion: CLIENT_OBJECTS_VERSION },
+      });
+      seedValue(store, `${deviceId}.ip`, { val: "10.0.0.5", ack: true });
+
+      await registry.restore();
+
+      expect(store.writes.filter(w => w.id === deviceId)).to.deep.equal([]);
+    });
+
+    it("gives a mode object it just created or repaired no second text write", async () => {
+      // The created or repaired object carries the current name and description already — a second write
+      // changed nothing (inventory: "writes no object more than MAX_OBJECT_WRITES times", 2026-11-12).
+      const created = "nomode1";
+      const repaired = "badmode1";
+      for (const id of [created, repaired]) {
+        store.objects.set(`hassemu.0.clients.${id}`, { type: "device", native: { cookie: crypto.randomUUID() } });
+      }
+      store.objects.set(`hassemu.0.clients.${repaired}.mode`, {
+        type: "state",
+        common: { type: "string", role: "value", states: { "http://old.local/": "Old" } },
+        native: {},
+      });
+
+      await registry.restore();
+
+      const modeExtends = store.writes.filter(w => w.method === "extendObject" && w.id.endsWith(".mode"));
+      expect(modeExtends, JSON.stringify(modeExtends)).to.deep.equal([]);
+      expect(store.objects.get(`hassemu.0.clients.${created}.mode`)?.common?.role).to.equal("text");
+      expect(store.objects.get(`hassemu.0.clients.${repaired}.mode`)?.common?.role).to.equal("text");
+    });
+
+    it("a text refresh behind the revision writes only the datapoints whose texts differ", async () => {
+      // A revision bump for one datapoint (4: mode became text) rewrote every datapoint of a display, also those whose
+      // texts were current (inventory, upgrade from 1.46.1: "rewrites no object unchanged", 2026-11-12).
+      const rec = await registry.identifyOrCreate(null, "10.0.0.5");
+      const base = `hassemu.0.clients.${rec.id}`;
+      store.objects.get(base)!.native!.objectsVersion = CLIENT_OBJECTS_VERSION - 1;
+      store.objects.get(`${base}.ip`)!.common!.name = "Client IP";
+      store.writes.length = 0;
+
+      await new ClientRegistry(adapter as never, store.dataDir).restore();
+
+      const datapointWrites = store.writes.filter(w => w.id.startsWith(`${base}.`)).map(w => `${w.method} ${w.id}`);
+      expect(datapointWrites).to.deep.equal([`extendObject ${base}.ip`]);
+      expect(nameOf(store.objects.get(`${base}.ip`)?.common?.name)).to.equal("Display IP");
+    });
+
     it("enforces a persisted access-token expiry across restart — an already-expired token is rejected (M11)", async () => {
       const id = "exp1";
       const cookie = crypto.randomUUID();
@@ -2317,7 +2442,7 @@ describe("ClientRegistry start cost (audit 2026-09-15 — C1, C2, D1)", () => {
     return cookie;
   }
 
-  it("restoring N up-to-date displays writes nothing and reads every display state with ONE read", async () => {
+  it("restoring N up-to-date displays writes nothing and reads every state of the instance with ONE read", async () => {
     // Before, each display cost five single reads, and the read-only resolvedUrl was read again before each write
     // (inventory suite: "read-only states read one by one", 2026-11-12).
     const built = createMockAdapter();
@@ -2337,14 +2462,14 @@ describe("ClientRegistry start cost (audit 2026-09-15 — C1, C2, D1)", () => {
     expect(fileInode(built), "the start writes the data file once as its check").to.not.equal(inode);
     expect(readStore(built.store.dataDir), "with the same server id and identities").to.deep.equal(storedBefore);
     expect(counts.getStateAsync ?? 0, "no single read").to.equal(0);
-    expect(counts.getStatesAsync, "one read of every display state").to.equal(1);
+    expect(counts.getStatesAsync, "one read of every state").to.equal(1);
     expect(counts.getObjectAsync ?? 0).to.be.at.most(N);
     const restored = reg.getById("display-0003");
     expect(restored?.mode, "the values come from that read").to.equal("http://dash.local/");
     expect(restored?.ip).to.equal("10.0.0.7");
   });
 
-  it("fails the start when the display states cannot be read — no display is touched (K16)", async () => {
+  it("fails the start when the states cannot be read — no display is touched (K16)", async () => {
     const built = createMockAdapter();
     seedDisplay(built, "display-0001", Date.now() - 5000);
     built.adapter.getStatesAsync = () => Promise.reject(new Error("states database down"));

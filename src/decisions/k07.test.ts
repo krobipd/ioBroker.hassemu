@@ -650,7 +650,8 @@ describe("K7: display ids and names", () => {
       common: { messages?: { condition?: { rules?: string[] }; text?: Record<string, string> }[] };
     };
 
-    // The move reads the old display's values once, and the start every display state once — never one by one.
+    // The start reads every state of the instance once, and the move takes the old display's values from it —
+    // never one by one.
     const base = Object.getPrototypeOf(HassEmu.prototype) as ioBroker.Adapter;
     const bulkReads = vi.spyOn(base, "getStatesAsync");
     const singleReads = vi.spyOn(base, "getStateAsync");
@@ -682,7 +683,7 @@ describe("K7: display ids and names", () => {
     const devicesAfterSecondStart = devices();
     const recognisedAfterSecondStart = second.registry?.getByCookie(cookie)?.id;
 
-    expect(reads).toEqual({ bulk: ["clients.61c3a1.*", "clients.*"], single: [] });
+    expect(reads).toEqual({ bulk: ["*"], single: [] });
     expect({ problems: db.problems, devicesAfterMove, oldLeft, values, rooms, functions }).toEqual({
       problems: [],
       devicesAfterMove: ["display-c3a1"],

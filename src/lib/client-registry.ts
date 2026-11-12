@@ -52,6 +52,7 @@ import { LEGACY_DISPLAY_ID, movedDisplayId, newDisplayId, randomIdTail } from ".
 import { moveAllWithEnums } from "./enum-carry";
 import { errText } from "./err-text";
 import { resolveLabel, tName, tRaw } from "./i18n";
+import { coveredBy } from "./known-objects";
 import { replaceObjectPreservingValue } from "./object-repair";
 import type { AdapterInterface, ClientRecord, UrlStates } from "./types";
 
@@ -305,10 +306,10 @@ export class ClientRegistry {
    * must not make every display re-onboard or overwrite a setting, and a run from memory would lose the identities
    * at the next start. The write at every start is that check (ST1 of the start-failure standard).
    *
-   * @param legacyServerUuid Reads the server id where 1.46.1 kept it (`info.serverUuid`); asked only while the data
-   *   file holds none. Its value moves into the file once; without a valid one a new id is generated. Default: none.
+   * The server id 1.46.1 kept as the value of `info.serverUuid` moves into the file once, while the file holds none;
+   * without a valid one a new id is generated.
    */
-  async restore(legacyServerUuid: () => Promise<unknown> = () => Promise.resolve(null)): Promise<void> {
+  async restore(): Promise<void> {
     const read = readStore(this.dataDir);
     if (read.error !== undefined) {
       throw new Error(
@@ -320,22 +321,23 @@ export class ClientRegistry {
       this.carried.set(id, entry);
     }
     let objects = await this.listDisplayObjects();
+    // A read error propagates (design decision 2, K16): a new server id would make every display onboard again.
+    const states = await this.readStates();
     if (this.serverId === null) {
-      // A read error propagates (design decision 2): a new id would make every display onboard again.
       // Resolved before the moves below: each of them stores the identities it re-keys.
-      const moved = coerceUuid(await legacyServerUuid());
+      const moved = coerceUuid(states.get(`${this.adapter.namespace}.info.serverUuid`)?.val);
       this.serverId = moved ?? crypto.randomUUID();
       this.adapter.log.debug(moved ? "Server id moved into the data file" : "Server id generated");
     }
-    objects = await this.moveToDisplayIds(objects);
-    const states = await this.readDisplayStates();
+    objects = await this.moveToDisplayIds(objects, states);
+    const datapoints = await this.readDatapointObjects(objects);
 
     // All displays in parallel — restoreChannel shares nothing between displays except
     // synchronous Map writes; an error of one display fails the start (K16). Serial, this was N × (five
     // reads + five existence checks + one object read) before the port was bound
     // (audit 2026-09-15, D1).
     const restored = await Promise.all(
-      Object.entries(objects).map(([fullId, obj]) => this.restoreChannel(fullId, obj, states)),
+      Object.entries(objects).map(([fullId, obj]) => this.restoreChannel(fullId, obj, states, datapoints)),
     );
     // An entry whose display has no object any more (removed in the object browser, or the
     // removal's file write failed) is dropped.
@@ -350,25 +352,49 @@ export class ClientRegistry {
   }
 
   /**
-   * Every state below `clients.` with ONE read — before, each display cost five single reads, and a read-only
-   * datapoint (`ip`, `resolvedUrl`) was read again before each write.
+   * Every state of the instance with ONE read, the fleet's read at start (`getStatesAsync("*")`): the server id 1.46.1
+   * kept, the values the moves carry and the values of every display come from it. Before, each display cost five
+   * single reads, a read-only datapoint (`ip`, `resolvedUrl`) was read again before each write, and the server id and
+   * each old display's values were read on their own.
    *
    * Throws when the states cannot be read (K16): read as "empty", the restore wrote "0" over the mode.
    *
-   * @returns full state id → state, without the ids whose state is missing
+   * @returns full state id → state, null for a datapoint without a value — every datapoint of the instance is a key
    */
-  private async readDisplayStates(): Promise<Map<string, ioBroker.State>> {
+  private async readStates(): Promise<Map<string, ioBroker.State | null>> {
     try {
-      const states = await this.adapter.getStatesAsync(`${CLIENTS_PREFIX}*`);
-      const found = new Map<string, ioBroker.State>();
-      for (const [id, state] of Object.entries(states ?? {})) {
-        if (state) {
-          found.set(id, state);
-        }
-      }
-      return found;
+      const states = await this.adapter.getStatesAsync("*");
+      return new Map(Object.entries(states ?? {}).map(([id, state]) => [id, state ?? null]));
     } catch (err) {
-      throw new Error(`reading the display states failed (${errText(err)}) — no display was touched`);
+      throw new Error(`reading the states failed (${errText(err)}) — no display was touched`);
+    }
+  }
+
+  /**
+   * The datapoint objects of every display with ONE read — only while a display's text revision is behind, so that the
+   * text refresh writes only the datapoints whose texts differ. Before, a revision bump rewrote every datapoint of a
+   * display, also those whose texts were current (inventory, upgrade from 1.46.1: "rewrites no object unchanged",
+   * 2026-11-12). Read after the moves: the refresh writes onto the moved datapoints.
+   *
+   * Throws when the objects cannot be read (K16), like the read of the display objects.
+   *
+   * @param objects The display objects after the moves.
+   * @returns full datapoint id → object; empty while every display's texts are current
+   */
+  private async readDatapointObjects(
+    objects: Record<string, ioBroker.Object>,
+  ): Promise<ReadonlyMap<string, ioBroker.Object>> {
+    const behind = Object.values(objects).some(
+      obj => !isPlainObject(obj.native) || obj.native.objectsVersion !== CLIENT_OBJECTS_VERSION,
+    );
+    if (!behind) {
+      return new Map();
+    }
+    try {
+      const found = await this.adapter.getForeignObjectsAsync(`${this.adapter.namespace}.${CLIENTS_PREFIX}*`, "state");
+      return new Map(Object.entries(found ?? {}));
+    } catch (err) {
+      throw new Error(`reading the display datapoints failed (${errText(err)}) — no display was touched`);
     }
   }
 
@@ -417,16 +443,20 @@ export class ClientRegistry {
    * stays, and the restart finishes the move.
    *
    * @param objects The display containers as listed.
+   * @param states  Every state of the instance as the restore read it; a move carries the values under the new ids.
    * @returns The display containers after the moves.
    */
-  private async moveToDisplayIds(objects: Record<string, ioBroker.Object>): Promise<Record<string, ioBroker.Object>> {
+  private async moveToDisplayIds(
+    objects: Record<string, ioBroker.Object>,
+    states: Map<string, ioBroker.State | null>,
+  ): Promise<Record<string, ioBroker.Object>> {
     const moves = this.planMoves(objects);
     if (moves.length === 0) {
       return objects;
     }
     const all = (await this.adapter.getAdapterObjectsAsync()) as Record<string, ioBroker.Object | null | undefined>;
     for (const move of moves) {
-      await this.moveDisplay(move, all);
+      await this.moveDisplay(move, all, states);
     }
     return this.listDisplayObjects();
   }
@@ -477,10 +507,15 @@ export class ClientRegistry {
   /**
    * One move (see {@link moveToDisplayIds}).
    *
-   * @param move The move.
-   * @param all  Every object of the instance, read once before the moves.
+   * @param move   The move.
+   * @param all    Every object of the instance, read once before the moves.
+   * @param states Every state of the instance, read once by the restore; the values move to the new ids in it too.
    */
-  private async moveDisplay(move: DisplayMove, all: Record<string, ioBroker.Object | null | undefined>): Promise<void> {
+  private async moveDisplay(
+    move: DisplayMove,
+    all: Record<string, ioBroker.Object | null | undefined>,
+    states: Map<string, ioBroker.State | null>,
+  ): Promise<void> {
     const ns = this.adapter.namespace;
     const fromFull = `${ns}.${CLIENTS_PREFIX}${move.from}`;
     const toFull = `${ns}.${CLIENTS_PREFIX}${move.to}`;
@@ -498,18 +533,21 @@ export class ClientRegistry {
     for (const [id, obj] of tree) {
       await this.adapter.setForeignObject(movedObjectId(id, fromFull, toFull)!, movedObject(id, obj, move, fromFull));
     }
-    // Every value of the old display with ONE read (as restore reads the displays); a read error propagates (K16):
-    // the restart finishes the move from the journal.
-    const values = await this.adapter.getStatesAsync(`${CLIENTS_PREFIX}${move.from}.*`);
+    // The values of the old display come from the one read at start (readStates), and move to the new ids there too,
+    // so the restore reads each display under its new id. A value a journaled move already carried and deleted is
+    // missing under the old id — its new id holds it since that start.
     for (const [id, obj] of tree) {
-      if (obj.type !== "state") {
+      if (obj.type !== "state" || !states.has(id)) {
         continue;
       }
-      const state = values?.[id];
+      const target = movedObjectId(id, fromFull, toFull)!;
+      const state = states.get(id) ?? null;
+      states.delete(id);
+      states.set(target, state);
       if (!state || state.val === undefined) {
         continue;
       }
-      await this.adapter.setState(local(movedObjectId(id, fromFull, toFull)!), {
+      await this.adapter.setState(local(target), {
         val: state.val,
         ack: state.ack,
         ...(typeof state.ts === "number" ? { ts: state.ts } : {}),
@@ -637,13 +675,16 @@ export class ClientRegistry {
    *
    * @param fullId Full object id (`<namespace>.clients.<id>`).
    * @param obj    The client object (channel or device) read from the objects DB.
-   * @param states Every state below `clients.`, read once by restore (readDisplayStates).
+   * @param states Every state of the instance, read once by restore (readStates), the moved values under their new ids.
+   * @param datapoints The datapoint objects below `clients.`, read once by restore while a revision is behind
+   *   (readDatapointObjects).
    * @returns What was found, or null when the object is no restorable display.
    */
   private async restoreChannel(
     fullId: string,
     obj: ioBroker.Object,
-    states: ReadonlyMap<string, ioBroker.State>,
+    states: ReadonlyMap<string, ioBroker.State | null>,
+    datapoints: ReadonlyMap<string, ioBroker.Object>,
   ): Promise<RestoredClient | null> {
     const id = this.clientIdOf(fullId);
     if (!id || id.includes(".")) {
@@ -670,17 +711,7 @@ export class ClientRegistry {
       return null;
     }
     const { cookie, token, refreshToken } = identity;
-    // I22 (v1.37.0): migrate a legacy `channel` client object to `device` in place —
-    // preserves cookie/token/name/states, no re-onboarding. New clients are already
-    // created as devices by ensureObjects().
-    if (obj.type === "channel") {
-      try {
-        await this.adapter.extendObject(`clients.${id}`, { type: "device" });
-      } catch (err) {
-        this.adapter.log.debug(`client-registry: channel→device migration failed for ${id}: ${errText(err)}`);
-      }
-    }
-    // The values come from the one read of every display state in restore() (readDisplayStates). The
+    // The values come from the one read of every state in restore() (readStates). The
     // pre-1.2.0 `visUrl` the migration needs rides along instead of costing the migration its own
     // round-trip per client on every start (see legacyVisUrls).
     const valueOf = (kind: string): unknown => states.get(`${fullId}.${kind}`)?.val ?? null;
@@ -698,7 +729,9 @@ export class ClientRegistry {
     if (resolved?.ack === true && typeof resolved.val === "string" && !resolved.q && resolved.c === undefined) {
       this.resolvedUrls.set(id, resolved.val);
     }
-    if (legacyVisUrlRaw !== null && legacyVisUrlRaw !== undefined && legacyVisUrlRaw !== "") {
+    // Handed over whenever the datapoint exists — also empty, its value from creation in 1.0/1.1: the migration
+    // removes it either way (before, an empty one was never handed over and stayed in the tree for good).
+    if (states.has(`${fullId}.visUrl`)) {
       this.legacyVisUrls.set(id, legacyVisUrlRaw);
     }
     const mode = typeof modeRaw === "string" ? modeRaw : "";
@@ -719,13 +752,16 @@ export class ClientRegistry {
     // already expired before the restart is rejected by getByToken on next use.
     const { tokenExpiresAt } = identity;
 
-    // Legacy migration (<=1.1.1): hostname lived in its own state. If present,
-    // move the value into common.name and drop the state.
+    // Legacy migration (<=1.1.1): hostname lived in its own datapoint. Its value becomes the host name, and the
+    // datapoint goes whenever it exists — also empty, as 1.1.1 left it for a display without a reverse-DNS name
+    // (before, an empty one stayed in the tree for good).
     const legacyHostname = coerceHostname(hostnameRaw);
-    if (legacyHostname) {
-      this.adapter.log.debug(
-        `restore: legacy hostname migration for client ${id} — '${legacyHostname}' becomes the host name`,
-      );
+    if (states.has(`${fullId}.hostname`)) {
+      if (legacyHostname) {
+        this.adapter.log.debug(
+          `restore: legacy hostname migration for client ${id} — '${legacyHostname}' becomes the host name`,
+        );
+      }
       try {
         await this.adapter.delObjectAsync(`clients.${id}.hostname`);
       } catch {
@@ -760,8 +796,9 @@ export class ClientRegistry {
     // display whose name is current costs no write.
     const want = this.wantName(record);
     const rawName = obj.common?.name;
+    const deviceCommon: { name?: ioBroker.StringOrTranslated; icon?: string } = {};
     if (isBareStringName(rawName) || nameText(rawName) !== want) {
-      await this.adapter.extendObject(`clients.${id}`, { common: { name: tRaw(want) } });
+      deviceCommon.name = tRaw(want);
     }
     this.writtenNames.set(id, want);
     this.trackInMemory(record);
@@ -776,7 +813,25 @@ export class ClientRegistry {
     // ensure the v1.2.0+ objects (`mode`, `manualUrl`) exist before any
     // state writes from migration land — otherwise js-controller logs
     // "State has no existing object" warnings.
-    await this.ensureObjects(record, false, storedVersion);
+    await this.ensureObjects(record, false, storedVersion, datapoints);
+    // ONE write of the device for everything the start brings up to date: the container kind of an install before
+    // 1.37.0 (I22: `channel` → `device`, in place — cookie, name and datapoints stay), the name (K7), and the text
+    // revision with the pictogram (CLIENT_OBJECTS_VERSION, R-19 — the stamp lets the next start skip the text
+    // refresh). Three writes before, each an objectChange (inventory: "writes no object more than MAX_OBJECT_WRITES
+    // times", 2026-11-12). A failed write fails the start like the name write did.
+    const textsCurrent = storedVersion === CLIENT_OBJECTS_VERSION;
+    const icon = textsCurrent ? undefined : displayIcon();
+    if (icon !== undefined) {
+      deviceCommon.icon = icon;
+    }
+    const kindChanges = obj.type === "channel";
+    if (kindChanges || !textsCurrent || Object.keys(deviceCommon).length > 0) {
+      await this.adapter.extendObject(`clients.${id}`, {
+        ...(kindChanges ? { type: "device" as const } : {}),
+        ...(Object.keys(deviceCommon).length > 0 ? { common: deviceCommon } : {}),
+        ...(textsCurrent ? {} : { native: { objectsVersion: CLIENT_OBJECTS_VERSION } }),
+      });
+    }
     // Promote a blank mode value to the string "0" so the dropdown renders the
     // `0='---'` option as selected. v1.2.0 installs left the value as `''`
     // which matches no common.states entry. Reuses `mode` from the parallel
@@ -1641,10 +1696,17 @@ export class ClientRegistry {
    * @param storedVersion  The `native.objectsVersion` this client's objects were last
    *                       written with. Equal to {@link CLIENT_OBJECTS_VERSION} → the texts
    *                       are current and only EXISTENCE is guaranteed (no write). Older or
-   *                       missing → the texts are refreshed once and the stamp is renewed.
+   *                       missing → the texts that differ are refreshed once (the restore renews the stamp).
    *                       Defaults to 0 (unknown) so `createClient` always writes in full.
+   * @param stored         The datapoint objects as the restore read them (full id → object): a refresh leaves out
+   *                       a datapoint that already carries its texts. Empty → every refresh writes.
    */
-  private async ensureObjects(record: ClientRecord, refreshStates = true, storedVersion = 0): Promise<void> {
+  private async ensureObjects(
+    record: ClientRecord,
+    refreshStates = true,
+    storedVersion = 0,
+    stored: ReadonlyMap<string, ioBroker.Object> = new Map(),
+  ): Promise<void> {
     const { id } = record;
     const mergedStates = this.buildModeStates();
     // Whether the four per-client texts have to be (re)written this start. See
@@ -1710,12 +1772,13 @@ export class ClientRegistry {
       def: NO_CHOICE,
       states: mergedStates,
     };
-    const ensureModeObject = async (refreshStates: boolean): Promise<void> => {
+    // Whether it wrote the full schema — which carries the current name and description.
+    const ensureModeObject = async (refreshStates: boolean): Promise<boolean> => {
       const path = `clients.${id}.mode`;
       const existing = await this.adapter.getObjectAsync(path);
       if (!existing) {
         await this.adapter.setObjectNotExistsAsync(path, { type: "state", common: modeFullCommon, native: {} });
-        return;
+        return true;
       }
       // ensureObjects runs on every restart for every client. Skip the rewrite when the
       // object already matches the desired schema — an unconditional replace was 1
@@ -1730,7 +1793,7 @@ export class ClientRegistry {
       const schemaOk = existing.type === "state" && c?.type === "string" && c.role === "text";
       const statesOk = refreshStates ? shallowStatesEqual(c?.states, mergedStates) : true;
       if (schemaOk && statesOk) {
-        return;
+        return false;
       }
       // The name/desc of `.mode` are the adapter's own text (tName), never the user's —
       // a broken schema is repaired with the CURRENT text, not with whatever the tree
@@ -1739,6 +1802,7 @@ export class ClientRegistry {
       existing.common = { ...c, ...modeFullCommon, states: preservedStates };
       existing.type = "state";
       await replaceObjectPreservingValue(this.adapter, path, existing);
+      return true;
     };
     // v1.41.0: the schema pass above deliberately keeps whatever name is in the tree
     // (and returns early when the schema is fine), so the CURRENT text can only reach an
@@ -1747,20 +1811,22 @@ export class ClientRegistry {
     // Only name/desc go in: `states` stays with syncUrlDropdown, its single authority,
     // and `extendObject` deep-merges `states` (v1.27.2).
     const refreshModeText = async (): Promise<void> => {
-      await ensureModeObject(refreshStates);
-      if (!textsCurrent) {
-        await this.adapter.extendObject(`clients.${id}.mode`, {
-          common: { name: tName("clientMode"), desc: tName("clientModeDesc") },
-        });
+      // A just created or repaired object carries the current texts already — a second write would change nothing
+      // (inventory: "writes no object more than MAX_OBJECT_WRITES times", 2026-11-12).
+      const written = await ensureModeObject(refreshStates);
+      const patch = { common: { name: tName("clientMode"), desc: tName("clientModeDesc") } };
+      if (!textsCurrent && !written && !coveredBy(patch, stored.get(`${this.adapter.namespace}.clients.${id}.mode`))) {
+        await this.adapter.extendObject(`clients.${id}.mode`, patch);
       }
     };
 
     // The three plain states. `extendObject` carries a CHANGED text into an object that
     // already exists (what `setObjectNotExists` never did — measured on the live tree
     // 2026-09-03: `.ip` still read "Client IP", `.remove` "Forget this client"), but it
-    // also writes when nothing changed. So: write in full only while the stamp is behind,
-    // and otherwise fall back to `setObjectNotExists`, which still RE-CREATES an object
-    // somebody deleted in the object browser but writes nothing when it is there.
+    // also writes when nothing changed. So: while the stamp is behind, write each one whose
+    // texts differ from what the restore read (a bump for one datapoint rewrote all four
+    // before), and otherwise fall back to `setObjectNotExists`, which still RE-CREATES an
+    // object somebody deleted in the object browser but writes nothing when it is there.
     const stateSchemas: Array<[string, ioBroker.StateCommon]> = [
       [
         `clients.${id}.manualUrl`,
@@ -1810,23 +1876,18 @@ export class ClientRegistry {
 
     await Promise.all([
       refreshModeText(),
-      ...stateSchemas.map(([path, common]) =>
-        textsCurrent
-          ? this.adapter.setObjectNotExistsAsync(path, { type: "state", common, native: {} })
-          : this.adapter.extendObject(path, { type: "state", common, native: {} }),
-      ),
+      ...stateSchemas.map(([path, common]) => {
+        const patch = { type: "state" as const, common, native: {} };
+        if (textsCurrent) {
+          return this.adapter.setObjectNotExistsAsync(path, patch);
+        }
+        return coveredBy(patch, stored.get(`${this.adapter.namespace}.${path}`))
+          ? Promise.resolve()
+          : this.adapter.extendObject(path, patch);
+      }),
     ]);
-
-    // Stamp the revision so the next start can skip the refresh above. Written only when
-    // it actually moved — otherwise this would be the very write it exists to avoid.
-    if (!textsCurrent) {
-      await this.adapter
-        .extendObject(`clients.${id}`, {
-          ...(icon === undefined ? {} : { common: { icon } }),
-          native: { objectsVersion: CLIENT_OBJECTS_VERSION },
-        })
-        .catch(err => this.adapter.log.debug(`client-registry: version stamp failed for ${id}: ${errText(err)}`));
-    }
+    // The revision stamp is written by the restore, together with the rest of the device (restoreChannel); a new
+    // display carries the current revision from its create above.
   }
 
   private async createObjects(record: ClientRecord): Promise<void> {

@@ -193,6 +193,9 @@ export async function migrateVisUrlToMode(
       }
       const decision = decideLegacyVisMigration(rawValue);
       if (decision.kind === "empty") {
+        // Nothing to take over — the empty datapoint (its value from creation in 1.0/1.1) only goes, with its rooms
+        // and functions carried like a migrated one. Before, it stayed in the tree for good.
+        migrated.push(id);
         return;
       }
       try {

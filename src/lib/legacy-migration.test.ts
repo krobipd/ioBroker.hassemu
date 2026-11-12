@@ -245,6 +245,30 @@ describe("migrateVisUrlToMode", () => {
     expect(store.deleted).to.include("clients.abc123.visUrl");
   });
 
+  it("drops an EMPTY per-client legacy datapoint without writing mode or manualUrl", async () => {
+    // 1.0/1.1 created visUrl with the value "" for every display; a display whose URL was never set kept it.
+    // Before, an empty one was never handed over and stayed in the tree for good.
+    const { store, adapter } = createStub();
+    const { config } = fakeGlobal();
+    const record = { id: "abc123", mode: "", manualUrl: null as string | null };
+    store.objects.set("hassemu.0.clients.abc123.visUrl", { type: "state", common: {}, native: {} });
+    store.states.set("hassemu.0.clients.abc123.visUrl", { val: "", ack: true });
+    const writes: string[] = [];
+    const a = adapter as unknown as { setState: (id: string, ...rest: unknown[]) => Promise<unknown> };
+    const original = a.setState.bind(adapter);
+    a.setState = (id: string, ...rest: unknown[]) => {
+      writes.push(id);
+      return original(id, ...rest);
+    };
+
+    await migrateVisUrlToMode(adapter, config, fakeRegistry({ abc123: "" }, [record]));
+
+    expect(writes).to.deep.equal([]);
+    expect(record.mode).to.equal("");
+    expect(record.manualUrl).to.be.null;
+    expect(store.deleted).to.include("clients.abc123.visUrl");
+  });
+
   it("KEEPS the legacy datapoint when the write fails — the URL must not be lost", async () => {
     const { store, adapter } = createStub();
     const { config } = fakeGlobal();

@@ -226,7 +226,8 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 - New: every display carries a display pictogram in the object tree
 - Changed: a new instance is created disabled
 - Changed: the master switch, the dashboard refresh and the remove button log their result on debug
-- Improved: a start no longer rewrites hassemu's own objects that are current, and reads all display values with one request instead of one per value
+- Improved: a start no longer rewrites hassemu's own objects that are current, updates a display's object with one write instead of three, and reads all its values with one request
+- Fixed: an update from 1.0 or 1.1 removes the empty hostname and visUrl datapoints a display kept until now
 - Fixed: the dashboard list takes the page of the devices adapter and other admin tiles it used to drop
 - Changed: the dashboard list follows the admin start page — its link cards come in, a tile hidden there drops out; a display keeps a target that drops out
 - Fixed: aura served by a web instance is listed at that address; an aura that only listens on its own machine is no longer listed

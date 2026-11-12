@@ -891,10 +891,11 @@ describe("server id (design decision 2, B3: it lives in the data file)", () => {
 
   it("a READ error is not a fresh install: the start fails and no id is written (N4, K16)", async () => {
     const s = setup();
-    const adapter = s.internal as unknown as { getStateAsync: (id: string, ...rest: unknown[]) => Promise<unknown> };
-    const real = adapter.getStateAsync.bind(adapter);
-    adapter.getStateAsync = (id: string, ...rest: unknown[]) =>
-      id === "info.serverUuid" ? Promise.reject(new Error("states db not ready")) : real(id, ...rest);
+    // The server id of 1.46.1 comes from the one read of every state at start.
+    const adapter = s.internal as unknown as { getStatesAsync: (pattern: string) => Promise<unknown> };
+    const real = adapter.getStatesAsync.bind(adapter);
+    adapter.getStatesAsync = (pattern: string) =>
+      pattern === "*" ? Promise.reject(new Error("states db not ready")) : real(pattern);
 
     await s.internal.onReady();
 
