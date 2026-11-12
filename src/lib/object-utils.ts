@@ -54,9 +54,8 @@ export function isBareStringName(value: unknown): value is string {
 /**
  * Read a state at the start: `null` when it does not exist, and a READ ERROR propagates. The helper this
  * replaces (`safeGetState`, v1.20.0) read an error as "empty" — the restore then wrote `"0"` back over the
- * user's mode and a display's setting was gone (K16, krobi 2026-11-11; Ressourcen/iobroker-entwicklung/
- * startfehler-recherche-2026-11-11.md ST1: no access to ioBroker is a failed start, and the controller
- * restarts the instance).
+ * user's mode and a display's setting was gone (K16, krobi 2026-11-11: no access to ioBroker is a failed start,
+ * and the controller restarts the instance).
  *
  * @param adapter Anything that exposes `getStateAsync(id)`.
  * @param id      Full state id (with namespace) or a relative path.

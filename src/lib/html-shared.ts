@@ -194,7 +194,7 @@ export type ScreenEdge = "top" | "right" | "bottom" | "left";
  * Query that wraps every use of {@link safeAreaInset}. The pages first set each inset to
  * `var(--app-safe-area-inset-*, 0px)` (Android ≥ 2026.2 injects those, constants.ts) and repeat
  * the declaration with `env()` only inside this block: an Android 7 WebView of the legacy Shelly
- * Wall Displays (Ressourcen/hassemu/shelly-wall-display.md, "legacy") does not know `env()`, and an
+ * Wall Displays does not know `env()`, and an
  * unknown function inside a `var()` fallback makes the whole declaration invalid only at
  * computed-value time — the iframe would drop to its default 300×150. A browser that does not
  * support `env()` skips the block and keeps the first declaration.

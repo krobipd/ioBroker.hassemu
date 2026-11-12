@@ -3,10 +3,9 @@
  * identifies it, its tokens and when it was last seen — kept in ONE file in the instance data folder, never in the
  * `native` of an object and never as the value of a datapoint.
  *
- * Fleet rules on the hassemu acceptance page (krobi 2026-11-11, K1 and K5; Ressourcen/iobroker-entwicklung/
- * native-recherche-2026-11-11.md S3, S4, S9): a secret the adapter generates or receives, its runtime values, and an
- * id it generates and must keep because devices know it by that id, stand in the same file in the instance data
- * folder. The server id is generated once and never again: an unreadable file fails the start. Up to 1.46.1 the
+ * Fleet rules on the hassemu acceptance page (krobi 2026-11-11, K1 and K5): a secret the adapter generates or
+ * receives, its runtime values, and an id it generates and must keep because devices know it by that id, stand in the
+ * same file in the instance data folder. The server id is generated once and never again: an unreadable file fails the start. Up to 1.46.1 the
  * server id was the value of `info.serverUuid`, which any script could overwrite.
  *
  * Werkbank standard of round 173 (krobi 2026-11-10 14:34 on the Werkbank's question; ioBroker objectsschema:
