@@ -12,16 +12,19 @@
  * reads the server id from the data file (or, while the file holds none, once from the datapoint of 1.46.1), the start
  * drops the old datapoint, the web server opens on a free port and announces the id — over an adapter whose object and
  * state database lives in memory; the announcement is asked by inject from a peer address of the host's network
- * (192.168.77.0/24). The manifest is read as data. The data folder is a map in memory, since a guard writes no file.
+ * (192.168.77.0/24). The manifest is read as data. The data folder is a fresh folder in the temporary directory,
+ * written through the data-folder master as on a host.
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import type * as Os from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { files, db } = vi.hoisted(() => ({
-  files: new Map<string, string>(),
+const { data, db } = vi.hoisted(() => ({
+  /** The instance data folder of the running test. */
+  data: { dir: "" },
   db: {
     objects: new Map<string, ioBroker.Object>(),
     states: new Map<string, ioBroker.State>(),
@@ -168,7 +171,7 @@ vi.mock("@iobroker/adapter-core", () => {
   return {
     Adapter,
     EXIT_CODES: { UNCAUGHT_EXCEPTION: 6 },
-    getAbsoluteInstanceDataDir: (): string => "/guard/hassemu.0",
+    getAbsoluteInstanceDataDir: (): string => data.dir,
     I18n: {
       init: (): Promise<void> => Promise.resolve(),
       getTranslatedObject: (key: string) => ({ en: key }),
@@ -203,15 +206,6 @@ vi.mock("node:os", async importOriginal => {
   });
   return { ...real, networkInterfaces, default: { ...real, networkInterfaces } };
 });
-vi.mock("../lib/data-file", () => ({
-  readDataFile: (dir: string, file: string): { value?: unknown } => {
-    const raw = files.get(`${dir}/${file}`);
-    return raw === undefined ? {} : { value: JSON.parse(raw) as unknown };
-  },
-  writeDataFile: (dir: string, file: string, value: unknown): void => {
-    files.set(`${dir}/${file}`, JSON.stringify(value));
-  },
-}));
 
 import * as mainModule from "../main";
 
@@ -238,7 +232,6 @@ interface Emu {
 const { HassEmu } = mainModule as unknown as { HassEmu: new () => ioBroker.Adapter };
 
 const NS = "hassemu.0";
-const DATA_DIR = "/guard/hassemu.0";
 const OLD_ID = "info.serverUuid";
 /** The server id an installation of 1.46.1 holds as the value of info.serverUuid. */
 const LEGACY_SERVER_ID = "5e0f3c9a-1b2d-4c6e-8f7a-9b0c1d2e3f4a";
@@ -256,11 +249,16 @@ const CONFIG = {
 
 const running: Emu[] = [];
 
+beforeEach(() => {
+  data.dir = mkdtempSync(join(tmpdir(), "hassemu-guard-b3-"));
+});
+
 afterEach(async () => {
   for (const emu of [...running]) {
     await stopped(emu);
   }
-  files.clear();
+  rmSync(data.dir, { recursive: true, force: true });
+  data.dir = "";
   db.objects.clear();
   db.states.clear();
   db.problems.length = 0;
@@ -339,7 +337,8 @@ async function announced(emu: Emu): Promise<unknown> {
 
 /** The server id in the data file. */
 function inFile(): unknown {
-  return (JSON.parse(files.get(`${DATA_DIR}/identities.json`) ?? "{}") as { server?: unknown }).server;
+  const file = join(data.dir, "identities.json");
+  return existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as { server?: unknown }).server : undefined;
 }
 
 /** What is left of the old datapoint: its object and its value. */

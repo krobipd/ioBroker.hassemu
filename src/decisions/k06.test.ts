@@ -14,13 +14,17 @@
  * answered by inject from peer addresses of its own network, over an adapter whose object and state database lives in
  * memory; a restart is a new registry and a new web server over the same database and the same data file. The app's
  * device name arrives through the Companion registration route. The host carries one network (192.168.77.0/24); the
- * data folder is a map in memory, since a guard writes no file.
+ * the data folder is a fresh folder in the temporary directory, written through the data-folder master as on a host.
  */
 
+import { mkdtempSync, rmSync } from "node:fs";
 import type * as Os from "node:os";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { files } = vi.hoisted(() => ({ files: new Map<string, string>() }));
+/** The instance data folder of the running test. */
+const data = vi.hoisted(() => ({ dir: "" }));
 
 vi.mock("@iobroker/adapter-core", () => ({
   I18n: { getTranslatedObject: (key: string) => ({ en: key }), translate: (key: string) => key },
@@ -52,15 +56,6 @@ vi.mock("node:os", async importOriginal => {
   });
   return { ...real, networkInterfaces, default: { ...real, networkInterfaces } };
 });
-vi.mock("../lib/data-file", () => ({
-  readDataFile: (dir: string, file: string): { value?: unknown } => {
-    const raw = files.get(`${dir}/${file}`);
-    return raw === undefined ? {} : { value: JSON.parse(raw) as unknown };
-  },
-  writeDataFile: (dir: string, file: string, value: unknown): void => {
-    files.set(`${dir}/${file}`, JSON.stringify(value));
-  },
-}));
 
 import { ClientRegistry } from "../lib/client-registry";
 import { GlobalConfig } from "../lib/global-config";
@@ -83,14 +78,18 @@ interface Memory {
 }
 
 const NS = "hassemu.0";
-const DATA_DIR = "/guard/hassemu.0";
 const servers: WebServer[] = [];
+
+beforeEach(() => {
+  data.dir = mkdtempSync(join(tmpdir(), "hassemu-guard-k06-"));
+});
 
 afterEach(async () => {
   for (const server of servers.splice(0)) {
     await server.stop();
   }
-  files.clear();
+  rmSync(data.dir, { recursive: true, force: true });
+  data.dir = "";
 });
 
 /**
@@ -183,7 +182,7 @@ function memory(): Memory {
  * @param mem the adapter
  */
 async function started(mem: Memory): Promise<WebServer> {
-  const registry = new ClientRegistry(mem.adapter as never, DATA_DIR);
+  const registry = new ClientRegistry(mem.adapter as never, data.dir);
   await registry.restore();
   const global = new GlobalConfig(mem.adapter as never);
   const config: AdapterConfig = {

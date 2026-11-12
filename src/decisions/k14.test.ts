@@ -12,16 +12,18 @@
  * restores the displays and their last-seen stamps from the data file, then the start's clean-up runs, then the web
  * server opens on a free port — over an adapter whose object and state database lives in memory. A removal is the
  * recursive delete of the display's device; its room and function assignments leave with that delete in js-controller.
- * The data folder is a map in memory, since a guard writes no file.
+ * The data folder is a fresh folder in the temporary directory, written through the data-folder master as on a host.
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import type * as Os from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { files, db } = vi.hoisted(() => ({
-  files: new Map<string, string>(),
+const { data, db } = vi.hoisted(() => ({
+  /** The instance data folder of the running test. */
+  data: { dir: "" },
   db: {
     objects: new Map<string, ioBroker.Object>(),
     states: new Map<string, ioBroker.State>(),
@@ -168,7 +170,7 @@ vi.mock("@iobroker/adapter-core", () => {
   return {
     Adapter,
     EXIT_CODES: { UNCAUGHT_EXCEPTION: 6 },
-    getAbsoluteInstanceDataDir: (): string => "/guard/hassemu.0",
+    getAbsoluteInstanceDataDir: (): string => data.dir,
     I18n: {
       init: (): Promise<void> => Promise.resolve(),
       getTranslatedObject: (key: string) => ({ en: key }),
@@ -203,16 +205,8 @@ vi.mock("node:os", async importOriginal => {
   });
   return { ...real, networkInterfaces, default: { ...real, networkInterfaces } };
 });
-vi.mock("../lib/data-file", () => ({
-  readDataFile: (dir: string, file: string): { value?: unknown } => {
-    const raw = files.get(`${dir}/${file}`);
-    return raw === undefined ? {} : { value: JSON.parse(raw) as unknown };
-  },
-  writeDataFile: (dir: string, file: string, value: unknown): void => {
-    files.set(`${dir}/${file}`, JSON.stringify(value));
-  },
-}));
 
+import { writeDataFile } from "../lib/data-file";
 import * as mainModule from "../main";
 
 /** The adapter instance with what the guard reads from its stub base. */
@@ -234,7 +228,6 @@ interface Seed {
 const { HassEmu } = mainModule as unknown as { HassEmu: new () => ioBroker.Adapter };
 
 const NS = "hassemu.0";
-const DATA_DIR = "/guard/hassemu.0";
 const DAY = 24 * 60 * 60 * 1000;
 const CONFIG = {
   port: 0,
@@ -248,6 +241,10 @@ const CONFIG = {
 
 const running: Emu[] = [];
 
+beforeEach(() => {
+  data.dir = mkdtempSync(join(tmpdir(), "hassemu-guard-k14-"));
+});
+
 afterEach(async () => {
   for (const emu of [...running]) {
     running.splice(running.indexOf(emu), 1);
@@ -255,7 +252,8 @@ afterEach(async () => {
       emu.handlers.get("unload")?.(resolve);
     });
   }
-  files.clear();
+  rmSync(data.dir, { recursive: true, force: true });
+  data.dir = "";
   db.objects.clear();
   db.states.clear();
   db.problems.length = 0;
@@ -319,10 +317,7 @@ function seedInstall(displays: Seed[]): void {
       lastSeen: display.lastSeen,
     };
   });
-  files.set(
-    `${DATA_DIR}/identities.json`,
-    JSON.stringify({ server: "0d5b8e2a-7c41-4f3e-9a26-5b8c1d7e3f90", displays: entries }),
-  );
+  writeDataFile(data.dir, "identities.json", { server: "0d5b8e2a-7c41-4f3e-9a26-5b8c1d7e3f90", displays: entries });
 }
 
 /** The adapter, started through the ready handler its constructor registered. */
@@ -349,7 +344,10 @@ function devices(): string[] {
  */
 function leftOf(id: string): { objects: string[]; values: string[]; fileEntry: boolean } {
   const prefix = `${NS}.clients.${id}`;
-  const stored = JSON.parse(files.get(`${DATA_DIR}/identities.json`) ?? "{}") as { displays?: Record<string, unknown> };
+  const file = join(data.dir, "identities.json");
+  const stored = (existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {}) as {
+    displays?: Record<string, unknown>;
+  };
   return {
     objects: [...db.objects.keys()].filter(key => key === prefix || key.startsWith(`${prefix}.`)),
     values: [...db.states.keys()].filter(key => key.startsWith(`${prefix}.`)),

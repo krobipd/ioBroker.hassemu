@@ -1,34 +1,40 @@
 /**
  * Guard K7 — one device per display: its id is the model its first visit names (or "display") and four characters
- * hassemu assigns itself, with a counter when taken, never changed afterwards; an id of the old form moves once; the
- * name belongs to the adapter: the app's device name, else the host name, else the address.
+ * hassemu assigns itself, with a counter when taken, never changed afterwards; an id of the old form moves once, with
+ * its rooms, functions and aliases; the name belongs to the adapter: the app's device name, else the host name, else
+ * the address.
  *
  * The page, K7: "New: id — model, hyphen, four characters that hassemu assigns itself. If the display names no model
  * on its first visit, 'display' stands in front. If the id is taken already, a counter comes after it. Once assigned,
  * it never changes." "New: name — the device name from the app as soon as the app reports it; it follows every change
  * there. Without the app the host name, without a host name the IP, as today." "Existing installations: every
  * existing display moves once: clients.61c3a1 becomes clients.display-c3a1, with the last four characters of the old
- * id. Rooms and functions move along, and the display is still recognised. Scripts, visualisations and aliases that
+ * id. Rooms, functions and aliases move along, and the display is still recognised. Scripts and visualisations that
  * point at the old id are for the user to adapt; the update points this out in the admin."
  * Accepted by krobi with the page of hassemu's core decisions (version 30) on 2026-11-11 19:51 ("k7 is ok"); for the
- * name 2026-11-11 22:40 ("I cannot imagine I ever approved this behaviour, but it is one of the first adapters, so
- * rather legacy. The adapter has to follow the fleet!"), confirming krobi 2026-09-02 ("a USER has no business stirring
- * in the adapter's datapoints. the adapter or its developer is the only one who may").
+ * aliases 2026-11-12 20:02 ("Yes, aliases move along") and 20:03 ("But that is a fleet matter and decision and
+ * nothing special to hassemu"); for the name 2026-11-11 22:40 ("I cannot imagine I ever approved this behaviour, but
+ * it is one of the first adapters, so rather legacy. The adapter has to follow the fleet!"), confirming krobi
+ * 2026-09-02 ("a USER has no business stirring in the adapter's datapoints. the adapter or its developer is the only
+ * one who may").
  *
  * Path: the adapter class from main.ts, started and stopped through the ready and unload handlers its constructor
  * registers (registry restore with the move of old ids, the web server on a free port), over an adapter whose object
  * and state database lives in memory. Displays reach the running server by inject from a peer address of the host's
  * network (192.168.77.0/24): the first visit, the sign-in, the app's registration and its webhook; host names come
- * from the reverse lookup, answered from a table. The data folder is a map in memory, since a guard writes no file.
+ * from the reverse lookup, answered from a table. The data folder is a fresh folder in the temporary directory,
+ * written through the data-folder master as on a host.
  */
 
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import type * as Os from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { files, db, dns } = vi.hoisted(() => ({
-  files: new Map<string, string>(),
+const { data, db, dns } = vi.hoisted(() => ({
+  /** The instance data folder of the running test. */
+  data: { dir: "" },
   db: {
     objects: new Map<string, ioBroker.Object>(),
     states: new Map<string, ioBroker.State>(),
@@ -176,7 +182,7 @@ vi.mock("@iobroker/adapter-core", () => {
   return {
     Adapter,
     EXIT_CODES: { UNCAUGHT_EXCEPTION: 6 },
-    getAbsoluteInstanceDataDir: (): string => "/guard/hassemu.0",
+    getAbsoluteInstanceDataDir: (): string => data.dir,
     I18n: {
       init: (): Promise<void> => Promise.resolve(),
       getTranslatedObject: (key: string) => ({ en: key }),
@@ -220,15 +226,6 @@ vi.mock("node:os", async importOriginal => {
   });
   return { ...real, networkInterfaces, default: { ...real, networkInterfaces } };
 });
-vi.mock("../lib/data-file", () => ({
-  readDataFile: (dir: string, file: string): { value?: unknown } => {
-    const raw = files.get(`${dir}/${file}`);
-    return raw === undefined ? {} : { value: JSON.parse(raw) as unknown };
-  },
-  writeDataFile: (dir: string, file: string, value: unknown): void => {
-    files.set(`${dir}/${file}`, JSON.stringify(value));
-  },
-}));
 
 import * as mainModule from "../main";
 import type { ClientRegistry } from "../lib/client-registry";
@@ -282,11 +279,16 @@ const UA_WALL_PAGE =
 
 const running: Emu[] = [];
 
+beforeEach(() => {
+  data.dir = mkdtempSync(join(tmpdir(), "hassemu-guard-k07-"));
+});
+
 afterEach(async () => {
   for (const emu of [...running]) {
     await stopped(emu);
   }
-  files.clear();
+  rmSync(data.dir, { recursive: true, force: true });
+  data.dir = "";
   db.objects.clear();
   db.states.clear();
   db.problems.length = 0;
@@ -598,7 +600,7 @@ describe("K7: display ids and names", () => {
     });
   });
 
-  it("moves a display of the old id form once to display-<its last four>, with values, rooms and functions", async () => {
+  it("moves a display of the old id form once to display-<its last four>, with values, rooms, functions and aliases", async () => {
     const cookie = "6f9c2d1e-0b7a-4c3e-9a51-2d8e4f7a1c01";
     const manualUrl = "http://192.168.77.20:8082/vis-2/index.html?kitchen";
     seedInstall();
@@ -617,6 +619,22 @@ describe("K7: display ids and names", () => {
       common: { name: "Screen", members: [`${NS}.clients.61c3a1.mode`] },
       native: {},
     } as unknown as ioBroker.Object);
+    // Aliases in both forms of common.alias.id — one target, or a read and a write target — and one on a foreign
+    // device.
+    const aliasTargets: [string, unknown][] = [
+      ["alias.0.kitchen.screen", `${NS}.clients.61c3a1.mode`],
+      ["alias.0.kitchen.url", { read: `${NS}.clients.61c3a1.resolvedUrl`, write: `${NS}.clients.61c3a1.manualUrl` }],
+      ["alias.0.kitchen.lamp", "zigbee.0.lamp.state"],
+    ];
+    for (const [id, target] of aliasTargets) {
+      db.objects.set(id, {
+        _id: id,
+        type: "state",
+        common: { name: id, type: "string", role: "text", read: true, write: true, alias: { id: target } },
+        native: {},
+      } as unknown as ioBroker.Object);
+    }
+    const foreignAlias = structuredClone(db.objects.get("alias.0.kitchen.lamp"));
     const manifest = JSON.parse(readFileSync(join(process.cwd(), "io-package.json"), "utf8")) as {
       common: { messages?: { condition?: { rules?: string[] }; text?: Record<string, string> }[] };
     };
@@ -631,6 +649,10 @@ describe("K7: display ids and names", () => {
     };
     const rooms = db.objects.get("enum.rooms.kitchen")?.common.members;
     const functions = db.objects.get("enum.functions.screen")?.common.members;
+    const aliasesAfterMove = Object.fromEntries(
+      aliasTargets.map(([id]) => [id, (db.objects.get(id)?.common as { alias?: { id?: unknown } }).alias?.id]),
+    );
+    const foreignAliasAfterMove = db.objects.get("alias.0.kitchen.lamp");
     await ask(first, "192.168.77.71", "GET", "/", { cookie });
     const recognised = first.registry?.getByCookie(cookie)?.id;
     const devicesAfterVisit = devices();
@@ -646,6 +668,17 @@ describe("K7: display ids and names", () => {
       values: { mode: "global", manualUrl, ip: "192.168.77.71" },
       rooms: ["zigbee.0.lamp", `${NS}.clients.display-c3a1`],
       functions: [`${NS}.clients.display-c3a1.mode`],
+    });
+    expect({ aliasesAfterMove, foreignAliasAfterMove }).toEqual({
+      aliasesAfterMove: {
+        "alias.0.kitchen.screen": `${NS}.clients.display-c3a1.mode`,
+        "alias.0.kitchen.url": {
+          read: `${NS}.clients.display-c3a1.resolvedUrl`,
+          write: `${NS}.clients.display-c3a1.manualUrl`,
+        },
+        "alias.0.kitchen.lamp": "zigbee.0.lamp.state",
+      },
+      foreignAliasAfterMove: foreignAlias,
     });
     expect({ recognised, devicesAfterVisit }).toEqual({
       recognised: "display-c3a1",

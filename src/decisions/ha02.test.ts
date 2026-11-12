@@ -11,16 +11,19 @@
  * object and state database in memory; displays are created and served by the web server that start built, asked by
  * inject from a peer address, one is forgotten through its `remove` button by the stateChange handler the constructor
  * registered, and the adapter is started a second time over the same database. The host carries one network
- * (192.168.77.0/24); the data folder is a map in memory, since a guard writes no file.
+ * (192.168.77.0/24); the data folder is a fresh folder in the temporary directory, written through the data-folder
+ * master as on a host.
  */
 
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type * as Os from "node:os";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { tmpdir } from "node:os";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { files, db } = vi.hoisted(() => ({
-  files: new Map<string, string>(),
+const { data, db } = vi.hoisted(() => ({
+  /** The instance data folder of the running test. */
+  data: { dir: "" },
   db: { objects: new Map<string, ioBroker.Object>(), states: new Map<string, ioBroker.State>() },
 }));
 
@@ -146,7 +149,7 @@ vi.mock("@iobroker/adapter-core", () => {
   return {
     Adapter,
     EXIT_CODES: { UNCAUGHT_EXCEPTION: 6 },
-    getAbsoluteInstanceDataDir: (): string => "/guard/hassemu.0",
+    getAbsoluteInstanceDataDir: (): string => data.dir,
     I18n: {
       init: (): Promise<void> => Promise.resolve(),
       getTranslatedObject: (key: string) => ({ en: key }),
@@ -181,15 +184,6 @@ vi.mock("node:os", async importOriginal => {
   });
   return { ...real, networkInterfaces, default: { ...real, networkInterfaces } };
 });
-vi.mock("../lib/data-file", () => ({
-  readDataFile: (dir: string, file: string): { value?: unknown } => {
-    const raw = files.get(`${dir}/${file}`);
-    return raw === undefined ? {} : { value: JSON.parse(raw) as unknown };
-  },
-  writeDataFile: (dir: string, file: string, value: unknown): void => {
-    files.set(`${dir}/${file}`, JSON.stringify(value));
-  },
-}));
 
 import * as mainModule from "../main";
 
@@ -225,6 +219,10 @@ const COUNT_ID = "info.devicesTotal";
 const COUNT = /total|count/i;
 const running: Emu[] = [];
 
+beforeEach(() => {
+  data.dir = mkdtempSync(join(tmpdir(), "hassemu-guard-ha02-"));
+});
+
 afterEach(async () => {
   for (const emu of running.splice(0)) {
     await new Promise<void>(resolve => {
@@ -233,7 +231,8 @@ afterEach(async () => {
   }
   db.objects.clear();
   db.states.clear();
-  files.clear();
+  rmSync(data.dir, { recursive: true, force: true });
+  data.dir = "";
 });
 
 /** io-package.json, read as data. */

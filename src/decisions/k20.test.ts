@@ -12,13 +12,17 @@
  * web server as main.ts starts it runs on the same adapter and registry. HTTP requests by inject from a peer address
  * of the own network, the WebSocket over a real socket on a free port of this machine. The host carries two networks
  * in the mock — 192.168.77.0/24 and 127.0.0.0/8 — so the guard's own socket is a peer of an own network; the data
- * folder is a map in memory, since a guard writes no file.
+ * folder is a fresh folder in the temporary directory, written through the data-folder master as on a host.
  */
 
+import { mkdtempSync, rmSync } from "node:fs";
 import type * as Os from "node:os";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { files } = vi.hoisted(() => ({ files: new Map<string, string>() }));
+/** The instance data folder of the running test. */
+const data = vi.hoisted(() => ({ dir: "" }));
 
 vi.mock("@iobroker/adapter-core", () => {
   const noop = (): void => undefined;
@@ -110,7 +114,7 @@ vi.mock("@iobroker/adapter-core", () => {
   return {
     Adapter,
     EXIT_CODES: { UNCAUGHT_EXCEPTION: 6 },
-    getAbsoluteInstanceDataDir: (): string => "/guard/hassemu.0",
+    getAbsoluteInstanceDataDir: (): string => data.dir,
     I18n: {
       init: (): Promise<void> => Promise.resolve(),
       getTranslatedObject: (key: string) => ({ en: key }),
@@ -155,15 +159,6 @@ vi.mock("node:os", async importOriginal => {
   });
   return { ...real, networkInterfaces, default: { ...real, networkInterfaces } };
 });
-vi.mock("../lib/data-file", () => ({
-  readDataFile: (dir: string, file: string): { value?: unknown } => {
-    const raw = files.get(`${dir}/${file}`);
-    return raw === undefined ? {} : { value: JSON.parse(raw) as unknown };
-  },
-  writeDataFile: (dir: string, file: string, value: unknown): void => {
-    files.set(`${dir}/${file}`, JSON.stringify(value));
-  },
-}));
 
 import * as mainModule from "../main";
 import { ClientRegistry } from "../lib/client-registry";
@@ -205,6 +200,10 @@ const TARGET = "http://192.168.77.20:8082/vis-2/index.html?main";
 const servers: WebServer[] = [];
 const sockets: WebSocket[] = [];
 
+beforeEach(() => {
+  data.dir = mkdtempSync(join(tmpdir(), "hassemu-guard-k20-"));
+});
+
 afterEach(async () => {
   for (const socket of sockets.splice(0)) {
     socket.close();
@@ -212,13 +211,14 @@ afterEach(async () => {
   for (const server of servers.splice(0)) {
     await server.stop();
   }
-  files.clear();
+  rmSync(data.dir, { recursive: true, force: true });
+  data.dir = "";
 });
 
 /** The adapter with its registry and global settings in place and the web server as main.ts starts it. */
 async function adapterWithServer(): Promise<{ emu: Emu; server: WebServer }> {
   const emu = new HassEmu() as unknown as Emu;
-  const registry = new ClientRegistry(emu as never, "/guard/hassemu.0");
+  const registry = new ClientRegistry(emu as never, data.dir);
   await registry.restore();
   emu.registry = registry;
   emu.globalConfig = new GlobalConfig(emu as never);
