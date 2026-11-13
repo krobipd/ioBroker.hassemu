@@ -182,6 +182,12 @@ function memory(): Memory {
       }
       return Promise.resolve();
     },
+    encrypt(value: string): string {
+      return `$/aes-192-cbc:${Buffer.from(value).toString("base64")}`;
+    },
+    decrypt(value: string): string {
+      return Buffer.from(value.replace("$/aes-192-cbc:", ""), "base64").toString();
+    },
   };
   return { adapter, objects, states };
 }

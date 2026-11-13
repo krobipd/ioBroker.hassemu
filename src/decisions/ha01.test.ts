@@ -157,6 +157,12 @@ vi.mock("@iobroker/adapter-core", () => {
     unsubscribeForeignObjectsAsync(): Promise<void> {
       return Promise.resolve();
     }
+    public encrypt(value: string): string {
+      return `$/aes-192-cbc:${Buffer.from(value).toString("base64")}`;
+    }
+    public decrypt(value: string): string {
+      return Buffer.from(value.replace("$/aes-192-cbc:", ""), "base64").toString();
+    }
   }
   return {
     Adapter,

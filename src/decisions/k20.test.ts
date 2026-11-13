@@ -121,6 +121,12 @@ vi.mock("@iobroker/adapter-core", () => {
       this.states.set(this.full(id), { ...next, ts: Date.now(), lc: Date.now() });
       return Promise.resolve({ id: this.full(id), notChanged: false });
     }
+    public encrypt(value: string): string {
+      return `$/aes-192-cbc:${Buffer.from(value).toString("base64")}`;
+    }
+    public decrypt(value: string): string {
+      return Buffer.from(value.replace("$/aes-192-cbc:", ""), "base64").toString();
+    }
   }
   return {
     Adapter,
