@@ -72,6 +72,8 @@ export type RegistryAdapter = AdapterInterface &
     | "setState"
     | "delObjectAsync"
     | "setForeignObject"
+    | "encrypt"
+    | "decrypt"
   >;
 
 const CLIENTS_PREFIX = "clients.";
@@ -310,7 +312,7 @@ export class ClientRegistry {
    * without a valid one a new id is generated.
    */
   async restore(): Promise<void> {
-    const read = readStore(this.dataDir);
+    const read = readStore(this.dataDir, this.adapter);
     if (read.error !== undefined) {
       throw new Error(
         `the stored identities ${join(this.dataDir, STORE_FILE)} cannot be used (${read.error}) — no display was touched`,
@@ -1119,7 +1121,7 @@ export class ClientRegistry {
         ...(record.hostname === null ? {} : { hostname: record.hostname }),
       });
     }
-    writeStore(this.dataDir, this.serverUuid, clients);
+    writeStore(this.dataDir, this.adapter, this.serverUuid, clients);
   }
 
   /**

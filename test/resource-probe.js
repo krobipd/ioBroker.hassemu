@@ -8,6 +8,8 @@
 // id a write handed to the adapter's stateChange (<pid>.delivered, once per id) and every write of the adapter after it
 // called its unload callback (<pid>.unload) — js-controller closes the databases after the callback, such a write is
 // lost; js-controller's own last writes go through its internal client and are not counted.
+// Round 174 (the standard for secrets): it notes every log line of the adapter that carries the clear text of a secret
+// (<pid>.secrets) — see `watchLog` below.
 // Fleet master (.consistency-master/test/resource-probe.js) — never edit the copy in an adapter.
 const fs = require("node:fs");
 const net = require("node:net");
@@ -73,6 +75,78 @@ if (dir) {
       return callback.apply(this, rest);
     };
   };
+  // Round 174 (the standard for secrets, rule sentence S8; ioBroker.docs bestpractices.md: no credentials in the log, at
+  // no level): the clear texts this process knows as secrets — the settings the manifest names in `encryptedNative`
+  // (decrypted in `config` when the adapter emits `ready`) and every text that goes into `encrypt` or comes out of
+  // `decrypt` (the secret fields of the data file, master src/lib/data-file.ts, which encrypts a text as JSON) — and
+  // every log call of the adapter, whatever the instance's log level lets through. A line that carries one is noted
+  // with its level and where the secret is from, never with the text (<pid>.secrets, once per level and source); the
+  // suite "the whole run" of test/fleet-suites.js judges the notes. A text shorter than SECRET_MIN is no evidence: it is
+  // part of too many words. What the watch could follow is noted once per source — that it learned a text from it
+  // ("learn") or that the source carried one too short to follow ("short"), never the text or its length — so a run in
+  // which no log line was held to anything does not read like one in which every line was.
+  const SECRET_MIN = 8;
+  const LOG_LEVELS = ["silly", "debug", "info", "warn", "error"];
+  const LOG_WATCHED = Symbol("resourceProbeLogWatched");
+  const secretLog = path.join(dir, `${process.pid}.secrets`);
+  const secrets = new Map();
+  const noted = new Set();
+  const noteSource = (kind, what) => {
+    if (!noted.has(`${kind} ${what}`)) {
+      noted.add(`${kind} ${what}`);
+      fs.appendFileSync(secretLog, `${JSON.stringify({ t: Date.now(), kind, what })}\n`);
+    }
+  };
+  const knowSecret = (text, from) => {
+    let inner;
+    try {
+      inner = JSON.parse(text);
+    } catch {
+      inner = undefined;
+    }
+    // the secret itself is the text inside the JSON the data file master encrypts, else the text as it stands
+    const core = typeof inner === "string" ? inner : text;
+    if (typeof core === "string" && core !== "") {
+      noteSource(core.length < SECRET_MIN ? "short" : "learn", from);
+    }
+    for (const clear of [text, inner]) {
+      if (typeof clear === "string" && clear.length >= SECRET_MIN && !secrets.has(clear)) {
+        secrets.set(clear, from);
+      }
+    }
+  };
+  const watchLog = adapter => {
+    const log = adapter.log;
+    if (!log || typeof log !== "object" || log[LOG_WATCHED] || typeof adapter.encrypt !== "function") {
+      return;
+    }
+    log[LOG_WATCHED] = true;
+    try {
+      const manifest = JSON.parse(fs.readFileSync(path.join(process.cwd(), "io-package.json"), "utf8"));
+      for (const field of manifest.encryptedNative) {
+        knowSecret(adapter.config?.[field], `the setting ${field}`);
+      }
+    } catch {
+      // no manifest, or one that names no encrypted setting: no setting is a secret
+    }
+    fs.appendFileSync(secretLog, `${JSON.stringify({ t: Date.now(), kind: "watch" })}\n`);
+    for (const level of LOG_LEVELS) {
+      const original = log[level];
+      if (typeof original !== "function") {
+        continue;
+      }
+      log[level] = function watchedLog(...args) {
+        const line = String(args[0]);
+        for (const [clear, what] of secrets) {
+          if (line.includes(clear) && !noted.has(`${level} ${what}`)) {
+            noted.add(`${level} ${what}`);
+            fs.appendFileSync(secretLog, `${JSON.stringify({ t: Date.now(), kind: "log", level, what })}\n`);
+          }
+        }
+        return original.apply(this, args);
+      };
+    }
+  };
   const probeEmit = EventEmitter.prototype.emit;
   EventEmitter.prototype.emit = function handOverEmit(event, ...args) {
     if (event === "stateChange" && typeof args[0] === "string" && args[1] && args[1].ack === false) {
@@ -82,6 +156,8 @@ if (dir) {
       }
     } else if (event === "unload" && typeof args[0] === "function") {
       args[0] = watchUnload(this, args[0]);
+    } else if (event === "ready") {
+      watchLog(this);
     }
     return probeEmit.call(this, event, ...args);
   };
@@ -330,6 +406,22 @@ if (dir) {
             singleReads.set(full, (singleReads.get(full) || 0) + 1);
           }
           return original.call(this, id, ...rest);
+        };
+      }
+      // round 174: encrypt(value) or encrypt(secret, value), decrypt alike — the clear text goes in or comes out
+      for (const method of ["encrypt", "decrypt"]) {
+        const original = cls.prototype[method];
+        if (typeof original !== "function") {
+          continue;
+        }
+        cls.prototype[method] = function (...args) {
+          const out = original.apply(this, args);
+          if (method === "encrypt") {
+            knowSecret(args[1] === undefined ? args[0] : args[1], "a text the adapter encrypted");
+          } else {
+            knowSecret(out, "a text the adapter decrypted");
+          }
+          return out;
         };
       }
     }

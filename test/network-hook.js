@@ -239,7 +239,8 @@ const handOver = (n, response) => {
     return response;
   });
 };
-// 6. It notes every answer a counterpart sends — data on a connection, a datagram, a fetch response — at most one line
+// 6. It notes every answer a counterpart sends — data on a connection, a datagram, a fetch response, and (round 174)
+//    a request that reaches an http server of the adapter — at most one line
 //    per counterpart and second in RESOURCE_PROBE_DIR/<pid>.answers (round 104, krobi 2026-10-03 12:01 for every
 //    listener: if the adapter cannot communicate, that is a fatal error — whether the adapter still
 //    talks to anything is whether an answer still arrives, not whether it still sends).
@@ -820,6 +821,13 @@ function cutServerEmit(event, ...args) {
       noteAdvert("tcp", chunk);
       return write.call(this, chunk, ...rest);
     };
+  }
+  // Round 174: a request that reaches an http server of the adapter is something a client sent in on the adapter's own
+  // port. Node's parser reads it off the handle, so no "data" event of the socket shows it — noted here with that port
+  // under a kind of its own: the suite "a taken port" reads where a start was first asked something over a port, and
+  // a request the adapter serves is no answer of a counterpart — no reader counts an "asked" line as a path.
+  if ((event === "request" || event === "upgrade") && args[0]?.socket instanceof net.Socket) {
+    answer("asked", args[0].socket.remoteAddress, args[0].socket.remotePort, args[0].socket.localPort);
   }
   return serverEmit.call(this, event, ...args);
 }

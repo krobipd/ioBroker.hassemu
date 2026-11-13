@@ -24,6 +24,7 @@ vi.mock("@iobroker/adapter-core", async () => {
   const { brokerExtend, brokerDelObject, brokerGetStates } = await import("../test/unit/broker-stub.js");
   const { realI18n } = await import("../test/unit/i18n-stub.js");
   const { freshDataDir } = await import("../test/unit/data-dir.js");
+  const { TEST_CIPHER } = await import("../test/unit/cipher.js");
   // The real exit codes (the value js-controller reads), not a copy that could drift.
   const { EXIT_CODES } = await import("@iobroker/adapter-core/exitCodes");
   interface ObjEntry {
@@ -232,6 +233,11 @@ vi.mock("@iobroker/adapter-core", async () => {
       return Promise.resolve([this.certificates, false]);
     }
 
+    /** The platform's cipher (adapter.encrypt) — the data file seals each secret field with it. */
+    encrypt = TEST_CIPHER.encrypt;
+    /** The platform's cipher (adapter.decrypt). */
+    decrypt = TEST_CIPHER.decrypt;
+
     // adapter-core: terminate(reason?, exitCode?) — also accepts the code alone.
     terminate(reasonOrCode?: string | number, code?: number): void {
       this.terminations.push(typeof reasonOrCode === "number" ? reasonOrCode : (code ?? 0));
@@ -259,6 +265,7 @@ import { migrateLegacyDefaultVisUrl, migrateVisUrlToMode, type MigrationAdapter 
 import type { TlsSetup } from "./lib/tls";
 import type { AdapterConfig } from "./lib/types";
 import iobrokerPackage from "../io-package.json";
+import { TEST_CIPHER } from "../test/unit/cipher";
 import { removeDataDirs } from "../test/unit/data-dir";
 
 /**
@@ -268,7 +275,7 @@ import { removeDataDirs } from "../test/unit/data-dir";
  * @param clients Display id → entry.
  */
 function rewriteClients(dir: string, clients: ReadonlyMap<string, StoredClient>): void {
-  writeStore(dir, readStore(dir).server ?? crypto.randomUUID(), clients);
+  writeStore(dir, TEST_CIPHER, readStore(dir, TEST_CIPHER).server ?? crypto.randomUUID(), clients);
 }
 
 afterAll(removeDataDirs);
@@ -847,7 +854,7 @@ describe("server id (design decision 2, B3: it lives in the data file)", () => {
 
     await s.internal.onReady();
 
-    expect(readStore(s.stub.dataDir).server).toBe(existing);
+    expect(readStore(s.stub.dataDir, TEST_CIPHER).server).toBe(existing);
     expect(seen.web, "the web server gets the moved id").toEqual([existing]);
     expect(seen.mdns, "mDNS gets the same id").toEqual([existing]);
     expect(s.stub.objects.has("hassemu.0.info.serverUuid"), "no second copy").toBe(false);
@@ -858,7 +865,7 @@ describe("server id (design decision 2, B3: it lives in the data file)", () => {
     const first = setup();
     const seenFirst = captureIds(first);
     await first.internal.onReady();
-    const generated = readStore(first.stub.dataDir).server;
+    const generated = readStore(first.stub.dataDir, TEST_CIPHER).server;
     expect(generated).toMatch(UUID);
     expect(seenFirst.web).toEqual([generated]);
 
@@ -873,7 +880,7 @@ describe("server id (design decision 2, B3: it lives in the data file)", () => {
     const s = setup();
     s.stub.states.set("hassemu.0.info.serverUuid", { val: "not-a-uuid", ack: true });
     await s.internal.onReady();
-    const server = readStore(s.stub.dataDir).server;
+    const server = readStore(s.stub.dataDir, TEST_CIPHER).server;
     expect(server).toMatch(UUID);
     expect(server).not.toBe("not-a-uuid");
   });
@@ -882,11 +889,11 @@ describe("server id (design decision 2, B3: it lives in the data file)", () => {
     const s = setup();
     const seen = captureIds(s);
     const stored = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
-    writeStore(s.stub.dataDir, stored, new Map());
+    writeStore(s.stub.dataDir, TEST_CIPHER, stored, new Map());
     s.stub.states.set("hassemu.0.info.serverUuid", { val: "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb", ack: true });
     await s.internal.onReady();
     expect(seen.web).toEqual([stored]);
-    expect(readStore(s.stub.dataDir).server).toBe(stored);
+    expect(readStore(s.stub.dataDir, TEST_CIPHER).server).toBe(stored);
   });
 
   it("a READ error is not a fresh install: the start fails and no id is written (N4, K16)", async () => {
@@ -901,7 +908,7 @@ describe("server id (design decision 2, B3: it lives in the data file)", () => {
 
     expect(s.stub.terminations).toEqual([6]);
     expect(logsOf(s.stub, "error").some(m => m.includes("states db not ready"))).toBe(true);
-    expect(readStore(s.stub.dataDir).server, "no new identity").toBeUndefined();
+    expect(readStore(s.stub.dataDir, TEST_CIPHER).server, "no new identity").toBeUndefined();
   });
 });
 
@@ -1377,7 +1384,7 @@ describe("gcStaleClients", () => {
     lastSeen: number | undefined,
     tokens: Partial<Pick<StoredClient, "token" | "tokenExpiresAt" | "refreshToken">> = {},
   ): void {
-    const stored = readStore(stub.dataDir).clients;
+    const stored = readStore(stub.dataDir, TEST_CIPHER).clients;
     stored.set(id, {
       cookie: crypto.randomUUID(),
       token: null,
@@ -1407,7 +1414,7 @@ describe("gcStaleClients", () => {
     await internal.gcStaleClients();
 
     expect(internal.registry.getById("a1")).not.toBeNull();
-    expect(typeof readStore(stub.dataDir).clients.get("a1")?.lastSeen).toBe("number");
+    expect(typeof readStore(stub.dataDir, TEST_CIPHER).clients.get("a1")?.lastSeen).toBe("number");
   });
 
   it("stale client (30d behind the most recently seen display) is removed with an info log", async () => {

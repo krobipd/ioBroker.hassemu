@@ -6,11 +6,13 @@ import {
   hasLegacyNative,
   LEGACY_NATIVE_KEYS,
   readStore,
+  SECRET_FIELDS,
   STORE_FILE,
   storedClientFrom,
   type StoredClient,
   writeStore,
 } from "./client-store";
+import { TEST_CIPHER } from "../../test/unit/cipher";
 
 const COOKIE = "11111111-2222-4333-8444-555555555555";
 const TOKEN = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
@@ -70,13 +72,14 @@ describe("hasLegacyNative", () => {
 
 describe("readStore / writeStore", () => {
   it("reads nothing before the first write", () => {
-    expect(readStore(dir)).toEqual({ clients: new Map() });
+    expect(readStore(dir, TEST_CIPHER)).toEqual({ clients: new Map() });
   });
 
   it("reads back the server id and the displays, sorted by display id", () => {
     const entry: StoredClient = { cookie: COOKIE, token: null, tokenExpiresAt: null, refreshToken: null };
     writeStore(
       dir,
+      TEST_CIPHER,
       SERVER,
       new Map<string, StoredClient>([
         ["b2b2b2", entry],
@@ -86,7 +89,7 @@ describe("readStore / writeStore", () => {
     const raw = JSON.parse(readFileSync(join(dir, STORE_FILE), "utf8")) as { server: string; displays: object };
     expect(raw.server).toBe(SERVER);
     expect(Object.keys(raw.displays)).toEqual(["a1a1a1", "b2b2b2"]);
-    const read = readStore(dir);
+    const read = readStore(dir, TEST_CIPHER);
     expect(read.server).toBe(SERVER);
     expect(read.clients).toEqual(
       new Map<string, StoredClient>([
@@ -96,12 +99,61 @@ describe("readStore / writeStore", () => {
     );
   });
 
+  it("seals the cookie and both tokens, and leaves the server id, the expiry and lastSeen as they are (S7)", () => {
+    const entry: StoredClient = {
+      cookie: COOKIE,
+      token: TOKEN,
+      tokenExpiresAt: 5,
+      refreshToken: TOKEN.replace("a", "b"),
+      lastSeen: 7,
+    };
+    writeStore(dir, TEST_CIPHER, SERVER, new Map([["a1a1a1", entry]]));
+    const text = readFileSync(join(dir, STORE_FILE), "utf8");
+    expect(text).not.toContain(COOKIE);
+    expect(text).not.toContain(TOKEN);
+    const raw = JSON.parse(text) as { server: string; displays: Record<string, Record<string, unknown>> };
+    expect(raw.server).toBe(SERVER);
+    const stored = raw.displays.a1a1a1;
+    for (const field of SECRET_FIELDS) {
+      expect(Object.keys(stored[field] as object), field).toEqual(["$encrypted"]);
+    }
+    expect({ tokenExpiresAt: stored.tokenExpiresAt, lastSeen: stored.lastSeen }).toEqual({
+      tokenExpiresAt: 5,
+      lastSeen: 7,
+    });
+    expect(readStore(dir, TEST_CIPHER).clients.get("a1a1a1")).toEqual(entry);
+  });
+
+  it("reads a file from before with the secrets in clear text, and writes it back sealed at once", () => {
+    writeFileSync(
+      join(dir, STORE_FILE),
+      JSON.stringify({ server: SERVER, displays: { a1a1a1: { cookie: COOKIE, token: TOKEN, refreshToken: null } } }),
+    );
+    expect(readStore(dir, TEST_CIPHER).clients.get("a1a1a1")).toMatchObject({ cookie: COOKIE, token: TOKEN });
+    const text = readFileSync(join(dir, STORE_FILE), "utf8");
+    expect(text).not.toContain(COOKIE);
+    expect(text).not.toContain(TOKEN);
+  });
+
+  it("calls a file unusable whose secret cannot be decrypted — never a file without displays", () => {
+    writeStore(
+      dir,
+      TEST_CIPHER,
+      SERVER,
+      new Map([["a1a1a1", { cookie: COOKIE, token: null, tokenExpiresAt: null, refreshToken: null }]]),
+    );
+    const otherKey = { encrypt: TEST_CIPHER.encrypt, decrypt: (): string => "garbage" };
+    const read = readStore(dir, otherKey);
+    expect(read.error).toMatch(/cookie cannot be decrypted/);
+    expect(read.server).toBeUndefined();
+  });
+
   it("leaves out an entry without a usable cookie and keeps the rest", () => {
     writeFileSync(
       join(dir, STORE_FILE),
       JSON.stringify({ server: SERVER, displays: { good01: { cookie: COOKIE }, bad001: { cookie: "x" } } }),
     );
-    expect([...readStore(dir).clients.keys()]).toEqual(["good01"]);
+    expect([...readStore(dir, TEST_CIPHER).clients.keys()]).toEqual(["good01"]);
   });
 
   it("names why a file it cannot use is unusable — a file without a valid server id too (design decision 2)", () => {
@@ -114,7 +166,7 @@ describe("readStore / writeStore", () => {
     ];
     for (const [content, error] of cases) {
       writeFileSync(join(dir, STORE_FILE), content);
-      const read = readStore(dir);
+      const read = readStore(dir, TEST_CIPHER);
       expect(read.server, content).toBe(undefined);
       if (typeof error === "string") {
         expect(read.error, content).toBe(error);

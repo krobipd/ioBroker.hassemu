@@ -247,11 +247,21 @@ async function watchObjectWrites(harness) {
     // writable: setStateChangedAsync) — a write that changes nothing is a finding. Compared is what js-controller
     // 7.2.2 compares in setStateChangedAsync: val strictly, ack, q, c; an object value always counts as changed.
     // Round 104 (krobi 2026-09-29: adapters waste no resources, GV-05): every state, not only `indicator.*`.
+    // Round 174 (a responder's report of 2026-11-12): a write of another — the user choosing the value that stands, with
+    // ack false — changes what the database holds, and the adapter's confirmation after it is a change, as
+    // setStateChangedAsync judges it. It moves the compared state of an id the adapter wrote in this start and is never
+    // a finding itself; an id the adapter has not written yet stays without one (a seed, a value from before the restart).
     harness.on("stateChange", (id, state) => {
-        if (!id.startsWith(NS) || !state || state.from !== `system.adapter.${ADAPTER}.0`) {
+        if (!id.startsWith(NS) || !state) {
             return;
         }
         const now = state.val !== null && typeof state.val === "object" ? null : canonical([state.val, state.ack, state.q, state.c]);
+        if (state.from !== `system.adapter.${ADAPTER}.0`) {
+            if (states.has(id)) {
+                states.set(id, now);
+            }
+            return;
+        }
         if (now !== null && states.get(id) === now) {
             watch.unchangedStates.push(id);
         }
@@ -350,18 +360,82 @@ function dataFolder(harness) {
     return path.join(internals(harness).testDir, "iobroker-data", `${ADAPTER}.0`);
 }
 
+// identities.json seals the cookie and both tokens of every display (fleet secrets standard, round 174, S7): the master
+// src/lib/data-file.ts stores such a field as `{ "$encrypted": adapter.encrypt(<the text as JSON>) }`, and
+// adapter.encrypt is js-controller's tools.encrypt with the system secret of the installation — aes-192-cbc, stored as
+// `$/aes-192-cbc:<iv>:<data>` in hex (js-controller-common-db 7.2.x, lib/common/tools.js encrypt/decrypt). The run
+// reads a display's cookie the way the adapter does, with the secret of its test installation.
+const crypto = require("node:crypto");
+const SEALED_PREFIX = "$/aes-192-cbc:";
+
+/**
+ * The system secret of the test installation — the key of adapter.encrypt and adapter.decrypt (`system.config`
+ * native.secret).
+ *
+ * @param {import("@iobroker/testing").IntegrationTestHarness} harness
+ * @returns {Promise<string>} the secret, 48 hex characters
+ */
+async function systemSecret(harness) {
+    const secret = (await harness.objects.getObjectAsync("system.config"))?.native?.secret;
+    assert.ok(typeof secret === "string" && /^[0-9a-f]{48}$/.test(secret), "the test installation has no system secret");
+    return secret;
+}
+
+/**
+ * A text in the form the master stores a secret field in.
+ *
+ * @param {string} secret the system secret
+ * @param {string} text the clear text
+ * @returns {{ $encrypted: string }} the sealed field
+ */
+function sealedField(secret, text) {
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv("aes-192-cbc", Buffer.from(secret, "hex"), iv);
+    const data = Buffer.concat([cipher.update(JSON.stringify(text)), cipher.final()]);
+    return { $encrypted: `${SEALED_PREFIX}${iv.toString("hex")}:${data.toString("hex")}` };
+}
+
+/**
+ * The clear text of a secret field the master sealed — a field in any other form is a failure of the run.
+ *
+ * @param {string} secret the system secret
+ * @param {unknown} field the field as identities.json holds it
+ * @returns {string} the clear text
+ */
+function unsealedField(secret, field) {
+    const sealed = field !== null && typeof field === "object" ? /** @type {Record<string, unknown>} */ (field).$encrypted : undefined;
+    assert.ok(typeof sealed === "string" && sealed.startsWith(SEALED_PREFIX), "a cookie in identities.json is not sealed by the master");
+    const [, iv, data] = sealed.split(":", 3);
+    const decipher = crypto.createDecipheriv("aes-192-cbc", Buffer.from(secret, "hex"), Buffer.from(iv, "hex"));
+    return JSON.parse(Buffer.concat([decipher.update(Buffer.from(data, "hex")), decipher.final()]).toString("utf8"));
+}
+
+/**
+ * Display id → its cookie, as identities.json holds them; empty before the adapter wrote the file.
+ *
+ * @param {import("@iobroker/testing").IntegrationTestHarness} harness
+ * @returns {Promise<Record<string, string>>} the cookies
+ */
+async function storedCookies(harness) {
+    const file = path.join(dataFolder(harness), "identities.json");
+    if (!fs.existsSync(file)) {
+        return {};
+    }
+    /** @type {{ displays?: Record<string, { cookie?: unknown }> }} */
+    const stored = JSON.parse(fs.readFileSync(file, "utf8"));
+    const secret = await systemSecret(harness);
+    return Object.fromEntries(Object.entries(stored.displays ?? {}).map(([id, entry]) => [id, unsealedField(secret, entry.cookie)]));
+}
+
 /**
  * The display that holds `cookie` in identities.json, or undefined.
  *
  * @param {import("@iobroker/testing").IntegrationTestHarness} harness
  * @param {string} cookie the cookie
- * @returns {string | undefined} the display id
+ * @returns {Promise<string | undefined>} the display id
  */
-function displayOfCookie(harness, cookie) {
-    const file = path.join(dataFolder(harness), "identities.json");
-    /** @type {{ displays?: Record<string, { cookie?: unknown }> }} */
-    const stored = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : {};
-    return Object.entries(stored.displays ?? {}).find(([, entry]) => entry.cookie === cookie)?.[0];
+async function displayOfCookie(harness, cookie) {
+    return Object.entries(await storedCookies(harness)).find(([, stored]) => stored === cookie)?.[0];
 }
 
 /**
@@ -377,18 +451,16 @@ function displayOfCookie(harness, cookie) {
  * @returns {Promise<string | null>} the cookie, or null
  */
 async function knownCookie(harness, ip, n) {
-    const file = path.join(dataFolder(harness), "identities.json");
-    /** @type {{ displays?: Record<string, { cookie?: unknown }> }} */
-    const stored = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : {};
+    const cookies = await storedCookies(harness);
     const prefix = `${NS}clients.`;
     const rows = (await harness.objects.getObjectList({ startkey: prefix, endkey: `${prefix}香` })).rows;
     for (const row of rows.filter((r) => r.value?.type === "device")) {
-        const cookie = stored.displays?.[row.id.slice(prefix.length)]?.cookie;
+        const cookie = cookies[row.id.slice(prefix.length)];
         if (typeof cookie === "string" && (await harness.states.getStateAsync(`${row.id}.ip`))?.val === ip) {
             return cookie;
         }
     }
-    return displayOfCookie(harness, fixtureCookie(n)) !== undefined ? fixtureCookie(n) : null;
+    return Object.values(cookies).includes(fixtureCookie(n)) ? fixtureCookie(n) : null;
 }
 
 /**
@@ -667,6 +739,9 @@ function formerDisplay(shortId) {
  * its address or its reverse-DNS name. Then its shape is applied (mode, manual URL, sign-in; only what differs) and it
  * comes back, so the resolver, the per-display states and the probe of its redirect target run too. The 1.x display
  * comes back with its cookie as well. Under INVENTORY_RENAME=1 a display with `renamedPtr` is named after that.
+ * The suite of wrong answers plays this feed again alongside every restart (round 174), so a request the adapter
+ * only makes because the feed asked it meets the wrong answer too — what the feed asks before its first wait is
+ * asked while the wrong answers hold, and an error of the feed there is a line of the run, never a verdict.
  *
  * @param {import("@iobroker/testing").IntegrationTestHarness} harness
  */
@@ -682,7 +757,7 @@ async function feedFixtures(harness) {
         // a known display gets no new Set-Cookie — its identity is the one it sent
         const cookie = known ?? first.cookie;
         assert.ok(cookie, `fixture display ${index + 1}: the adapter set no cookie`);
-        const id = displayOfCookie(harness, cookie);
+        const id = await displayOfCookie(harness, cookie);
         assert.ok(id, `fixture display ${index + 1}: no display in identities.json holds its cookie`);
         await setDisplay(harness, `${NS}clients.${id}.mode`, display.mode);
         if (display.manualUrl) {
@@ -905,7 +980,7 @@ async function feedReservedNames(harness) {
     const ip = "192.0.2.60";
     const first = await request("GET", "/", { ip, userAgent });
     assert.ok(first.cookie, "the display that names the model info got no cookie");
-    const id = displayOfCookie(harness, first.cookie);
+    const id = await displayOfCookie(harness, first.cookie);
     assert.ok(id, "no display in identities.json holds the cookie of the display that names the model info");
     const token = await onboard(first.cookie, ip, userAgent);
     const registration = await request("POST", "/api/mobile_app/registrations", {
@@ -1226,7 +1301,7 @@ async function seedInstanceData(harness, previous) {
     // and lastSeen. 1.46.1 — a dump whose devices still carry native.cookie — held nothing there: nothing is written, and
     // the start takes the identities over from the device objects as every 1.46.1 installation does. A later dump: the
     // file as that release wrote it for the fixture setup — every display under its id with its fixture cookie (the four
-    // characters of its id are its place in the fixtures, test/inventory-id-hook.cjs), no tokens.
+    // characters of its id are its place in the fixtures, test/inventory-id-hook.cjs), sealed by the master, no tokens.
     const prefix = `${NS}clients.`;
     const devices = Object.entries(previous).filter(
         ([id, obj]) => id.startsWith(prefix) && !id.slice(prefix.length).includes(".") && obj?.type === "device",
@@ -1236,12 +1311,13 @@ async function seedInstanceData(harness, previous) {
     }
     /** @type {Record<string, object>} */
     const displays = {};
+    const secret = await systemSecret(harness);
     for (const [id] of devices) {
         const shortId = id.slice(prefix.length);
         const tail = /^display-([0-9a-f]{4})$/.exec(shortId)?.[1];
         const cookie = shortId === LEGACY.movedId ? LEGACY.cookie : tail ? fixtureCookie(parseInt(tail, 16)) : undefined;
         if (cookie) {
-            displays[shortId] = { cookie, token: null, tokenExpiresAt: null, refreshToken: null, lastSeen: Date.now() };
+            displays[shortId] = { cookie: sealedField(secret, cookie), token: null, tokenExpiresAt: null, refreshToken: null, lastSeen: Date.now() };
         }
     }
     fs.mkdirSync(dataFolder(harness), { recursive: true });
@@ -1935,12 +2011,19 @@ function fileWrites() {
 
 /**
  * Round 104: every answer a counterpart sent (`<pid>.answers`, test/network-hook.js) from `from` until `until`, with the
- * adapter's own port it came in on (`local`).
+ * adapter's own port it came in on (`local`). Round 174: with `own` ports, a process counts only until something came in
+ * on one of them — what the adapter asks a counterpart because a client asked the adapter over its own port is no path
+ * of its own once another program holds that port. A request that reached an http server of the adapter (kind
+ * `asked`) marks that place and is never returned: the adapter serves it, no counterpart answered with it.
  */
-function readAnswers(from, until = Infinity) {
+function readAnswers(from, until = Infinity, own = new Set()) {
     return fs.readdirSync(RESOURCE_DIR)
         .filter((f) => f.endsWith(".answers"))
-        .flatMap((f) => fs.readFileSync(path.join(RESOURCE_DIR, f), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)))
+        .flatMap((f) => {
+            const all = fs.readFileSync(path.join(RESOURCE_DIR, f), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+            const asked = all.findIndex((a) => own.has(a.local));
+            return (asked < 0 ? all : all.slice(0, asked)).filter((a) => a.kind !== "asked");
+        })
         .filter((a) => a.t >= from && a.t < until);
 }
 
@@ -2196,8 +2279,10 @@ tests.integration(ADAPTER_DIR, {
                     const via = (answers) => [...new Set(answers.filter((a) => !taken.has(a.local) && !shared.has(a.local)).map((a) => `${a.kind} ${a.host}:${a.port} answers`))];
                     const open = networkUse(seen).filter((r) => (r.kind === "listen" || r.kind === "bind") && plan.others.includes(r.port)).map((r) => `listens on ${r.port}`);
                     // the suites before this one ran with the port free: what answered there on another port is a path too —
-                    // an adapter that stops at once never gets to show it here
-                    verdict = { plan, stopped: harness.didAdapterStop(), exit: harness.adapterExit, paths: [...open, ...via(readAnswers(since))], before: via(readAnswers(0, since)),
+                    // an adapter that stops at once never gets to show it here. Round 174: of each start there only what
+                    // answered before anything came in on a taken port — a request the adapter makes because a client
+                    // asked it something over that port has no way left once another program holds the port
+                    verdict = { plan, stopped: harness.didAdapterStop(), exit: harness.adapterExit, paths: [...open, ...via(readAnswers(since))], before: via(readAnswers(0, since, taken)),
                         errors: harness.getLogs().filter((l) => l.level === "error" && l.from === `${ADAPTER}.0`) };
                 });
                 after(() => releasePorts(held));
@@ -2280,7 +2365,7 @@ tests.integration(ADAPTER_DIR, {
                     hostname: (await harness.objects.getObjectAsync(`${base}.hostname`)) ?? null,
                     mode: (await harness.states.getStateAsync(`${base}.mode`))?.val,
                     manualUrl: (await harness.states.getStateAsync(`${base}.manualUrl`))?.val,
-                    recognised: displayOfCookie(harness, LEGACY.cookie),
+                    recognised: await displayOfCookie(harness, LEGACY.cookie),
                 };
             });
 
@@ -2720,7 +2805,7 @@ tests.integration(ADAPTER_DIR, {
                             wrong.push(`${origin} → ${ids.join(", ")}: one recording on several datapoints`);
                         } else if (ids[0] !== origin && live[origin]?.type === "state") {
                             wrong.push(`${origin} → ${ids[0]}: copied while ${origin} lives on`);
-                        } else if (ids[0] !== origin && live[ids[0]].common?.type !== previous[origin]?.common?.type) {
+                        } else if (ids[0] !== origin && MOVES[origin] !== ids[0] && live[ids[0]].common?.type !== previous[origin]?.common?.type) {
                             wrong.push(`${origin} → ${ids[0]}: another value type — a new datapoint, not the same one moved`);
                         }
                     }
@@ -2731,6 +2816,10 @@ tests.integration(ADAPTER_DIR, {
                         }
                     }
                     // A state the release moves under a new id (MOVES) takes its recording along (krobi 2026-09-02).
+                    // Round 174 (a responder 2026-11-12: a state that moved and changed its value type in one release had
+                    // no green way): the move the adapter declares is the same datapoint — the value-type line above
+                    // judges only a recording that landed on another id without one; the type change itself is the
+                    // tree's to judge (A14 G8).
                     for (const [from, to] of Object.entries(MOVES)) {
                         if (previous[from]?.type === "state" && !carriers.get(from)?.includes(to)) {
                             wrong.push(`${from} → ${to}: its recording did not move with the datapoint`);

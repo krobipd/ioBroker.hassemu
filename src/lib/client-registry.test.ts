@@ -26,6 +26,7 @@ import {
 } from "./constants";
 import type { ClientRecord } from "./types";
 import { brokerDelObject, brokerExtend, brokerGetStates } from "../../test/unit/broker-stub";
+import { TEST_CIPHER } from "../../test/unit/cipher";
 import { freshDataDir, removeDataDirs } from "../../test/unit/data-dir";
 
 /**
@@ -35,7 +36,7 @@ import { freshDataDir, removeDataDirs } from "../../test/unit/data-dir";
  * @param clients Display id → entry.
  */
 function rewriteClients(dir: string, clients: ReadonlyMap<string, StoredClient>): void {
-  writeStore(dir, readStore(dir).server ?? crypto.randomUUID(), clients);
+  writeStore(dir, TEST_CIPHER, readStore(dir, TEST_CIPHER).server ?? crypto.randomUUID(), clients);
 }
 
 afterAll(removeDataDirs);
@@ -47,7 +48,7 @@ afterAll(removeDataDirs);
  * @param id    Display id.
  */
 const storedEntry = (store: MockStore, id: string): StoredClient | undefined =>
-  readStore(store.dataDir).clients.get(id);
+  readStore(store.dataDir, TEST_CIPHER).clients.get(id);
 
 /**
  * Resolve a `common.name` to its plain text, whichever form it carries.
@@ -125,9 +126,13 @@ function createMockAdapter(namespace = "hassemu.0"): {
       value: { val: unknown; ack?: boolean },
     ) => Promise<{ id: string; notChanged: boolean }>;
     delObjectAsync: (id: string, options?: { recursive?: boolean }) => Promise<void>;
+    encrypt: (value: string) => string;
+    decrypt: (value: string) => string;
   } {
     return {
       namespace,
+      encrypt: TEST_CIPHER.encrypt,
+      decrypt: TEST_CIPHER.decrypt,
       log: {
         silly: (m: string) => void store.logs.push({ level: "silly", msg: m }),
         debug: (m: string) => void store.logs.push({ level: "debug", msg: m }),
@@ -1454,7 +1459,7 @@ describe("ClientRegistry", () => {
       };
       const localReg = new ClientRegistry(localBuilt.adapter as never, localBuilt.store.dataDir);
       await expect(localReg.restore()).rejects.toThrow("simulated broker hiccup mid-restore");
-      expect(readStore(localBuilt.store.dataDir).clients.size, "no data file was written").to.equal(0);
+      expect(readStore(localBuilt.store.dataDir, TEST_CIPHER).clients.size, "no data file was written").to.equal(0);
       expect(localBuilt.store.objects.get("hassemu.0.clients.bravo")?.native?.cookie, "the cookie stays").to.equal(
         cookieB,
       );
@@ -1492,7 +1497,7 @@ describe("ClientRegistry", () => {
       const built = createMockAdapter();
       const reg = new ClientRegistry(built.adapter as never, built.store.dataDir);
       reg.seedLastSeen("foo", 9999);
-      expect(readStore(built.store.dataDir).clients.size).to.equal(0);
+      expect(readStore(built.store.dataDir, TEST_CIPHER).clients.size).to.equal(0);
     });
   });
 
@@ -2170,7 +2175,7 @@ describe("ClientRegistry data file — cookie, tokens and lastSeen out of the ob
       refreshToken: null,
       lastSeen: Date.now() - 5000,
     };
-    const stored = readStore(built.store.dataDir).clients;
+    const stored = readStore(built.store.dataDir, TEST_CIPHER).clients;
     stored.set(id, entry);
     rewriteClients(built.store.dataDir, stored);
     built.store.objects.set(`hassemu.0.clients.${id}`, {
@@ -2290,7 +2295,7 @@ describe("ClientRegistry data file — cookie, tokens and lastSeen out of the ob
 
     await reg.restore();
 
-    expect([...readStore(built.store.dataDir).clients.keys()]).to.deep.equal(["keep01"]);
+    expect([...readStore(built.store.dataDir, TEST_CIPHER).clients.keys()]).to.deep.equal(["keep01"]);
   });
 
   it("objects that cannot be listed fail the start and cost no stored identity (K16)", async () => {
@@ -2420,7 +2425,7 @@ describe("ClientRegistry start cost (audit 2026-09-15 — C1, C2, D1)", () => {
    */
   function seedDisplay(built: Bundle, id: string, lastSeen: number): string {
     const cookie = crypto.randomUUID();
-    const stored = readStore(built.store.dataDir).clients;
+    const stored = readStore(built.store.dataDir, TEST_CIPHER).clients;
     stored.set(id, { cookie, token: null, tokenExpiresAt: null, refreshToken: null, lastSeen });
     rewriteClients(built.store.dataDir, stored);
     built.store.objects.set(`hassemu.0.clients.${id}`, {
@@ -2452,7 +2457,7 @@ describe("ClientRegistry start cost (audit 2026-09-15 — C1, C2, D1)", () => {
     }
     const counts = count(built);
     const inode = fileInode(built);
-    const storedBefore = readStore(built.store.dataDir);
+    const storedBefore = readStore(built.store.dataDir, TEST_CIPHER);
     const reg = new ClientRegistry(built.adapter as never, built.store.dataDir);
     await reg.restore();
 
@@ -2460,7 +2465,9 @@ describe("ClientRegistry start cost (audit 2026-09-15 — C1, C2, D1)", () => {
     expect(writes(counts), JSON.stringify(counts)).to.equal(0);
     // The one file write of the start is its check that the identities can be stored (K16, ST1) — same content.
     expect(fileInode(built), "the start writes the data file once as its check").to.not.equal(inode);
-    expect(readStore(built.store.dataDir), "with the same server id and identities").to.deep.equal(storedBefore);
+    expect(readStore(built.store.dataDir, TEST_CIPHER), "with the same server id and identities").to.deep.equal(
+      storedBefore,
+    );
     expect(counts.getStateAsync ?? 0, "no single read").to.equal(0);
     expect(counts.getStatesAsync, "one read of every state").to.equal(1);
     expect(counts.getObjectAsync ?? 0).to.be.at.most(N);

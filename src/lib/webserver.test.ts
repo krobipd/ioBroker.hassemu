@@ -56,6 +56,7 @@ import type { TargetProbe } from "./target-health";
 import { buildTls } from "./tls";
 import type { AdapterConfig } from "./types";
 import { brokerDelObject, brokerExtend, brokerGetStates } from "../../test/unit/broker-stub";
+import { TEST_CIPHER } from "../../test/unit/cipher";
 import { freshDataDir, removeDataDirs } from "../../test/unit/data-dir";
 
 afterAll(removeDataDirs);
@@ -81,6 +82,8 @@ interface MockStore {
 
 interface MockAdapterApi {
   namespace: string;
+  encrypt(value: string): string;
+  decrypt(value: string): string;
   log: {
     silly(m: string): void;
     debug(m: string): void;
@@ -120,6 +123,8 @@ function createMockAdapter(namespace = "hassemu.0"): {
   function build(): MockAdapterApi {
     return {
       namespace,
+      encrypt: TEST_CIPHER.encrypt,
+      decrypt: TEST_CIPHER.decrypt,
       log: {
         silly: (m: string) => store.logs.push({ level: "silly", msg: m }),
         debug: (m: string) => store.logs.push({ level: "debug", msg: m }),

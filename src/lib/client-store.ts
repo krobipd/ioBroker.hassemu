@@ -14,12 +14,18 @@
  * `clients.<id>.native` — each token grant and the hourly lastSeen stamp was an object write, and every object
  * dump showed the secrets.
  *
+ * Werkbank standard of round 174 (CLAUDE_PATTERNS § Geheimnisse, S3 and S7; krobi 2026-11-11 18:20 „es soll sicher und
+ * nativ sein“): a secret never stands in clear text in that file either. The cookie and both tokens are the fields the
+ * fleet master seals with the platform's own cipher (`adapter.encrypt`); a file from before, with them in clear text,
+ * is read and written back sealed at once. The server id is no secret — every display learns it from the network
+ * announcement — and stays as it is.
+ *
  * Keyed by the display id, not by the cookie: an id is unique by construction (display-id.ts), and the restore
  * finds a display's entry from its device object.
  */
 
 import { coerceDeviceName, coerceHostname, coerceUuid, isPlainObject } from "./coerce";
-import { readDataFile, writeDataFile } from "./data-file";
+import { type DataFileCipher, type DataFileSecrets, readDataFile, writeDataFile } from "./data-file";
 
 /**
  * A stored time stamp: a finite number, never a string form — the file and the objects only ever held numbers.
@@ -31,6 +37,16 @@ const finiteNumber = (value: unknown): number | undefined =>
 
 /** The file in the instance data folder. */
 export const STORE_FILE = "identities.json";
+
+/** The fields of a display's entry that hold a secret — the master seals each of them (S7). */
+export const SECRET_FIELDS = ["cookie", "token", "refreshToken"] as const;
+
+/**
+ * The secret fields of the file and who seals them.
+ *
+ * @param cipher the adapter instance
+ */
+const secretsOf = (cipher: DataFileCipher): DataFileSecrets => ({ cipher, fields: SECRET_FIELDS });
 
 /** The keys an earlier version kept in `clients.<id>.native` — taken over once, then removed from the object. */
 export const LEGACY_NATIVE_KEYS = ["cookie", "token", "tokenExpiresAt", "refreshToken", "lastSeen"] as const;
@@ -110,12 +126,13 @@ export function hasLegacyNative(native: Record<string, unknown>): boolean {
  * Read the file.
  *
  * @param dir the instance data folder
+ * @param cipher the adapter instance — it decrypts the secret fields
  * @returns the server id and every usable entry (an entry without a usable cookie is left out), or the reason the
  *   file is unusable — a file without a valid server id is unusable: generating a new one would make every display
  *   onboard again
  */
-export function readStore(dir: string): StoreRead {
-  const read = readDataFile(dir, STORE_FILE);
+export function readStore(dir: string, cipher: DataFileCipher): StoreRead {
+  const read = readDataFile(dir, STORE_FILE, secretsOf(cipher));
   const clients = new Map<string, StoredClient>();
   if (read.error !== undefined) {
     return { clients, error: read.error };
@@ -144,16 +161,22 @@ export function readStore(dir: string): StoreRead {
 }
 
 /**
- * Write the file — the server id and every entry, sorted by display id, as one replacement.
+ * Write the file — the server id and every entry, sorted by display id, as one replacement, each secret field sealed.
  *
  * @param dir the instance data folder (created when missing)
+ * @param cipher the adapter instance — it encrypts the secret fields
  * @param server the server id
  * @param clients display id → entry
  */
-export function writeStore(dir: string, server: string, clients: ReadonlyMap<string, StoredClient>): void {
+export function writeStore(
+  dir: string,
+  cipher: DataFileCipher,
+  server: string,
+  clients: ReadonlyMap<string, StoredClient>,
+): void {
   const displays: Record<string, StoredClient> = {};
   for (const id of [...clients.keys()].sort()) {
     displays[id] = clients.get(id)!;
   }
-  writeDataFile(dir, STORE_FILE, { server, displays });
+  writeDataFile(dir, STORE_FILE, { server, displays }, secretsOf(cipher));
 }

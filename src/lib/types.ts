@@ -76,11 +76,10 @@ export interface ClientRecord {
   tokenExpiresAt: number | null;
   /**
    * Currently active OAuth2 refresh token, or null if not authenticated. Stored
-   * plain-text in the data file (client-store.ts) so it survives adapter
-   * restarts (ioBroker update, network glitch, power cut). Same exposure
-   * profile as {@link token} above; the adapter is LAN-only by design (see
-   * design decision 4 in CLAUDE.md), and the file is readable for its owner only
-   * (data-file.ts, mode 0600) — no object-store reader sees it.
+   * in the data file (client-store.ts) so it survives adapter restarts (ioBroker
+   * update, network glitch, power cut) — sealed with the platform's cipher like
+   * {@link token} and the cookie (data-file.ts, round 174), in a file readable
+   * for its owner only (mode 0600); no object-store reader sees it.
    */
   refreshToken: string | null;
   /**
