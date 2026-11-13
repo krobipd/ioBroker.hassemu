@@ -1076,8 +1076,8 @@ export class ClientRegistry {
 
   /**
    * Sets access AND refresh token in one write — the onboarding grant and the revoke
-   * both change the pair (audit 2026-09-15, G1). The refresh token is stored plain-text
-   * in the data file — same exposure profile as the access token (see
+   * both change the pair (audit 2026-09-15, G1). Both tokens are stored sealed with the
+   * platform's cipher in the data file, like the cookie (data-file.ts, round 174; see
    * {@link ClientRecord.refreshToken}).
    *
    * @param id           Client id.
