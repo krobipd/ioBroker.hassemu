@@ -14,6 +14,7 @@
       "global.manualUrl": "globalManualUrl"
     },
     "desc": {
+      "info.connection": "connectionDesc",
       "info.refreshUrls": "refreshUrlsDesc",
       "global.mode": "globalModeDesc",
       "global.enabled": "globalEnabledDesc",
@@ -31,9 +32,9 @@
   ],
   "_deviceIds": "Package check device-id-scheme: a display names no serial number on its first request, and often no model. hassemu assigns the id on that request (acceptance page K7, krobi 2026-11-11 19:51): the model the Android app names in its User-Agent, else `display`, then a hyphen and four characters hassemu draws itself, a counter when the id is taken; bound to the display's cookie, it never changes. Up to 1.46.1 the id was six random hex characters; such a display moves once to `display-<its last four>`.",
   "deviceIds": {
-    "assigned": "src/lib/display-id.ts newDisplayId (model from the Android app's User-Agent, else `display`, plus randomIdTail: crypto.randomBytes(2), four hex characters, a counter when taken), called by src/lib/client-registry.ts freshClientId and bound to the display's cookie"
+    "assigned": "src/lib/display-id.ts newDisplayId (model from the Android app's User-Agent, else `display`, plus randomIdTail: crypto.randomBytes(2), four hex characters, a counter when taken), called by src/lib/client-registry.ts freshClientId and bound to the display's cookie — sealed decision K7 (krobi 2026-11-11 19:51)"
   },
-  "_suites": "Fleet suites of test/fleet-suites.js. connectionTest and groupSwitches: the settings page has no sendTo field, no device manager and no switch that adds or removes a group of datapoints. rename: under INVENTORY_RENAME=1 the fixture's reverse DNS gives one display a new hostname, and the display's automatic name follows it (client-registry applyHostname). dropDevice: no datapoint says whether a display is reachable — hassemu cannot know whether a display is connected right now (krobi 2026-08-27), so no display can be shown as gone. rejectLogin: hassemu logs in nowhere — the password in native protects the emulation itself, the displays log in to it.",
+  "_suites": "Fleet suites of test/fleet-suites.js. connectionTest and groupSwitches: the settings page has no sendTo field, no device manager and no switch that adds or removes a group of datapoints. rename: under INVENTORY_RENAME=1 the fixture's reverse DNS gives one display a new hostname, and the display's automatic name follows it (client-registry applyHostname). dropDevice: no datapoint says whether a display is reachable — hassemu cannot know whether a display is connected right now (krobi 2026-08-27), so no display can be shown as gone. rejectLogin: hassemu logs in nowhere — the password in native protects the emulation itself, the displays log in to it. invalidSettings: HTTPS on with a certificate name the test installation does not hold — the start ends with the settings error of the master secure-server.ts (K4).",
   "suites": {
     "connectionTest": {
       "none": "the settings page has no sendTo field and the adapter has no device manager — there is no connection test to press"
@@ -47,6 +48,11 @@
     },
     "dropDevice": {
       "none": "no datapoint says whether a display is reachable — hassemu cannot know whether a display is connected right now (krobi 2026-08-27)"
+    },
+    "invalidSettings": {
+      "secure": true,
+      "certPublic": "inventoryMissingPublic",
+      "certPrivate": "inventoryMissingPrivate"
     }
   },
   "serverTest": {

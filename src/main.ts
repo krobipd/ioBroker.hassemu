@@ -12,11 +12,12 @@ import { KnownObjects } from "./lib/known-objects";
 import { migrateLegacyDefaultVisUrl, migrateVisUrlToMode } from "./lib/legacy-migration";
 import { migrateNativeKeys } from "./lib/native-key-migration";
 import { MDNSService } from "./lib/mdns";
-import { advertisedBaseUrl, resolveAdvertisedHost } from "./lib/network";
+import { listAddress } from "./lib/network";
 import { carriesAddress, chosenAddress } from "./lib/network-address";
 import { resolveRedirect } from "./lib/redirect-resolver";
 import { type InstanceObjectSchema, repairGlobalSchemas } from "./lib/schema-repair";
-import { CERTIFICATES_OBJECT_ID, isCertificateNotFound, loadTls, selectCollections, type TlsSetup } from "./lib/tls";
+import { CERTIFICATES_OBJECT_ID, collectionChoice, loadCertificates, type SecureSetup } from "./lib/secure-server";
+import { failStart } from "./lib/start-failure";
 import { isUrlSourceObjectChange, SYSTEM_CONFIG_ID, UrlDiscovery, type UrlStatesListener } from "./lib/url-discovery";
 import { WebServer } from "./lib/webserver";
 import type { AdapterConfig } from "./lib/types";
@@ -61,6 +62,14 @@ class HassEmu extends utils.Adapter {
    * running — the start checks this flag before it binds anything else (audit 2026-09-25, L4).
    */
   private unloading = false;
+  /**
+   * The running start. A stop reports done only after it: the restore moves displays and their objects (K7), and a
+   * write after the unload callback never reaches the database (fleet suite "the whole run", D4) — measured in the
+   * inventory run 2026-11-15: a stop 100 ms after `ready` ("a stop during the start") left a display half moved.
+   */
+  private starting: Promise<void> = Promise.resolve();
+  /** Settles {@link starting} — called once the start ended, whichever way. */
+  private startSettled = (): void => {};
 
   // Factory seams — production builds the real collaborators; the orchestration
   // unit tests (src/main.test.ts) override these fields with fakes so onReady &
@@ -70,8 +79,8 @@ class HassEmu extends utils.Adapter {
   // `common.dataFolder`, so a backup carries it.
   private makeRegistry: () => ClientRegistry = () => new ClientRegistry(this, utils.getAbsoluteInstanceDataDir(this));
   private makeUrlDiscovery: (onChange: UrlStatesListener) => UrlDiscovery = onChange =>
-    new UrlDiscovery(this, onChange, () => resolveAdvertisedHost(this.config.bind));
-  private makeWebServer: (instanceUuid: string, tls: TlsSetup | null) => WebServer = (instanceUuid, tls) =>
+    new UrlDiscovery(this, onChange, () => listAddress(this.config.bind));
+  private makeWebServer: (instanceUuid: string, tls: SecureSetup | null) => WebServer = (instanceUuid, tls) =>
     new WebServer(
       this,
       this.config,
@@ -83,15 +92,10 @@ class HassEmu extends utils.Adapter {
       undefined,
       tls,
     );
-  private makeMdnsService: (instanceUuid: string, tls: TlsSetup | null) => MDNSService = (instanceUuid, tls) =>
-    new MDNSService(
-      this,
-      this.config,
-      instanceUuid,
-      tls ? () => advertisedBaseUrl(this.config.bind, this.config.port, tls) : undefined,
-    );
-  /** The HTTPS part of this start (K4), or `null` for plain HTTP — renewed collections go into it. */
-  private tlsSetup: TlsSetup | null = null;
+  private makeMdnsService: (instanceUuid: string, tls: SecureSetup | null) => MDNSService = (instanceUuid, tls) =>
+    new MDNSService(this, this.config, instanceUuid, tls);
+  /** The HTTPS part of this start (K4, fleet master `secure-server.ts`), or `null` for plain HTTP. */
+  private tlsSetup: SecureSetup | null = null;
 
   declare config: AdapterConfig;
 
@@ -155,6 +159,11 @@ class HassEmu extends utils.Adapter {
       // The translations come first (package check `i18n-before-messages`): every step after
       // this may write a translated name or log a translated text.
       await I18n.init(join(this.adapterDir, "admin"), this);
+      // From here a stop waits for this start (`starting`); one that came during the translations ends it now.
+      this.starting = new Promise<void>(resolve => (this.startSettled = resolve));
+      if (this.unloading) {
+        return;
+      }
 
       // Then: without this the whole shutdown path stays dead on an updated install.
       // A correction means the host is restarting us — no point starting anything.
@@ -183,11 +192,19 @@ class HassEmu extends utils.Adapter {
 
       this.globalConfig = this.makeGlobalConfig();
       await this.globalConfig.restore();
+      // A stop arrived during the start (see `unloading`): nothing more is read, moved or written.
+      if (this.unloading) {
+        return;
+      }
 
       this.registry = this.makeRegistry();
       // The server id and the display identities come from the data file; 1.46.1 kept the server id as the
       // value of info.serverUuid, which the restore takes from its one read of every state to move it into the file (B3).
       await this.registry.restore();
+      // The restore runs to its end — a display moves whole or not at all —, then a stop ends the start here.
+      if (this.unloading) {
+        return;
+      }
       await this.dropLegacyServerUuid();
 
       // Migrations run before subscriptions / webserver — first the legacy
@@ -262,53 +279,16 @@ class HassEmu extends utils.Adapter {
         return;
       }
 
-      // HTTPS (K4): the certificate is loaded before anything listens. Not configured, the controller has logged
-      // the error line itself (CertificateManager, js-controller 7.2.5) — the echo here is debug, one line per
-      // failed start; any other cause reaches the catch below with its own line. Both end with code 6.
-      if (this.config.secure === true) {
-        try {
-          this.tlsSetup = await loadTls(this, this.config);
-        } catch (err) {
-          if (!isCertificateNotFound(err)) {
-            throw err;
-          }
-          this.log.debug(`HTTPS certificates could not be loaded: ${errText(err)}`);
-          await this.stopStartedServices();
-          if (!this.unloading) {
-            this.terminate("HTTPS certificates missing", utils.EXIT_CODES.UNCAUGHT_EXCEPTION);
-          }
-          return;
-        }
-      }
+      // HTTPS (K4): the certificate is loaded before anything listens, by the fleet master — a certificate ioBroker
+      // does not hold is a settings error, anything else an error of the start; both reach `failStart` below.
+      this.tlsSetup = (await loadCertificates(this)) ?? null;
 
       // Kept in a local: onUnload nulls the field, and the check below must still reach
-      // the server that is opening its listener right now (audit 2026-09-25, N7).
-      let webServer: WebServer;
-      try {
-        webServer = this.makeWebServer(instanceUuid, this.tlsSetup);
-        this.webServer = webServer;
-        await webServer.start();
-      } catch (err) {
-        // webServer.start() already logged a friendly, actionable error (EADDRINUSE /
-        // generic startup) at error level, so keep only a debug echo of the raw error
-        // here — otherwise the same failure prints two error lines. I5 (v1.38.0).
-        this.log.debug(`Web server failed to start: ${errText(err)}`);
-        if (this.unloading) {
-          return;
-        }
-        // Close what the start opened — the URL discovery's refresh timer, the half-opened
-        // server — before the end: in compact mode the process lives on (start-failure
-        // standard ST5, K16). Subscriptions come after this block.
-        await this.stopStartedServices();
-        // v1.10.0 (B4): never sit idle as a zombie (no server, no subscriptions). The exit
-        // code matters: 11 (ADAPTER_REQUESTED_TERMINATION) means "do not restart" to
-        // js-controller 7.2.2 (controller main.ts 4231/4305) — the instance stayed off until
-        // someone started it by hand. UNCAUGHT_EXCEPTION restarts after 30 s and stops with a
-        // restart-loop notice after three failures in ten minutes, so a port that is briefly
-        // in use heals itself (audit 2026-09-25, L1).
-        this.terminate("Web server failed to start", utils.EXIT_CODES.UNCAUGHT_EXCEPTION);
-        return;
-      }
+      // the server that is opening its listener right now (audit 2026-09-25, N7). A port in
+      // use or any other listen error reaches `failStart` below with the one error line.
+      const webServer = this.makeWebServer(instanceUuid, this.tlsSetup);
+      this.webServer = webServer;
+      await webServer.start();
       // The stop came while the listener was opening: onUnload closed a server that was not
       // listening yet — close it again.
       if (this.unloading) {
@@ -325,9 +305,6 @@ class HassEmu extends utils.Adapter {
       await this.subscribeStatesAsync("clients.*");
       await this.subscribeStatesAsync("global.*");
       await this.subscribeStatesAsync("info.refreshUrls");
-      if (this.tlsSetup && this.tlsSetup.collectionChoice !== false) {
-        await this.subscribeForeignObjectsAsync(CERTIFICATES_OBJECT_ID);
-      }
 
       let mdnsActive = false;
       if (this.config.mdnsEnabled) {
@@ -359,20 +336,14 @@ class HassEmu extends utils.Adapter {
       const mdnsSuffix = this.config.mdnsEnabled ? (mdnsActive ? ", mDNS started" : ", mDNS FAILED") : "";
       this.log.info(`HA emulation running on ${bindAddr}:${this.config.port}${mdnsSuffix}`);
     } catch (err: unknown) {
-      // M2: never sit idle as a zombie when any other step fails. A failed start must not keep
-      // the port or the mDNS announcement either — in compact mode the process lives on
-      // (audit 2026-09-25, L7).
-      await this.stopStartedServices();
-      // A stop during the start nulls the collaborators, so the start then fails as a
-      // CONSEQUENCE of the stop — no error line and no crash code for an ordinary shutdown
-      // (audit 2026-09-25, N3).
-      if (this.unloading) {
-        this.log.debug(`Start abandoned during shutdown: ${errText(err)}`);
-        return;
-      }
-      this.log.error(`onReady failed: ${errText(err)}`);
-      // UNCAUGHT_EXCEPTION, not 11: see the web-server branch above (L1).
-      this.terminate("onReady failed", utils.EXIT_CODES.UNCAUGHT_EXCEPTION);
+      // A failed start ends the fleet's way (start-failure standard): one error line, then what the
+      // start opened is closed — the port, the mDNS announcement, the refresh timer; in compact mode
+      // the process lives on (audit 2026-09-25, L7) — and a settings error ends with a notification
+      // and code 11, anything else with code 6. A stop during the start nulls the collaborators, so
+      // the start fails as a CONSEQUENCE of the stop: one debug line and no code (audit 2026-09-25, N3).
+      await failStart(this, err, { stopping: this.unloading, cleanup: () => this.stopStartedServices() });
+    } finally {
+      this.startSettled();
     }
   }
 
@@ -455,7 +426,12 @@ class HassEmu extends utils.Adapter {
     }
     await Promise.all([
       tolerate("info", known.extend("info", { common: { name: tName("info") } })),
-      tolerate("info.connection", known.extend("info.connection", { common: { name: tName("connection") } })),
+      tolerate(
+        "info.connection",
+        known.extend("info.connection", {
+          common: { name: tName("connection"), desc: tName("connectionDesc") },
+        }),
+      ),
       tolerate(
         "info.refreshUrls",
         known.extend("info.refreshUrls", {
@@ -738,12 +714,6 @@ class HassEmu extends utils.Adapter {
 
   private onObjectChange(id: string, obj: ioBroker.Object | null | undefined): void {
     try {
-      // A renewed Let's Encrypt collection reaches the running HTTPS server (K4); the named certificates restart
-      // the instance through the controller itself (js-controller 7.2.5 getCertificatesAsync).
-      if (id === CERTIFICATES_OBJECT_ID) {
-        this.renewCollections(obj);
-        return;
-      }
       // v1.13.0 (H4): narrow filter — earlier EVERY objectChange in the
       // `system.adapter.*` namespace triggered a scheduleRefresh, even from an
       // adapter changing discovery-irrelevant config. Now it triggers only when the
@@ -770,25 +740,6 @@ class HassEmu extends utils.Adapter {
     }
   }
 
-  /**
-   * Hand renewed Let's Encrypt collections to the running server. A collection that cannot be used any more keeps
-   * the ones in force — the server goes on with the certificate it has, and says so once.
-   *
-   * @param obj The new `system.certificates`.
-   */
-  private renewCollections(obj: ioBroker.Object | null | undefined): void {
-    const tls = this.tlsSetup;
-    if (!tls || tls.collectionChoice === false) {
-      return;
-    }
-    try {
-      tls.update(selectCollections(obj?.native, tls.collectionChoice));
-      this.log.debug("HTTPS: certificate collections renewed");
-    } catch (err) {
-      this.log.warn(`HTTPS keeps its current certificate — the renewed collection cannot be used: ${errText(err)}`);
-    }
-  }
-
   private onUnload(callback: () => void): void {
     try {
       // First: a start that is still running checks this before it binds anything else (L4).
@@ -807,7 +758,8 @@ class HassEmu extends utils.Adapter {
         this.unsubscribeForeignObjectsAsync("system.adapter.*"),
         this.unsubscribeForeignObjectsAsync(SYSTEM_CONFIG_ID),
       );
-      if (this.tlsSetup && this.tlsSetup.collectionChoice !== false) {
+      // The fleet master subscribed the collections of `system.certificates` for their renewals (K4).
+      if (this.tlsSetup && collectionChoice(this.config.leCollection) !== false) {
         pending.push(this.unsubscribeForeignObjectsAsync(CERTIFICATES_OBJECT_ID));
       }
       this.tlsSetup = null;
@@ -837,7 +789,9 @@ class HassEmu extends utils.Adapter {
       // deadline needed — the host already has one (`common.stopTimeout`), and
       // `this.setTimeout` refuses during shutdown anyway. allSettled, not all: one
       // rejected write (broker already gone) must not call back while the goodbye and
-      // the server stop are still running (audit 2026-09-15, B4).
+      // the server stop are still running (audit 2026-09-15, B4). The start this stop interrupts settles first — its
+      // last writes land before the callback, never after it (`starting`).
+      pending.push(this.starting);
       void Promise.allSettled(pending)
         .then(results => {
           for (const r of results) {

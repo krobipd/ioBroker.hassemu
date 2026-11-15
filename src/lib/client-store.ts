@@ -14,8 +14,8 @@
  * `clients.<id>.native` — each token grant and the hourly lastSeen stamp was an object write, and every object
  * dump showed the secrets.
  *
- * Werkbank standard of round 174 (CLAUDE_PATTERNS § Geheimnisse, S3 and S7; krobi 2026-11-11 18:20 „es soll sicher und
- * nativ sein“): a secret never stands in clear text in that file either. The cookie and both tokens are the fields the
+ * Werkbank standard of round 174 (CLAUDE_PATTERNS § Geheimnisse, S3 and S7; krobi 2026-11-11 18:20: it is to be safe
+ * and native): a secret never stands in clear text in that file either. The cookie and both tokens are the fields the
  * fleet master seals with the platform's own cipher (`adapter.encrypt`); a file from before, with them in clear text,
  * is read and written back sealed at once. The server id is no secret — every display learns it from the network
  * announcement — and stays as it is.

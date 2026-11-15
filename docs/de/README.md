@@ -49,10 +49,11 @@ Adapter installieren, Instanz 0 starten. In den Instanz-Einstellungen musst du z
 nichts ändern: mDNS ist an, die Anmeldung ist aus, und der Adapter lauscht auf allen
 Schnittstellen.
 
-Hat dein ioBroker-Rechner mehrere Netzwerkkarten, stell **Interface binden** auf die,
-in der deine Displays hängen. Der Adapter kündigt sich unter dieser Adresse an — kündigt er
-eine an, die das Display nicht erreicht, ist das der häufigste Grund dafür, dass die
-Erkennung scheinbar klappt, die Verbindung danach aber nicht.
+Hängt dein ioBroker-Rechner in mehreren Netzen, brauchst du dafür keine Einstellung: auf
+allen Schnittstellen kündigt sich der Adapter in jedem Netz mit dessen Adresse an, und jedes
+Display bekommt die Adresse seines eigenen Netzes — in der Ankündigung, bei der Anmeldung
+und in den Dashboard-Adressen. Stell **Interface binden** nur ein, wenn hassemu ein einziges
+Netz bedienen soll; dann lauscht, kündigt und antwortet er nur dort.
 
 ### 2. Server am Display eintragen
 

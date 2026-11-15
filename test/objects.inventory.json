@@ -38,7 +38,7 @@
       "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPgogIDxwYXRoIGQ9Ik0xMSAxMiBoNDIgYTUgNSAwIDAgMSA1IDUgdjI2IGE1IDUgMCAwIDEgLTUgNSBoLTQyIGE1IDUgMCAwIDEgLTUgLTUgdi0yNiBhNSA1IDAgMCAxIDUgLTUgeiIvPgogIDxwYXRoIGQ9Ik0yMSAzMiBMMzIgMjIgTDQzIDMyIi8+CiAgPHBhdGggZD0iTTI1IDMwIHYxMCBoMTQgdi0xMCIvPgo8L3N2Zz4K"
     },
     "native": {
-      "objectsVersion": 4
+      "objectsVersion": 5
     },
     "_id": "hassemu.0.clients.display-0001"
   },
@@ -57,6 +57,19 @@
         "ru": "IP дисплея",
         "uk": "IP дисплея",
         "zh-cn": "显示器 IP"
+      },
+      "desc": {
+        "de": "Die Adresse, von der dieses Display hassemu zuletzt erreicht hat.",
+        "en": "The address this display last reached hassemu from.",
+        "es": "La dirección desde la que esta pantalla accedió a hassemu por última vez.",
+        "fr": "L'adresse depuis laquelle cet écran a joint hassemu pour la dernière fois.",
+        "it": "L'indirizzo da cui questo display ha raggiunto hassemu l'ultima volta.",
+        "nl": "Het adres waarvandaan dit display hassemu het laatst heeft bereikt.",
+        "pl": "Adres, z którego ten wyświetlacz ostatnio połączył się z hassemu.",
+        "pt": "O endereço a partir do qual este ecrã acedeu ao hassemu pela última vez.",
+        "ru": "Адрес, с которого этот дисплей последний раз обращался к hassemu.",
+        "uk": "Адреса, з якої цей дисплей востаннє звертався до hassemu.",
+        "zh-cn": "此显示屏最近一次访问 hassemu 时使用的地址。"
       },
       "type": "string",
       "role": "info.ip",
@@ -247,7 +260,7 @@
       "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPgogIDxwYXRoIGQ9Ik0xMSAxMiBoNDIgYTUgNSAwIDAgMSA1IDUgdjI2IGE1IDUgMCAwIDEgLTUgNSBoLTQyIGE1IDUgMCAwIDEgLTUgLTUgdi0yNiBhNSA1IDAgMCAxIDUgLTUgeiIvPgogIDxwYXRoIGQ9Ik0yMSAzMiBMMzIgMjIgTDQzIDMyIi8+CiAgPHBhdGggZD0iTTI1IDMwIHYxMCBoMTQgdi0xMCIvPgo8L3N2Zz4K"
     },
     "native": {
-      "objectsVersion": 4
+      "objectsVersion": 5
     },
     "_id": "hassemu.0.clients.display-0002"
   },
@@ -266,6 +279,19 @@
         "ru": "IP дисплея",
         "uk": "IP дисплея",
         "zh-cn": "显示器 IP"
+      },
+      "desc": {
+        "de": "Die Adresse, von der dieses Display hassemu zuletzt erreicht hat.",
+        "en": "The address this display last reached hassemu from.",
+        "es": "La dirección desde la que esta pantalla accedió a hassemu por última vez.",
+        "fr": "L'adresse depuis laquelle cet écran a joint hassemu pour la dernière fois.",
+        "it": "L'indirizzo da cui questo display ha raggiunto hassemu l'ultima volta.",
+        "nl": "Het adres waarvandaan dit display hassemu het laatst heeft bereikt.",
+        "pl": "Adres, z którego ten wyświetlacz ostatnio połączył się z hassemu.",
+        "pt": "O endereço a partir do qual este ecrã acedeu ao hassemu pela última vez.",
+        "ru": "Адрес, с которого этот дисплей последний раз обращался к hassemu.",
+        "uk": "Адреса, з якої цей дисплей востаннє звертався до hassemu.",
+        "zh-cn": "此显示屏最近一次访问 hassemu 时使用的地址。"
       },
       "type": "string",
       "role": "info.ip",
@@ -456,7 +482,7 @@
       "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPgogIDxwYXRoIGQ9Ik0xMSAxMiBoNDIgYTUgNSAwIDAgMSA1IDUgdjI2IGE1IDUgMCAwIDEgLTUgNSBoLTQyIGE1IDUgMCAwIDEgLTUgLTUgdi0yNiBhNSA1IDAgMCAxIDUgLTUgeiIvPgogIDxwYXRoIGQ9Ik0yMSAzMiBMMzIgMjIgTDQzIDMyIi8+CiAgPHBhdGggZD0iTTI1IDMwIHYxMCBoMTQgdi0xMCIvPgo8L3N2Zz4K"
     },
     "native": {
-      "objectsVersion": 4
+      "objectsVersion": 5
     },
     "_id": "hassemu.0.clients.display-0003"
   },
@@ -475,6 +501,19 @@
         "ru": "IP дисплея",
         "uk": "IP дисплея",
         "zh-cn": "显示器 IP"
+      },
+      "desc": {
+        "de": "Die Adresse, von der dieses Display hassemu zuletzt erreicht hat.",
+        "en": "The address this display last reached hassemu from.",
+        "es": "La dirección desde la que esta pantalla accedió a hassemu por última vez.",
+        "fr": "L'adresse depuis laquelle cet écran a joint hassemu pour la dernière fois.",
+        "it": "L'indirizzo da cui questo display ha raggiunto hassemu l'ultima volta.",
+        "nl": "Het adres waarvandaan dit display hassemu het laatst heeft bereikt.",
+        "pl": "Adres, z którego ten wyświetlacz ostatnio połączył się z hassemu.",
+        "pt": "O endereço a partir do qual este ecrã acedeu ao hassemu pela última vez.",
+        "ru": "Адрес, с которого этот дисплей последний раз обращался к hassemu.",
+        "uk": "Адреса, з якої цей дисплей востаннє звертався до hassemu.",
+        "zh-cn": "此显示屏最近一次访问 hassemu 时使用的地址。"
       },
       "type": "string",
       "role": "info.ip",
@@ -665,7 +704,7 @@
       "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPgogIDxwYXRoIGQ9Ik0xMSAxMiBoNDIgYTUgNSAwIDAgMSA1IDUgdjI2IGE1IDUgMCAwIDEgLTUgNSBoLTQyIGE1IDUgMCAwIDEgLTUgLTUgdi0yNiBhNSA1IDAgMCAxIDUgLTUgeiIvPgogIDxwYXRoIGQ9Ik0yMSAzMiBMMzIgMjIgTDQzIDMyIi8+CiAgPHBhdGggZD0iTTI1IDMwIHYxMCBoMTQgdi0xMCIvPgo8L3N2Zz4K"
     },
     "native": {
-      "objectsVersion": 4
+      "objectsVersion": 5
     },
     "_id": "hassemu.0.clients.display-0004"
   },
@@ -684,6 +723,19 @@
         "ru": "IP дисплея",
         "uk": "IP дисплея",
         "zh-cn": "显示器 IP"
+      },
+      "desc": {
+        "de": "Die Adresse, von der dieses Display hassemu zuletzt erreicht hat.",
+        "en": "The address this display last reached hassemu from.",
+        "es": "La dirección desde la que esta pantalla accedió a hassemu por última vez.",
+        "fr": "L'adresse depuis laquelle cet écran a joint hassemu pour la dernière fois.",
+        "it": "L'indirizzo da cui questo display ha raggiunto hassemu l'ultima volta.",
+        "nl": "Het adres waarvandaan dit display hassemu het laatst heeft bereikt.",
+        "pl": "Adres, z którego ten wyświetlacz ostatnio połączył się z hassemu.",
+        "pt": "O endereço a partir do qual este ecrã acedeu ao hassemu pela última vez.",
+        "ru": "Адрес, с которого этот дисплей последний раз обращался к hassemu.",
+        "uk": "Адреса, з якої цей дисплей востаннє звертався до hassemu.",
+        "zh-cn": "此显示屏最近一次访问 hassemu 时使用的地址。"
       },
       "type": "string",
       "role": "info.ip",
@@ -874,7 +926,7 @@
       "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPgogIDxwYXRoIGQ9Ik0xMSAxMiBoNDIgYTUgNSAwIDAgMSA1IDUgdjI2IGE1IDUgMCAwIDEgLTUgNSBoLTQyIGE1IDUgMCAwIDEgLTUgLTUgdi0yNiBhNSA1IDAgMCAxIDUgLTUgeiIvPgogIDxwYXRoIGQ9Ik0yMSAzMiBMMzIgMjIgTDQzIDMyIi8+CiAgPHBhdGggZD0iTTI1IDMwIHYxMCBoMTQgdi0xMCIvPgo8L3N2Zz4K"
     },
     "native": {
-      "objectsVersion": 4
+      "objectsVersion": 5
     },
     "_id": "hassemu.0.clients.display-0005"
   },
@@ -893,6 +945,19 @@
         "ru": "IP дисплея",
         "uk": "IP дисплея",
         "zh-cn": "显示器 IP"
+      },
+      "desc": {
+        "de": "Die Adresse, von der dieses Display hassemu zuletzt erreicht hat.",
+        "en": "The address this display last reached hassemu from.",
+        "es": "La dirección desde la que esta pantalla accedió a hassemu por última vez.",
+        "fr": "L'adresse depuis laquelle cet écran a joint hassemu pour la dernière fois.",
+        "it": "L'indirizzo da cui questo display ha raggiunto hassemu l'ultima volta.",
+        "nl": "Het adres waarvandaan dit display hassemu het laatst heeft bereikt.",
+        "pl": "Adres, z którego ten wyświetlacz ostatnio połączył się z hassemu.",
+        "pt": "O endereço a partir do qual este ecrã acedeu ao hassemu pela última vez.",
+        "ru": "Адрес, с которого этот дисплей последний раз обращался к hassemu.",
+        "uk": "Адреса, з якої цей дисплей востаннє звертався до hassemu.",
+        "zh-cn": "此显示屏最近一次访问 hassemu 时使用的地址。"
       },
       "type": "string",
       "role": "info.ip",
@@ -1083,7 +1148,7 @@
       "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPgogIDxwYXRoIGQ9Ik0xMSAxMiBoNDIgYTUgNSAwIDAgMSA1IDUgdjI2IGE1IDUgMCAwIDEgLTUgNSBoLTQyIGE1IDUgMCAwIDEgLTUgLTUgdi0yNiBhNSA1IDAgMCAxIDUgLTUgeiIvPgogIDxwYXRoIGQ9Ik0yMSAzMiBMMzIgMjIgTDQzIDMyIi8+CiAgPHBhdGggZD0iTTI1IDMwIHYxMCBoMTQgdi0xMCIvPgo8L3N2Zz4K"
     },
     "native": {
-      "objectsVersion": 4
+      "objectsVersion": 5
     },
     "_id": "hassemu.0.clients.display-b2c3"
   },
@@ -1107,7 +1172,20 @@
       "role": "info.ip",
       "read": true,
       "write": false,
-      "def": ""
+      "def": "",
+      "desc": {
+        "de": "Die Adresse, von der dieses Display hassemu zuletzt erreicht hat.",
+        "en": "The address this display last reached hassemu from.",
+        "es": "La dirección desde la que esta pantalla accedió a hassemu por última vez.",
+        "fr": "L'adresse depuis laquelle cet écran a joint hassemu pour la dernière fois.",
+        "it": "L'indirizzo da cui questo display ha raggiunto hassemu l'ultima volta.",
+        "nl": "Het adres waarvandaan dit display hassemu het laatst heeft bereikt.",
+        "pl": "Adres, z którego ten wyświetlacz ostatnio połączył się z hassemu.",
+        "pt": "O endereço a partir do qual este ecrã acedeu ao hassemu pela última vez.",
+        "ru": "Адрес, с которого этот дисплей последний раз обращался к hassemu.",
+        "uk": "Адреса, з якої цей дисплей востаннє звертався до hassemu.",
+        "zh-cn": "此显示屏最近一次访问 hassemu 时使用的地址。"
+      }
     },
     "native": {},
     "_id": "hassemu.0.clients.display-b2c3.ip"
@@ -1452,6 +1530,19 @@
         "pl": "Serwer działa",
         "uk": "Сервер працює",
         "zh-cn": "服务器运行中"
+      },
+      "desc": {
+        "en": "The adapter runs and its server accepts connections — it does not say whether a display is connected.",
+        "de": "Der Adapter läuft und sein Server nimmt Verbindungen an — ob ein Display verbunden ist, sagt der Wert nicht.",
+        "ru": "Адаптер работает, и его сервер принимает подключения — подключён ли дисплей, это значение не показывает.",
+        "pt": "O adaptador está em execução e o seu servidor aceita ligações — não indica se um ecrã está ligado.",
+        "nl": "De adapter draait en zijn server neemt verbindingen aan — of er een display verbonden is, zegt deze waarde niet.",
+        "fr": "L'adaptateur fonctionne et son serveur accepte les connexions — cela n'indique pas si un écran est connecté.",
+        "it": "L'adattatore è in esecuzione e il suo server accetta connessioni — non indica se un display è collegato.",
+        "es": "El adaptador está en marcha y su servidor acepta conexiones — no indica si hay una pantalla conectada.",
+        "pl": "Adapter działa, a jego serwer przyjmuje połączenia — nie mówi, czy wyświetlacz jest połączony.",
+        "uk": "Адаптер працює, і його сервер приймає з'єднання — чи підключено дисплей, це значення не показує.",
+        "zh-cn": "适配器正在运行，其服务器接受连接——它不表示是否有显示屏已连接。"
       },
       "type": "boolean",
       "read": true,

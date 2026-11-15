@@ -39,7 +39,12 @@ vi.mock("@iobroker/adapter-core", async () => {
     /** The instance data folder (identities.json) — what getAbsoluteInstanceDataDir answers for this stub. */
     dataDir = freshDataDir();
     config: Record<string, unknown> = {};
-    handlers = new Map<string, (...args: unknown[]) => unknown>();
+    /** The adapter's name — the scope of its notifications. */
+    name = "hassemu";
+    /** Every listener per event, like adapter-core's EventEmitter — the fleet master adds its own `objectChange`. */
+    listeners = new Map<string, ((...args: unknown[]) => unknown)[]>();
+    /** Every notification the adapter registered (scope and category; the text stays out like in the probe). */
+    notifications: { scope: string; category: string | null }[] = [];
     objects = new Map<string, ObjEntry>();
     states = new Map<string, { val: unknown; ack: boolean }>();
     logs: { level: string; msg: string }[] = [];
@@ -62,8 +67,25 @@ vi.mock("@iobroker/adapter-core", async () => {
     constructor(_options?: unknown) {}
 
     on(event: string, cb: (...args: unknown[]) => unknown): this {
-      this.handlers.set(event, cb);
+      this.listeners.set(event, [...(this.listeners.get(event) ?? []), cb]);
       return this;
+    }
+
+    /**
+     * Hands an event to every listener, as the controller does.
+     *
+     * @param event the event's name
+     * @param args  what the listeners get
+     */
+    emit(event: string, ...args: unknown[]): void {
+      for (const cb of this.listeners.get(event) ?? []) {
+        cb(...args);
+      }
+    }
+
+    registerNotification(scope: string, category: string | null, _message: string): Promise<void> {
+      this.notifications.push({ scope, category });
+      return Promise.resolve();
     }
 
     private fullId(id: string): string {
@@ -262,7 +284,7 @@ import { CLIENT_OBJECTS_VERSION, MODE_GLOBAL, MODE_MANUAL } from "./lib/constant
 import { resolveRedirect } from "./lib/redirect-resolver";
 import { UrlDiscovery, type UrlStatesListener } from "./lib/url-discovery";
 import { migrateLegacyDefaultVisUrl, migrateVisUrlToMode, type MigrationAdapter } from "./lib/legacy-migration";
-import type { TlsSetup } from "./lib/tls";
+import type { SecureSetup } from "./lib/secure-server";
 import type { AdapterConfig } from "./lib/types";
 import iobrokerPackage from "../io-package.json";
 import { TEST_CIPHER } from "../test/unit/cipher";
@@ -296,6 +318,8 @@ interface StubSurface {
   states: Map<string, { val: unknown; ack: boolean }>;
   logs: { level: string; msg: string }[];
   terminations: number[];
+  notifications: { scope: string; category: string | null }[];
+  emit: (event: string, ...args: unknown[]) => void;
   stateSubscriptions: string[];
   objectSubscriptions: string[];
   stateUnsubscriptions: string[];
@@ -344,8 +368,8 @@ interface Internal {
   urlDiscovery: FakeDiscovery | null;
   webServer: FakeWebServer | null;
   mdnsService: FakeMdns | null;
-  makeWebServer: (instanceUuid: string, tls: TlsSetup | null) => FakeWebServer;
-  makeMdnsService: (instanceUuid: string, tls: TlsSetup | null) => FakeMdns;
+  makeWebServer: (instanceUuid: string, tls: SecureSetup | null) => FakeWebServer;
+  makeMdnsService: (instanceUuid: string, tls: SecureSetup | null) => FakeMdns;
   makeUrlDiscovery: (onChange: unknown) => FakeDiscovery;
   makeRegistry: () => ClientRegistry;
   makeGlobalConfig: () => GlobalConfig;
@@ -634,7 +658,7 @@ describe("HassEmu onReady", () => {
     expect(logsOf(stub, "error")).toEqual([]);
   });
 
-  it("webserver start failure → a restarting exit code (6, never 11), no subscriptions, no connection=true", async () => {
+  it("webserver start failure → one error line, a restarting exit code (6, never 11), no subscriptions, no connection=true", async () => {
     const { internal, stub, webServer, discovery } = setup();
     webServer.start.mockRejectedValue(new Error("EADDRINUSE"));
     const order: string[] = [];
@@ -658,10 +682,8 @@ describe("HassEmu onReady", () => {
     expect(stub.terminations).toEqual([6]);
     expect(stub.stateSubscriptions).toEqual([]);
     expect(stub.states.get("hassemu.0.info.connection")).toEqual({ val: false, ack: true });
-    // I5 (v1.38.0): the raw error echo moved to debug — webServer.start() already logged
-    // a friendly error, so main.ts must not print a second error line for the same failure.
-    expect(logsOf(stub, "error").some(m => m.includes("Web server failed to start"))).toBe(false);
-    expect(logsOf(stub, "debug").some(m => m.includes("Web server failed to start"))).toBe(true);
+    // The start-failure standard: exactly one error line, written by failStart with what the server threw.
+    expect(logsOf(stub, "error")).toEqual(["Start failed: EADDRINUSE"]);
   });
 
   it("mdnsEnabled=true + active mDNS → 'mDNS started' suffix in the running log", async () => {
@@ -708,7 +730,7 @@ describe("HassEmu onReady", () => {
       throw new Error("boom in factory");
     };
     await internal.onReady();
-    expect(logsOf(stub, "error").some(m => m.includes("onReady failed"))).toBe(true);
+    expect(logsOf(stub, "error")).toEqual(["Start failed: boom in factory"]);
     // M2: an error in any onReady step (not just webServer.start) must not leave a
     // zombie; the code must be one js-controller restarts (6), not 11 (L1).
     expect(stub.terminations).toEqual([6]);
@@ -740,7 +762,7 @@ describe("a stop that arrives while onReady is still running (L4)", () => {
     return { promise, release };
   }
 
-  it("during URL discovery: nothing is started afterwards", async () => {
+  it("during URL discovery: nothing is started afterwards, and the stop reports done only after the start", async () => {
     const { internal, stub, webServer, discovery } = setup();
     const gate = hold();
     discovery.collect.mockImplementation(() => gate.promise.then(() => ({})));
@@ -748,10 +770,13 @@ describe("a stop that arrives while onReady is still running (L4)", () => {
     await vi.waitFor(() => expect(discovery.collect).toHaveBeenCalled());
     const callback = vi.fn();
     internal.onUnload(callback);
-    await vi.waitFor(() => expect(callback).toHaveBeenCalledTimes(1));
+    await new Promise(r => setImmediate(r));
+    // The start it interrupts settles first: a write after the callback never lands (fleet suite "the whole run", D4).
+    expect(callback).not.toHaveBeenCalled();
 
     gate.release();
     await ready;
+    await vi.waitFor(() => expect(callback).toHaveBeenCalledTimes(1));
 
     expect(webServer.start).not.toHaveBeenCalled();
     expect(stub.stateSubscriptions).toEqual([]);
@@ -800,19 +825,53 @@ describe("a stop that arrives while onReady is still running (L4)", () => {
     expect(logsOf(stub, "info").some(m => m.startsWith("HA emulation running"))).toBe(false);
   });
 
-  it("a start that fails BECAUSE of the stop logs no error and asks for no restart (N3)", async () => {
-    const { internal, stub } = setup();
+  it("during the restore: the restore ends, nothing after it runs, the callback comes after it (fleet suite D4)", async () => {
+    const { internal, stub, webServer, discovery } = setup();
     const gate = hold();
-    // The registry restore is held; onUnload nulls the collaborators meanwhile, so the start
-    // then trips over a null registry — the failure is a consequence of the stop.
+    let restoring = false;
+    let restored = false;
     const realMake = internal.makeRegistry;
     internal.makeRegistry = () => {
       const r = realMake();
-      (r as unknown as { restore: () => Promise<void> }).restore = () => gate.promise;
+      (r as unknown as { restore: () => Promise<void> }).restore = () => {
+        restoring = true;
+        return gate.promise.then(() => {
+          restored = true;
+        });
+      };
       return r;
     };
     const ready = internal.onReady();
+    await vi.waitFor(() => expect(restoring).toBe(true));
+    const callback = vi.fn(() => expect(restored).toBe(true));
+    internal.onUnload(callback);
     await new Promise(r => setImmediate(r));
+    expect(callback).not.toHaveBeenCalled();
+
+    gate.release();
+    await ready;
+    await vi.waitFor(() => expect(callback).toHaveBeenCalledTimes(1));
+
+    expect(callback).toHaveReturned();
+    expect(discovery.collect).not.toHaveBeenCalled();
+    expect(webServer.start).not.toHaveBeenCalled();
+    expect(logsOf(stub, "error")).toEqual([]);
+    expect(stub.terminations).toEqual([]);
+  });
+
+  it("a start that fails BECAUSE of the stop logs no error and asks for no restart (N3)", async () => {
+    const { internal, stub } = setup();
+    const gate = hold();
+    // A step after the restore is held; onUnload nulls the collaborators meanwhile, so the start
+    // then trips over a null registry — the failure is a consequence of the stop.
+    const steps = internal as unknown as { refreshInstanceObjects: () => Promise<void> };
+    let refreshing = false;
+    steps.refreshInstanceObjects = () => {
+      refreshing = true;
+      return gate.promise;
+    };
+    const ready = internal.onReady();
+    await vi.waitFor(() => expect(refreshing).toBe(true));
     internal.onUnload(vi.fn());
 
     gate.release();
@@ -820,7 +879,7 @@ describe("a stop that arrives while onReady is still running (L4)", () => {
 
     expect(logsOf(stub, "error")).toEqual([]);
     expect(stub.terminations).toEqual([]);
-    expect(logsOf(stub, "debug").some(m => m.startsWith("Start abandoned during shutdown"))).toBe(true);
+    expect(logsOf(stub, "debug").some(m => m.startsWith("Start ended by the stop"))).toBe(true);
   });
 });
 
@@ -925,8 +984,8 @@ describe("HTTPS start (K4)", () => {
    *
    * @param s The test adapter.
    */
-  function captureTls(s: Setup): { tls: (TlsSetup | null)[] } {
-    const seen = { tls: [] as (TlsSetup | null)[] };
+  function captureTls(s: Setup): { tls: (SecureSetup | null)[] } {
+    const seen = { tls: [] as (SecureSetup | null)[] };
     s.internal.makeWebServer = (_id, tls) => {
       seen.tls.push(tls);
       return s.webServer;
@@ -934,21 +993,37 @@ describe("HTTPS start (K4)", () => {
     return seen;
   }
 
-  it("without a configured certificate the controller's line is the only error line; code 6, nothing listens", async () => {
+  /**
+   * `system.certificates` as the controller keeps it: the named certificates, and the collections of the acme adapter.
+   *
+   * @param s The test adapter.
+   * @param collections The Let's Encrypt collections, if any.
+   */
+  function holdCertificates(s: Setup, collections: Record<string, unknown> = {}): void {
+    const named = pair("named");
+    s.stub.certificates = named;
+    s.stub.objects.set("system.certificates", {
+      type: "config",
+      native: { certificates: { defaultPublic: named.cert, defaultPrivate: named.key }, collections },
+    });
+  }
+
+  it("HTTPS on without a certificate ioBroker holds: one settings line, a notification, code 11, nothing listens", async () => {
     const s = setup({ secure: true } as never);
     await s.internal.onReady();
 
     expect(logsOf(s.stub, "error")).toEqual([
-      "hassemu.0 Cannot configure secure web server, because no certificates found: defaultPublic, defaultPrivate, undefined",
+      'Settings: HTTPS is on, but ioBroker holds no certificate "defaultPublic", "defaultPrivate" — choose one under Certificates or switch HTTPS off',
     ]);
-    expect(s.stub.terminations).toEqual([6]);
+    expect(s.stub.notifications).toEqual([{ scope: "hassemu", category: "userActionRequired" }]);
+    expect(s.stub.terminations).toEqual([11]);
     expect(s.webServer.start).not.toHaveBeenCalled();
     expect(s.stub.stateSubscriptions).toEqual([]);
   });
 
   it("with a certificate the web server gets the HTTPS part, and mDNS advertises https with the certificate's name", async () => {
     const s = setup({ secure: true, mdnsEnabled: true } as never);
-    s.stub.certificates = pair("named");
+    holdCertificates(s);
     const seen = captureTls(s);
     await s.internal.onReady();
 
@@ -960,8 +1035,13 @@ describe("HTTPS start (K4)", () => {
     // The real mDNS factory of a fresh instance: its advertised base URL follows the HTTPS part.
     const fresh = new HassEmu() as unknown as Internal & { config: Record<string, unknown> };
     fresh.config = { ...BASE_CONFIG };
-    const mdns = (fresh.makeMdnsService as unknown as (id: string, tls: TlsSetup | null) => unknown)("u", seen.tls[0]);
-    expect((mdns as { baseUrlOf: () => string }).baseUrlOf()).toBe("https://display-test.example:8123");
+    const mdns = (fresh.makeMdnsService as unknown as (id: string, tls: SecureSetup | null) => unknown)(
+      "u",
+      seen.tls[0],
+    );
+    expect((mdns as { plan: () => Array<{ baseUrl: string }> }).plan().map(a => a.baseUrl)).toEqual([
+      "https://display-test.example:8123",
+    ]);
   });
 
   it("without HTTPS nothing is loaded and the web server gets no HTTPS part", async () => {
@@ -971,34 +1051,28 @@ describe("HTTPS start (K4)", () => {
     expect(seen.tls).toEqual([null]);
   });
 
-  it("a Let's Encrypt collection: subscribed, a renewal reaches the server, an unusable one keeps the old with one warning", async () => {
+  it("a Let's Encrypt collection: its name is announced, subscribed for renewals, an unusable renewal keeps the old with one warning", async () => {
     const s = setup({ secure: true, leCollection: "home" } as never);
-    s.stub.certificates = pair("named");
     const le = pair("le");
-    s.stub.objects.set("system.certificates", {
-      type: "config",
-      native: { collections: { home: { ...le, domains: ["le.example"] } } },
-    });
+    holdCertificates(s, { home: { ...le, domains: ["le.example"] } });
     const seen = captureTls(s);
     await s.internal.onReady();
 
-    const tls = seen.tls[0]!;
-    expect(tls.name).toBe("le.example");
+    expect(seen.tls[0]?.name).toBe("le.example");
     expect(s.stub.objectSubscriptions).toContain("system.certificates");
-    const update = vi.spyOn(tls, "update");
 
-    s.internal.onObjectChange("system.certificates", {
+    s.stub.emit("objectChange", "system.certificates", {
       type: "config",
       native: { collections: { home: { ...le, domains: ["le.example", "www.le.example"] } } },
-    } as never);
-    expect(update).toHaveBeenCalledTimes(1);
-    expect([...update.mock.calls[0][0].get("home")!.domains]).toEqual(["le.example", "www.le.example"]);
-
-    s.internal.onObjectChange("system.certificates", { type: "config", native: { collections: {} } } as never);
-    expect(update).toHaveBeenCalledTimes(1);
+    });
+    expect(logsOf(s.stub, "warn"), "a usable renewal says nothing").toEqual([]);
+    s.stub.emit("objectChange", "system.certificates", { type: "config", native: { collections: {} } });
     expect(logsOf(s.stub, "warn")).toEqual([
-      'HTTPS keeps its current certificate — the renewed collection cannot be used: the certificate collection "home" does not exist or holds no usable certificate',
+      'The certificate collections changed and cannot be used: the certificate collection "home" is missing or holds no usable certificate — the server keeps the previous ones',
     ]);
+
+    await new Promise<void>(resolve => s.internal.onUnload(resolve));
+    expect(s.stub.objectUnsubscriptions).toContain("system.certificates");
   });
 });
 

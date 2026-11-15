@@ -2903,7 +2903,7 @@ describe("ClientRegistry display ids move once (K7, krobi 2026-11-11 19:51)", ()
     ]);
   });
 
-  it("an alias read that fails fails the start before the old display is touched", async () => {
+  it("an alias read that fails costs one warning, and the move goes on (fleet master moveAllWithEnums)", async () => {
     const built = createMockAdapter();
     const s = built.store;
     const cookie = seedOldDisplay(built, "61c3a1");
@@ -2919,19 +2919,15 @@ describe("ClientRegistry display ids move once (K7, krobi 2026-11-11 19:51)", ()
     a.getForeignObjectsAsync = (pattern: string, type?: string) =>
       pattern === "alias.*" ? Promise.reject(new Error("broker down")) : list(pattern, type);
 
-    let failed: unknown;
-    await new ClientRegistry(built.adapter as never, s.dataDir).restore().catch((err: unknown) => (failed = err));
-
-    expect(failed).to.be.instanceOf(Error);
-    expect(s.objects.get("hassemu.0.clients.61c3a1")?.native?.movingTo).to.equal("display-c3a1");
-    expect(s.objects.has("hassemu.0.clients.61c3a1.mode")).to.be.true;
-
-    a.getForeignObjectsAsync = list;
     const reg = new ClientRegistry(built.adapter as never, s.dataDir);
     await reg.restore();
+
     expect(reg.getByCookie(cookie)?.id).to.equal("display-c3a1");
+    expect(s.objects.has("hassemu.0.clients.61c3a1")).to.be.false;
+    expect(s.logs.filter(l => l.level === "warn").map(l => l.msg)).toEqual(["Aliases could not be read: broker down"]);
+    // The alias stays where it was — the master read none, so it carried none.
     expect((s.objects.get("alias.0.wall.mode")?.common as { alias?: { id?: unknown } }).alias?.id).to.equal(
-      "hassemu.0.clients.display-c3a1.mode",
+      "hassemu.0.clients.61c3a1.mode",
     );
   });
 

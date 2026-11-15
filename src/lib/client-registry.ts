@@ -155,30 +155,6 @@ export function movedObject(
   return copy as unknown as ioBroker.SettableObject;
 }
 
-/**
- * An alias target with the moved display followed — a plain id, or the read/write pair (as in homeconnect,
- * `device-move.ts` `movedAliasTarget`).
- *
- * @param target   `common.alias.id` as stored.
- * @param fromFull The old device id, namespace included.
- * @param toFull   The new device id, namespace included.
- * @returns The new target, or undefined when it points at nothing of the moved display.
- */
-export function movedAliasTarget(target: unknown, fromFull: string, toFull: string): unknown {
-  if (typeof target === "string") {
-    return movedObjectId(target, fromFull, toFull);
-  }
-  if (isPlainObject(target)) {
-    const read = typeof target.read === "string" ? movedObjectId(target.read, fromFull, toFull) : undefined;
-    const write = typeof target.write === "string" ? movedObjectId(target.write, fromFull, toFull) : undefined;
-    if (read === undefined && write === undefined) {
-      return undefined;
-    }
-    return { ...target, ...(read !== undefined ? { read } : {}), ...(write !== undefined ? { write } : {}) };
-  }
-  return undefined;
-}
-
 /** What the restore of one display found. */
 interface RestoredClient {
   /** Display id. */
@@ -438,10 +414,10 @@ export class ClientRegistry {
    *
    * Each step can be repeated, and nothing is lost when the process ends between two of them (as in yamaha 3.0.0,
    * `migrateDeviceIds`): the journal (`native.movingTo` at the old device) first; then the copy of the device and its
-   * datapoints with their values; then every alias that points at the old datapoints pointed at the new ones (like the
-   * fleet's id moves); then the identity re-keyed in the data file; then every datapoint below the old
-   * device deleted with its rooms and functions carried to the new ids (`moveAllWithEnums` — a recursive delete would
-   * take the device and its journal first); the old device last. A step that fails fails the start (K16): the journal
+   * datapoints with their values; then the identity re-keyed in the data file; then every datapoint below the old
+   * device deleted with its rooms, functions and aliases carried to the new ids (the fleet master `moveAllWithEnums`,
+   * krobi 2026-11-12 20:02–20:06 — a recursive delete would take the device and its journal first); the old device
+   * last. A step that fails fails the start (K16): the journal
    * stays, and the restart finishes the move.
    *
    * @param objects The display containers as listed.
@@ -557,7 +533,6 @@ export class ClientRegistry {
         ...(typeof state.q === "number" ? { q: state.q } : {}),
       });
     }
-    await this.retargetAliases(fromFull, toFull);
     // The identity follows before the old device goes: the file must name the display under its new id first.
     const entry = this.carried.get(move.from);
     if (entry) {
@@ -586,32 +561,6 @@ export class ClientRegistry {
     this.adapter.log.info(
       `Display ${move.from} is now ${move.to} — scripts and visualisations that use clients.${move.from} need the new id`,
     );
-  }
-
-  /**
-   * Point every alias whose target lies in the moving display at the new id — in both forms of `common.alias.id`.
-   * Repeatable: an alias already on the new id is left alone, so a restart from the journal does it again safely.
-   * A read or write error propagates (K16): the restart finishes the move.
-   *
-   * @param fromFull The old device id, namespace included.
-   * @param toFull   The new device id, namespace included.
-   */
-  private async retargetAliases(fromFull: string, toFull: string): Promise<void> {
-    const aliases = (await this.adapter.getForeignObjectsAsync("alias.*", "state")) ?? {};
-    for (const [id, obj] of Object.entries(aliases)) {
-      const alias = (obj?.common as { alias?: { id?: unknown } } | undefined)?.alias;
-      if (!obj || !isPlainObject(alias)) {
-        continue;
-      }
-      const moved = movedAliasTarget(alias.id, fromFull, toFull);
-      if (moved === undefined) {
-        continue;
-      }
-      await this.adapter.setForeignObject(id, {
-        ...obj,
-        common: { ...obj.common, alias: { ...alias, id: moved } },
-      } as ioBroker.SettableObject);
-    }
   }
 
   /**
@@ -1844,7 +1793,15 @@ export class ClientRegistry {
       ],
       [
         `clients.${id}.ip`,
-        { name: tName("clientIp"), type: "string", role: "info.ip", read: true, write: false, def: "" },
+        {
+          name: tName("clientIp"),
+          desc: tName("clientIpDesc"),
+          type: "string",
+          role: "info.ip",
+          read: true,
+          write: false,
+          def: "",
+        },
       ],
       [
         // Read-only: what the resolver ACTUALLY answered for this display. `mode` shows the

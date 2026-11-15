@@ -11,7 +11,7 @@
 import { coerceFiniteNumber, coerceSafeUrl, coerceString, isPlainObject } from "./coerce";
 import { errText } from "./err-text";
 import { chosenAddress } from "./network-address";
-import { getLocalIp } from "./network";
+import { listAddress } from "./network";
 import type { AdapterInterface, UrlStates } from "./types";
 
 /** Minimal adapter interface the discovery needs — allows easy mocking in tests. */
@@ -334,13 +334,17 @@ export class UrlDiscovery {
   /**
    * @param adapter     Adapter instance used to read broker state.
    * @param onChange    Optional callback fired after every successful refresh.
-   * @param hostAddress This host's address for a dashboard on every address — the address
-   *                    hassemu itself is reached at (main.ts: the chosen one, else the LAN
-   *                    address); before, it was always the first address the host listed,
-   *                    so a display in the chosen network got URLs of another network
-   *                    (review 2026-11-07, R-05).
+   * @param hostAddress This host's address for a dashboard on every address — one entry, the chosen address or
+   *                    the host's first one (`listAddress`); the answer to a display puts in the address of the
+   *                    display's own network (`targetForPeer`, werkbank standard on D17, 2026-11-15). Before, it
+   *                    was always the first address the host listed, so a display in the chosen network got URLs
+   *                    of another network (review 2026-11-07, R-05).
    */
-  constructor(adapter: DiscoveryAdapter, onChange?: UrlStatesListener, hostAddress: () => string = getLocalIp) {
+  constructor(
+    adapter: DiscoveryAdapter,
+    onChange?: UrlStatesListener,
+    hostAddress: () => string = () => listAddress(undefined),
+  ) {
     this.adapter = adapter;
     this.onChange = onChange;
     this.hostAddress = hostAddress;

@@ -1,6 +1,4 @@
 import crypto from "node:crypto";
-import http from "node:http";
-import https from "node:https";
 import net from "node:net";
 import fastifyCookie from "@fastify/cookie";
 import fastifyFormbody from "@fastify/formbody";
@@ -50,8 +48,8 @@ import { tPage } from "./i18n";
 import type { ClientRegistry } from "./client-registry";
 import type { GlobalConfig } from "./global-config";
 import { renderLandingPage } from "./landing-page";
-import { advertisedBaseUrl } from "./network";
-import type { TlsSetup } from "./tls";
+import { addressForPeer, advertisedBaseUrl, targetForPeer } from "./network";
+import { createOwnServer, type SecureSetup } from "./secure-server";
 import { chosenAddress, isOwnPeer } from "./network-address";
 import { resolveRedirect, resolveRedirectWithChain } from "./redirect-resolver";
 import { renderRedirectWrapper } from "./redirect-wrapper";
@@ -170,7 +168,7 @@ export class WebServer {
   public readonly inject!: WebserverInject;
   public readonly instanceUuid: string;
   /** The HTTPS part (K4), or `null` for plain HTTP. */
-  private readonly tlsSetup: TlsSetup | null;
+  private readonly tlsSetup: SecureSetup | null;
   /** ioBroker system language for the setup page — resolved on startup. */
   public readonly systemLanguage: string;
   /**
@@ -213,7 +211,7 @@ export class WebServer {
     systemLanguage: string = "en",
     targetProbe: TargetProbe = probeTarget,
     httpLimits: HttpLimits = DEFAULT_HTTP_LIMITS,
-    tlsSetup: TlsSetup | null = null,
+    tlsSetup: SecureSetup | null = null,
   ) {
     this.adapter = adapter;
     this.tlsSetup = tlsSetup;
@@ -264,10 +262,8 @@ export class WebServer {
           requestTimeout: httpLimits.requestTimeoutMs,
           connectionsCheckingInterval: httpLimits.checkIntervalMs,
         };
-        // HTTPS (K4) takes the same limits — the request limit must reach the constructor on both.
-        const server = tlsSetup
-          ? https.createServer({ ...limits, ...tlsSetup.options }, handler)
-          : http.createServer(limits, handler);
+        // HTTPS (K4) takes the same limits — the request limit must reach the constructor on both (fleet master).
+        const server = createOwnServer(tlsSetup ?? undefined, limits, handler);
         // fastify always hands over its keep-alive timeout (default 72 s).
         server.keepAliveTimeout = (options as { keepAliveTimeout: number }).keepAliveTimeout;
         server.setTimeout(httpLimits.connectionTimeoutMs);
@@ -338,14 +334,15 @@ export class WebServer {
       await this.app.listen({ port: this.config.port, host: bind });
     } catch (err) {
       // `listen` rejects with a NodeJS.ErrnoException in practice — the code is still read
-      // guarded and the text goes through errText, like every other caught value.
+      // guarded and the text goes through errText, like every other caught value. The start's
+      // `failStart` writes the one error line with this text (start-failure standard).
       const fields: { code?: unknown } = typeof err === "object" && err !== null ? err : {};
-      const msg =
+      throw new Error(
         fields.code === "EADDRINUSE"
           ? `Port ${this.config.port} is already in use — another service is bound to it`
-          : `Server error during startup: ${errText(err)}`;
-      this.adapter.log.error(msg);
-      throw err;
+          : `Server error during startup: ${errText(err)}`,
+        { cause: err },
+      );
     }
     this.adapter.log.debug(`Web server listening on ${bind}:${this.config.port}`);
 
@@ -504,6 +501,17 @@ export class WebServer {
 
     // L6: bounded by the recently-seen no-PTR IPs, not by every IP ever seen.
     this.hostnames.prune(now);
+  }
+
+  /**
+   * The target as this display gets it: an address of this host in it becomes the host's address in the display's own
+   * network, decided when the display asks (werkbank standard on D17, 2026-11-15, master `ownAddressFor`).
+   *
+   * @param url The resolved target, or nothing for the landing page.
+   * @param req The display's request — its socket names the display (DD 36).
+   */
+  private targetFor(url: string | null | undefined, req: FastifyRequest): string | null | undefined {
+    return url ? targetForPeer(url, req.socket.remoteAddress, this.config.bind) : url;
   }
 
   /**
@@ -806,11 +814,14 @@ export class WebServer {
 
     // HA core removed this endpoint in 2022 (#64534) and no Companion app asks for it any
     // more; kept because closed-source clients (the Shelly built-in page) may still do.
-    this.app.get("/api/discovery_info", PUBLIC_ROUTE, () => {
+    this.app.get("/api/discovery_info", PUBLIC_ROUTE, req => {
       // v1.17.0 (E11): never `req.hostname` — the Host header is client-controlled, and
-      // `Host: attacker.lan` would point other HA clients at a wrong URL. The bound address,
-      // identical to the mDNS advert; an IPv6 address in brackets (H10).
-      const baseUrl = advertisedBaseUrl(this.config.bind, this.config.port, this.tlsSetup);
+      // `Host: attacker.lan` would point other HA clients at a wrong URL. The address of this
+      // host in the asking display's own network, from the socket (fleet master
+      // `ownAddressFor`); the peer guard answered every other peer with 403 already, so the
+      // socket's own address is only the type's fallback. An IPv6 address in brackets (H10).
+      const address = addressForPeer(req.socket.remoteAddress, this.config.bind) ?? req.socket.localAddress ?? "";
+      const baseUrl = advertisedBaseUrl(address, this.config.port, this.tlsSetup);
       return {
         base_url: baseUrl,
         external_url: null,
@@ -1356,7 +1367,8 @@ export class WebServer {
       // v1.32.0 B1: the resolver chain as a triage anchor. Without it a maintainer had
       // to read the resolver code to understand why exactly this URL was picked for
       // this client.
-      const { url, chain } = resolveRedirectWithChain(client, this.globalConfig.redirect);
+      const { url: resolved, chain } = resolveRedirectWithChain(client, this.globalConfig.redirect);
+      const url = this.targetFor(resolved, req);
       // Only-on-change, the same discipline `/api/redirect_check` has had since v1.32.0
       // (F1) — and needed more here, because the landing page reloads every 15 s (twice
       // as often as the poll). An unconfigured display used to write ~5 800 identical
@@ -1389,7 +1401,7 @@ export class WebServer {
     // sends its `hassemu_client` cookie by itself.
     this.app.get("/api/redirect_check", PUBLIC_ROUTE, async (req, reply) => {
       const client = await this.identify(req, reply);
-      const url = resolveRedirect(client, this.globalConfig.redirect);
+      const url = this.targetFor(resolveRedirect(client, this.globalConfig.redirect), req);
       // v1.32.0 F1: trace on change only. Every poll (every 30 s × N displays) would
       // flood the log — only a change of target is worth a line. The first poll after
       // a restart is logged too, because the map is empty.

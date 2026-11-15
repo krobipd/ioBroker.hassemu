@@ -1,7 +1,15 @@
 // Fleet master (.consistency-master/src/lib/network-address.test.ts) — never edit the copy in an adapter.
 import type * as Os from "node:os";
 import { describe, expect, it, vi } from "vitest";
-import { carriesAddress, chosenAddress, isOwnPeer, localNets, ownNets, type InterfaceMap } from "./network-address";
+import {
+  carriesAddress,
+  chosenAddress,
+  isOwnPeer,
+  localNets,
+  ownAddressFor,
+  ownNets,
+  type InterfaceMap,
+} from "./network-address";
 
 // Round 157 (master audit M21/M22): the defaults read `os.networkInterfaces()` — the tests read the machine's own
 // interfaces before (counted with the code's own filter, or expected only `false`), so they measured the machine. The
@@ -167,5 +175,36 @@ describe("isOwnPeer", () => {
   it("reads the host's own interfaces when given none", () => {
     expect(isOwnPeer("192.168.1.77", undefined)).toBe(true);
     expect(isOwnPeer("10.47.4.9", undefined)).toBe(false);
+  });
+});
+
+// Round 177 (krobi 2026-11-11 19:34, the fleet rule): without a chosen address every peer is told the host's address in
+// its own network — never the first one, never an order of the adapter's own
+describe("ownAddressFor", () => {
+  const nets = localNets(IFACES);
+
+  it("tells each peer the host's address in its own network, IPv4, IPv4-mapped and IPv6", () => {
+    expect(ownAddressFor("192.0.2.2", undefined, nets)).toBe("192.0.2.2");
+    expect(ownAddressFor("192.168.1.77", undefined, nets)).toBe("192.168.1.5");
+    expect(ownAddressFor("::ffff:192.168.1.77", undefined, nets)).toBe("192.168.1.5");
+    expect(ownAddressFor("2001:db8::77", undefined, nets)).toBe("2001:db8::5");
+    expect(ownAddressFor("fe80::1%iot", undefined, nets)).toBe("fe80::1");
+  });
+
+  it("tells no address to a peer outside every own network, to loopback and to nothing", () => {
+    expect(ownAddressFor("10.47.4.9", undefined, nets)).toBeUndefined();
+    expect(ownAddressFor("127.0.0.1", undefined, nets)).toBeUndefined();
+    expect(ownAddressFor(undefined, undefined, nets)).toBeUndefined();
+  });
+
+  it("tells the chosen address to a peer in its networks and nothing to any other", () => {
+    expect(ownAddressFor("192.168.1.77", "192.168.1.5", nets)).toBe("192.168.1.5");
+    expect(ownAddressFor("2001:db8::77", "192.168.1.5", nets)).toBe("192.168.1.5");
+    expect(ownAddressFor("192.0.2.2", "192.168.1.5", nets)).toBeUndefined();
+  });
+
+  it("reads the host's own interfaces when given none", () => {
+    expect(ownAddressFor("192.168.1.77", undefined)).toBe("192.168.1.5");
+    expect(ownAddressFor("10.47.4.9", "192.168.1.5")).toBeUndefined();
   });
 });

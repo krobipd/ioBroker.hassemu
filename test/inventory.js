@@ -1215,23 +1215,60 @@ const STOP_DEADLINE_MS = RESTART_DELAY_MS + 2500;
 const START_DEADLINE_MS = 30000;
 /** Round 64: the recording marker every seeded state carries in `common.custom`, naming the id it was seeded under. */
 const RECORDING = "inventory-recording.0";
+/** Round 177: where seedPrevious puts the aliases a user made — outside the adapter's namespace, as in an installation. */
+const ALIAS_ROOT = "alias.0.inventory";
+
+/**
+ * Round 177 (krobi 2026-11-12 20:02–20:06, a fleet decision for every adapter whose datapoints move: "yes, aliases move
+ * along"): the aliases a user made on the previous release's states — a plain and a split one (read and write) on every
+ * state the release moves (MOVES), a plain one on the first state that stays. Each names the target it is seeded with
+ * and the one it points at after the upgrade: a moved id its MOVES target, every other id itself.
+ *
+ * @param {Record<string, ioBroker.Object>} previous the previous release's inventory
+ * @returns {{ id: string, origin: string, seeded: unknown, expected: unknown }[]} the aliases, each with its state
+ */
+function userAliases(previous) {
+    const states = Object.keys(previous).filter((id) => previous[id].type === "state");
+    const stays = states.find((id) => !(id in MOVES));
+    return [
+        ...states.filter((id) => id in MOVES).flatMap((id, n) => [
+            { id: `${ALIAS_ROOT}.plain.${n}`, origin: id, seeded: id, expected: MOVES[id] },
+            { id: `${ALIAS_ROOT}.split.${n}`, origin: id, seeded: { read: id, write: id }, expected: { read: MOVES[id], write: MOVES[id] } },
+        ]),
+        ...(stays ? [{ id: `${ALIAS_ROOT}.stays`, origin: stays, seeded: stays, expected: stays }] : []),
+    ];
+}
 
 /**
  * Seed the previous release's objects before the start. Every state carries a recording marker (round 64): what hangs
  * on a datapoint is the user's — it goes on with the SAME datapoint (its id, or the one id a move gives it), never onto
  * a new datapoint, and never decides what the adapter creates, keeps or deletes (that shows up as a leftover or a
- * missing object against the committed inventory).
+ * missing object against the committed inventory). Round 177: every object carries a name a user gave it in the old
+ * installation — the name is the adapter's (krobi 2026-09-02, "a user has nothing to stir in the adapter's datapoints"),
+ * so "every current object carries the current texts and roles" is red where the user's name stays after the start.
+ * An object the release moves (MOVES) keeps the name of the old release: the move may read what the old release kept
+ * in that name alone (a paired client's device type, measured in the round 177 lab run), and its new object carries
+ * the current texts or is red there.
+ * Round 177: the user's aliases on those states (userAliases) are there too, before the start.
  *
  * @param {import("@iobroker/testing").IntegrationTestHarness} harness
  * @param {Record<string, ioBroker.Object>} previous the previous release's inventory
  */
 async function seedPrevious(harness, previous) {
     // round 157 (inventory-template audit V31): the objects are independent — written together, not one after the other
-    await Promise.all(Object.entries(previous).map(([id, obj]) => {
-        const common =
-            obj.type === "state" ? { ...obj.common, custom: { ...obj.common?.custom, [RECORDING]: { enabled: true, origin: id } } } : obj.common;
-        return harness.objects.setObjectAsync(id, { ...obj, common });
-    }));
+    await Promise.all([
+        ...Object.entries(previous).map(([id, obj]) => {
+            const named = id in MOVES ? obj.common : { ...obj.common, name: "renamed by a user" };
+            const common =
+                obj.type === "state" ? { ...named, custom: { ...obj.common?.custom, [RECORDING]: { enabled: true, origin: id } } } : named;
+            return harness.objects.setObjectAsync(id, { ...obj, common });
+        }),
+        ...userAliases(previous).map(({ id, origin, seeded }) => harness.objects.setObjectAsync(id, {
+            type: "state",
+            common: { name: "alias of a user", type: previous[origin].common?.type, role: previous[origin].common?.role, read: true, write: true, alias: { id: seeded } },
+            native: {},
+        })),
+    ]);
 }
 
 /** Round 67: the text a dump puts where the adapter stored a secret encrypted with its installation's secret. */
@@ -1263,8 +1300,12 @@ async function restoreMaskedSecrets(harness) {
     // six hex characters, its own cookie, a fresh lastSeen, no tokens; the recording in common.custom moves along. The
     // start then plays the move of K7 and the takeover into identities.json as every 1.46.1 installation does. A dump after
     // B3 carries no native.cookie and nothing happens here — this body goes with the first release after 2.0.0.
+    // The aliases seedPrevious made on the dump's ids (round 177) are renamed the same way: in a 1.46.1 installation a
+    // user's alias points at the display's real id, so the start meets that form and the move of K7 has to carry them.
     const prefix = `${NS}clients.`;
     const rows = (await harness.objects.getObjectList({ startkey: prefix, endkey: `${prefix}香` })).rows;
+    /** @type {Map<string, string>} */
+    const renamed = new Map();
     for (const device of rows.filter((r) => r.value?.type === "device" && typeof r.value.native?.cookie === "string")) {
         const former = formerDisplay(device.id.slice(prefix.length));
         if (!former) {
@@ -1278,8 +1319,24 @@ async function restoreMaskedSecrets(harness) {
         }
         for (const row of rows.filter((r) => r.id === device.id || r.id.startsWith(`${device.id}.`))) {
             const to = `${prefix}${former.id}${row.id.slice(device.id.length)}`;
+            renamed.set(row.id, to);
             await harness.objects.setObjectAsync(to, { ...row.value, _id: to, ...(row.id === device.id ? { native } : {}) });
             await harness.objects.delObjectAsync(row.id);
+        }
+    }
+    if (renamed.size === 0) {
+        return;
+    }
+    const next = (id) => (typeof id === "string" ? (renamed.get(id) ?? id) : id);
+    const aliases = (await harness.objects.getObjectList({ startkey: "alias.", endkey: "alias.香" })).rows;
+    for (const { id, value } of aliases) {
+        const target = value?.common?.alias?.id;
+        if (target === undefined || target === null) {
+            continue;
+        }
+        const moved = typeof target === "string" ? next(target) : { ...target, read: next(target.read), write: next(target.write) };
+        if (canonical(moved) !== canonical(target)) {
+            await harness.objects.setObjectAsync(id, { ...value, common: { ...value.common, alias: { ...value.common.alias, id: moved } } });
         }
     }
 }
@@ -2290,8 +2347,8 @@ tests.integration(ADAPTER_DIR, {
                 it("stops with an error when it can talk to nothing, and runs on when it can", function () {
                     const ports = verdict.plan.taken.map((p) => `${p.protocol} ${p.port}`).join(", ");
                     if (verdict.stopped) {
-                        assert.notStrictEqual(verdict.exit, 0, `stopped with exit code 0 while ${ports} was taken — a port it cannot do without is a fatal error`);
-                        assert.ok(verdict.errors.length > 0, `stopped while ${ports} was taken without an error line — the user reads the log, not the exit code`);
+                        assert.strictEqual(verdict.exit, 6, `stopped with exit code ${verdict.exit} while ${ports} was taken — a start that cannot open its port ends with 6, the code js-controller tries again (start-failure standard)`);
+                        assert.strictEqual(verdict.errors.length, 1, `stopped with ${verdict.errors.length} error lines while ${ports} was taken — exactly one names what failed, the user reads the log, not the exit code`);
                         assert.deepStrictEqual([...verdict.paths, ...verdict.before], [], `stopped although it still had a path while ${ports} was taken`);
                     } else {
                         assert.ok(verdict.paths.length > 0, `runs on ${TAKEN_WINDOW_MS} ms after a start with ${ports} taken, and nothing answered and no other port of it is open — it talks to nothing, that is a fatal error`);
@@ -2826,6 +2883,20 @@ tests.integration(ADAPTER_DIR, {
                         }
                     }
                     assert.deepStrictEqual(wrong, [], `recordings that left their datapoint:\n${wrong.join("\n")}`);
+                });
+
+                // Round 177 (krobi 2026-11-12 20:02–20:06, a fleet decision): an alias of the user follows a datapoint the
+                // release moves (the fleet master enum-carry.ts carries it), and one on a datapoint that stays is left alone.
+                it("an alias of the user follows its datapoint", async function () {
+                    this.timeout(30000);
+                    const wrong = [];
+                    for (const { id, seeded, expected } of userAliases(previous)) {
+                        const target = (await harness.objects.getObjectAsync(id))?.common?.alias?.id;
+                        if (canonical(target) !== canonical(expected)) {
+                            wrong.push(`${id}: points at ${JSON.stringify(target)}, want ${JSON.stringify(expected)} (seeded on ${JSON.stringify(seeded)})`);
+                        }
+                    }
+                    assert.deepStrictEqual(wrong, [], `aliases of the user that did not follow their datapoint:\n${wrong.join("\n")}`);
                 });
 
                 // What a fresh installation does not have, an upgrade must not have either — whatever made it (round 64:

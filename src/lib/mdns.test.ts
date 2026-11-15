@@ -16,9 +16,30 @@ vi.mock("bonjour-service", async importOriginal => {
   }
   return { ...real, default: Noting };
 });
-import { MDNSService, mdnsSocketOptions } from "./mdns";
+import { announcements, MDNSService, mdnsSocketOptions } from "./mdns";
 import { HA_VERSION } from "./constants";
+import type { LocalNet } from "./network-address";
 import type { AdapterConfig } from "./types";
+
+/**
+ * One network of the host, as the fleet master `localNets` reports it.
+ *
+ * @param address The host's address in it.
+ * @param iface   The interface name.
+ */
+function net(address: string, iface = "eth0"): LocalNet {
+  return {
+    iface,
+    family: address.includes(":") ? "IPv6" : "IPv4",
+    address,
+    prefixLength: address.includes(":") ? 64 : 24,
+  };
+}
+
+/** The announcements on the air — `{bonjour, published}` each. */
+type Internals = {
+  announced: Array<{ bonjour: { destroy(): void } | null; published: unknown }>;
+};
 
 interface LogEntry {
   level: string;
@@ -199,7 +220,7 @@ describe("MDNSService", () => {
       // Both the stop-callback and the 300 ms fallback call destroy(); a second
       // destroy() on an already-closed bonjour instance throws inside the
       // library (it walks closed sockets).
-      const internals = service as unknown as { bonjour: { destroy(): void } | null };
+      const internals = (service as unknown as Internals).announced[0];
       // The real instance start() opened is swapped for the counter — release its sockets here.
       const real = internals.bonjour;
       onTestFinished(() => real?.destroy());
@@ -229,10 +250,7 @@ describe("MDNSService", () => {
       // announcement is still in the socket — resolve too early and the host tears
       // the process down mid-farewell, which is the bug this release fixes.
       service.start();
-      const internals = service as unknown as {
-        bonjour: { destroy(): void } | null;
-        published: { stop(cb: () => void): void } | null;
-      };
+      const internals = (service as unknown as Internals).announced[0];
       // The real instance start() opened is swapped for the fake — release its sockets here.
       const real = internals.bonjour;
       onTestFinished(() => real?.destroy());
@@ -322,8 +340,8 @@ describe("MDNSService cross-platform", () => {
 
     // bonjour reports a socket failure asynchronously, as a warn — wait until the first
     // announcement went out (or failed) before judging the log.
-    const published = (service as unknown as { published: EventEmitter | null }).published;
-    expect(published).to.not.equal(null);
+    const published = (service as unknown as Internals).announced[0]?.published as EventEmitter | undefined;
+    expect(published).to.not.equal(undefined);
     await new Promise<void>(resolve => {
       published!.once("up", () => resolve());
       published!.once("error", () => resolve());
@@ -358,10 +376,9 @@ describe("MDNSService cross-platform", () => {
 
       // Fire an async 'error' event on the published service object — bonjour-
       // service's Service extends EventEmitter, so .emit() is available.
-      const internal = localService as unknown as {
-        published: { emit?: (event: string, err: Error) => void } | null;
-      };
-      internal.published?.emit?.("error", new Error("mock dgram bind failure"));
+      const published = (localService as unknown as Internals).announced[0]?.published as
+        { emit?: (event: string, err: Error) => void } | undefined;
+      published?.emit?.("error", new Error("mock dgram bind failure"));
 
       expect(localService.isActive()).to.be.false;
       const warns = localAdapter._logs.filter(l => l.level === "warn" && l.msg.includes("async publish error"));
@@ -389,9 +406,12 @@ describe("MDNSService cross-platform", () => {
       const local = new MDNSService(createMockAdapter() as never, { ...MDNS_CONFIG, bind: "192.168.1.5" }, uuid);
       local.start();
       try {
-        const published = (
-          local as unknown as { published: { type: string; port: number; name: string; txt: unknown } }
-        ).published;
+        const published = (local as unknown as Internals).announced[0].published as {
+          type: string;
+          port: number;
+          name: string;
+          txt: unknown;
+        };
         expect(published.type).to.equal("_home-assistant._tcp");
         expect(published.port).to.equal(8123);
         expect(published.name).to.equal("TestService");
@@ -412,22 +432,24 @@ describe("MDNSService cross-platform", () => {
   describe("a changed address is announced again (H10)", () => {
     it("re-publishes with the new base_url and the same UUID; an unchanged address changes nothing", async () => {
       const localAdapter = createMockAdapter();
-      let base = "http://192.168.1.5:8123";
+      let nets = [net("192.168.1.5")];
       const uuid = crypto.randomUUID();
-      const local = new MDNSService(localAdapter as never, MDNS_CONFIG, uuid, () => base);
+      const local = new MDNSService(localAdapter as never, MDNS_CONFIG, uuid, undefined, () => nets);
       local.start();
       try {
         expect(localAdapter._intervals.size, "address check armed for a wildcard bind").to.equal(1);
-        const internal = local as unknown as { published: { txt: Record<string, string> } };
-        const first = internal.published;
+        const internal = local as unknown as Internals;
+        const txtOf = (): Record<string, string> =>
+          (internal.announced[0].published as { txt: Record<string, string> }).txt;
+        const first = internal.announced[0].published;
 
         await local.refreshIfAddressChanged();
-        expect(internal.published, "unchanged address — same announcement").to.equal(first);
+        expect(internal.announced[0].published, "unchanged address — same announcement").to.equal(first);
 
-        base = "http://192.168.1.77:8123";
+        nets = [net("192.168.1.77")];
         await local.refreshIfAddressChanged();
-        expect(internal.published.txt.base_url).to.equal("http://192.168.1.77:8123");
-        expect(internal.published.txt.uuid).to.equal(uuid);
+        expect(txtOf().base_url).to.equal("http://192.168.1.77:8123");
+        expect(txtOf().uuid).to.equal(uuid);
         expect(local.isActive()).to.be.true;
       } finally {
         await local.stop(true);
@@ -455,7 +477,7 @@ describe("MDNSService cross-platform", () => {
     const localAdapter = createMockAdapter();
     const local = new MDNSService(localAdapter as never, MDNS_CONFIG, crypto.randomUUID());
     local.start();
-    (local as unknown as { published: { emit: (e: string, v: unknown) => void } }).published.emit(
+    ((local as unknown as Internals).announced[0].published as { emit: (e: string, v: unknown) => void }).emit(
       "error",
       "bind failed",
     );
@@ -497,5 +519,162 @@ describe("mdnsSocketOptions", () => {
     for (const bind of [undefined, "", "0.0.0.0", "::"]) {
       expect(mdnsSocketOptions(bind), `bind=${JSON.stringify(bind)}`).to.deep.equal({});
     }
+  });
+});
+
+// The fleet rule (krobi 2026-11-11 19:34, master `ownAddressFor`): a display gets the host's address in its own network.
+// An mDNS announcement reaches only the link it is sent on, so each own network gets its own, carrying its address.
+describe("announcements — the address of the display's own network", () => {
+  it("a chosen address: one announcement on its interface, with its address", () => {
+    expect(announcements("192.0.2.10", 8123, null, [net("192.0.2.10"), net("198.51.100.10")])).to.deep.equal([
+      { socket: { interface: "192.0.2.10", bind: "0.0.0.0" }, baseUrl: "http://192.0.2.10:8123", probe: true },
+    ]);
+  });
+
+  it("every address with one network: one announcement from its interface, the name probed first", () => {
+    expect(announcements("0.0.0.0", 8123, null, [net("fe80::1"), net("192.0.2.10")])).to.deep.equal([
+      { socket: { interface: "192.0.2.10", bind: "0.0.0.0" }, baseUrl: "http://192.0.2.10:8123", probe: true },
+    ]);
+  });
+
+  it("every address with several networks: one per IPv4 network from its interface, without the probe", () => {
+    expect(
+      announcements("", 8123, null, [net("fd00::5"), net("192.0.2.10"), net("198.51.100.10", "docker0")]),
+    ).to.deep.equal([
+      { socket: { interface: "192.0.2.10", bind: "0.0.0.0" }, baseUrl: "http://192.0.2.10:8123", probe: false },
+      { socket: { interface: "198.51.100.10", bind: "0.0.0.0" }, baseUrl: "http://198.51.100.10:8123", probe: false },
+    ]);
+  });
+
+  it("HTTPS with a certificate name: every network's announcement names the name (K4)", () => {
+    expect(
+      announcements(undefined, 8123, { name: "hassemu.example" }, [net("192.0.2.10"), net("198.51.100.10")]),
+    ).to.deep.equal([
+      { socket: { interface: "192.0.2.10", bind: "0.0.0.0" }, baseUrl: "https://hassemu.example:8123", probe: false },
+      {
+        socket: { interface: "198.51.100.10", bind: "0.0.0.0" },
+        baseUrl: "https://hassemu.example:8123",
+        probe: false,
+      },
+    ]);
+  });
+
+  it("a host without an IPv4 network announces nothing — the mDNS socket is IPv4", () => {
+    expect(announcements("::", 8123, null, [net("fe80::1"), net("2001:db8::5")])).to.deep.equal([]);
+    expect(announcements("0.0.0.0", 8123, null, [])).to.deep.equal([]);
+  });
+
+  it("each network's announcement goes out on its own socket and carries its own address", async () => {
+    builtWith.length = 0;
+    const local = new MDNSService(
+      createMockAdapter() as never,
+      {
+        port: 8123,
+        bind: "0.0.0.0",
+        authRequired: false,
+        username: "admin",
+        password: "",
+        mdnsEnabled: true,
+        serviceName: "TestService",
+      },
+      crypto.randomUUID(),
+      null,
+      () => [net("192.0.2.10"), net("198.51.100.10", "docker0")],
+    );
+    local.start();
+    const bases = (local as unknown as Internals).announced.map(
+      a => (a.published as { txt: Record<string, string> }).txt.base_url,
+    );
+    await local.stop();
+    expect(builtWith).to.deep.equal([
+      { interface: "192.0.2.10", bind: "0.0.0.0" },
+      { interface: "198.51.100.10", bind: "0.0.0.0" },
+    ]);
+    expect(bases).to.deep.equal(["http://192.0.2.10:8123", "http://198.51.100.10:8123"]);
+  });
+
+  it("a socket error ends only its own announcement", async () => {
+    const adapter = createMockAdapter();
+    const local = new MDNSService(
+      adapter as never,
+      {
+        port: 8123,
+        bind: "0.0.0.0",
+        authRequired: false,
+        username: "",
+        password: "",
+        mdnsEnabled: true,
+        serviceName: "TestService",
+      },
+      crypto.randomUUID(),
+      null,
+      () => [net("192.0.2.10"), net("198.51.100.10", "docker0")],
+    );
+    local.start();
+    try {
+      const internal = local as unknown as Internals;
+      (internal.announced[0].published as { emit: (e: string, v: unknown) => void }).emit("error", "bind failed");
+      expect(internal.announced).to.have.length(1);
+      expect(local.isActive()).to.be.true;
+    } finally {
+      await local.stop();
+    }
+  });
+
+  it("without a network nothing goes on the air, and the address check stays armed for one that comes", async () => {
+    const adapter = createMockAdapter();
+    let nets: LocalNet[] = [];
+    const local = new MDNSService(
+      adapter as never,
+      {
+        port: 8123,
+        bind: "0.0.0.0",
+        authRequired: false,
+        username: "",
+        password: "",
+        mdnsEnabled: true,
+        serviceName: "TestService",
+      },
+      crypto.randomUUID(),
+      null,
+      () => nets,
+    );
+    local.start();
+    try {
+      expect(local.isActive()).to.be.false;
+      expect(adapter._logs.some(l => l.msg === "mDNS: this host sits in no IPv4 network — nothing to announce")).to.be
+        .true;
+      expect(adapter._intervals.size).to.equal(1);
+      nets = [net("192.0.2.10")];
+      await local.refreshIfAddressChanged();
+      expect(local.isActive()).to.be.true;
+    } finally {
+      await local.stop();
+    }
+  });
+
+  it("a stop during the goodbye of a refresh puts nothing back on the air", async () => {
+    let nets = [net("192.0.2.10")];
+    const local = new MDNSService(
+      createMockAdapter() as never,
+      {
+        port: 8123,
+        bind: "0.0.0.0",
+        authRequired: false,
+        username: "",
+        password: "",
+        mdnsEnabled: true,
+        serviceName: "TestService",
+      },
+      crypto.randomUUID(),
+      null,
+      () => nets,
+    );
+    local.start();
+    nets = [net("198.51.100.10")];
+    const refresh = local.refreshIfAddressChanged();
+    await local.stop();
+    await refresh;
+    expect(local.isActive()).to.be.false;
   });
 });

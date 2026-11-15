@@ -221,6 +221,71 @@
     ],
     "nogit": true
   },
+  "notifications": [
+    {
+      "scope": "hassemu",
+      "name": {
+        "en": "Home Assistant Emulator",
+        "de": "Home Assistant Emulator",
+        "ru": "Эмулятор Home Assistant",
+        "pt": "Emulador de Home Assistant",
+        "nl": "Home Assistant Emulator",
+        "fr": "Émulateur Home Assistant",
+        "it": "Emulatore Home Assistant",
+        "es": "Emulador de Home Assistant",
+        "pl": "Emulator Home Assistant",
+        "uk": "Емулятор Home Assistant",
+        "zh-cn": "Home Assistant模拟器"
+      },
+      "description": {
+        "en": "Problems of the Home Assistant Emulator that only you can fix.",
+        "de": "Probleme des Home Assistant Emulators, die nur du beheben kannst.",
+        "ru": "Проблемы эмулятора Home Assistant, которые можете устранить только вы.",
+        "pt": "Problemas do emulador de Home Assistant que só você pode resolver.",
+        "nl": "Problemen van de Home Assistant Emulator die alleen jij kunt oplossen.",
+        "fr": "Problèmes de l'émulateur Home Assistant que vous seul pouvez résoudre.",
+        "it": "Problemi dell'emulatore Home Assistant che solo tu puoi risolvere.",
+        "es": "Problemas del emulador de Home Assistant que solo tú puedes resolver.",
+        "pl": "Problemy emulatora Home Assistant, które tylko ty możesz rozwiązać.",
+        "uk": "Проблеми емулятора Home Assistant, які можете усунути лише ви.",
+        "zh-cn": "只有您才能解决的 Home Assistant 模拟器问题。"
+      },
+      "categories": [
+        {
+          "category": "userActionRequired",
+          "name": {
+            "en": "A setting stops the instance",
+            "de": "Eine Einstellung hält die Instanz an",
+            "ru": "Настройка останавливает экземпляр",
+            "pt": "Uma configuração impede a instância",
+            "nl": "Een instelling houdt de instantie tegen",
+            "fr": "Un paramètre arrête l'instance",
+            "it": "Un'impostazione ferma l'istanza",
+            "es": "Un ajuste detiene la instancia",
+            "pl": "Ustawienie zatrzymuje instancję",
+            "uk": "Налаштування зупиняє екземпляр",
+            "zh-cn": "某项设置使实例停止"
+          },
+          "severity": "alert",
+          "description": {
+            "en": "The instance stopped because one of its settings is wrong. Correct it in the instance settings and save — the instance then starts again.",
+            "de": "Die Instanz wurde angehalten, weil eine ihrer Einstellungen falsch ist. Korrigiere sie in den Instanz-Einstellungen und speichere — dann startet die Instanz wieder.",
+            "ru": "Экземпляр остановлен, потому что одна из его настроек неверна. Исправьте её в настройках экземпляра и сохраните — после этого экземпляр снова запустится.",
+            "pt": "A instância parou porque uma das suas configurações está errada. Corrija-a nas configurações da instância e salve — a instância então inicia novamente.",
+            "nl": "De instantie is gestopt omdat een van haar instellingen onjuist is. Corrigeer deze in de instantie-instellingen en sla op — daarna start de instantie opnieuw.",
+            "fr": "L'instance s'est arrêtée parce que l'un de ses paramètres est incorrect. Corrigez-le dans les paramètres de l'instance et enregistrez — l'instance redémarre alors.",
+            "it": "L'istanza si è fermata perché una delle sue impostazioni è errata. Correggila nelle impostazioni dell'istanza e salva — poi l'istanza si riavvia.",
+            "es": "La instancia se detuvo porque uno de sus ajustes es incorrecto. Corrígelo en los ajustes de la instancia y guarda — entonces la instancia vuelve a iniciarse.",
+            "pl": "Instancja została zatrzymana, ponieważ jedno z jej ustawień jest błędne. Popraw je w ustawieniach instancji i zapisz — wtedy instancja uruchomi się ponownie.",
+            "uk": "Екземпляр зупинено, бо одне з його налаштувань неправильне. Виправте його в налаштуваннях екземпляра та збережіть — після цього екземпляр знову запуститься.",
+            "zh-cn": "实例已停止，因为其某项设置有误。请在实例设置中更正并保存——实例随后会重新启动。"
+          },
+          "regex": [],
+          "limit": 1
+        }
+      ]
+    }
+  ],
   "encryptedNative": ["password"],
   "protectedNative": ["password"],
   "native": {
@@ -277,6 +342,19 @@
           "pl": "Serwer działa",
           "uk": "Сервер працює",
           "zh-cn": "服务器运行中"
+        },
+        "desc": {
+          "en": "The adapter runs and its server accepts connections — it does not say whether a display is connected.",
+          "de": "Der Adapter läuft und sein Server nimmt Verbindungen an — ob ein Display verbunden ist, sagt der Wert nicht.",
+          "ru": "Адаптер работает, и его сервер принимает подключения — подключён ли дисплей, это значение не показывает.",
+          "pt": "O adaptador está em execução e o seu servidor aceita ligações — não indica se um ecrã está ligado.",
+          "nl": "De adapter draait en zijn server neemt verbindingen aan — of er een display verbonden is, zegt deze waarde niet.",
+          "fr": "L'adaptateur fonctionne et son serveur accepte les connexions — cela n'indique pas si un écran est connecté.",
+          "it": "L'adattatore è in esecuzione e il suo server accetta connessioni — non indica se un display è collegato.",
+          "es": "El adaptador está en marcha y su servidor acepta conexiones — no indica si hay una pantalla conectada.",
+          "pl": "Adapter działa, a jego serwer przyjmuje połączenia — nie mówi, czy wyświetlacz jest połączony.",
+          "uk": "Адаптер працює, і його сервер приймає з'єднання — чи підключено дисплей, це значення не показує.",
+          "zh-cn": "适配器正在运行，其服务器接受连接——它不表示是否有显示屏已连接。"
         },
         "type": "boolean",
         "read": true,

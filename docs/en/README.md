@@ -47,10 +47,11 @@ Install the adapter and start instance 0. In the instance settings you normally 
 nothing to begin with: mDNS is on, authentication is off, and the adapter binds to all
 interfaces.
 
-If your ioBroker host has several network cards, set **Bind to Interface** to the one your
-displays are on. The adapter announces itself under that address, so announcing an address
-the display cannot reach is the most common reason discovery "works" but the display then
-fails to connect.
+If your ioBroker host sits in several networks, that needs no setting: on all interfaces the
+adapter announces itself in every network with that network's address, and each display is
+given the address of its own network — in the announcement, in the sign-in and in the
+dashboard addresses. Set **Bind to Interface** only when hassemu should serve one network
+alone; it then listens, announces and answers there only.
 
 ### 2. Add the server on the display
 

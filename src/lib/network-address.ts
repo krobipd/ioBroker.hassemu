@@ -4,7 +4,9 @@
 // sends and connects on — the cloud included (krobi 2026-10-03 00:27, 11:38). One the host does not carry falls back to
 // every address with exactly one warning, and only a client in the chosen network — or, with every address, in one of the
 // host's own networks — is answered (fakeroku F-05/F-06 as the fleet rule). This file is the one form of that core: what
-// counts as "every address", whether the host carries an address, which networks are own, and whether a peer is in one.
+// counts as "every address", whether the host carries an address, which networks are own, whether a peer is in one, and
+// which address of the host a peer is told (round 177: without a chosen address, the host's address in the peer's
+// network). The host's interfaces are read here and nowhere else.
 // The sockets themselves stay the adapter's — the inventory suites "chosen network address" / "missing network address"
 // judge what it does with them.
 import { BlockList, isIPv6 } from "node:net";
@@ -122,4 +124,26 @@ export function isOwnPeer(
       return false;
     }
   });
+}
+
+/**
+ * The address of this host a peer can reach — the one the adapter names to it (a callback URL, an SSDP location, an mDNS
+ * record). With a chosen address it is that address, for a peer in one of its networks; without one it is the host's
+ * own address in the network the peer sits in (krobi 2026-11-11 19:34 as the fleet rule): the adapter never picks an
+ * address by itself — not the first, not a "physical before virtual" order, no Docker or VPN filter.
+ *
+ * @param peer the peer address from the socket
+ * @param address the chosen address, undefined for every address
+ * @param nets the host's networks
+ * @returns the address to name to the peer, or undefined when no own network holds it (the peer is not answered)
+ */
+export function ownAddressFor(
+  peer: string | undefined,
+  address: string | undefined,
+  nets: readonly LocalNet[] = localNets(),
+): string | undefined {
+  if (address !== undefined) {
+    return isOwnPeer(peer, address, nets) ? address : undefined;
+  }
+  return nets.find(net => isOwnPeer(peer, net.address, [net]))?.address;
 }

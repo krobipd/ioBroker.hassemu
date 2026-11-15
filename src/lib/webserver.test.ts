@@ -14,13 +14,16 @@ import type * as NetworkAddress from "./network-address";
 // unless a test hands it something else; a pending answer keeps a lookup in flight.
 // A chosen bind address makes the lookups go through a resolver bound to it (R-20) — the
 // same answers, and the address it was bound to is kept for the test that asks.
-const { dnsReverse, resolverLocal, peerVerdict } = vi.hoisted(() => ({
+const { dnsReverse, resolverLocal, peerVerdict, hostNets } = vi.hoisted(() => ({
   dnsReverse: vi.fn((_ip: string): Promise<string[]> => Promise.resolve([])),
   resolverLocal: [] as string[],
   // The peer verdict is the fleet master's (network-address.test.ts judges it). These tests
   // ask from 127.0.0.1, which the master never answers — they judge what the server does
   // with the verdict, so it is a seam here: true unless a test says otherwise.
   peerVerdict: vi.fn((_peer: string | undefined, _address: string | undefined): boolean => true),
+  // The host's networks for the address a display is named (fleet master `localNets`): the machine's own unless a
+  // test gives some.
+  hostNets: { value: null as NetworkAddress.LocalNet[] | null },
 }));
 vi.mock("node:dns/promises", () => ({
   default: {
@@ -35,10 +38,14 @@ vi.mock("node:dns/promises", () => ({
     },
   },
 }));
-vi.mock("./network-address", async importOriginal => ({
-  ...(await importOriginal<typeof NetworkAddress>()),
-  isOwnPeer: (peer: string | undefined, address: string | undefined) => peerVerdict(peer, address),
-}));
+vi.mock("./network-address", async importOriginal => {
+  const real = await importOriginal<typeof NetworkAddress>();
+  return {
+    ...real,
+    isOwnPeer: (peer: string | undefined, address: string | undefined) => peerVerdict(peer, address),
+    localNets: () => hostNets.value ?? real.localNets(),
+  };
+});
 
 vi.mock("@iobroker/adapter-core", async () => {
   // The factory is hoisted above the imports — the shared translation lookup comes in here.
@@ -53,7 +60,7 @@ import { GlobalConfig } from "./global-config";
 import { COOKIE_MAX_AGE_S, MODE_MANUAL, HA_VERSION } from "./constants";
 import { APP_BRIDGE_SCRIPT } from "./external-bridge";
 import type { TargetProbe } from "./target-health";
-import { buildTls } from "./tls";
+import { certificateName } from "./secure-server";
 import type { AdapterConfig } from "./types";
 import { brokerDelObject, brokerExtend, brokerGetStates } from "../../test/unit/broker-stub";
 import { TEST_CIPHER } from "../../test/unit/cipher";
@@ -2385,14 +2392,58 @@ describe("WebServer hardening (audit 2026-09-25 — H2–H8, NH5)", () => {
     }
   });
 
-  it("discovery_info brackets an IPv6 bind address so the URL parses (H10)", async () => {
-    const { s } = await buildServer({ config: { bind: "::1", port: 8123 } });
-    try {
-      const r = await s.inject({ method: "GET", url: "/api/discovery_info" });
-      expect(r.json().base_url).to.equal("http://[::1]:8123");
-    } finally {
-      await s["app"].close();
-    }
+  // The fleet rule (krobi 2026-11-11 19:34, master `ownAddressFor`): a display is named the host's address in its own
+  // network — an IPv6 one in brackets, so the URL parses (H10).
+  describe("the address a display is named is the host's in the display's own network", () => {
+    const NETS: NetworkAddress.LocalNet[] = [
+      { iface: "eth0", family: "IPv6", address: "fd00::5", prefixLength: 64 },
+      { iface: "eth0", family: "IPv4", address: "192.168.1.5", prefixLength: 24 },
+      { iface: "docker0", family: "IPv4", address: "172.17.0.1", prefixLength: 16 },
+    ];
+    beforeEach(() => {
+      hostNets.value = NETS;
+    });
+    afterEach(() => {
+      hostNets.value = null;
+    });
+
+    it("discovery_info names the address of the display's network (H10)", async () => {
+      const { s } = await buildServer({ config: { bind: "", port: 8123 } });
+      try {
+        const v6 = await s.inject({ method: "GET", url: "/api/discovery_info", remoteAddress: "fd00::77" });
+        expect(v6.json().base_url).to.equal("http://[fd00::5]:8123");
+        const docker = await s.inject({ method: "GET", url: "/api/discovery_info", remoteAddress: "172.17.0.9" });
+        expect(docker.json().base_url).to.equal("http://172.17.0.1:8123");
+      } finally {
+        await s["app"].close();
+      }
+    });
+
+    it("a dashboard on this host reaches each display at the address of its network (werkbank D17, 2026-11-15)", async () => {
+      const target = "http://192.168.1.5:8082/vis-2/index.html?main#Kitchen";
+      const { s, store } = await buildServer({ globalMode: target, config: { bind: "" } });
+      try {
+        const page = await s.inject({ method: "GET", url: "/", remoteAddress: "172.17.0.9" });
+        expect(page.body).to.include("http://172.17.0.1:8082/vis-2/index.html?main#Kitchen");
+        expect(page.body).to.not.include("192.168.1.5");
+        const id = [...store.states.keys()].find(k => k.endsWith(".resolvedUrl"))!;
+        expect(store.states.get(id)?.val, "resolvedUrl is what the display was sent").to.equal(
+          "http://172.17.0.1:8082/vis-2/index.html?main#Kitchen",
+        );
+        const cookie = String(page.headers["set-cookie"]).split(";")[0];
+        const poll = await s.inject({
+          method: "GET",
+          url: "/api/redirect_check",
+          headers: { cookie },
+          remoteAddress: "172.17.0.9",
+        });
+        expect(poll.json().target).to.equal("http://172.17.0.1:8082/vis-2/index.html?main#Kitchen");
+        const lan = await s.inject({ method: "GET", url: "/", remoteAddress: "192.168.1.40" });
+        expect(lan.body).to.include(target);
+      } finally {
+        await s["app"].close();
+      }
+    });
   });
 
   it("a webhook type with a line break is logged on one line (H11)", async () => {
@@ -2597,7 +2648,7 @@ describe("WebServer bind / start-stop", () => {
     await s.stop();
   });
 
-  it("a port already in use is named as such, and the start still fails (v1.45.0)", async () => {
+  it("a port already in use is named as such in what the start throws, with no line of its own (v1.45.0, start-failure standard)", async () => {
     const first = createMockAdapter();
     const s1 = new WebServer(
       first.adapter as never,
@@ -2617,12 +2668,9 @@ describe("WebServer bind / start-stop", () => {
       crypto.randomUUID(),
     );
     try {
-      await expect(s2.start()).rejects.toThrow();
-      expect(
-        second.store.logs.some(
-          l => l.level === "error" && l.msg === `Port ${port} is already in use — another service is bound to it`,
-        ),
-      ).to.be.true;
+      // The start's failStart writes the one error line with this text.
+      await expect(s2.start()).rejects.toThrow(`Port ${port} is already in use — another service is bound to it`);
+      expect(second.store.logs.filter(l => l.level === "error")).toEqual([]);
     } finally {
       await s2["app"].close();
       await s1.stop();
@@ -2642,9 +2690,14 @@ describe("WebServer bind / start-stop", () => {
     const rejection = { code: "EACCES", syscall: "listen" } as unknown as Error;
     (s["app"] as unknown as { listen: () => Promise<never> }).listen = () => Promise.reject(rejection);
     try {
-      await expect(s.start()).rejects.toBe(rejection);
-      expect(built.store.logs.some(l => l.msg === 'Server error during startup: {"code":"EACCES","syscall":"listen"}'))
-        .to.be.true;
+      const thrown = await s.start().then(
+        () => undefined,
+        (err: unknown) => err,
+      );
+      expect(thrown).toBeInstanceOf(Error);
+      expect((thrown as Error).message).toBe('Server error during startup: {"code":"EACCES","syscall":"listen"}');
+      expect((thrown as Error).cause, "the original stays reachable").toBe(rejection);
+      expect(built.store.logs.filter(l => l.level === "error")).toEqual([]);
     } finally {
       await s["app"].close();
     }
@@ -3417,7 +3470,7 @@ describe("WebServer HTTPS (K4)", () => {
       "en",
       undefined,
       undefined,
-      buildTls(NAMED, new Map(), false),
+      { options: { ...NAMED }, name: certificateName(NAMED.cert) },
     );
     await s.start();
     try {

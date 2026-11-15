@@ -193,8 +193,11 @@ export const NEW_CLIENT_BURST_WARN_THRESHOLD = 3;
  *
  * Revision 4 (review 2026-11-07, R-17/R-19): `mode` became `string`/`text` and the device
  * carries its pictogram — the version write of an existing display brings the icon along, once.
+ *
+ * Revision 5 (Werkbank standard of round 177): `ip` carries a description — a datapoint without one would need an
+ * entry in test/self-explaining.json, and such a reason counts only with krobi's grant.
  */
-export const CLIENT_OBJECTS_VERSION = 4;
+export const CLIENT_OBJECTS_VERSION = 5;
 
 /**
  * Resolver sentinels for `client.mode` and `global.mode`. `'global'` means:

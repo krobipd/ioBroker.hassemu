@@ -248,6 +248,7 @@ interface Emu {
   namespace: string;
   config: AdapterConfig;
   handlers: Map<string, (...args: unknown[]) => unknown>;
+  objects: Map<string, ioBroker.Object>;
   states: Map<string, ioBroker.State>;
   errors: string[];
   terminations: unknown[];
@@ -323,6 +324,20 @@ async function startedWith(
   const native = rootJson("io-package.json").native as Record<string, unknown>;
   emu.config = { ...(native as unknown as AdapterConfig), port, mdnsEnabled: true, ...extra };
   emu.certificates = certificates;
+  if (certificates) {
+    // ioBroker keeps the named certificates in `system.certificates` (`native.certificates`, name → PEM); the fleet
+    // master looks there before it asks the controller for them (secure-server.ts, round 177)
+    const named = {
+      [String(emu.config.certPublic)]: certificates.cert,
+      [String(emu.config.certPrivate)]: certificates.key,
+    };
+    emu.objects.set("system.certificates", {
+      _id: "system.certificates",
+      type: "config",
+      common: { name: "certificates" },
+      native: { certificates: named },
+    } as unknown as ioBroker.Object);
+  }
   started.push(emu);
   await emu.handlers.get("ready")?.();
   return emu;

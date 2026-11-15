@@ -221,6 +221,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 - New: optional HTTPS with a certificate from ioBroker
 - New: hassemu reports Home Assistant 2026.8.0 — the apps keep their loading screen until the dashboard is there, and the iPhone app shows it edge to edge
 - Changed: only displays in the host's own networks get an answer, and a chosen address is the only one hassemu listens, announces and connects on
+- Changed: on all interfaces each display gets hassemu's address in its own network — in the mDNS announcement, the discovery answer and the dashboard links
 - Changed: the server ID and each display's cookie and tokens live in a file in the instance data folder; the datapoint `info.serverUuid` is gone
 - Changed: the redirect mode datapoints are of type text
 - New: every display carries a display pictogram in the object tree
