@@ -1,0 +1,8 @@
+{
+  "$sameInEveryLanguage": {
+    "admin.0": "The id of an admin start page tile, taken from the instance itself — a name, fixed in the accepted tree G8 of 2026-11-12",
+    "VIS-2: main": "A VIS-2 project name from the user's own data — a name, fixed in the accepted tree G8 of 2026-11-12",
+    "VIS-2: main / Kitchen": "A VIS-2 project and view name from the user's own data — names, fixed in the accepted tree G8 of 2026-11-12",
+    "Aura": "The title of the Aura dashboard adapter — a product name, fixed in the accepted tree G8 of 2026-11-12"
+  }
+}
