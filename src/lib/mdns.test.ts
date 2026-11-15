@@ -18,7 +18,8 @@ vi.mock("bonjour-service", async importOriginal => {
 });
 import { announcements, MDNSService, mdnsSocketOptions } from "./mdns";
 import { HA_VERSION } from "./constants";
-import type { LocalNet } from "./network-address";
+import { hostNets } from "./network";
+import { localNets, type LocalNet } from "./network-address";
 import type { AdapterConfig } from "./types";
 
 /**
@@ -35,6 +36,16 @@ function net(address: string, iface = "eth0"): LocalNet {
     prefixLength: address.includes(":") ? 64 : 24,
   };
 }
+
+/**
+ * One real IPv4 network of the machine the test runs on — the tests that drive the real bonjour-service judge ONE
+ * announcement. Without it they announce on every network of the runner: a Windows runner of the CI holds two and
+ * armed two fallback timers (measured 2026-11-15, run 43668057728).
+ */
+const ONE_NET = (): LocalNet[] =>
+  hostNets("0.0.0.0", localNets())
+    .filter(n => n.family === "IPv4")
+    .slice(0, 1);
 
 /** The announcements on the air — `{bonjour, published}` each. */
 type Internals = {
@@ -122,7 +133,7 @@ describe("MDNSService", () => {
 
   beforeEach(() => {
     adapter = createMockAdapter();
-    service = new MDNSService(adapter as never, config, crypto.randomUUID());
+    service = new MDNSService(adapter as never, config, crypto.randomUUID(), undefined, ONE_NET);
   });
 
   afterEach(async () => {
@@ -296,7 +307,7 @@ describe("MDNSService", () => {
         ...config,
         serviceName: "",
       };
-      const defaultService = new MDNSService(adapter as never, defaultConfig, crypto.randomUUID());
+      const defaultService = new MDNSService(adapter as never, defaultConfig, crypto.randomUUID(), undefined, ONE_NET);
       defaultService.start();
       const debugLogs = adapter._logs.filter(l => l.level === "debug");
       const broadcastLog = debugLogs.find(l => l.msg.includes("mDNS: Broadcasting"));
@@ -333,6 +344,8 @@ describe("MDNSService cross-platform", () => {
         serviceName: "CrossPlatformTest",
       },
       crypto.randomUUID(),
+      undefined,
+      ONE_NET,
     );
 
     service.start();
@@ -369,6 +382,8 @@ describe("MDNSService cross-platform", () => {
           serviceName: "AsyncErrorTest",
         },
         crypto.randomUUID(),
+        undefined,
+        ONE_NET,
       );
 
       localService.start();
@@ -475,7 +490,7 @@ describe("MDNSService cross-platform", () => {
 
   it("an error event that carries a string still names it (H13)", async () => {
     const localAdapter = createMockAdapter();
-    const local = new MDNSService(localAdapter as never, MDNS_CONFIG, crypto.randomUUID());
+    const local = new MDNSService(localAdapter as never, MDNS_CONFIG, crypto.randomUUID(), undefined, ONE_NET);
     local.start();
     ((local as unknown as Internals).announced[0].published as { emit: (e: string, v: unknown) => void }).emit(
       "error",
