@@ -2,6 +2,7 @@
 import type * as Os from "node:os";
 import { describe, expect, it, vi } from "vitest";
 import {
+  announceAddresses,
   carriesAddress,
   chosenAddress,
   isOwnPeer,
@@ -206,5 +207,40 @@ describe("ownAddressFor", () => {
   it("reads the host's own interfaces when given none", () => {
     expect(ownAddressFor("192.168.1.77", undefined)).toBe("192.168.1.5");
     expect(ownAddressFor("10.47.4.9", "192.168.1.5")).toBeUndefined();
+  });
+
+  // Round 179 (R179-10, finding 997073a2305a): a list made before any display asks holds one entry; its address is
+  // filled in when a display asks — two displays in two own networks, two addresses, none chosen ahead for all
+  it("fills a value made before any peer asked with the address of the network the asking peer sits in", () => {
+    const entry = { name: "VIS-2: main" };
+    // the fixture's `iot` address carries no cidr (a /32): here its interface names its network
+    const iot = { address: "192.0.2.2", netmask: "255.255.255.0", family: "IPv4" as const, mac: "", internal: false };
+    const two = localNets({ ...IFACES, iot: [{ ...iot, cidr: "192.0.2.2/24" }] });
+    const forPeer = (peer: string): string => `${entry.name} http://${ownAddressFor(peer, undefined, two)}:8082`;
+    expect(forPeer("192.168.1.77")).toBe("VIS-2: main http://192.168.1.5:8082");
+    expect(forPeer("192.0.2.40")).toBe("VIS-2: main http://192.0.2.2:8082");
+  });
+});
+
+// Round 179 (R179-10, finding eaacd7e14658; UPnP Device Architecture 2.0 §1.2.2): an announcement nobody asked for
+// goes out from each own network with that network's address — never one address picked for all
+describe("announceAddresses", () => {
+  const nets = localNets(IFACES);
+
+  it("is the host's address in each own network of the family without a chosen address", () => {
+    expect(announceAddresses(undefined, "IPv4", nets)).toEqual(["192.168.1.5", "192.0.2.2"]);
+    expect(announceAddresses(undefined, "IPv6", nets)).toEqual(["2001:db8::5", "fe80::1"]);
+  });
+
+  it("is the chosen address alone, in its family only, and nothing for one no interface carries", () => {
+    expect(announceAddresses("192.0.2.2", "IPv4", nets)).toEqual(["192.0.2.2"]);
+    expect(announceAddresses("FE80::1%iot", "IPv6", nets)).toEqual(["fe80::1"]);
+    expect(announceAddresses("192.0.2.2", "IPv6", nets)).toEqual([]);
+    expect(announceAddresses("10.47.4.9", "IPv4", nets)).toEqual([]);
+  });
+
+  it("names each address once and reads the host's own interfaces when given none", () => {
+    expect(announceAddresses(undefined, "IPv4", [...nets, ...nets])).toEqual(["192.168.1.5", "192.0.2.2"]);
+    expect(announceAddresses(undefined, "IPv4")).toEqual(["192.168.1.5", "192.0.2.2"]);
   });
 });

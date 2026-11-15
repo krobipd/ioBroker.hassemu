@@ -147,7 +147,15 @@ function fakeAdapter(
     },
     getCertificatesAsync: (publicName, privateName, chainedName) => {
       calls.push(`certificates ${publicName} ${privateName} ${chainedName}`);
-      return Promise.resolve(answer);
+      // Round 179 (R179-11): like js-controller-adapter 7.2.5 getCertificates — an empty name falls back to the
+      // setting, and what it then holds must be a text (Validator.assertString)
+      const used = [publicName || config.certPublic, privateName || config.certPrivate];
+      const wrong = [...used, chainedName || config.certChained].find(
+        value => value !== undefined && typeof value !== "string",
+      );
+      return wrong === undefined
+        ? Promise.resolve(answer)
+        : Promise.reject(new Error(`a name needs to be of type "string" but type "${typeof wrong}" has been passed`));
     },
     getForeignObjectAsync: id => {
       calls.push(`object ${id}`);
@@ -227,6 +235,22 @@ describe("loadCertificates — HTTPS is an option of the user", () => {
     const setup = await loadCertificates(adapter);
     expect(setup?.options.ca).toBe(NAMED.cert);
     expect(calls[1]).toBe("certificates ownPublic ownPrivate ownChain");
+  });
+
+  it("a chain setting that names no certificate is a settings error — the controller is not asked", async () => {
+    for (const certChained of [null, 5, "  ", {}]) {
+      const { calls, adapter } = fakeAdapter({ secure: true, certChained });
+      const err: unknown = await loadCertificates(adapter).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(SettingsError);
+      expect((err as Error).message).toBe(
+        "HTTPS is on, but the setting of the chained certificate names none — choose one under Certificates or none",
+      );
+      expect(calls).toEqual([]);
+    }
+    // admin stores "" for none: no chain, ioBroker's own pair
+    const { calls, adapter } = fakeAdapter({ secure: true, certChained: "" });
+    expect((await loadCertificates(adapter))?.options.ca).toBeUndefined();
+    expect(calls[1]).toBe("certificates defaultPublic defaultPrivate undefined");
   });
 
   it("an empty chain in the answer is no chain", async () => {

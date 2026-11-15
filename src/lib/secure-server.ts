@@ -119,7 +119,8 @@ export interface SecureSetup {
 }
 
 /**
- * The certificate names of the settings — ioBroker's own pair where none is chosen.
+ * The certificate names of the settings — ioBroker's own pair where none is chosen. A chained name that is no text
+ * counts as none here; {@link loadCertificates} refuses such a setting, since the controller reads it itself.
  *
  * @param settings the instance settings
  */
@@ -222,6 +223,15 @@ export async function loadCertificates(adapter: SecureServerAdapter): Promise<Se
     return undefined;
   }
   const names = certificateNames(adapter.config);
+  // Round 179 (R179-11): without a chained name the controller reads `certChained` itself (js-controller-adapter 7.2.5
+  // getCertificates: `chainedName || config.certChained`, then a string check) — a setting that names no certificate
+  // would end the start in that check or find nothing; admin stores "" for none
+  const chainSetting = adapter.config.certChained;
+  if (names.chainedName === undefined && chainSetting !== undefined && chainSetting !== "") {
+    throw new SettingsError(
+      "HTTPS is on, but the setting of the chained certificate names none — choose one under Certificates or none",
+    );
+  }
   const stored = (await adapter.getForeignObjectAsync(CERTIFICATES_OBJECT_ID))?.native;
   const held = isRecord(stored) && isRecord(stored.certificates) ? stored.certificates : {};
   const missing = [names.publicName, names.privateName, names.chainedName].filter(

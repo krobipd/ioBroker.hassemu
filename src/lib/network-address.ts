@@ -6,7 +6,10 @@
 // host's own networks — is answered (fakeroku F-05/F-06 as the fleet rule). This file is the one form of that core: what
 // counts as "every address", whether the host carries an address, which networks are own, whether a peer is in one, and
 // which address of the host a peer is told (round 177: without a chosen address, the host's address in the peer's
-// network). The host's interfaces are read here and nowhere else.
+// network). Where no peer asks yet (round 179), two forms: a value made before any question — a list a user picks
+// from, a stored target — carries one entry and gets its address from `ownAddressFor` when the peer asks; an
+// announcement nobody asked for goes out once per address of `announceAddresses`, from that address's interface and
+// naming it. The host's interfaces are read here and nowhere else.
 // The sockets themselves stay the adapter's — the inventory suites "chosen network address" / "missing network address"
 // judge what it does with them.
 import { BlockList, isIPv6 } from "node:net";
@@ -130,7 +133,9 @@ export function isOwnPeer(
  * The address of this host a peer can reach — the one the adapter names to it (a callback URL, an SSDP location, an mDNS
  * record). With a chosen address it is that address, for a peer in one of its networks; without one it is the host's
  * own address in the network the peer sits in (krobi 2026-11-11 19:34 as the fleet rule): the adapter never picks an
- * address by itself — not the first, not a "physical before virtual" order, no Docker or VPN filter.
+ * address by itself — not the first, not a "physical before virtual" order, no Docker or VPN filter. A value made
+ * before any peer asks (one list entry for every display, a stored target) holds no address; this call fills it in
+ * when the peer asks, like admin's own host name for its viewer.
  *
  * @param peer the peer address from the socket
  * @param address the chosen address, undefined for every address
@@ -146,4 +151,25 @@ export function ownAddressFor(
     return isOwnPeer(peer, address, nets) ? address : undefined;
   }
   return nets.find(net => isOwnPeer(peer, net.address, [net]))?.address;
+}
+
+/**
+ * The addresses an announcement goes out from — a message into the network that no peer asked for (an SSDP alive, an
+ * mDNS announcement): with a chosen address that one alone; without one the host's address in each of its networks of
+ * the family, each sent from its interface and naming that address (UPnP Device Architecture 2.0 §1.2.2) — never one
+ * address picked for all networks.
+ *
+ * @param address the chosen address, undefined for every address
+ * @param family the address family the announcement travels in
+ * @param nets the host's networks
+ * @returns the addresses to announce from, each once (empty when no own network of the family holds the chosen one)
+ */
+export function announceAddresses(
+  address: string | undefined,
+  family: "IPv4" | "IPv6",
+  nets: readonly LocalNet[] = localNets(),
+): string[] {
+  const plain = address?.split("%")[0].toLowerCase();
+  const from = nets.filter(net => net.family === family && (plain === undefined || net.address === plain));
+  return [...new Set(from.map(net => net.address))];
 }

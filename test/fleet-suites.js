@@ -1185,6 +1185,33 @@ function retryTooEarly(calls) {
   }
   return early;
 }
+// D17 (round 179, R179-10; krobi 2026-11-11 19:34, UPnP Device Architecture 2.0 §1.2.2): the addresses of this machine
+// a run named to others against the rule — a start whose sockets sit on the chosen address alone names only that one; a
+// start without one names each peer, and each announcement of an own network, that network's address: any address of a
+// network of this host, never loopback. Until round 178 every start had to name the host's first address, so an
+// announcement per own network was red on a host with more than one.
+function namedOff(records, chosen, hostAddresses) {
+  const wildcard = at => at === undefined || at === "" || at === "0.0.0.0" || at === "::";
+  const bound = new Map();
+  for (const r of records) {
+    const at = r.kind === "listen" ? r.host : r.kind === "bind" ? r.address : undefined;
+    if (!wildcard(at)) {
+      bound.set(r.pid, (bound.get(r.pid) ?? new Set()).add(at));
+    }
+  }
+  const onlyChosen = pid => {
+    const at = bound.get(pid);
+    return at?.size === 1 && at.has(chosen);
+  };
+  return [
+    ...new Set(
+      records
+        .filter(r => r.kind === "advertise")
+        .filter(r => (onlyChosen(r.pid) ? r.address !== chosen : !hostAddresses.has(r.address)))
+        .map(r => `${r.via} ${r.address}`),
+    ),
+  ];
+}
 // D12 (round 157, fleet-suite audit F3): after a restart waitForAdapterWork ends at once (the values exist from the first
 // start), so the tree was counted before the adapter rebuilt it — "0 changed, no line" was green without a proof. The
 // suite waits for the balance line or a state set that holds still for SWITCH_STILL_POLLS seconds, at most
@@ -3395,18 +3422,19 @@ module.exports = function fleetSuites(templateSuite, ctx) {
       assert.deepStrictEqual(wide, [], `datagrams to the limited broadcast address:\n${wide.join("\n")}`);
     });
 
-    it("names only the chosen address of this machine to others (D17)", function () {
-      const other = [
-        ...new Set(
-          netRecords()
-            .filter(r => r.kind === "advertise" && r.address !== CHOSEN_ADDRESS)
-            .map(r => `${r.via} ${r.address}`),
-        ),
-      ];
+    it("names only the chosen address of this machine to others, else one of its own networks (D17)", function () {
+      const own = new Set(
+        Object.values(require("node:os").networkInterfaces())
+          .flatMap(list => list ?? [])
+          .filter(i => i.family === "IPv4" && !i.internal)
+          .map(i => i.address),
+      );
+      const other = namedOff(netRecords(), CHOSEN_ADDRESS, own);
       assert.deepStrictEqual(
         other,
         [],
-        `addresses of this machine named to others that are not the chosen one (${CHOSEN_ADDRESS}):\n${other.join("\n")}`,
+        `addresses of this machine named to others — not the chosen one (${CHOSEN_ADDRESS}) where only it is ` +
+          `bound, else none of its own networks:\n${other.join("\n")}`,
       );
     });
 
@@ -3467,6 +3495,7 @@ module.exports.backoffSettled = backoffSettled;
 module.exports.emptiedDuring = emptiedDuring;
 module.exports.restartEmpties = restartEmpties;
 module.exports.retryTooEarly = retryTooEarly;
+module.exports.namedOff = namedOff;
 module.exports.sameIds = sameIds;
 module.exports.privateHost = privateHost;
 module.exports.fits = fits;
