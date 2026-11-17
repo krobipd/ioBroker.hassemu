@@ -79,5 +79,9 @@
     ]
   },
   "_noDeviceSources": "Gate A15: hassemu has no device catalog to keep current — every Home Assistant client (companion app on a wall display, tablet or phone) is served the same way and keyed by its cookie, never by a model. Needs krobi's grant ($fleetNone), requested through the Werkbank.",
-  "noDeviceSources": "hassemu keeps no device catalog — every Home Assistant client is served the same way and identified by its cookie, never by a model"
+  "noDeviceSources": "hassemu keeps no device catalog — every Home Assistant client is served the same way and identified by its cookie, never by a model",
+  "_fixtureLimits": "Gate D08 (D16): a display reports no minimum, maximum or step for anything — its datapoints are hassemu's own text, list and button states, none of them a number.",
+  "fixtureLimits": {
+    "none": "a display reports no limits — every datapoint of a display is a text, a list or a button hassemu sets itself, none is a number"
+  }
 }
