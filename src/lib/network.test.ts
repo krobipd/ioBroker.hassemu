@@ -1,5 +1,5 @@
 import type { LocalNet } from "./network-address";
-import { addressForPeer, advertisedBaseUrl, hostForUrl, hostNets, listAddress, targetForPeer } from "./network";
+import { addressForPeer, advertisedBaseUrl, hostForUrl, listAddress, targetForPeer } from "./network";
 
 /**
  * One network of the host, as the fleet master `localNets` reports it.
@@ -11,6 +11,9 @@ import { addressForPeer, advertisedBaseUrl, hostForUrl, hostNets, listAddress, t
 function net(address: string, prefixLength: number, iface = "eth0"): LocalNet {
   return { iface, family: address.includes(":") ? "IPv6" : "IPv4", address, prefixLength };
 }
+
+/** The loopback network as the fleet master lists it since round 182 — `internal`, no device sits in it. */
+const LOOPBACK: LocalNet = { iface: "lo0", family: "IPv4", address: "127.0.0.1", prefixLength: 8, internal: true };
 
 /** A host in a LAN, a Docker bridge and a ULA, with a link-local address — the case 1.46.1 picked one address for. */
 const NETS: LocalNet[] = [
@@ -58,23 +61,10 @@ describe("network", () => {
     });
   });
 
-  describe("hostNets — the networks nobody asked about", () => {
-    it("without a chosen address every network of the host, no link-local one, none twice", () => {
-      expect(hostNets("0.0.0.0", [...NETS, net("192.168.1.5", 24, "eth0:1")]).map(n => n.address)).to.deep.equal([
-        "fd00::5",
-        "192.168.1.5",
-        "172.17.0.1",
-      ]);
-    });
-
-    it("with a chosen address only its network", () => {
-      expect(hostNets("172.17.0.1", NETS).map(n => n.address)).to.deep.equal(["172.17.0.1"]);
-    });
-  });
-
   describe("listAddress — the one entry of a list built before any display asks (werkbank D17, 2026-11-15)", () => {
-    it("the chosen address", () => {
+    it("the chosen address, link-local included (round 182: a chosen address the host carries is the only one)", () => {
       expect(listAddress("172.17.0.1", NETS)).to.equal("172.17.0.1");
+      expect(listAddress("169.254.3.4", [net("169.254.3.4", 16), net("192.168.1.5", 24)])).to.equal("169.254.3.4");
     });
 
     it("without one the first IPv4 address in the system's order — a Docker bridge is not put back", () => {
@@ -82,9 +72,20 @@ describe("network", () => {
       expect(listAddress(undefined, NETS)).to.equal("192.168.1.5");
     });
 
-    it("an IPv6 address only on a host without IPv4, the loopback address on a host without a network", () => {
-      expect(listAddress("::", [NETS[0], NETS[1]])).to.equal("fd00::5");
+    it("what the fleet master leaves out is never the entry — IPv4 link-local beside another IPv4 of its interface", () => {
+      expect(listAddress("", [net("169.254.3.4", 16), net("192.168.1.5", 24)])).to.equal("192.168.1.5");
+      // the only address of its interface stays (RFC 3927 §1.9 rule 3, master `blockedAddress`)
+      expect(listAddress("", [net("169.254.3.4", 16, "eth1")])).to.equal("169.254.3.4");
+    });
+
+    it("an IPv6 address only on a host without IPv4, never a form the master leaves out (6to4)", () => {
+      expect(listAddress("::", [net("2002:c000:204::1", 48), NETS[1]])).to.equal("fd00::5");
+    });
+
+    it("the loopback address on a host without a network, and for a chosen address the host does not carry", () => {
       expect(listAddress("0.0.0.0", [])).to.equal("127.0.0.1");
+      expect(listAddress("0.0.0.0", [LOOPBACK])).to.equal("127.0.0.1");
+      expect(listAddress("10.0.0.9", NETS)).to.equal("127.0.0.1");
     });
   });
 
@@ -127,6 +128,14 @@ describe("network", () => {
     it("with a chosen address a display in its network gets that address", () => {
       expect(targetForPeer("http://172.17.0.1:8082/", "192.168.1.40", "192.168.1.5", NETS)).to.equal(
         "http://192.168.1.5:8082/",
+      );
+    });
+
+    it("a loopback target reaches the host only — it stays as it is, the master lists loopback since round 182", () => {
+      const nets = [LOOPBACK, ...NETS];
+      expect(targetForPeer("http://127.0.0.1:8082/", "172.17.0.9", "0.0.0.0", nets)).to.equal("http://127.0.0.1:8082/");
+      expect(targetForPeer("http://192.168.1.5:8082/", "172.17.0.9", "0.0.0.0", nets)).to.equal(
+        "http://172.17.0.1:8082/",
       );
     });
 

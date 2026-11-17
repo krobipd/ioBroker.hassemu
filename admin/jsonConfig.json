@@ -25,7 +25,7 @@
       "tooltip": "bindTooltip",
       "listenOnAllPorts": true,
       "onlyIp4": true,
-      "noInternal": false,
+      "noInternal": true,
       "xs": 12,
       "sm": 6,
       "md": 4,

@@ -16,8 +16,8 @@
 //   no other value (round 96), and logs nothing above debug.
 // Suite "a name that is the adapter's own" (round 87): a device named `info` (feedReservedNames)
 //   leaves `info` and everything below it as a fresh installation has it.
-// Suites "chosen network address" / "missing network address" (round 87, only with a
-//   `type: "ip"` field): the chosen address is the only one used and strangers get no
+// Suites "chosen network address" / "missing network address" (round 87, only with an
+//   address choice): the chosen address is the only one used and strangers get no
 //   answer; a missing one falls back to every address with exactly one warning.
 // Suite "diagnostics report" (round 97, only with a report): every device's report asked for the way the admin
 //   card asks — no datapoint, no value and no file for a report, and no live read of an unconnected device.
@@ -143,8 +143,11 @@ const COMMAND_WINDOW_MS = 30000;
 // Round 87 (krobi 2026-10-03 00:27, 11:38): the address the user picks in the instance settings (jsonConfig `type: "ip"`)
 // is the only one the adapter listens, sends and connects on — the cloud included; one the host does not carry falls back
 // to every address with exactly one warning. ADDRESS_KEY is the native key of that field, undefined where the adapter
-// offers no choice; CHOSEN_ADDRESS the first non-internal IPv4 of this machine (loopback is internal — several adapters
-// treat it as missing); MISSING_ADDRESS one no machine carries (TEST-NET-1, RFC 5737).
+// offers no choice; CHOSEN_ADDRESS is 127.0.0.1 — every machine carries it and no adapter takes it by itself, and a chosen
+// address the host carries is the only one, loopback included (round 182; until then the first non-internal IPv4, which
+// an adapter without a choice takes too); LAN_ADDRESS the first non-internal IPv4 of this machine — in a suite without a
+// chosen address where a fixture reaches the adapter like a device of the network, in the suite "chosen network address"
+// where a client of another network asks from; MISSING_ADDRESS one no machine carries (TEST-NET-1, RFC 5737).
 const ADDRESS_KEY = (() => {
     const file = path.join(ADAPTER_DIR, "admin", "jsonConfig.json");
     const find = (node) => {
@@ -161,7 +164,8 @@ const ADDRESS_KEY = (() => {
     };
     return fs.existsSync(file) ? find(JSON.parse(fs.readFileSync(file, "utf8"))) : undefined;
 })();
-const CHOSEN_ADDRESS = Object.values(require("node:os").networkInterfaces())
+const CHOSEN_ADDRESS = "127.0.0.1";
+const LAN_ADDRESS = Object.values(require("node:os").networkInterfaces())
     .flatMap((list) => list ?? [])
     .find((i) => i.family === "IPv4" && !i.internal)?.address;
 const MISSING_ADDRESS = "192.0.2.1";
@@ -560,6 +564,14 @@ async function seedLegacyDisplay(harness) {
 }
 
 /**
+ * hassemu: where a display asks — the address of this machine a device of the network reaches hassemu at. In the suite
+ * "chosen network address" the chosen one (CHOSEN_ADDRESS), in every other suite this machine's LAN address (round 182:
+ * the chosen address is loopback, which hassemu on every address leaves out of its own networks). fixtureNative sets it
+ * for each start.
+ */
+let askAt = LAN_ADDRESS;
+
+/**
  * One HTTP request against the running adapter, from a display's address, optionally carrying its cookie or a token.
  *
  * @param {string} method HTTP method
@@ -583,7 +595,7 @@ function request(method, urlPath, opts = {}) {
             body = JSON.stringify(opts.json);
             headers["content-type"] = "application/json";
         }
-        const req = http.request({ host: CHOSEN_ADDRESS, port: PORT, path: urlPath, method, headers }, (res) => {
+        const req = http.request({ host: askAt, port: PORT, path: urlPath, method, headers }, (res) => {
             let text = "";
             res.setEncoding("utf8");
             res.on("data", (chunk) => (text += chunk));
@@ -854,12 +866,13 @@ const waitForAdapterWork = workWaitOf(async function (harness) {
 /**
  * Adapter-specific config the fixtures need (fake endpoint address, credentials, ...).
  *
- * hassemu: the chosen address, no mDNS, no auth, and the proxy header trusted so each fixture display can arrive from its
- * own address. Complete — resetInstanceNative nulls every other key, so every key the adapter reads is here.
+ * hassemu: every address (the manifest's default), no mDNS, no auth, and the proxy header trusted so each fixture display
+ * can arrive from its own address. Complete — resetInstanceNative nulls every other key, so every key the adapter reads
+ * is here.
  */
 const FIXTURE_NATIVE = {
     port: PORT,
-    bind: CHOSEN_ADDRESS,
+    bind: "0.0.0.0",
     authRequired: false,
     username: "admin",
     password: "",
@@ -895,6 +908,7 @@ const PACING_HOOKS = [];
  * @returns {Promise<Record<string, unknown>>} the native for resetInstanceNative
  */
 async function fixtureNative(extra = {}) {
+    askAt = /** @type {string} */ (ADDRESS_KEY && extra[ADDRESS_KEY] === CHOSEN_ADDRESS ? CHOSEN_ADDRESS : LAN_ADDRESS);
     return { ...FIXTURE_NATIVE, ...extra };
 }
 /**
@@ -2135,8 +2149,11 @@ function offTheAddress(use, address) {
 
 /**
  * Round 87 (krobi 2026-10-02 23:52, F-05 of fakeroku as the fleet rule): a client from another network gets no answer —
- * every server and UDP port the adapter opened on `address` is asked once from 127.0.0.1. A TCP reply counts unless it is
- * an HTTP status of 400 or above; any UDP reply counts.
+ * every server and UDP port the adapter opened on `address` is asked once from LAN_ADDRESS (round 182: the chosen
+ * address is 127.0.0.1, the machine's address in another network asks). A TCP reply counts unless it is an HTTP status of
+ * 400 or above; any UDP reply counts. Round 183 (R183-5): a TCP port that sends no byte on plain text, or a TLS alert, is
+ * asked again inside the TLS handshake without a certificate check — a TLS listener (the HTTPS option of the master
+ * secure-server.ts) answers only there.
  *
  * @param {object[]} use the records (networkUse)
  * @param {string} address the chosen address
@@ -2147,21 +2164,27 @@ async function askFromAnotherNetwork(use, address) {
     for (const r of use) {
         if (r.kind === "listen" && !asked.has(`tcp ${r.port}`)) {
             asked.add(`tcp ${r.port}`);
-            const reply = await new Promise((resolve) => {
-                let data = "";
-                const socket = require("node:net").connect({ host: address, port: r.port, localAddress: "127.0.0.1" });
-                const wait = setTimeout(() => socket.destroy(), 1500);
-                socket.on("connect", () => socket.write("GET / HTTP/1.0\r\n\r\n"));
-                socket.on("data", (d) => (data += d));
-                socket.on("error", () => {});
-                socket.on("close", () => {
-                    clearTimeout(wait);
-                    resolve(data);
+            const ask = (secure) =>
+                new Promise((resolve) => {
+                    let data = "";
+                    const where = { host: address, port: r.port, localAddress: LAN_ADDRESS };
+                    const socket = secure
+                        ? require("node:tls").connect({ ...where, rejectUnauthorized: false })
+                        : require("node:net").connect(where);
+                    const wait = setTimeout(() => socket.destroy(), 1500);
+                    socket.on(secure ? "secureConnect" : "connect", () => socket.write("GET / HTTP/1.0\r\n\r\n"));
+                    socket.on("data", (d) => (data += d));
+                    socket.on("error", () => {});
+                    socket.on("close", () => {
+                        clearTimeout(wait);
+                        resolve(data);
+                    });
                 });
-            });
+            const plain = await ask(false);
+            const reply = plain && !plain.startsWith("\u0015\u0003") ? plain : await ask(true);
             const status = /^HTTP\/\d(?:\.\d)? (\d{3})/.exec(reply);
             if (reply && !(status && Number(status[1]) >= 400)) {
-                answered.push(`TCP ${address}:${r.port} answered a client from 127.0.0.1`);
+                answered.push(`TCP ${address}:${r.port} answered a client from ${LAN_ADDRESS}`);
             }
         }
         if (r.kind === "bind" && r.port && !asked.has(`udp ${r.port}`)) {
@@ -2177,12 +2200,12 @@ async function askFromAnotherNetwork(use, address) {
                     socket.close();
                     resolve(true);
                 });
-                socket.bind(0, "127.0.0.1", () =>
+                socket.bind(0, LAN_ADDRESS, () =>
                     socket.send('M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: "ssdp:discover"\r\nMX: 1\r\nST: ssdp:all\r\n\r\n', r.port, address),
                 );
             });
             if (reply) {
-                answered.push(`UDP ${address}:${r.port} answered a sender from 127.0.0.1`);
+                answered.push(`UDP ${address}:${r.port} answered a sender from ${LAN_ADDRESS}`);
             }
         }
     }
@@ -2200,9 +2223,10 @@ tests.integration(ADAPTER_DIR, {
         // after() judges with it). scripts/inventory-suites.mjs refuses a binding neither names: D06 then runs whole.
         const suite = require("./fleet-suites.js").withProtocol(harnessSuite, {
             RESOURCE_DIR,
-            suiteState: () => ({ counting, READ_ONLY: [...READ_ONLY] }),
+            suiteState: () => ({ counting, READ_ONLY: [...READ_ONLY], askAt }),
             restoreState: (state) => {
                 counting = state.counting;
+                askAt = state.askAt;
                 READ_ONLY.clear();
                 state.READ_ONLY.forEach((id) => READ_ONLY.add(id));
             },
@@ -2453,7 +2477,7 @@ tests.integration(ADAPTER_DIR, {
                 let strangers;
                 before(async function () {
                     this.timeout(180000);
-                    assert.ok(CHOSEN_ADDRESS, "this machine carries no non-internal IPv4 address to choose");
+                    assert.ok(LAN_ADDRESS, "this machine carries no non-internal IPv4 address a client of another network asks from");
                     harness = getHarness();
                     clearInstanceData(harness);
                     const seen = networkFiles();

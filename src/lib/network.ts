@@ -1,15 +1,5 @@
 import net from "node:net";
-import { chosenAddress, localNets, ownAddressFor, type LocalNet } from "./network-address";
-
-/**
- * A link-local address (fe80::/10, 169.254.0.0/16): valid only on one link and, for IPv6,
- * only with a zone id — useless in a URL a display is given.
- *
- * @param address An address of this host.
- */
-function isLinkLocal(address: string): boolean {
-  return net.isIPv6(address) ? /^fe[89ab]/i.test(address) : address.startsWith("169.254.");
-}
+import { announceAddresses, chosenAddress, localNets, ownAddressFor, type LocalNet } from "./network-address";
 
 /**
  * A host as it goes into a URL: an IPv6 address in brackets (`http://2001:db8::5:8123` does not
@@ -27,7 +17,8 @@ export function hostForUrl(host: string): string {
  * With HTTPS (K4) the scheme is `https` and the host is the name the certificate is valid for — a client checks the
  * certificate against the host it connects to; only a certificate without a name keeps the address.
  *
- * @param address The address of this host the display is named ({@link addressForPeer}, or one of {@link hostNets}).
+ * @param address The address of this host the display is named ({@link addressForPeer}, or the one an announcement
+ *                goes out from).
  * @param port    The listen port.
  * @param secure  The HTTPS part (`name`: the certificate's name), or nothing for plain HTTP.
  */
@@ -58,36 +49,21 @@ export function addressForPeer(
 }
 
 /**
- * The networks a display can reach this host in when no display asks — the mDNS announcement, the dashboard list: the
- * network of the chosen address, else every network the host sits in. A list, nothing is chosen (fleet master
- * `localNets`); a link-local address is left out — no display can be given it in a URL. The start already listens on
- * every address when the host does not carry the chosen one (DD 36), so the setting here names a carried address.
- *
- * @param bind The bind setting as the start settled it.
- * @param nets The host's networks (test seam; read fresh by default).
- */
-export function hostNets(bind: string | undefined | null, nets: readonly LocalNet[] = localNets()): LocalNet[] {
-  const chosen = chosenAddress(bind);
-  if (chosen !== undefined) {
-    return nets.filter(n => n.address === chosen);
-  }
-  const seen = new Set<string>();
-  return nets.filter(n => !isLinkLocal(n.address) && !seen.has(n.address) && seen.add(n.address));
-}
-
-/**
  * The own address a list that is built before any display asks carries for a dashboard on every address — one entry
  * (werkbank standard on D17, 2026-11-15: a list made before any question carries one entry, and the answer to a display
  * puts in the address of the display's own network, {@link targetForPeer}). It is the chosen address, else the host's
- * first IPv4 address in the order the system lists them (an IPv6 address only on a host without IPv4) — no display is
- * given it as it stands. Without any network the loopback address, which the list leaves out (K11).
+ * first IPv4 address an announcement may name, in the order the system lists them (an IPv6 address only on a host
+ * without one) — no display is given it as it stands. Which addresses are left out without a chosen one stands once in
+ * the fleet master (`announceAddresses`, round 180); a chosen address the host carries is the entry, loopback and
+ * link-local included (round 182), and the start already listens on every address when the host does not carry it
+ * (DD 36). Without any such address the loopback address, which the list leaves out (K11).
  *
  * @param bind The bind setting as the start settled it.
  * @param nets The host's networks (test seam; read fresh by default).
  */
 export function listAddress(bind: string | undefined | null, nets: readonly LocalNet[] = localNets()): string {
-  const all = hostNets(bind, nets);
-  return (all.find(n => n.family === "IPv4") ?? all[0])?.address ?? "127.0.0.1";
+  const chosen = chosenAddress(bind);
+  return announceAddresses(chosen, "IPv4", nets)[0] ?? announceAddresses(chosen, "IPv6", nets)[0] ?? "127.0.0.1";
 }
 
 /**
@@ -113,7 +89,8 @@ export function targetForPeer(
     return url;
   }
   const host = authority[2].replace(/^\[(.*)\]$/, "$1").toLowerCase();
-  if (!nets.some(n => n.address === host)) {
+  // loopback (`internal`, master `localNets` since round 182) reaches this machine only — such a target stays as it is
+  if (!nets.some(n => !n.internal && n.address === host)) {
     return url;
   }
   const own = ownAddressFor(peer, chosenAddress(bind), nets);

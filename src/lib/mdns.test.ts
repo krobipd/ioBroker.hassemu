@@ -3,8 +3,13 @@ import type { EventEmitter } from "node:events";
 import type BonjourModule from "bonjour-service";
 
 // The REAL bonjour-service runs (I23, below); the subclass only notes the options each
-// instance is built with — the socket the announcement goes out on (R-20).
-const { builtWith } = vi.hoisted(() => ({ builtWith: [] as unknown[] }));
+// instance is built with — the socket the announcement goes out on (R-20). With `wire.on` it also takes the place of
+// multicast-dns's `send` before hassemu wraps it: every message an instance would put on the air lands in `wire.sent`
+// instead, as hassemu's record filter left it (D17).
+const { builtWith, wire } = vi.hoisted(() => ({
+  builtWith: [] as unknown[],
+  wire: { on: false, sent: [] as Array<{ socket: unknown; packet: unknown }> },
+}));
 vi.mock("bonjour-service", async importOriginal => {
   // bonjour-service is `export =`: the class is the module, vitest hands it over as `default`
   const real = await importOriginal<{ default: typeof BonjourModule }>();
@@ -12,14 +17,21 @@ vi.mock("bonjour-service", async importOriginal => {
     constructor(...args: ConstructorParameters<typeof real.default>) {
       builtWith.push(args[0]);
       super(...args);
+      if (wire.on) {
+        const socket = args[0];
+        const mdns = (this as unknown as { server: { mdns: { send: unknown } } }).server.mdns;
+        mdns.send = (packet: unknown, rinfo: unknown, cb?: () => void): void => {
+          wire.sent.push({ socket, packet });
+          (typeof rinfo === "function" ? (rinfo as () => void) : cb)?.();
+        };
+      }
     }
   }
   return { ...real, default: Noting };
 });
-import { announcements, MDNSService, mdnsSocketOptions } from "./mdns";
+import { announcements, keepInterfaceRecords, MDNSService, mdnsSocketOptions } from "./mdns";
 import { HA_VERSION } from "./constants";
-import { hostNets } from "./network";
-import { localNets, type LocalNet } from "./network-address";
+import { announceableNets, localNets, type LocalNet } from "./network-address";
 import type { AdapterConfig } from "./types";
 
 /**
@@ -37,13 +49,16 @@ function net(address: string, iface = "eth0"): LocalNet {
   };
 }
 
+/** The loopback network as the fleet master lists it since round 182 — `internal`, no device sits in it. */
+const LOOPBACK: LocalNet = { iface: "lo0", family: "IPv4", address: "127.0.0.1", prefixLength: 8, internal: true };
+
 /**
  * One real IPv4 network of the machine the test runs on — the tests that drive the real bonjour-service judge ONE
  * announcement. Without it they announce on every network of the runner: a Windows runner of the CI holds two and
  * armed two fallback timers (measured 2026-11-15, run 43668057728).
  */
 const ONE_NET = (): LocalNet[] =>
-  hostNets("0.0.0.0", localNets())
+  announceableNets(localNets())
     .filter(n => n.family === "IPv4")
     .slice(0, 1);
 
@@ -319,7 +334,10 @@ describe("MDNSService", () => {
   describe("advertised host (bind-aware base_url)", () => {
     it("advertises the configured concrete bind address (matches /api/discovery_info)", async () => {
       const boundConfig: AdapterConfig = { ...config, bind: "192.168.1.50" };
-      const boundService = new MDNSService(adapter as never, boundConfig, crypto.randomUUID());
+      // the host carries the chosen address — the start makes sure of that (DD 36)
+      const boundService = new MDNSService(adapter as never, boundConfig, crypto.randomUUID(), null, () => [
+        net("192.168.1.50"),
+      ]);
       boundService.start();
       const broadcastLog = adapter._logs.find(l => l.level === "debug" && l.msg.includes("mDNS: Broadcasting"));
       expect(broadcastLog!.msg).to.include("192.168.1.50:8123");
@@ -418,7 +436,13 @@ describe("MDNSService cross-platform", () => {
   describe("the announced record (T5)", () => {
     it("publishes _home-assistant._tcp with the shared UUID and the base URL in TXT", async () => {
       const uuid = crypto.randomUUID();
-      const local = new MDNSService(createMockAdapter() as never, { ...MDNS_CONFIG, bind: "192.168.1.5" }, uuid);
+      const local = new MDNSService(
+        createMockAdapter() as never,
+        { ...MDNS_CONFIG, bind: "192.168.1.5" },
+        uuid,
+        null,
+        () => [net("192.168.1.5")],
+      );
       local.start();
       try {
         const published = (local as unknown as Internals).announced[0].published as {
@@ -520,6 +544,8 @@ describe("mdnsSocketOptions", () => {
         serviceName: "TestService",
       },
       crypto.randomUUID(),
+      null,
+      () => [net("192.0.2.10"), net("198.51.100.10", "eth1")],
     );
     local.start();
     await local.stop();
@@ -541,14 +567,24 @@ describe("mdnsSocketOptions", () => {
 // An mDNS announcement reaches only the link it is sent on, so each own network gets its own, carrying its address.
 describe("announcements — the address of the display's own network", () => {
   it("a chosen address: one announcement on its interface, with its address", () => {
-    expect(announcements("192.0.2.10", 8123, null, [net("192.0.2.10"), net("198.51.100.10")])).to.deep.equal([
-      { socket: { interface: "192.0.2.10", bind: "0.0.0.0" }, baseUrl: "http://192.0.2.10:8123", probe: true },
+    expect(announcements("192.0.2.10", 8123, null, [net("192.0.2.10"), net("198.51.100.10", "eth1")])).to.deep.equal([
+      {
+        socket: { interface: "192.0.2.10", bind: "0.0.0.0" },
+        baseUrl: "http://192.0.2.10:8123",
+        addresses: ["192.0.2.10"],
+        probe: true,
+      },
     ]);
   });
 
-  it("every address with one network: one announcement from its interface, the name probed first", () => {
+  it("every address with one network: one announcement from its interface naming its addresses, probed first", () => {
     expect(announcements("0.0.0.0", 8123, null, [net("fe80::1"), net("192.0.2.10")])).to.deep.equal([
-      { socket: { interface: "192.0.2.10", bind: "0.0.0.0" }, baseUrl: "http://192.0.2.10:8123", probe: true },
+      {
+        socket: { interface: "192.0.2.10", bind: "0.0.0.0" },
+        baseUrl: "http://192.0.2.10:8123",
+        addresses: ["fe80::1", "192.0.2.10"],
+        probe: true,
+      },
     ]);
   });
 
@@ -556,19 +592,68 @@ describe("announcements — the address of the display's own network", () => {
     expect(
       announcements("", 8123, null, [net("fd00::5"), net("192.0.2.10"), net("198.51.100.10", "docker0")]),
     ).to.deep.equal([
-      { socket: { interface: "192.0.2.10", bind: "0.0.0.0" }, baseUrl: "http://192.0.2.10:8123", probe: false },
-      { socket: { interface: "198.51.100.10", bind: "0.0.0.0" }, baseUrl: "http://198.51.100.10:8123", probe: false },
+      {
+        socket: { interface: "192.0.2.10", bind: "0.0.0.0" },
+        baseUrl: "http://192.0.2.10:8123",
+        addresses: ["fd00::5", "192.0.2.10"],
+        probe: false,
+      },
+      {
+        socket: { interface: "198.51.100.10", bind: "0.0.0.0" },
+        baseUrl: "http://198.51.100.10:8123",
+        addresses: ["198.51.100.10"],
+        probe: false,
+      },
+    ]);
+  });
+
+  it("without a chosen address what the fleet master leaves out neither sends nor is named (master `blockedAddress`)", () => {
+    // IPv4 link-local beside another IPv4 of its interface, a 6to4 address, loopback
+    expect(
+      announcements("", 8123, null, [LOOPBACK, net("169.254.3.4"), net("192.0.2.10"), net("2002:c000:204::1")]),
+    ).to.deep.equal([
+      {
+        socket: { interface: "192.0.2.10", bind: "0.0.0.0" },
+        baseUrl: "http://192.0.2.10:8123",
+        addresses: ["192.0.2.10"],
+        probe: true,
+      },
+    ]);
+  });
+
+  it("a chosen address the host carries is the one announced, link-local and loopback included (round 182)", () => {
+    expect(announcements("169.254.3.4", 8123, null, [net("169.254.3.4"), net("192.0.2.10")])).to.deep.equal([
+      {
+        socket: { interface: "169.254.3.4", bind: "0.0.0.0" },
+        baseUrl: "http://169.254.3.4:8123",
+        addresses: ["169.254.3.4", "192.0.2.10"],
+        probe: true,
+      },
+    ]);
+    expect(announcements("127.0.0.1", 8123, null, [LOOPBACK, net("192.0.2.10")])).to.deep.equal([
+      {
+        socket: { interface: "127.0.0.1", bind: "0.0.0.0" },
+        baseUrl: "http://127.0.0.1:8123",
+        addresses: ["127.0.0.1"],
+        probe: true,
+      },
     ]);
   });
 
   it("HTTPS with a certificate name: every network's announcement names the name (K4)", () => {
     expect(
-      announcements(undefined, 8123, { name: "hassemu.example" }, [net("192.0.2.10"), net("198.51.100.10")]),
+      announcements(undefined, 8123, { name: "hassemu.example" }, [net("192.0.2.10"), net("198.51.100.10", "eth1")]),
     ).to.deep.equal([
-      { socket: { interface: "192.0.2.10", bind: "0.0.0.0" }, baseUrl: "https://hassemu.example:8123", probe: false },
+      {
+        socket: { interface: "192.0.2.10", bind: "0.0.0.0" },
+        baseUrl: "https://hassemu.example:8123",
+        addresses: ["192.0.2.10"],
+        probe: false,
+      },
       {
         socket: { interface: "198.51.100.10", bind: "0.0.0.0" },
         baseUrl: "https://hassemu.example:8123",
+        addresses: ["198.51.100.10"],
         probe: false,
       },
     ]);
@@ -691,5 +776,104 @@ describe("announcements — the address of the display's own network", () => {
     await local.stop();
     await refresh;
     expect(local.isActive()).to.be.false;
+  });
+});
+
+// Werkbank standard D17 (round 180; RFC 6762 §6.2): an announcement names in its A/AAAA records only the addresses of
+// the interface it goes out on. bonjour-service 1.4.4 builds them from every interface of the host, so hassemu hands
+// them over at multicast-dns's `send`, which every message of an instance leaves through.
+describe("the address records of an announcement — only those of its interface (D17)", () => {
+  /**
+   * A DNS record as bonjour builds it.
+   *
+   * @param type The record type.
+   * @param data The record data.
+   */
+  const record = (type: string, data: unknown): { name: string; type: string; ttl: number; data: unknown } => ({
+    name: type === "A" || type === "AAAA" ? "host.local" : "TestService._home-assistant._tcp.local",
+    type,
+    ttl: 120,
+    data,
+  });
+
+  it("a message keeps only the A/AAAA records of the given addresses; every other record and the callback pass", () => {
+    const calls: unknown[][] = [];
+    const fake = { server: { mdns: { send: (...args: unknown[]): void => void calls.push(args) } } };
+    expect(keepInterfaceRecords(fake as never, ["192.0.2.10", "FE80::1%eth0"])).to.equal(true);
+    const done = (): void => {};
+    const ptr = record("PTR", "TestService._home-assistant._tcp.local");
+    const srv = record("SRV", { port: 8123, target: "host.local" });
+    fake.server.mdns.send(
+      {
+        type: "response",
+        answers: [ptr, record("A", "192.0.2.10"), record("A", "198.51.100.10"), record("AAAA", "fe80::1")],
+        additionals: [srv, record("AAAA", "fd00::5")],
+      },
+      null,
+      done,
+    );
+    expect(calls).to.have.length(1);
+    expect(calls[0][0]).to.deep.equal({
+      type: "response",
+      answers: [ptr, record("A", "192.0.2.10"), record("AAAA", "fe80::1")],
+      additionals: [srv],
+    });
+    expect(calls[0].slice(1)).to.deep.equal([null, done]);
+  });
+
+  it("without bonjour's multicast socket where version 1.4.4 keeps it, nothing is wrapped — and nothing announced", () => {
+    expect(keepInterfaceRecords({} as never, ["192.0.2.10"])).to.equal(false);
+    expect(keepInterfaceRecords({ server: { mdns: {} } } as never, ["192.0.2.10"])).to.equal(false);
+  });
+
+  it("the real bonjour: the announcement, a query answer and the goodbye name only their interface's addresses", async () => {
+    const [own] = ONE_NET();
+    expect(own, "this machine carries no IPv4 network").to.not.equal(undefined);
+    wire.on = true;
+    wire.sent.length = 0;
+    try {
+      const local = new MDNSService(
+        createMockAdapter() as never,
+        {
+          port: 8123,
+          bind: "0.0.0.0",
+          authRequired: false,
+          username: "admin",
+          password: "",
+          mdnsEnabled: true,
+          serviceName: "WireTest",
+        },
+        crypto.randomUUID(),
+        null,
+        // two networks: nothing probes, so bonjour announces inside `publish` — the case no later setting reaches
+        () => [own, net("198.51.100.10", "docker9")],
+      );
+      local.start();
+      const announced = (local as unknown as Internals).announced;
+      expect(announced).to.have.length(2);
+      const mdns = (announced[0].bonjour as unknown as { server: { mdns: EventEmitter } }).server.mdns;
+      mdns.emit("query", { questions: [{ name: "_home-assistant._tcp.local", type: "PTR" }] });
+      await local.stop(true);
+
+      type Packet = Record<string, Array<{ type: string; data: unknown; ttl: number }> | undefined>;
+      const on = (iface: string): Packet[] =>
+        wire.sent.filter(s => (s.socket as { interface?: string }).interface === iface).map(s => s.packet as Packet);
+      const named = (packets: Packet[]): unknown[] =>
+        packets
+          .flatMap(p => [...(p.answers ?? []), ...(p.authorities ?? []), ...(p.additionals ?? [])])
+          .filter(r => r.type === "A" || r.type === "AAAA")
+          .map(r => r.data);
+      const ownPackets = on(own.address);
+      // the announcement, the answer to the query (its records in `additionals`), the goodbye (TTL 0)
+      expect(ownPackets.some(p => p.answers?.some(r => r.type === "PTR" && r.ttl > 0))).to.equal(true);
+      expect(ownPackets.some(p => p.additionals?.some(r => r.type === "SRV"))).to.equal(true);
+      expect(ownPackets.some(p => p.answers?.some(r => r.type === "PTR" && r.ttl === 0))).to.equal(true);
+      expect(new Set(named(ownPackets))).to.deep.equal(new Set(named(ownPackets).length ? [own.address] : []));
+      // the second interface carries none of this machine's addresses — none goes out on it
+      expect(on("198.51.100.10").length).to.be.greaterThan(0);
+      expect(named(on("198.51.100.10"))).to.deep.equal([]);
+    } finally {
+      wire.on = false;
+    }
   });
 });

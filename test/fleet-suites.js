@@ -1189,8 +1189,12 @@ function retryTooEarly(calls) {
 // a run named to others against the rule — a start whose sockets sit on the chosen address alone names only that one; a
 // start without one names each peer, and each announcement of an own network, that network's address: any address of a
 // network of this host, never loopback. Until round 178 every start had to name the host's first address, so an
-// announcement per own network was red on a host with more than one.
-function namedOff(records, chosen, hostAddresses) {
+// announcement per own network was red on a host with more than one. Round 180 (R180-10, finding 74d84aa54d89; RFC 6762
+// §6.2, UPnP Device Architecture 2.0 §1.2.2): "own" is what the fleet master may announce (`announceableNets` — no
+// blocked address), as the network hook asked it in the process that announced (`announceable`: [address, interface]
+// pairs, null without the master), and a payload that left through an interface names only that interface's
+// addresses; until then any IPv4 of the host passed, a link-local or another interface's address included.
+function namedOff(records, chosen) {
   const wildcard = at => at === undefined || at === "" || at === "0.0.0.0" || at === "::";
   const bound = new Map();
   for (const r of records) {
@@ -1207,8 +1211,14 @@ function namedOff(records, chosen, hostAddresses) {
     ...new Set(
       records
         .filter(r => r.kind === "advertise")
-        .filter(r => (onlyChosen(r.pid) ? r.address !== chosen : !hostAddresses.has(r.address)))
-        .map(r => `${r.via} ${r.address}`),
+        .filter(r => {
+          if (onlyChosen(r.pid)) {
+            return r.address !== chosen;
+          }
+          const may = new Map(Array.isArray(r.announceable) ? r.announceable : []);
+          return !may.has(r.address) || (r.from !== undefined && may.get(r.address) !== r.from);
+        })
+        .map(r => (r.from === undefined ? `${r.via} ${r.address}` : `${r.via} ${r.address} from ${r.from}`)),
     ),
   ];
 }
@@ -3423,18 +3433,26 @@ module.exports = function fleetSuites(templateSuite, ctx) {
     });
 
     it("names only the chosen address of this machine to others, else one of its own networks (D17)", function () {
-      const own = new Set(
-        Object.values(require("node:os").networkInterfaces())
-          .flatMap(list => list ?? [])
-          .filter(i => i.family === "IPv4" && !i.internal)
-          .map(i => i.address),
+      const records = netRecords();
+      const adverts = records.filter(r => r.kind === "advertise");
+      if (adverts.length === 0) {
+        return;
+      }
+      // round 180: what an announcement may name is the fleet master's answer in the process that announced, which the
+      // network hook writes beside each announcement — never a module of the adapter loaded into this process
+      const bare = [...new Set(adverts.filter(r => !Array.isArray(r.announceable)).map(r => `${r.via} ${r.address}`))];
+      assert.deepStrictEqual(
+        bare,
+        [],
+        "names addresses of this machine from a process without the fleet master (src/lib/network-address.ts: " +
+          `announceableNets, localNets — pull the master and announce through it):\n${bare.join("\n")}`,
       );
-      const other = namedOff(netRecords(), CHOSEN_ADDRESS, own);
+      const other = namedOff(records, CHOSEN_ADDRESS);
       assert.deepStrictEqual(
         other,
         [],
         `addresses of this machine named to others — not the chosen one (${CHOSEN_ADDRESS}) where only it is ` +
-          `bound, else none of its own networks:\n${other.join("\n")}`,
+          `bound, else none of the announceable addresses of the interface it left through:\n${other.join("\n")}`,
       );
     });
 

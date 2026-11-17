@@ -181,6 +181,8 @@ vi.mock("@iobroker/adapter-core", () => {
 vi.mock("bonjour-service", () => {
   /** A stand-in for bonjour-service: records what would be announced, sends nothing. */
   class Bonjour {
+    /** Where bonjour-service 1.4.4 keeps its multicast socket — hassemu hands it the address records there (D17). */
+    server = { mdns: { send: (_packet: unknown, _rinfo?: unknown, done?: () => void): void => done?.() } };
     publish(service: { port: unknown; txt: Record<string, string> }): {
       on: () => void;
       stop: (done?: () => void) => void;

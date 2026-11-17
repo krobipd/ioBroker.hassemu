@@ -284,6 +284,7 @@ import { CLIENT_OBJECTS_VERSION, MODE_GLOBAL, MODE_MANUAL } from "./lib/constant
 import { resolveRedirect } from "./lib/redirect-resolver";
 import { UrlDiscovery, type UrlStatesListener } from "./lib/url-discovery";
 import { migrateLegacyDefaultVisUrl, migrateVisUrlToMode, type MigrationAdapter } from "./lib/legacy-migration";
+import { announceAddresses } from "./lib/network-address";
 import type { SecureSetup } from "./lib/secure-server";
 import type { AdapterConfig } from "./lib/types";
 import iobrokerPackage from "../io-package.json";
@@ -1032,9 +1033,12 @@ describe("HTTPS start (K4)", () => {
     expect(seen.tls[0]?.name).toBe("display-test.example");
     expect(s.stub.objectSubscriptions, "no collection, no subscription").not.toContain("system.certificates");
 
-    // The real mDNS factory of a fresh instance: its advertised base URL follows the HTTPS part.
+    // The real mDNS factory of a fresh instance: its advertised base URL follows the HTTPS part. The announcement goes
+    // out from an address the machine carries (fleet master `announceAddresses`) — one of this machine's.
+    const [own] = announceAddresses(undefined, "IPv4");
+    expect(own, "this machine carries no IPv4 address").toBeDefined();
     const fresh = new HassEmu() as unknown as Internal & { config: Record<string, unknown> };
-    fresh.config = { ...BASE_CONFIG };
+    fresh.config = { ...BASE_CONFIG, bind: own };
     const mdns = (fresh.makeMdnsService as unknown as (id: string, tls: SecureSetup | null) => unknown)(
       "u",
       seen.tls[0],

@@ -1,8 +1,8 @@
 import Bonjour from "bonjour-service";
 import { DEFAULT_SERVICE_NAME, HA_VERSION, MDNS_ADDRESS_CHECK_INTERVAL_MS } from "./constants";
 import { errText } from "./err-text";
-import { chosenAddress, localNets, type LocalNet } from "./network-address";
-import { advertisedBaseUrl, hostNets } from "./network";
+import { announceAddresses, chosenAddress, interfaceAddresses, localNets, type LocalNet } from "./network-address";
+import { advertisedBaseUrl } from "./network";
 import type { AdapterConfig, AdapterInterface } from "./types";
 
 type PublishedService = ReturnType<InstanceType<typeof Bonjour>["publish"]>;
@@ -26,25 +26,32 @@ export function mdnsSocketOptions(bind: string | undefined): MdnsSocketOptions {
   return chosen === undefined ? {} : { interface: chosen, bind: "0.0.0.0" };
 }
 
-/** One announcement: the socket it goes out on, the base URL its TXT record carries, whether bonjour probes the name. */
+/**
+ * One announcement: the socket it goes out on, the base URL its TXT record carries, the addresses its A/AAAA records
+ * name, whether bonjour probes the name.
+ */
 export interface Announcement {
   /** Where the multicast socket binds and which interface it sends on. */
   socket: MdnsSocketOptions;
   /** The base URL of hassemu as a display in this network reaches it. */
   baseUrl: string;
+  /** The addresses its A/AAAA records may name — those of the interface it goes out on (master `interfaceAddresses`). */
+  addresses: string[];
   /** Whether bonjour probes the name first — only where no second announcement of this host answers the probe. */
   probe: boolean;
 }
 
 /**
  * The announcements for a bind setting — an announcement goes out without anybody asking, so it is not one address
- * chosen for every display (werkbank standard on D17, correction of 2026-11-15; model: iobroker.fakeroku
- * `ssdp-responder.ts` `openSenders`, one sender per interface):
- * - a chosen address: one announcement, from its interface ({@link mdnsSocketOptions});
- * - every address: one announcement per own IPv4 network (master `localNets`), from that network's interface and with
- *   its address — multicast-dns 7.2.5 joins and sends on `interface`, and an answer goes to the group on it, never to
- *   the asker, so a display hears the address of its own network (krobi 2026-11-11 19:34 as the fleet rule). hassemu
- *   picks none of them, and none is put back (no Docker, VM or VPN filter).
+ * chosen for every display (werkbank standard D17; model: iobroker.fakeroku `ssdp-responder.ts` `openSenders`, one
+ * sender per interface). One announcement per address of the fleet master `announceAddresses` — the chosen address
+ * alone, else the host's address in each of its IPv4 networks —, sent from that address's interface
+ * ({@link mdnsSocketOptions}) and naming in its A/AAAA records only the addresses of that interface (master
+ * `interfaceAddresses`; RFC 6762 §6.2). multicast-dns 7.2.5 joins and sends on `interface`, and an answer goes to the
+ * group on it, never to the asker, so a display hears the address of its own network (krobi 2026-11-11 19:34 as the
+ * fleet rule). Which addresses an announcement without a chosen address leaves out stands once in the master (round 180,
+ * krobi 2026-11-15) — hassemu picks none and leaves none out by itself; a chosen address the host carries is the one
+ * announced, loopback and link-local included (round 182).
  * With HTTPS and a certificate name (K4) every announcement names that name instead of the address. Several
  * announcements carry one name on different links, which mDNS allows — but bonjour-service 1.4.4 takes a sibling's
  * answer on the shared port 5353 for a conflict (`registry.probe`: any answer for the name stops the service), so only a
@@ -63,16 +70,76 @@ export function announcements(
   secure?: { name: string | undefined } | null,
   nets: readonly LocalNet[] = localNets(),
 ): Announcement[] {
-  const chosen = chosenAddress(bind);
-  if (chosen !== undefined) {
-    return [{ socket: mdnsSocketOptions(bind), baseUrl: advertisedBaseUrl(chosen, port, secure), probe: true }];
-  }
-  const v4 = hostNets(bind, nets).filter(n => n.family === "IPv4");
-  return v4.map(n => ({
-    socket: { interface: n.address, bind: "0.0.0.0" },
-    baseUrl: advertisedBaseUrl(n.address, port, secure),
-    probe: v4.length === 1,
+  const from = announceAddresses(chosenAddress(bind), "IPv4", nets);
+  return from.map(address => ({
+    socket: mdnsSocketOptions(address),
+    baseUrl: advertisedBaseUrl(address, port, secure),
+    addresses: interfaceAddresses(address, nets),
+    probe: from.length === 1,
   }));
+}
+
+/** What the record filter reaches of bonjour-service 1.4.4's private state: the multicast-dns instance of its server. */
+interface BonjourInternals {
+  server?: { mdns?: { send?: unknown } };
+}
+
+/**
+ * An address as the fleet master writes it: lower case, without a zone.
+ *
+ * @param address An IPv4 or IPv6 address.
+ */
+function plainAddress(address: string): string {
+  return address.split("%")[0].toLowerCase();
+}
+
+/**
+ * A DNS message with only the A/AAAA records that name one of `named` — every other record as it is.
+ *
+ * @param packet The message multicast-dns is about to encode.
+ * @param named  The addresses the records may name ({@link plainAddress} form).
+ */
+function withNamedAddresses(packet: unknown, named: ReadonlySet<string>): unknown {
+  if (typeof packet !== "object" || packet === null) {
+    return packet;
+  }
+  const keep = (record: unknown): boolean => {
+    const { type, data } = (record ?? {}) as { type?: unknown; data?: unknown };
+    return (type !== "A" && type !== "AAAA") || (typeof data === "string" && named.has(plainAddress(data)));
+  };
+  const out: Record<string, unknown> = { ...(packet as Record<string, unknown>) };
+  for (const section of ["answers", "authorities", "additionals"]) {
+    const records = out[section];
+    if (Array.isArray(records)) {
+      out[section] = records.filter(keep);
+    }
+  }
+  return out;
+}
+
+/**
+ * Hand bonjour the addresses an announcement names (werkbank standard D17, round 180). bonjour-service 1.4.4 builds the
+ * A/AAAA records of a service from ALL interfaces of the host (`dist/lib/service.js` `records()`) and announces them
+ * inside `publish` when it does not probe — no setting on the published service comes in time. Every message of one
+ * bonjour instance leaves through `server.mdns.send` (multicast-dns 7.2.5: `respond` and `query` call it) — the
+ * announcement and its repeats, the answers to queries, the goodbye; there the A/AAAA records that name no address of
+ * `addresses` stay behind, every other record passes as it is.
+ *
+ * @param bonjour   A fresh bonjour instance, before anything is published on it.
+ * @param addresses The addresses its records may name ({@link Announcement.addresses}).
+ * @returns false when the multicast socket is not where bonjour-service 1.4.4 keeps it — then nothing may be announced,
+ *   or the records of every interface would go out.
+ */
+export function keepInterfaceRecords(bonjour: Bonjour, addresses: readonly string[]): boolean {
+  const mdns = (bonjour as unknown as BonjourInternals).server?.mdns;
+  const send = mdns?.send;
+  if (!mdns || typeof send !== "function") {
+    return false;
+  }
+  const named = new Set(addresses.map(plainAddress));
+  mdns.send = (packet: unknown, ...rest: unknown[]): unknown =>
+    (send as (...args: unknown[]) => unknown).call(mdns, withNamedAddresses(packet, named), ...rest);
+  return true;
 }
 
 /** One running announcement: its bonjour instance and the published service. */
@@ -141,8 +208,8 @@ export class MDNSService {
     this.advertisedKey = keyOf(plan);
     this.announceAll(plan);
     // With a wildcard bind the networks are the host's, which DHCP can change; the TXT record carries the address as
-    // base_url, and HA clients read it from there. The A/AAAA records bonjour builds per announcement, the TXT record
-    // only here — so compare once a minute and announce again when it moved (audit 2026-09-25, H10).
+    // base_url, and HA clients read it from there. The TXT record and the A/AAAA records of an announcement are set
+    // when it is published — so compare once a minute and announce again when it moved (audit 2026-09-25, H10).
     if (chosenAddress(this.config.bind) === undefined) {
       this.addressCheck =
         this.adapter.setInterval(() => void this.refreshIfAddressChanged(), MDNS_ADDRESS_CHECK_INTERVAL_MS) ??
@@ -208,6 +275,10 @@ export class MDNSService {
 
     try {
       bonjour = new Bonjour(plan.socket);
+      // The A/AAAA records name only the addresses of this announcement's interface (D17) — or nothing goes out.
+      if (!keepInterfaceRecords(bonjour, plan.addresses)) {
+        throw new Error("bonjour-service keeps its multicast socket elsewhere than version 1.4.4 — nothing announced");
+      }
 
       // L35: all TXT values below are non-empty by construction (no conditional
       // drop happens here) — build the advertised record.

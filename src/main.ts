@@ -496,11 +496,12 @@ class HassEmu extends utils.Adapter {
    * (krobi 2026-10-03 00:27); one this host does not carry (a new address from the router, a
    * backup restored on other hardware) falls back to every address with exactly one warning
    * that says what to fix — the fleet rule in the head of the master network-address.ts
-   * (fakeroku F-05/F-06, krobi 2026-10-02 23:52).
+   * (fakeroku F-05/F-06, krobi 2026-10-02 23:52). Loopback and link-local count once chosen (round 182, krobi
+   * 2026-11-16 17:31); the setting holds IPv4 (`onlyIp4`), so an IPv6 address falls back too.
    */
   private listenAddress(): string {
     const chosen = chosenAddress(this.config.bind);
-    if (chosen !== undefined && !carriesAddress(chosen)) {
+    if (chosen !== undefined && !carriesAddress(chosen, "IPv4")) {
       this.log.warn(
         `Address ${chosen} does not exist on this host — listening on all addresses; choose another address in the instance settings`,
       );
