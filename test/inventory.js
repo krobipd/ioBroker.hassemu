@@ -58,24 +58,31 @@ const VOLATILE = ["ts", "from", "user", "acl"];
 // Key order carries no meaning in an ioBroker object: extendObject keeps the key order an existing
 // object already has, while adapter-core's I18n.getTranslatedObject builds its own — the same eleven
 // texts in another order are the same name. Arrays keep their order.
-const canonical = (v) =>
-    JSON.stringify(v, (_k, x) =>
-        x && typeof x === "object" && !Array.isArray(x)
-            ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, x[k]]))
-            : x);
+const canonical = v =>
+  JSON.stringify(v, (_k, x) =>
+    x && typeof x === "object" && !Array.isArray(x)
+      ? Object.fromEntries(
+          Object.keys(x)
+            .sort()
+            .map(k => [k, x[k]]),
+        )
+      : x,
+  );
 // How long the upgrade suite keeps watching after its verdict: a write in that window means the wait ended before
 // the adapter did (round 61, measured 2026-09-29 over the fleet: none in 10 s at HEAD; parcelapp's old wait judged
 // 5 ms before the first of 187 writes).
 const SETTLE_MS = 10000;
 const INSTANCE_OBJECTS = new Set(
-    (require(path.join(ADAPTER_DIR, "io-package.json")).instanceObjects ?? []).map((o) => `${NS}${o._id}`),
+  (require(path.join(ADAPTER_DIR, "io-package.json")).instanceObjects ?? []).map(o => `${NS}${o._id}`),
 );
 // Round 62: every adapter start loads test/resource-probe.js (fleet master) FIRST; at its exit it records what the
 // adapter or one of its libraries left open after onUnload, and the run fails on any of it (the after() at the end).
 const RESOURCE_PROBE = path.join(__dirname, "resource-probe.js");
 // Round 165: inside the run folder of werkbank-run.py, cleared with the run — a run ended from outside never reaches the
 // after() below (measured 2026-10-31: 33 probe folders of four adapters in the temp); the CI throws its runner away
-const RESOURCE_DIR = fs.mkdtempSync(path.join(process.env.KROBI_RUN_DIR || require("node:os").tmpdir(), `${ADAPTER}-resources-`));
+const RESOURCE_DIR = fs.mkdtempSync(
+  path.join(process.env.KROBI_RUN_DIR || require("node:os").tmpdir(), `${ADAPTER}-resources-`),
+);
 // Round 62: the adapter's read-only states (`common.write: false`) — only the adapter writes them, so it compares them
 // in memory; a database read of one in the quiet window after the verdict is a finding, and so is a single read of one at
 // any time (Round 77) — the start fills the memory with one bulk getStatesAsync.
@@ -94,23 +101,23 @@ const READ_ONLY = new Set();
 // press installations of test/fleet-suites.js, stopCounting ends them).
 let counting = false;
 function adapterEnv(...hooks) {
-    // round 123: a judged installation runs at the adapter's own pace (no PACING_HOOKS) and tells the fixture hooks so
-    // (INVENTORY_COUNTED: a fixture hook may serve a smaller account there); every other suite keeps both
-    return {
-        NODE_OPTIONS: [RESOURCE_PROBE, ...FIXTURE_HOOKS, ...(counting ? [] : PACING_HOOKS), ...hooks]
-            .map((file) => `--require ${file}`)
-            .join(" "),
-        RESOURCE_PROBE_DIR: RESOURCE_DIR,
-        RESOURCE_PROBE_NS: NS,
-        ...(counting ? { INVENTORY_COUNTED: "1" } : {}),
-    };
+  // round 123: a judged installation runs at the adapter's own pace (no PACING_HOOKS) and tells the fixture hooks so
+  // (INVENTORY_COUNTED: a fixture hook may serve a smaller account there); every other suite keeps both
+  return {
+    NODE_OPTIONS: [RESOURCE_PROBE, ...FIXTURE_HOOKS, ...(counting ? [] : PACING_HOOKS), ...hooks]
+      .map(file => `--require ${file}`)
+      .join(" "),
+    RESOURCE_PROBE_DIR: RESOURCE_DIR,
+    RESOURCE_PROBE_NS: NS,
+    ...(counting ? { INVENTORY_COUNTED: "1" } : {}),
+  };
 }
 function countThisInstallation() {
-    counting = true;
-    fs.writeFileSync(path.join(RESOURCE_DIR, `${Date.now()}.counted`), "");
+  counting = true;
+  fs.writeFileSync(path.join(RESOURCE_DIR, `${Date.now()}.counted`), "");
 }
 function stopCounting() {
-    counting = false;
+  counting = false;
 }
 
 // Round 87 (krobi 2026-10-02 23:26): the suite "counterpart gone and back" cuts every counterpart with
@@ -149,25 +156,25 @@ const COMMAND_WINDOW_MS = 30000;
 // chosen address where a fixture reaches the adapter like a device of the network, in the suite "chosen network address"
 // where a client of another network asks from; MISSING_ADDRESS one no machine carries (TEST-NET-1, RFC 5737).
 const ADDRESS_KEY = (() => {
-    const file = path.join(ADAPTER_DIR, "admin", "jsonConfig.json");
-    const find = (node) => {
-        for (const [key, value] of Object.entries(node?.items ?? {})) {
-            if (value?.type === "ip") {
-                return key;
-            }
-            const inner = find(value);
-            if (inner) {
-                return inner;
-            }
-        }
-        return undefined;
-    };
-    return fs.existsSync(file) ? find(JSON.parse(fs.readFileSync(file, "utf8"))) : undefined;
+  const file = path.join(ADAPTER_DIR, "admin", "jsonConfig.json");
+  const find = node => {
+    for (const [key, value] of Object.entries(node?.items ?? {})) {
+      if (value?.type === "ip") {
+        return key;
+      }
+      const inner = find(value);
+      if (inner) {
+        return inner;
+      }
+    }
+    return undefined;
+  };
+  return fs.existsSync(file) ? find(JSON.parse(fs.readFileSync(file, "utf8"))) : undefined;
 })();
 const CHOSEN_ADDRESS = "127.0.0.1";
 const LAN_ADDRESS = Object.values(require("node:os").networkInterfaces())
-    .flatMap((list) => list ?? [])
-    .find((i) => i.family === "IPv4" && !i.internal)?.address;
+  .flatMap(list => list ?? [])
+  .find(i => i.family === "IPv4" && !i.internal)?.address;
 const MISSING_ADDRESS = "192.0.2.1";
 // Round 97 (krobi 2026-10-06 19:07–19:14, page "Diagnosebericht — Flottenstandard"): an adapter with a diagnostics
 // report carries the fleet master src/lib/diagnostics/report-jobs.ts; the card asks every REPORT_POLL_MS whether a
@@ -197,91 +204,92 @@ const REPORT_DEADLINE_MS = 180000;
  * @param {import("@iobroker/testing").IntegrationTestHarness} harness
  */
 async function watchObjectWrites(harness) {
-    /** @type {WriteWatch} */
-    const watch = {
-        writes: new Map(),
-        peak: new Map(),
-        unchanged: [],
-        deleted: [],
-        times: [],
-        unchangedStates: [],
-        // Round 64: a restart the harness plays (playControllerRestarts) is a new start — the per-start counts begin again,
-        // the known object content stays (it is the database's).
-        newStart: () => {
-            watch.writes.clear();
-            states.clear();
-        },
-    };
-    const known = new Map();
-    const roles = new Map();
-    const states = new Map();
-    const content = (obj) => {
-        const { ts, from, user, ...rest } = obj;
-        return canonical(rest);
-    };
-    harness.on("objectChange", (id, obj) => {
-        if (!id.startsWith(NS)) {
-            return;
-        }
-        if (!obj) {
-            watch.deleted.push(id);
-            known.delete(id);
-            roles.delete(id);
-            return;
-        }
-        roles.set(id, obj.common?.role);
-        if (obj.type === "state" && obj.common?.write === false) {
-            READ_ONLY.add(id);
-        } else {
-            READ_ONLY.delete(id);
-        }
-        const now = content(obj);
-        if (obj.from === `system.adapter.${ADAPTER}.0`) {
-            const n = (watch.writes.get(id) ?? 0) + 1;
-            watch.writes.set(id, n);
-            watch.peak.set(id, Math.max(watch.peak.get(id) ?? 0, n));
-            watch.times.push([id, Date.now()]);
-            if (known.get(id) === now && !(n === 1 && INSTANCE_OBJECTS.has(id))) {
-                watch.unchanged.push(id);
-            }
-        }
-        known.set(id, now);
-    });
-    // Round 62: an indicator state (`indicator.*`) is written only on a change (read-only: compared in memory,
-    // writable: setStateChangedAsync) — a write that changes nothing is a finding. Compared is what js-controller
-    // 7.2.2 compares in setStateChangedAsync: val strictly, ack, q, c; an object value always counts as changed.
-    // Round 104 (krobi 2026-09-29: adapters waste no resources, GV-05): every state, not only `indicator.*`.
-    // Round 174 (a responder's report of 2026-11-12): a write of another — the user choosing the value that stands, with
-    // ack false — changes what the database holds, and the adapter's confirmation after it is a change, as
-    // setStateChangedAsync judges it. It moves the compared state of an id the adapter wrote in this start and is never
-    // a finding itself; an id the adapter has not written yet stays without one (a seed, a value from before the restart).
-    harness.on("stateChange", (id, state) => {
-        if (!id.startsWith(NS) || !state) {
-            return;
-        }
-        const now = state.val !== null && typeof state.val === "object" ? null : canonical([state.val, state.ack, state.q, state.c]);
-        if (state.from !== `system.adapter.${ADAPTER}.0`) {
-            if (states.has(id)) {
-                states.set(id, now);
-            }
-            return;
-        }
-        if (now !== null && states.get(id) === now) {
-            watch.unchangedStates.push(id);
-        }
-        states.set(id, now);
-    });
-    const list = await harness.objects.getObjectListAsync({ startkey: NS, endkey: `${NS}香` });
-    for (const row of list.rows) {
-        if (row.value) {
-            known.set(row.id, content(row.value));
-            roles.set(row.id, row.value.common?.role);
-            if (row.value.type === "state" && row.value.common?.write === false) {
-                READ_ONLY.add(row.id);
-            }
-        }
+  /** @type {WriteWatch} */
+  const watch = {
+    writes: new Map(),
+    peak: new Map(),
+    unchanged: [],
+    deleted: [],
+    times: [],
+    unchangedStates: [],
+    // Round 64: a restart the harness plays (playControllerRestarts) is a new start — the per-start counts begin again,
+    // the known object content stays (it is the database's).
+    newStart: () => {
+      watch.writes.clear();
+      states.clear();
+    },
+  };
+  const known = new Map();
+  const roles = new Map();
+  const states = new Map();
+  const content = obj => {
+    const { ts, from, user, ...rest } = obj;
+    return canonical(rest);
+  };
+  harness.on("objectChange", (id, obj) => {
+    if (!id.startsWith(NS)) {
+      return;
     }
-    return watch;
+    if (!obj) {
+      watch.deleted.push(id);
+      known.delete(id);
+      roles.delete(id);
+      return;
+    }
+    roles.set(id, obj.common?.role);
+    if (obj.type === "state" && obj.common?.write === false) {
+      READ_ONLY.add(id);
+    } else {
+      READ_ONLY.delete(id);
+    }
+    const now = content(obj);
+    if (obj.from === `system.adapter.${ADAPTER}.0`) {
+      const n = (watch.writes.get(id) ?? 0) + 1;
+      watch.writes.set(id, n);
+      watch.peak.set(id, Math.max(watch.peak.get(id) ?? 0, n));
+      watch.times.push([id, Date.now()]);
+      if (known.get(id) === now && !(n === 1 && INSTANCE_OBJECTS.has(id))) {
+        watch.unchanged.push(id);
+      }
+    }
+    known.set(id, now);
+  });
+  // Round 62: an indicator state (`indicator.*`) is written only on a change (read-only: compared in memory,
+  // writable: setStateChangedAsync) — a write that changes nothing is a finding. Compared is what js-controller
+  // 7.2.2 compares in setStateChangedAsync: val strictly, ack, q, c; an object value always counts as changed.
+  // Round 104 (krobi 2026-09-29: adapters waste no resources, GV-05): every state, not only `indicator.*`.
+  // Round 174 (a responder's report of 2026-11-12): a write of another — the user choosing the value that stands, with
+  // ack false — changes what the database holds, and the adapter's confirmation after it is a change, as
+  // setStateChangedAsync judges it. It moves the compared state of an id the adapter wrote in this start and is never
+  // a finding itself; an id the adapter has not written yet stays without one (a seed, a value from before the restart).
+  harness.on("stateChange", (id, state) => {
+    if (!id.startsWith(NS) || !state) {
+      return;
+    }
+    const now =
+      state.val !== null && typeof state.val === "object" ? null : canonical([state.val, state.ack, state.q, state.c]);
+    if (state.from !== `system.adapter.${ADAPTER}.0`) {
+      if (states.has(id)) {
+        states.set(id, now);
+      }
+      return;
+    }
+    if (now !== null && states.get(id) === now) {
+      watch.unchangedStates.push(id);
+    }
+    states.set(id, now);
+  });
+  const list = await harness.objects.getObjectListAsync({ startkey: NS, endkey: `${NS}香` });
+  for (const row of list.rows) {
+    if (row.value) {
+      known.set(row.id, content(row.value));
+      roles.set(row.id, row.value.common?.role);
+      if (row.value.type === "state" && row.value.common?.write === false) {
+        READ_ONLY.add(row.id);
+      }
+    }
+  }
+  return watch;
 }
 
 // hassemu: the adapter IS an HTTP server, so the fixtures are HTTP requests carrying a display's cookie — the same path
@@ -300,18 +308,18 @@ const PORT = 8123;
  * (seedInstanceObjects). The start moves it once to the id of K7 (`display-` and the last four characters of the old id).
  */
 const LEGACY = {
-    id: "a1b2c3",
-    movedId: "display-b2c3",
-    cookie: "00000000-0000-4000-8000-00000000abcd",
-    ip: "192.0.2.50",
-    visUrl: "http://192.0.2.10:8082/vis/index.html",
+  id: "a1b2c3",
+  movedId: "display-b2c3",
+  cookie: "00000000-0000-4000-8000-00000000abcd",
+  ip: "192.0.2.50",
+  visUrl: "http://192.0.2.10:8082/vis/index.html",
 };
 /** The dashboards the seeded surroundings offer (seedEnvironment) — hassemu lists each in the mode dropdown. */
 const DISCOVERED = [
-    "http://192.0.2.10:8082/vis-2/index.html?main",
-    "http://192.0.2.10:8082/vis-2/index.html?main#Kitchen",
-    "http://192.0.2.10:8081",
-    "http://192.0.2.10:8095/",
+  "http://192.0.2.10:8082/vis-2/index.html?main",
+  "http://192.0.2.10:8082/vis-2/index.html?main#Kitchen",
+  "http://192.0.2.10:8081",
+  "http://192.0.2.10:8095/",
 ];
 /** The server id an installation holds in its data file (seedInstanceData). */
 const FIXTURE_SERVER_ID = "0d5b8e2a-7c41-4f3e-9a26-5b8c1d7e3f90";
@@ -323,14 +331,14 @@ const FIXTURE_SERVER_ID = "0d5b8e2a-7c41-4f3e-9a26-5b8c1d7e3f90";
 const DASHBOARD_FILE = path.join(RESOURCE_DIR, "dashboard.json");
 process.env.INVENTORY_DASHBOARD_FILE = DASHBOARD_FILE;
 const DASHBOARD = http
-    .createServer((_req, res) => {
-        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-        res.end("<!doctype html><title>dashboard</title>");
-    })
-    .listen(0, "127.0.0.1", () => {
-        const { port } = /** @type {import("node:net").AddressInfo} */ (DASHBOARD.address());
-        fs.writeFileSync(DASHBOARD_FILE, JSON.stringify({ port }));
-    });
+  .createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    res.end("<!doctype html><title>dashboard</title>");
+  })
+  .listen(0, "127.0.0.1", () => {
+    const { port } = /** @type {import("node:net").AddressInfo} */ (DASHBOARD.address());
+    fs.writeFileSync(DASHBOARD_FILE, JSON.stringify({ port }));
+  });
 DASHBOARD.unref();
 
 /**
@@ -341,7 +349,7 @@ DASHBOARD.unref();
  * @returns {string} a UUID the adapter accepts
  */
 function fixtureCookie(n) {
-    return `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+  return `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 }
 
 /**
@@ -351,7 +359,7 @@ function fixtureCookie(n) {
  * @returns {string} four hex characters
  */
 function fixtureTail(n) {
-    return n.toString(16).padStart(4, "0");
+  return n.toString(16).padStart(4, "0");
 }
 
 /**
@@ -361,7 +369,7 @@ function fixtureTail(n) {
  * @returns {string} the folder
  */
 function dataFolder(harness) {
-    return path.join(internals(harness).testDir, "iobroker-data", `${ADAPTER}.0`);
+  return path.join(internals(harness).testDir, "iobroker-data", `${ADAPTER}.0`);
 }
 
 // identities.json seals the cookie and both tokens of every display (fleet secrets standard, round 174, S7): the master
@@ -380,9 +388,9 @@ const SEALED_PREFIX = "$/aes-192-cbc:";
  * @returns {Promise<string>} the secret, 48 hex characters
  */
 async function systemSecret(harness) {
-    const secret = (await harness.objects.getObjectAsync("system.config"))?.native?.secret;
-    assert.ok(typeof secret === "string" && /^[0-9a-f]{48}$/.test(secret), "the test installation has no system secret");
-    return secret;
+  const secret = (await harness.objects.getObjectAsync("system.config"))?.native?.secret;
+  assert.ok(typeof secret === "string" && /^[0-9a-f]{48}$/.test(secret), "the test installation has no system secret");
+  return secret;
 }
 
 /**
@@ -393,10 +401,10 @@ async function systemSecret(harness) {
  * @returns {{ $encrypted: string }} the sealed field
  */
 function sealedField(secret, text) {
-    const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv("aes-192-cbc", Buffer.from(secret, "hex"), iv);
-    const data = Buffer.concat([cipher.update(JSON.stringify(text)), cipher.final()]);
-    return { $encrypted: `${SEALED_PREFIX}${iv.toString("hex")}:${data.toString("hex")}` };
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv("aes-192-cbc", Buffer.from(secret, "hex"), iv);
+  const data = Buffer.concat([cipher.update(JSON.stringify(text)), cipher.final()]);
+  return { $encrypted: `${SEALED_PREFIX}${iv.toString("hex")}:${data.toString("hex")}` };
 }
 
 /**
@@ -407,11 +415,15 @@ function sealedField(secret, text) {
  * @returns {string} the clear text
  */
 function unsealedField(secret, field) {
-    const sealed = field !== null && typeof field === "object" ? /** @type {Record<string, unknown>} */ (field).$encrypted : undefined;
-    assert.ok(typeof sealed === "string" && sealed.startsWith(SEALED_PREFIX), "a cookie in identities.json is not sealed by the master");
-    const [, iv, data] = sealed.split(":", 3);
-    const decipher = crypto.createDecipheriv("aes-192-cbc", Buffer.from(secret, "hex"), Buffer.from(iv, "hex"));
-    return JSON.parse(Buffer.concat([decipher.update(Buffer.from(data, "hex")), decipher.final()]).toString("utf8"));
+  const sealed =
+    field !== null && typeof field === "object" ? /** @type {Record<string, unknown>} */ (field).$encrypted : undefined;
+  assert.ok(
+    typeof sealed === "string" && sealed.startsWith(SEALED_PREFIX),
+    "a cookie in identities.json is not sealed by the master",
+  );
+  const [, iv, data] = sealed.split(":", 3);
+  const decipher = crypto.createDecipheriv("aes-192-cbc", Buffer.from(secret, "hex"), Buffer.from(iv, "hex"));
+  return JSON.parse(Buffer.concat([decipher.update(Buffer.from(data, "hex")), decipher.final()]).toString("utf8"));
 }
 
 /**
@@ -421,14 +433,16 @@ function unsealedField(secret, field) {
  * @returns {Promise<Record<string, string>>} the cookies
  */
 async function storedCookies(harness) {
-    const file = path.join(dataFolder(harness), "identities.json");
-    if (!fs.existsSync(file)) {
-        return {};
-    }
-    /** @type {{ displays?: Record<string, { cookie?: unknown }> }} */
-    const stored = JSON.parse(fs.readFileSync(file, "utf8"));
-    const secret = await systemSecret(harness);
-    return Object.fromEntries(Object.entries(stored.displays ?? {}).map(([id, entry]) => [id, unsealedField(secret, entry.cookie)]));
+  const file = path.join(dataFolder(harness), "identities.json");
+  if (!fs.existsSync(file)) {
+    return {};
+  }
+  /** @type {{ displays?: Record<string, { cookie?: unknown }> }} */
+  const stored = JSON.parse(fs.readFileSync(file, "utf8"));
+  const secret = await systemSecret(harness);
+  return Object.fromEntries(
+    Object.entries(stored.displays ?? {}).map(([id, entry]) => [id, unsealedField(secret, entry.cookie)]),
+  );
 }
 
 /**
@@ -439,7 +453,7 @@ async function storedCookies(harness) {
  * @returns {Promise<string | undefined>} the display id
  */
 async function displayOfCookie(harness, cookie) {
-    return Object.entries(await storedCookies(harness)).find(([, stored]) => stored === cookie)?.[0];
+  return Object.entries(await storedCookies(harness)).find(([, stored]) => stored === cookie)?.[0];
 }
 
 /**
@@ -455,16 +469,16 @@ async function displayOfCookie(harness, cookie) {
  * @returns {Promise<string | null>} the cookie, or null
  */
 async function knownCookie(harness, ip, n) {
-    const cookies = await storedCookies(harness);
-    const prefix = `${NS}clients.`;
-    const rows = (await harness.objects.getObjectList({ startkey: prefix, endkey: `${prefix}香` })).rows;
-    for (const row of rows.filter((r) => r.value?.type === "device")) {
-        const cookie = cookies[row.id.slice(prefix.length)];
-        if (typeof cookie === "string" && (await harness.states.getStateAsync(`${row.id}.ip`))?.val === ip) {
-            return cookie;
-        }
+  const cookies = await storedCookies(harness);
+  const prefix = `${NS}clients.`;
+  const rows = (await harness.objects.getObjectList({ startkey: prefix, endkey: `${prefix}香` })).rows;
+  for (const row of rows.filter(r => r.value?.type === "device")) {
+    const cookie = cookies[row.id.slice(prefix.length)];
+    if (typeof cookie === "string" && (await harness.states.getStateAsync(`${row.id}.ip`))?.val === ip) {
+      return cookie;
     }
-    return Object.values(cookies).includes(fixtureCookie(n)) ? fixtureCookie(n) : null;
+  }
+  return Object.values(cookies).includes(fixtureCookie(n)) ? fixtureCookie(n) : null;
 }
 
 /**
@@ -476,12 +490,12 @@ async function knownCookie(harness, ip, n) {
  * @param {string} val the setting
  */
 async function setDisplay(harness, id, val) {
-    if ((await harness.states.getStateAsync(id))?.val === val) {
-        return;
-    }
-    const since = Date.now();
-    await harness.states.setStateAsync(id, { val, ack: false });
-    await waitForAck(harness, id, since);
+  if ((await harness.states.getStateAsync(id))?.val === val) {
+    return;
+  }
+  const since = Date.now();
+  await harness.states.setStateAsync(id, { val, ack: false });
+  await waitForAck(harness, id, since);
 }
 
 /**
@@ -496,37 +510,56 @@ async function setDisplay(harness, id, val) {
  * @param {import("@iobroker/testing").IntegrationTestHarness} harness
  */
 async function seedEnvironment(harness) {
-    const instance = (name, common, native) => ({
-        _id: `system.adapter.${name}`,
-        type: "instance",
-        common: { name: name.split(".")[0], enabled: true, host: "inventory-host", ...common },
-        native,
+  const instance = (name, common, native) => ({
+    _id: `system.adapter.${name}`,
+    type: "instance",
+    common: { name: name.split(".")[0], enabled: true, host: "inventory-host", ...common },
+    native,
+  });
+  const missing = async id => {
+    const obj = await harness.objects.getObjectAsync(id);
+    return !obj || (obj.type === "instance" && obj.common?.enabled !== true);
+  };
+  if (await missing("system.adapter.web.0")) {
+    await harness.objects.setObjectAsync(
+      "system.adapter.web.0",
+      instance("web.0", {}, { port: 8082, bind: "192.0.2.10", secure: false }),
+    );
+  }
+  if (await missing("vis-2.0")) {
+    await harness.objects.setObjectAsync("vis-2.0", {
+      _id: "vis-2.0",
+      type: "meta",
+      common: { type: "meta.user" },
+      native: {},
     });
-    const missing = async (id) => {
-        const obj = await harness.objects.getObjectAsync(id);
-        return !obj || (obj.type === "instance" && obj.common?.enabled !== true);
-    };
-    if (await missing("system.adapter.web.0")) {
-        await harness.objects.setObjectAsync("system.adapter.web.0", instance("web.0", {}, { port: 8082, bind: "192.0.2.10", secure: false }));
-    }
-    if (await missing("vis-2.0")) {
-        await harness.objects.setObjectAsync("vis-2.0", { _id: "vis-2.0", type: "meta", common: { type: "meta.user" }, native: {} });
-        await harness.objects.writeFileAsync("vis-2.0", "main/vis-views.json", JSON.stringify({ ___settings: {}, Kitchen: { settings: {}, widgets: {} } }));
-    }
-    if (await missing("system.adapter.vis-2.0")) {
-        await harness.objects.setObjectAsync("system.adapter.vis-2.0", instance("vis-2.0", {}, {}));
-    }
-    if (await missing("system.adapter.aura.0")) {
-        // aura builds its URL from the runner's own address unless `customUrl` is set — the custom form keeps the
-        // inventory machine-independent.
-        await harness.objects.setObjectAsync("system.adapter.aura.0", instance("aura.0", {}, { port: 8095, secure: false, customUrl: "http://192.0.2.10:8095" }));
-    }
-    if (await missing("system.adapter.admin.0")) {
-        await harness.objects.setObjectAsync(
-            "system.adapter.admin.0",
-            instance("admin.0", { localLinks: { _default: { link: "%protocol%://%bind%:%port%" } } }, { port: 8081, bind: "192.0.2.10", secure: false }),
-        );
-    }
+    await harness.objects.writeFileAsync(
+      "vis-2.0",
+      "main/vis-views.json",
+      JSON.stringify({ ___settings: {}, Kitchen: { settings: {}, widgets: {} } }),
+    );
+  }
+  if (await missing("system.adapter.vis-2.0")) {
+    await harness.objects.setObjectAsync("system.adapter.vis-2.0", instance("vis-2.0", {}, {}));
+  }
+  if (await missing("system.adapter.aura.0")) {
+    // aura builds its URL from the runner's own address unless `customUrl` is set — the custom form keeps the
+    // inventory machine-independent.
+    await harness.objects.setObjectAsync(
+      "system.adapter.aura.0",
+      instance("aura.0", {}, { port: 8095, secure: false, customUrl: "http://192.0.2.10:8095" }),
+    );
+  }
+  if (await missing("system.adapter.admin.0")) {
+    await harness.objects.setObjectAsync(
+      "system.adapter.admin.0",
+      instance(
+        "admin.0",
+        { localLinks: { _default: { link: "%protocol%://%bind%:%port%" } } },
+        { port: 8081, bind: "192.0.2.10", secure: false },
+      ),
+    );
+  }
 }
 
 /**
@@ -539,28 +572,33 @@ async function seedEnvironment(harness) {
  * @param {import("@iobroker/testing").IntegrationTestHarness} harness
  */
 async function seedLegacyDisplay(harness) {
-    const base = `${NS}clients.${LEGACY.id}`;
-    await harness.objects.setObjectAsync(base, {
-        _id: base,
-        type: "channel",
-        common: { name: LEGACY.ip },
-        native: { cookie: LEGACY.cookie, token: null },
+  const base = `${NS}clients.${LEGACY.id}`;
+  await harness.objects.setObjectAsync(base, {
+    _id: base,
+    type: "channel",
+    common: { name: LEGACY.ip },
+    native: { cookie: LEGACY.cookie, token: null },
+  });
+  for (const [leaf, common, val] of [
+    [
+      "visUrl",
+      { name: "Redirect URL", type: "string", role: "url", read: true, write: true, def: "", states: {} },
+      LEGACY.visUrl,
+    ],
+    ["ip", { name: "Client IP", type: "string", role: "info.ip", read: true, write: false, def: "" }, LEGACY.ip],
+    ["hostname", { name: "Client hostname", type: "string", role: "info.name", read: true, write: false, def: "" }, ""],
+    ["remove", { name: "Forget this client", type: "boolean", role: "button", read: false, write: true, def: false }],
+  ]) {
+    await harness.objects.setObjectAsync(`${base}.${leaf}`, {
+      _id: `${base}.${leaf}`,
+      type: "state",
+      common,
+      native: {},
     });
-    for (const [leaf, common, val] of [
-        [
-            "visUrl",
-            { name: "Redirect URL", type: "string", role: "url", read: true, write: true, def: "", states: {} },
-            LEGACY.visUrl,
-        ],
-        ["ip", { name: "Client IP", type: "string", role: "info.ip", read: true, write: false, def: "" }, LEGACY.ip],
-        ["hostname", { name: "Client hostname", type: "string", role: "info.name", read: true, write: false, def: "" }, ""],
-        ["remove", { name: "Forget this client", type: "boolean", role: "button", read: false, write: true, def: false }],
-    ]) {
-        await harness.objects.setObjectAsync(`${base}.${leaf}`, { _id: `${base}.${leaf}`, type: "state", common, native: {} });
-        if (val !== undefined) {
-            await harness.states.setStateAsync(`${base}.${leaf}`, { val, ack: true });
-        }
+    if (val !== undefined) {
+      await harness.states.setStateAsync(`${base}.${leaf}`, { val, ack: true });
     }
+  }
 }
 
 /**
@@ -580,35 +618,35 @@ let askAt = LAN_ADDRESS;
  * @returns {Promise<{ status: number, cookie: string | null, body: string }>} status, the cookie the adapter set, the body
  */
 function request(method, urlPath, opts = {}) {
-    return new Promise((resolve, reject) => {
-        /** @type {Record<string, string>} */
-        const headers = {};
-        if (opts.cookie) headers.cookie = `hassemu_client=${opts.cookie}`;
-        if (opts.ip) headers["x-forwarded-for"] = opts.ip;
-        if (opts.bearer) headers.authorization = `Bearer ${opts.bearer}`;
-        if (opts.userAgent) headers["user-agent"] = opts.userAgent;
-        let body = "";
-        if (opts.form) {
-            body = new URLSearchParams(opts.form).toString();
-            headers["content-type"] = "application/x-www-form-urlencoded";
-        } else if (opts.json) {
-            body = JSON.stringify(opts.json);
-            headers["content-type"] = "application/json";
-        }
-        const req = http.request({ host: askAt, port: PORT, path: urlPath, method, headers }, (res) => {
-            let text = "";
-            res.setEncoding("utf8");
-            res.on("data", (chunk) => (text += chunk));
-            res.on("end", () => {
-                const match = /hassemu_client=([^;]+)/.exec((res.headers["set-cookie"] ?? []).join("; "));
-                resolve({ status: res.statusCode ?? 0, cookie: match ? match[1] : null, body: text });
-            });
-        });
-        // a port another program holds (the suite "a taken port") may take the connection and never answer
-        req.setTimeout(5000, () => req.destroy(new Error(`no answer from ${PORT} within 5 s`)));
-        req.on("error", reject);
-        req.end(body);
+  return new Promise((resolve, reject) => {
+    /** @type {Record<string, string>} */
+    const headers = {};
+    if (opts.cookie) headers.cookie = `hassemu_client=${opts.cookie}`;
+    if (opts.ip) headers["x-forwarded-for"] = opts.ip;
+    if (opts.bearer) headers.authorization = `Bearer ${opts.bearer}`;
+    if (opts.userAgent) headers["user-agent"] = opts.userAgent;
+    let body = "";
+    if (opts.form) {
+      body = new URLSearchParams(opts.form).toString();
+      headers["content-type"] = "application/x-www-form-urlencoded";
+    } else if (opts.json) {
+      body = JSON.stringify(opts.json);
+      headers["content-type"] = "application/json";
+    }
+    const req = http.request({ host: askAt, port: PORT, path: urlPath, method, headers }, res => {
+      let text = "";
+      res.setEncoding("utf8");
+      res.on("data", chunk => (text += chunk));
+      res.on("end", () => {
+        const match = /hassemu_client=([^;]+)/.exec((res.headers["set-cookie"] ?? []).join("; "));
+        resolve({ status: res.statusCode ?? 0, cookie: match ? match[1] : null, body: text });
+      });
     });
+    // a port another program holds (the suite "a taken port") may take the connection and never answer
+    req.setTimeout(5000, () => req.destroy(new Error(`no answer from ${PORT} within 5 s`)));
+    req.on("error", reject);
+    req.end(body);
+  });
 }
 
 /**
@@ -616,10 +654,14 @@ function request(method, urlPath, opts = {}) {
  * the listener is necessarily bound.
  */
 async function waitForServer() {
-    const answers = () => request("GET", "/health").then(() => true, () => false);
-    if (!(await waitWindow("the server answers", 30000, answers, 250))) {
-        throw new Error(`the adapter did not answer on ${PORT} within 30 s`);
-    }
+  const answers = () =>
+    request("GET", "/health").then(
+      () => true,
+      () => false,
+    );
+  if (!(await waitWindow("the server answers", 30000, answers, 250))) {
+    throw new Error(`the adapter did not answer on ${PORT} within 30 s`);
+  }
 }
 
 /**
@@ -631,11 +673,18 @@ async function waitForServer() {
  * @returns {Promise<string>} the access token
  */
 async function onboard(cookie, ip, userAgent) {
-    const flow = JSON.parse((await request("POST", "/auth/login_flow", { cookie, ip, userAgent, form: {} })).body);
-    const done = JSON.parse((await request("POST", `/auth/login_flow/${flow.flow_id}`, { cookie, ip, userAgent, form: {} })).body);
-    const token = await request("POST", "/auth/token", { cookie, ip, userAgent, form: { grant_type: "authorization_code", code: done.result } });
-    assert.strictEqual(token.status, 200, `the sign-in failed: ${token.body}`);
-    return JSON.parse(token.body).access_token;
+  const flow = JSON.parse((await request("POST", "/auth/login_flow", { cookie, ip, userAgent, form: {} })).body);
+  const done = JSON.parse(
+    (await request("POST", `/auth/login_flow/${flow.flow_id}`, { cookie, ip, userAgent, form: {} })).body,
+  );
+  const token = await request("POST", "/auth/token", {
+    cookie,
+    ip,
+    userAgent,
+    form: { grant_type: "authorization_code", code: done.result },
+  });
+  assert.strictEqual(token.status, 200, `the sign-in failed: ${token.body}`);
+  return JSON.parse(token.body).access_token;
 }
 
 /**
@@ -646,13 +695,13 @@ async function onboard(cookie, ip, userAgent) {
  * @param {number} since when the suite wrote it
  */
 async function waitForAck(harness, id, since) {
-    const taken = async () => {
-        const state = await harness.states.getStateAsync(id);
-        return state?.ack === true && state.ts >= since;
-    };
-    if (!(await waitWindow("a setting taken over", 30000, taken, 100))) {
-        throw new Error(`${id}: the adapter did not take the setting over within 30 s`);
-    }
+  const taken = async () => {
+    const state = await harness.states.getStateAsync(id);
+    return state?.ack === true && state.ts >= since;
+  };
+  if (!(await waitWindow("a setting taken over", 30000, taken, 100))) {
+    throw new Error(`${id}: the adapter did not take the setting over within 30 s`);
+  }
 }
 
 /**
@@ -664,14 +713,14 @@ async function waitForAck(harness, id, since) {
  * @param {string} name the expected name
  */
 async function waitForName(harness, id, name) {
-    let current;
-    const named = async () => {
-        current = (await harness.objects.getObjectAsync(`${NS}clients.${id}`))?.common?.name;
-        return (current && typeof current === "object" ? current.en : current) === name;
-    };
-    if (!(await waitWindow("a display named", 30000, named, 250))) {
-        throw new Error(`display ${id} not named ${name} (still ${JSON.stringify(current)})`);
-    }
+  let current;
+  const named = async () => {
+    current = (await harness.objects.getObjectAsync(`${NS}clients.${id}`))?.common?.name;
+    return (current && typeof current === "object" ? current.en : current) === name;
+  };
+  if (!(await waitWindow("a display named", 30000, named, 250))) {
+    throw new Error(`display ${id} not named ${name} (still ${JSON.stringify(current)})`);
+  }
 }
 
 /**
@@ -681,18 +730,18 @@ async function waitForName(harness, id, name) {
  * @param {import("@iobroker/testing").IntegrationTestHarness} harness
  */
 async function waitForSettledTree(harness) {
-    const count = async () => (await harness.objects.getObjectList({ startkey: NS, endkey: `${NS}香` })).rows.length;
-    let last = await count();
-    let quiet = 0;
-    const settled = async () => {
-        const now = await count();
-        quiet = now === last ? quiet + 1 : 0;
-        last = now;
-        return quiet >= 4;
-    };
-    if (!(await waitWindow("the object tree settles", 60000, settled, 250))) {
-        throw new Error(`the object tree did not settle (last count ${last})`);
-    }
+  const count = async () => (await harness.objects.getObjectList({ startkey: NS, endkey: `${NS}香` })).rows.length;
+  let last = await count();
+  let quiet = 0;
+  const settled = async () => {
+    const now = await count();
+    quiet = now === last ? quiet + 1 : 0;
+    last = now;
+    return quiet >= 4;
+  };
+  if (!(await waitWindow("the object tree settles", 60000, settled, 250))) {
+    throw new Error(`the object tree did not settle (last count ${last})`);
+  }
 }
 
 /**
@@ -702,8 +751,8 @@ async function waitForSettledTree(harness) {
  * @returns {Promise<string[]>} the missing URLs
  */
 async function dropdownMissing(harness) {
-    const states = (await harness.objects.getObjectAsync(`${NS}global.mode`))?.common?.states;
-    return DISCOVERED.filter((url) => !(states && typeof states === "object" && url in states));
+  const states = (await harness.objects.getObjectAsync(`${NS}global.mode`))?.common?.states;
+  return DISCOVERED.filter(url => !(states && typeof states === "object" && url in states));
 }
 
 /**
@@ -713,11 +762,11 @@ async function dropdownMissing(harness) {
  * @param {import("@iobroker/testing").IntegrationTestHarness} harness
  */
 async function waitForDropdown(harness) {
-    let missing = [];
-    const offered = async () => (missing = await dropdownMissing(harness)).length === 0;
-    if (!(await waitWindow("the dropdown offers the dashboards", 30000, offered, 250))) {
-        throw new Error(`the mode dropdown does not offer ${missing.join(", ")}`);
-    }
+  let missing = [];
+  const offered = async () => (missing = await dropdownMissing(harness)).length === 0;
+  if (!(await waitWindow("the dropdown offers the dashboards", 30000, offered, 250))) {
+    throw new Error(`the mode dropdown does not offer ${missing.join(", ")}`);
+  }
 }
 
 /**
@@ -730,14 +779,14 @@ async function waitForDropdown(harness) {
  * @returns {{ id: string, movedId: string, cookie: string } | undefined} the real form, undefined for any other id
  */
 function formerDisplay(shortId) {
-    if (shortId === "display-legacy") {
-        return { id: LEGACY.id, movedId: LEGACY.movedId, cookie: LEGACY.cookie };
-    }
-    const n = Number(/^display-(\d+)$/.exec(shortId)?.[1]);
-    if (!Number.isInteger(n) || n < 1 || n > FIXTURES.displays.length) {
-        return undefined;
-    }
-    return { id: `ff${fixtureTail(n)}`, movedId: `display-${fixtureTail(n)}`, cookie: fixtureCookie(n) };
+  if (shortId === "display-legacy") {
+    return { id: LEGACY.id, movedId: LEGACY.movedId, cookie: LEGACY.cookie };
+  }
+  const n = Number(/^display-(\d+)$/.exec(shortId)?.[1]);
+  if (!Number.isInteger(n) || n < 1 || n > FIXTURES.displays.length) {
+    return undefined;
+  }
+  return { id: `ff${fixtureTail(n)}`, movedId: `display-${fixtureTail(n)}`, cookie: fixtureCookie(n) };
 }
 
 /**
@@ -758,30 +807,30 @@ function formerDisplay(shortId) {
  * @param {import("@iobroker/testing").IntegrationTestHarness} harness
  */
 async function feedFixtures(harness) {
-    await seedEnvironment(harness);
-    await waitForServer();
-    await waitForDropdown(harness);
-    await request("GET", "/", { cookie: LEGACY.cookie, ip: LEGACY.ip });
-    const renamed = process.env.INVENTORY_RENAME === "1";
-    for (const [index, display] of FIXTURES.displays.entries()) {
-        const known = await knownCookie(harness, display.ip, index + 1);
-        const first = await request("GET", "/", { cookie: known, ip: display.ip });
-        // a known display gets no new Set-Cookie — its identity is the one it sent
-        const cookie = known ?? first.cookie;
-        assert.ok(cookie, `fixture display ${index + 1}: the adapter set no cookie`);
-        const id = await displayOfCookie(harness, cookie);
-        assert.ok(id, `fixture display ${index + 1}: no display in identities.json holds its cookie`);
-        await setDisplay(harness, `${NS}clients.${id}.mode`, display.mode);
-        if (display.manualUrl) {
-            await setDisplay(harness, `${NS}clients.${id}.manualUrl`, display.manualUrl);
-        }
-        if (display.onboard) {
-            await onboard(cookie, display.ip);
-        }
-        await request("GET", "/", { cookie, ip: display.ip });
-        await request("GET", "/api/redirect_check", { cookie, ip: display.ip });
-        await waitForName(harness, id, (renamed && display.renamedPtr) || display.ptr || display.ip);
+  await seedEnvironment(harness);
+  await waitForServer();
+  await waitForDropdown(harness);
+  await request("GET", "/", { cookie: LEGACY.cookie, ip: LEGACY.ip });
+  const renamed = process.env.INVENTORY_RENAME === "1";
+  for (const [index, display] of FIXTURES.displays.entries()) {
+    const known = await knownCookie(harness, display.ip, index + 1);
+    const first = await request("GET", "/", { cookie: known, ip: display.ip });
+    // a known display gets no new Set-Cookie — its identity is the one it sent
+    const cookie = known ?? first.cookie;
+    assert.ok(cookie, `fixture display ${index + 1}: the adapter set no cookie`);
+    const id = await displayOfCookie(harness, cookie);
+    assert.ok(id, `fixture display ${index + 1}: no display in identities.json holds its cookie`);
+    await setDisplay(harness, `${NS}clients.${id}.mode`, display.mode);
+    if (display.manualUrl) {
+      await setDisplay(harness, `${NS}clients.${id}.manualUrl`, display.manualUrl);
     }
+    if (display.onboard) {
+      await onboard(cookie, display.ip);
+    }
+    await request("GET", "/", { cookie, ip: display.ip });
+    await request("GET", "/api/redirect_check", { cookie, ip: display.ip });
+    await waitForName(harness, id, (renamed && display.renamedPtr) || display.ptr || display.ip);
+  }
 }
 
 /**
@@ -793,7 +842,7 @@ async function feedFixtures(harness) {
  * @returns {string[]} the ids
  */
 function expectedObjectIds() {
-    return [`${NS}info.connection`];
+  return [`${NS}info.connection`];
 }
 
 /**
@@ -833,34 +882,32 @@ function expectedObjectIds() {
  * @param {import("@iobroker/testing").IntegrationTestHarness} harness
  */
 const waitForAdapterWork = workWaitOf(async function (harness) {
-    // hassemu: its server answers (info.connection true, acknowledged), the dropdown offers every dashboard of the seeded
-    // surroundings, every display carries the address it was last seen from (written on its visit) — then the tree
-    // settles. The seed writes objects only, so none of these values can come from it.
-    let missing = [];
-    const written = async () => {
-        missing = [];
-        for (const id of expectedObjectIds()) {
-            const state = await harness.states.getState(id);
-            if (state?.val !== true || state.ack !== true) {
-                missing.push(id);
-            }
-        }
-        missing.push(...(await dropdownMissing(harness)).map((url) => `${NS}global.mode offers ${url}`));
-        const rows = (await harness.objects.getObjectList({ startkey: `${NS}clients.`, endkey: `${NS}clients.香` })).rows;
-        for (const row of rows.filter((r) => r.value?.type === "device")) {
-            const ip = await harness.states.getState(`${row.id}.ip`);
-            if (!ip?.val) {
-                missing.push(`${row.id}.ip`);
-            }
-        }
-        return missing.length === 0;
-    };
-    if (!(await waitWindow("a completed cycle", 60000, written, 250))) {
-        throw new Error(
-            `no completed cycle — ${missing.length} open, e.g. ${missing.slice(0, 5).join(", ")}`,
-        );
+  // hassemu: its server answers (info.connection true, acknowledged), the dropdown offers every dashboard of the seeded
+  // surroundings, every display carries the address it was last seen from (written on its visit) — then the tree
+  // settles. The seed writes objects only, so none of these values can come from it.
+  let missing = [];
+  const written = async () => {
+    missing = [];
+    for (const id of expectedObjectIds()) {
+      const state = await harness.states.getState(id);
+      if (state?.val !== true || state.ack !== true) {
+        missing.push(id);
+      }
     }
-    await waitForSettledTree(harness);
+    missing.push(...(await dropdownMissing(harness)).map(url => `${NS}global.mode offers ${url}`));
+    const rows = (await harness.objects.getObjectList({ startkey: `${NS}clients.`, endkey: `${NS}clients.香` })).rows;
+    for (const row of rows.filter(r => r.value?.type === "device")) {
+      const ip = await harness.states.getState(`${row.id}.ip`);
+      if (!ip?.val) {
+        missing.push(`${row.id}.ip`);
+      }
+    }
+    return missing.length === 0;
+  };
+  if (!(await waitWindow("a completed cycle", 60000, written, 250))) {
+    throw new Error(`no completed cycle — ${missing.length} open, e.g. ${missing.slice(0, 5).join(", ")}`);
+  }
+  await waitForSettledTree(harness);
 });
 
 /**
@@ -871,14 +918,14 @@ const waitForAdapterWork = workWaitOf(async function (harness) {
  * is here.
  */
 const FIXTURE_NATIVE = {
-    port: PORT,
-    bind: "0.0.0.0",
-    authRequired: false,
-    username: "admin",
-    password: "",
-    mdnsEnabled: false,
-    serviceName: "ioBroker",
-    trustProxy: true,
+  port: PORT,
+  bind: "0.0.0.0",
+  authRequired: false,
+  username: "admin",
+  password: "",
+  mdnsEnabled: false,
+  serviceName: "ioBroker",
+  trustProxy: true,
 };
 /**
  * Round 113 (krobi 2026-10-14 11:28, every copy improvised its own hook names before): adapter-specific — the `--require`
@@ -887,9 +934,9 @@ const FIXTURE_NATIVE = {
  * a hook of its own. Empty where the adapter reaches its fixtures through its settings alone.
  */
 const FIXTURE_HOOKS = [
-    path.join(__dirname, "inventory-dns-hook.cjs"),
-    path.join(__dirname, "inventory-id-hook.cjs"),
-    path.join(__dirname, "inventory-dashboard-hook.cjs"),
+  path.join(__dirname, "inventory-dns-hook.cjs"),
+  path.join(__dirname, "inventory-id-hook.cjs"),
+  path.join(__dirname, "inventory-dashboard-hook.cjs"),
 ];
 /**
  * Round 123 (homeconnect 2026-10-15: the fetch hook widened the request budget in every start, so the limit suites judged
@@ -908,8 +955,8 @@ const PACING_HOOKS = [];
  * @returns {Promise<Record<string, unknown>>} the native for resetInstanceNative
  */
 async function fixtureNative(extra = {}) {
-    askAt = /** @type {string} */ (ADDRESS_KEY && extra[ADDRESS_KEY] === CHOSEN_ADDRESS ? CHOSEN_ADDRESS : LAN_ADDRESS);
-    return { ...FIXTURE_NATIVE, ...extra };
+  askAt = /** @type {string} */ (ADDRESS_KEY && extra[ADDRESS_KEY] === CHOSEN_ADDRESS ? CHOSEN_ADDRESS : LAN_ADDRESS);
+  return { ...FIXTURE_NATIVE, ...extra };
 }
 /**
  * Round 66 (reported by dl-manager): every datapoint of the previous release this release moves under a new id —
@@ -917,28 +964,29 @@ async function fixtureNative(extra = {}) {
  * user's and goes on with the moved datapoint (krobi 2026-09-02); the upgrade suite checks that it arrived there.
  */
 const MOVES = (() => {
-    // hassemu: the dump of 1.46.1 (before B3) holds the displays under the ids of its own old mapping; restoreMaskedSecrets
-    // gives them back the form a real installation had, and the start moves each once to the id of K7 — every datapoint
-    // with its recording. Nothing for a dump after B3 (its devices carry no native.cookie).
-    const file = process.env.INVENTORY_PREVIOUS;
-    if (!file || !fs.existsSync(file)) {
-        return {};
+  // hassemu: the dump of 1.46.1 (before B3) holds the displays under the ids of its own old mapping; restoreMaskedSecrets
+  // gives them back the form a real installation had, and the start moves each once to the id of K7 — every datapoint
+  // with its recording. Nothing for a dump after B3 (its devices carry no native.cookie).
+  const file = process.env.INVENTORY_PREVIOUS;
+  if (!file || !fs.existsSync(file)) {
+    return {};
+  }
+  const previous = JSON.parse(fs.readFileSync(file, "utf8"));
+  const prefix = `${NS}clients.`;
+  /** @type {Record<string, string>} */
+  const moves = {};
+  for (const [id, obj] of Object.entries(previous)) {
+    if (!id.startsWith(prefix) || obj?.type !== "state") {
+      continue;
     }
-    const previous = JSON.parse(fs.readFileSync(file, "utf8"));
-    const prefix = `${NS}clients.`;
-    /** @type {Record<string, string>} */
-    const moves = {};
-    for (const [id, obj] of Object.entries(previous)) {
-        if (!id.startsWith(prefix) || obj?.type !== "state") {
-            continue;
-        }
-        const [shortId, ...leaf] = id.slice(prefix.length).split(".");
-        const former = typeof previous[`${prefix}${shortId}`]?.native?.cookie === "string" ? formerDisplay(shortId) : undefined;
-        if (former) {
-            moves[id] = `${prefix}${former.movedId}.${leaf.join(".")}`;
-        }
+    const [shortId, ...leaf] = id.slice(prefix.length).split(".");
+    const former =
+      typeof previous[`${prefix}${shortId}`]?.native?.cookie === "string" ? formerDisplay(shortId) : undefined;
+    if (former) {
+      moves[id] = `${prefix}${former.movedId}.${leaf.join(".")}`;
     }
-    return moves;
+  }
+  return moves;
 })();
 /**
  * Round 87: adapter-specific like FIXTURE_NATIVE — the states that show an outage of EVERY counterpart, each with the
@@ -987,45 +1035,45 @@ const SEND_CONFIRMED = [];
  * @param {import("@iobroker/testing").IntegrationTestHarness} harness
  */
 async function feedReservedNames(harness) {
-    // hassemu builds a display's id from the model its first visit names (the Android app's own part of the User-Agent,
-    // K7) and its name from the device name the app reports — both `info` here.
-    const userAgent =
-        "Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/130.0.6723.102 Safari/537.36 Home Assistant/2026.11.1-17389 (Android 14; info)";
-    const ip = "192.0.2.60";
-    const first = await request("GET", "/", { ip, userAgent });
-    assert.ok(first.cookie, "the display that names the model info got no cookie");
-    const id = await displayOfCookie(harness, first.cookie);
-    assert.ok(id, "no display in identities.json holds the cookie of the display that names the model info");
-    const token = await onboard(first.cookie, ip, userAgent);
-    const registration = await request("POST", "/api/mobile_app/registrations", {
-        ip,
-        userAgent,
-        bearer: token,
-        json: {
-            app_id: "io.homeassistant.companion.android",
-            app_name: "Home Assistant",
-            device_name: "info",
-            manufacturer: "Google",
-            model: "info",
-            os_name: "Android",
-            os_version: "14",
-        },
-    });
-    assert.ok(registration.status < 300, `the app's registration failed: ${registration.status} ${registration.body}`);
-    await waitForName(harness, id, "info");
+  // hassemu builds a display's id from the model its first visit names (the Android app's own part of the User-Agent,
+  // K7) and its name from the device name the app reports — both `info` here.
+  const userAgent =
+    "Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/130.0.6723.102 Safari/537.36 Home Assistant/2026.11.1-17389 (Android 14; info)";
+  const ip = "192.0.2.60";
+  const first = await request("GET", "/", { ip, userAgent });
+  assert.ok(first.cookie, "the display that names the model info got no cookie");
+  const id = await displayOfCookie(harness, first.cookie);
+  assert.ok(id, "no display in identities.json holds the cookie of the display that names the model info");
+  const token = await onboard(first.cookie, ip, userAgent);
+  const registration = await request("POST", "/api/mobile_app/registrations", {
+    ip,
+    userAgent,
+    bearer: token,
+    json: {
+      app_id: "io.homeassistant.companion.android",
+      app_name: "Home Assistant",
+      device_name: "info",
+      manufacturer: "Google",
+      model: "info",
+      os_name: "Android",
+      os_version: "14",
+    },
+  });
+  assert.ok(registration.status < 300, `the app's registration failed: ${registration.status} ${registration.body}`);
+  await waitForName(harness, id, "info");
 }
 
 async function dumpObjects(harness) {
-    // The range starts at "<adapter>.0." — the instance root object itself is not part of the tree.
-    const list = await harness.objects.getObjectList({ startkey: NS, endkey: `${NS}香` });
-    const out = {};
-    for (const row of list.rows.sort((a, b) => a.id.localeCompare(b.id))) {
-        const obj = { ...row.value };
-        for (const key of VOLATILE) delete obj[key];
-        if (obj.native) obj.native = maskEncrypted(obj.native);
-        out[row.id] = obj;
-    }
-    return out;
+  // The range starts at "<adapter>.0." — the instance root object itself is not part of the tree.
+  const list = await harness.objects.getObjectList({ startkey: NS, endkey: `${NS}香` });
+  const out = {};
+  for (const row of list.rows.sort((a, b) => a.id.localeCompare(b.id))) {
+    const obj = { ...row.value };
+    for (const key of VOLATILE) delete obj[key];
+    if (obj.native) obj.native = maskEncrypted(obj.native);
+    out[row.id] = obj;
+  }
+  return out;
 }
 
 /**
@@ -1036,14 +1084,14 @@ async function dumpObjects(harness) {
  * @returns {unknown} the copy
  */
 function maskEncrypted(value) {
-    if (Array.isArray(value)) return value.map(maskEncrypted);
-    if (!value || typeof value !== "object") return value;
-    return Object.fromEntries(
-        Object.entries(value).map(([key, v]) => [
-            key,
-            ENCRYPTED_NATIVE.includes(key) && typeof v === "string" && v !== "" ? ENCRYPTED_MARKER : maskEncrypted(v),
-        ]),
-    );
+  if (Array.isArray(value)) return value.map(maskEncrypted);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, v]) => [
+      key,
+      ENCRYPTED_NATIVE.includes(key) && typeof v === "string" && v !== "" ? ENCRYPTED_MARKER : maskEncrypted(v),
+    ]),
+  );
 }
 
 /**
@@ -1053,9 +1101,9 @@ function maskEncrypted(value) {
  * @param {string} language an ioBroker language code
  */
 async function setSystemLanguage(harness, language) {
-    const config = await harness.objects.getObject("system.config");
-    config.common.language = language;
-    await harness.objects.setObject("system.config", config);
+  const config = await harness.objects.getObject("system.config");
+  config.common.language = language;
+  await harness.objects.setObject("system.config", config);
 }
 
 /**
@@ -1065,13 +1113,13 @@ async function setSystemLanguage(harness, language) {
  * @param {import("@iobroker/testing").IntegrationTestHarness} harness
  */
 async function dumpStates(harness) {
-    const keys = (await harness.states.getKeys(`${NS}*`)).sort();
-    const values = await harness.states.getStates(keys);
-    const out = {};
-    keys.forEach((key, i) => {
-        if (values[i]) out[key] = { val: values[i].val, ack: values[i].ack };
-    });
-    return out;
+  const keys = (await harness.states.getKeys(`${NS}*`)).sort();
+  const values = await harness.states.getStates(keys);
+  const out = {};
+  keys.forEach((key, i) => {
+    if (values[i]) out[key] = { val: values[i].val, ack: values[i].ack };
+  });
+  return out;
 }
 
 /**
@@ -1088,18 +1136,18 @@ async function dumpStates(harness) {
  * @param {Record<string, unknown>} native the instance's native for this start (FIXTURE_NATIVE, or one computed per run)
  */
 async function resetInstanceNative(harness, native) {
-    const id = `system.adapter.${ADAPTER}.0`;
-    const instance = await harness.objects.getObjectAsync(id);
-    const stale = {};
-    for (const key of Object.keys(instance?.native ?? {})) {
-        if (!Object.hasOwn(native, key)) stale[key] = null;
-    }
-    await harness.changeAdapterConfig(ADAPTER, { native: { ...stale, ...native } });
-    const written = await harness.objects.getObjectAsync(id);
-    for (const [key, value] of Object.entries(native)) {
-        if (!written.encryptedNative?.includes(key)) written.native[key] = value;
-    }
-    await harness.objects.setObjectAsync(id, written);
+  const id = `system.adapter.${ADAPTER}.0`;
+  const instance = await harness.objects.getObjectAsync(id);
+  const stale = {};
+  for (const key of Object.keys(instance?.native ?? {})) {
+    if (!Object.hasOwn(native, key)) stale[key] = null;
+  }
+  await harness.changeAdapterConfig(ADAPTER, { native: { ...stale, ...native } });
+  const written = await harness.objects.getObjectAsync(id);
+  for (const [key, value] of Object.entries(native)) {
+    if (!written.encryptedNative?.includes(key)) written.native[key] = value;
+  }
+  await harness.objects.setObjectAsync(id, written);
 }
 
 /**
@@ -1109,7 +1157,7 @@ async function resetInstanceNative(harness, native) {
  * @param {import("@iobroker/testing").IntegrationTestHarness} harness
  * @returns {{ testDir: string, _adapterExit: unknown }} the same harness
  */
-const internals = (harness) => /** @type {any} */ (harness);
+const internals = harness => /** @type {any} */ (harness);
 
 /**
  * Round 71 (reported by dl-manager): @iobroker/testing clears only the database and the log directory before a suite;
@@ -1123,11 +1171,11 @@ const internals = (harness) => /** @type {any} */ (harness);
  * @param {import("@iobroker/testing").IntegrationTestHarness} harness
  */
 function clearInstanceData(harness) {
-    if (typeof internals(harness).testDir !== "string") {
-        throw new Error("the harness no longer carries testDir — clearInstanceData cannot find the instance data folder");
-    }
-    fs.rmSync(path.join(internals(harness).testDir, "iobroker-data", `${ADAPTER}.0`), { recursive: true, force: true });
-    fs.writeFileSync(path.join(RESOURCE_DIR, `${Date.now()}.install`), "");
+  if (typeof internals(harness).testDir !== "string") {
+    throw new Error("the harness no longer carries testDir — clearInstanceData cannot find the instance data folder");
+  }
+  fs.rmSync(path.join(internals(harness).testDir, "iobroker-data", `${ADAPTER}.0`), { recursive: true, force: true });
+  fs.writeFileSync(path.join(RESOURCE_DIR, `${Date.now()}.install`), "");
 }
 
 /**
@@ -1146,22 +1194,26 @@ function clearInstanceData(harness) {
  * @param {...string} hooks the test hooks the suite starts the adapter with (as for adapterEnv)
  */
 function playControllerRestarts(harness, watch, ...hooks) {
-    const restarts = { count: 0, again: /** @type {number[]} */ ([]), done: Promise.resolve() };
-    harness.on("objectChange", (id, obj) => {
-        if (id !== `system.adapter.${ADAPTER}.0` || obj?.from !== `system.adapter.${ADAPTER}.0` || !harness.isAdapterRunning()) {
-            return;
-        }
-        if (restarts.count > 0) {
-            restarts.again.push(Date.now());
-            return;
-        }
-        restarts.count++;
-        restarts.done = restartAsTheHost(harness, watch, "after it changed its instance object", ...hooks);
-        // Awaited by the suite later — a wait before that (feedFixtures) fails first on an adapter that hangs in its stop,
-        // so a missed deadline is logged the moment it happens (and never counts as an unhandled rejection).
-        restarts.done.catch((err) => console.error(`restart play failed: ${err.message}`));
-    });
-    return restarts;
+  const restarts = { count: 0, again: /** @type {number[]} */ ([]), done: Promise.resolve() };
+  harness.on("objectChange", (id, obj) => {
+    if (
+      id !== `system.adapter.${ADAPTER}.0` ||
+      obj?.from !== `system.adapter.${ADAPTER}.0` ||
+      !harness.isAdapterRunning()
+    ) {
+      return;
+    }
+    if (restarts.count > 0) {
+      restarts.again.push(Date.now());
+      return;
+    }
+    restarts.count++;
+    restarts.done = restartAsTheHost(harness, watch, "after it changed its instance object", ...hooks);
+    // Awaited by the suite later — a wait before that (feedFixtures) fails first on an adapter that hangs in its stop,
+    // so a missed deadline is logged the moment it happens (and never counts as an unhandled rejection).
+    restarts.done.catch(err => console.error(`restart play failed: ${err.message}`));
+  });
+  return restarts;
 }
 
 /**
@@ -1172,15 +1224,15 @@ function playControllerRestarts(harness, watch, ...hooks) {
  * @param {string} what what did not happen, in the failure message
  */
 async function withinDeadline(promise, ms, what) {
-    let timer;
-    const expired = new Promise((_resolve, reject) => {
-        timer = setTimeout(() => reject(new Error(`${what} (deadline ${ms} ms)`)), ms);
-    });
-    try {
-        return await Promise.race([promise, expired]);
-    } finally {
-        clearTimeout(timer);
-    }
+  let timer;
+  const expired = new Promise((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(`${what} (deadline ${ms} ms)`)), ms);
+  });
+  try {
+    return await Promise.race([promise, expired]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
@@ -1194,17 +1246,25 @@ async function withinDeadline(promise, ms, what) {
  * @param {...string} hooks the test hooks of the start (as for adapterEnv)
  */
 async function restartAsTheHost(harness, watch, why, ...hooks) {
-    await withinDeadline(harness.stopAdapter(), STOP_DEADLINE_MS, `the adapter did not stop ${why}`);
-    watch?.newStart();
-    // What the host does when the process exits: `alive` false (a start that still sees it true ends with
-    // ADAPTER_ALREADY_RUNNING, exit code 7), then the start after stopTimeout + 2.5 s.
-    await harness.states.setState(`system.adapter.${ADAPTER}.0.alive`, { val: false, ack: true, from: "system.host.testing" });
-    await waitWindow("the host's restart delay", RESTART_DELAY_MS);
-    // @iobroker/testing refuses a second start of one harness ("already been used"); the host starts the same
-    // instance again — reset the exit marker, and fail loudly should the harness no longer keep it there.
-    internals(harness)._adapterExit = undefined;
-    assert.ok(!harness.didAdapterStop(), "@iobroker/testing changed its exit marker — the restart play needs a new form");
-    await withinDeadline(harness.startAdapterAndWait(false, adapterEnv(...hooks)), START_DEADLINE_MS, "the adapter did not come back after the restart");
+  await withinDeadline(harness.stopAdapter(), STOP_DEADLINE_MS, `the adapter did not stop ${why}`);
+  watch?.newStart();
+  // What the host does when the process exits: `alive` false (a start that still sees it true ends with
+  // ADAPTER_ALREADY_RUNNING, exit code 7), then the start after stopTimeout + 2.5 s.
+  await harness.states.setState(`system.adapter.${ADAPTER}.0.alive`, {
+    val: false,
+    ack: true,
+    from: "system.host.testing",
+  });
+  await waitWindow("the host's restart delay", RESTART_DELAY_MS);
+  // @iobroker/testing refuses a second start of one harness ("already been used"); the host starts the same
+  // instance again — reset the exit marker, and fail loudly should the harness no longer keep it there.
+  internals(harness)._adapterExit = undefined;
+  assert.ok(!harness.didAdapterStop(), "@iobroker/testing changed its exit marker — the restart play needs a new form");
+  await withinDeadline(
+    harness.startAdapterAndWait(false, adapterEnv(...hooks)),
+    START_DEADLINE_MS,
+    "the adapter did not come back after the restart",
+  );
 }
 
 /**
@@ -1215,8 +1275,8 @@ async function restartAsTheHost(harness, watch, why, ...hooks) {
  * @param {number} since the moment of the restart
  */
 async function waitForQuietCalls(since) {
-    const quiet = () => Date.now() - (readCalls(since).at(-1)?.t ?? since) >= SETTLE_MS;
-    await waitWindow("the calls fall quiet", RESTART_QUIET_DEADLINE_MS, quiet, 250);
+  const quiet = () => Date.now() - (readCalls(since).at(-1)?.t ?? since) >= SETTLE_MS;
+  await waitWindow("the calls fall quiet", RESTART_QUIET_DEADLINE_MS, quiet, 250);
 }
 
 /** Round 64: the host's wait before it starts a stopped instance again (controller main.ts, `stopTimeout || 500` + 2.5 s). */
@@ -1242,15 +1302,22 @@ const ALIAS_ROOT = "alias.0.inventory";
  * @returns {{ id: string, origin: string, seeded: unknown, expected: unknown }[]} the aliases, each with its state
  */
 function userAliases(previous) {
-    const states = Object.keys(previous).filter((id) => previous[id].type === "state");
-    const stays = states.find((id) => !(id in MOVES));
-    return [
-        ...states.filter((id) => id in MOVES).flatMap((id, n) => [
-            { id: `${ALIAS_ROOT}.plain.${n}`, origin: id, seeded: id, expected: MOVES[id] },
-            { id: `${ALIAS_ROOT}.split.${n}`, origin: id, seeded: { read: id, write: id }, expected: { read: MOVES[id], write: MOVES[id] } },
-        ]),
-        ...(stays ? [{ id: `${ALIAS_ROOT}.stays`, origin: stays, seeded: stays, expected: stays }] : []),
-    ];
+  const states = Object.keys(previous).filter(id => previous[id].type === "state");
+  const stays = states.find(id => !(id in MOVES));
+  return [
+    ...states
+      .filter(id => id in MOVES)
+      .flatMap((id, n) => [
+        { id: `${ALIAS_ROOT}.plain.${n}`, origin: id, seeded: id, expected: MOVES[id] },
+        {
+          id: `${ALIAS_ROOT}.split.${n}`,
+          origin: id,
+          seeded: { read: id, write: id },
+          expected: { read: MOVES[id], write: MOVES[id] },
+        },
+      ]),
+    ...(stays ? [{ id: `${ALIAS_ROOT}.stays`, origin: stays, seeded: stays, expected: stays }] : []),
+  ];
 }
 
 /**
@@ -1269,20 +1336,31 @@ function userAliases(previous) {
  * @param {Record<string, ioBroker.Object>} previous the previous release's inventory
  */
 async function seedPrevious(harness, previous) {
-    // round 157 (inventory-template audit V31): the objects are independent — written together, not one after the other
-    await Promise.all([
-        ...Object.entries(previous).map(([id, obj]) => {
-            const named = id in MOVES ? obj.common : { ...obj.common, name: "renamed by a user" };
-            const common =
-                obj.type === "state" ? { ...named, custom: { ...obj.common?.custom, [RECORDING]: { enabled: true, origin: id } } } : named;
-            return harness.objects.setObjectAsync(id, { ...obj, common });
-        }),
-        ...userAliases(previous).map(({ id, origin, seeded }) => harness.objects.setObjectAsync(id, {
-            type: "state",
-            common: { name: "alias of a user", type: previous[origin].common?.type, role: previous[origin].common?.role, read: true, write: true, alias: { id: seeded } },
-            native: {},
-        })),
-    ]);
+  // round 157 (inventory-template audit V31): the objects are independent — written together, not one after the other
+  await Promise.all([
+    ...Object.entries(previous).map(([id, obj]) => {
+      const named = id in MOVES ? obj.common : { ...obj.common, name: "renamed by a user" };
+      const common =
+        obj.type === "state"
+          ? { ...named, custom: { ...obj.common?.custom, [RECORDING]: { enabled: true, origin: id } } }
+          : named;
+      return harness.objects.setObjectAsync(id, { ...obj, common });
+    }),
+    ...userAliases(previous).map(({ id, origin, seeded }) =>
+      harness.objects.setObjectAsync(id, {
+        type: "state",
+        common: {
+          name: "alias of a user",
+          type: previous[origin].common?.type,
+          role: previous[origin].common?.role,
+          read: true,
+          write: true,
+          alias: { id: seeded },
+        },
+        native: {},
+      }),
+    ),
+  ]);
 }
 
 /** Round 67: the text a dump puts where the adapter stored a secret encrypted with its installation's secret. */
@@ -1308,51 +1386,55 @@ const ENCRYPTED_NATIVE = [];
  * @param {import("@iobroker/testing").IntegrationTestHarness} harness
  */
 async function restoreMaskedSecrets(harness) {
-    // hassemu (Werkbank answer ec929d1f4c85, 2026-11-12): the dump of 1.46.1 — the one before B3, its devices still carry
-    // native.cookie — flattened what a real installation holds per display: the id (its own mapping `display-N`,
-    // `display-legacy`), the cookie (one constant for all), lastSeen and the tokens. Put back that form (formerDisplay):
-    // six hex characters, its own cookie, a fresh lastSeen, no tokens; the recording in common.custom moves along. The
-    // start then plays the move of K7 and the takeover into identities.json as every 1.46.1 installation does. A dump after
-    // B3 carries no native.cookie and nothing happens here — this body goes with the first release after 2.0.0.
-    // The aliases seedPrevious made on the dump's ids (round 177) are renamed the same way: in a 1.46.1 installation a
-    // user's alias points at the display's real id, so the start meets that form and the move of K7 has to carry them.
-    const prefix = `${NS}clients.`;
-    const rows = (await harness.objects.getObjectList({ startkey: prefix, endkey: `${prefix}香` })).rows;
-    /** @type {Map<string, string>} */
-    const renamed = new Map();
-    for (const device of rows.filter((r) => r.value?.type === "device" && typeof r.value.native?.cookie === "string")) {
-        const former = formerDisplay(device.id.slice(prefix.length));
-        if (!former) {
-            continue;
-        }
-        const native = { ...device.value.native, cookie: former.cookie, lastSeen: Date.now() };
-        for (const key of ["token", "refreshToken", "tokenExpiresAt"]) {
-            if (key in native) {
-                native[key] = null;
-            }
-        }
-        for (const row of rows.filter((r) => r.id === device.id || r.id.startsWith(`${device.id}.`))) {
-            const to = `${prefix}${former.id}${row.id.slice(device.id.length)}`;
-            renamed.set(row.id, to);
-            await harness.objects.setObjectAsync(to, { ...row.value, _id: to, ...(row.id === device.id ? { native } : {}) });
-            await harness.objects.delObjectAsync(row.id);
-        }
+  // hassemu (Werkbank answer ec929d1f4c85, 2026-11-12): the dump of 1.46.1 — the one before B3, its devices still carry
+  // native.cookie — flattened what a real installation holds per display: the id (its own mapping `display-N`,
+  // `display-legacy`), the cookie (one constant for all), lastSeen and the tokens. Put back that form (formerDisplay):
+  // six hex characters, its own cookie, a fresh lastSeen, no tokens; the recording in common.custom moves along. The
+  // start then plays the move of K7 and the takeover into identities.json as every 1.46.1 installation does. A dump after
+  // B3 carries no native.cookie and nothing happens here — this body goes with the first release after 2.0.0.
+  // The aliases seedPrevious made on the dump's ids (round 177) are renamed the same way: in a 1.46.1 installation a
+  // user's alias points at the display's real id, so the start meets that form and the move of K7 has to carry them.
+  const prefix = `${NS}clients.`;
+  const rows = (await harness.objects.getObjectList({ startkey: prefix, endkey: `${prefix}香` })).rows;
+  /** @type {Map<string, string>} */
+  const renamed = new Map();
+  for (const device of rows.filter(r => r.value?.type === "device" && typeof r.value.native?.cookie === "string")) {
+    const former = formerDisplay(device.id.slice(prefix.length));
+    if (!former) {
+      continue;
     }
-    if (renamed.size === 0) {
-        return;
+    const native = { ...device.value.native, cookie: former.cookie, lastSeen: Date.now() };
+    for (const key of ["token", "refreshToken", "tokenExpiresAt"]) {
+      if (key in native) {
+        native[key] = null;
+      }
     }
-    const next = (id) => (typeof id === "string" ? (renamed.get(id) ?? id) : id);
-    const aliases = (await harness.objects.getObjectList({ startkey: "alias.", endkey: "alias.香" })).rows;
-    for (const { id, value } of aliases) {
-        const target = value?.common?.alias?.id;
-        if (target === undefined || target === null) {
-            continue;
-        }
-        const moved = typeof target === "string" ? next(target) : { ...target, read: next(target.read), write: next(target.write) };
-        if (canonical(moved) !== canonical(target)) {
-            await harness.objects.setObjectAsync(id, { ...value, common: { ...value.common, alias: { ...value.common.alias, id: moved } } });
-        }
+    for (const row of rows.filter(r => r.id === device.id || r.id.startsWith(`${device.id}.`))) {
+      const to = `${prefix}${former.id}${row.id.slice(device.id.length)}`;
+      renamed.set(row.id, to);
+      await harness.objects.setObjectAsync(to, { ...row.value, _id: to, ...(row.id === device.id ? { native } : {}) });
+      await harness.objects.delObjectAsync(row.id);
     }
+  }
+  if (renamed.size === 0) {
+    return;
+  }
+  const next = id => (typeof id === "string" ? (renamed.get(id) ?? id) : id);
+  const aliases = (await harness.objects.getObjectList({ startkey: "alias.", endkey: "alias.香" })).rows;
+  for (const { id, value } of aliases) {
+    const target = value?.common?.alias?.id;
+    if (target === undefined || target === null) {
+      continue;
+    }
+    const moved =
+      typeof target === "string" ? next(target) : { ...target, read: next(target.read), write: next(target.write) };
+    if (canonical(moved) !== canonical(target)) {
+      await harness.objects.setObjectAsync(id, {
+        ...value,
+        common: { ...value.common, alias: { ...value.common.alias, id: moved } },
+      });
+    }
+  }
 }
 
 /**
@@ -1368,35 +1450,41 @@ async function restoreMaskedSecrets(harness) {
  * @param {object} previous the previous release's dump
  */
 async function seedInstanceData(harness, previous) {
-    // hassemu keeps identities.json in the data folder since B3 (DD 37): the server id and per display its cookie, tokens
-    // and lastSeen. 1.46.1 — a dump whose devices still carry native.cookie — held nothing there: nothing is written, and
-    // the start takes the identities over from the device objects as every 1.46.1 installation does. A later dump: the
-    // file as that release wrote it for the fixture setup — every display under its id with its fixture cookie (the four
-    // characters of its id are its place in the fixtures, test/inventory-id-hook.cjs), sealed by the master, no tokens.
-    const prefix = `${NS}clients.`;
-    const devices = Object.entries(previous).filter(
-        ([id, obj]) => id.startsWith(prefix) && !id.slice(prefix.length).includes(".") && obj?.type === "device",
-    );
-    if (devices.length === 0 || devices.some(([, obj]) => typeof obj.native?.cookie === "string")) {
-        return;
+  // hassemu keeps identities.json in the data folder since B3 (DD 37): the server id and per display its cookie, tokens
+  // and lastSeen. 1.46.1 — a dump whose devices still carry native.cookie — held nothing there: nothing is written, and
+  // the start takes the identities over from the device objects as every 1.46.1 installation does. A later dump: the
+  // file as that release wrote it for the fixture setup — every display under its id with its fixture cookie (the four
+  // characters of its id are its place in the fixtures, test/inventory-id-hook.cjs), sealed by the master, no tokens.
+  const prefix = `${NS}clients.`;
+  const devices = Object.entries(previous).filter(
+    ([id, obj]) => id.startsWith(prefix) && !id.slice(prefix.length).includes(".") && obj?.type === "device",
+  );
+  if (devices.length === 0 || devices.some(([, obj]) => typeof obj.native?.cookie === "string")) {
+    return;
+  }
+  /** @type {Record<string, object>} */
+  const displays = {};
+  const secret = await systemSecret(harness);
+  for (const [id] of devices) {
+    const shortId = id.slice(prefix.length);
+    const tail = /^display-([0-9a-f]{4})$/.exec(shortId)?.[1];
+    const cookie = shortId === LEGACY.movedId ? LEGACY.cookie : tail ? fixtureCookie(parseInt(tail, 16)) : undefined;
+    if (cookie) {
+      displays[shortId] = {
+        cookie: sealedField(secret, cookie),
+        token: null,
+        tokenExpiresAt: null,
+        refreshToken: null,
+        lastSeen: Date.now(),
+      };
     }
-    /** @type {Record<string, object>} */
-    const displays = {};
-    const secret = await systemSecret(harness);
-    for (const [id] of devices) {
-        const shortId = id.slice(prefix.length);
-        const tail = /^display-([0-9a-f]{4})$/.exec(shortId)?.[1];
-        const cookie = shortId === LEGACY.movedId ? LEGACY.cookie : tail ? fixtureCookie(parseInt(tail, 16)) : undefined;
-        if (cookie) {
-            displays[shortId] = { cookie: sealedField(secret, cookie), token: null, tokenExpiresAt: null, refreshToken: null, lastSeen: Date.now() };
-        }
-    }
-    fs.mkdirSync(dataFolder(harness), { recursive: true });
-    fs.writeFileSync(
-        path.join(dataFolder(harness), "identities.json"),
-        `${JSON.stringify({ server: FIXTURE_SERVER_ID, displays }, null, 2)}\n`,
-        { mode: 0o600 },
-    );
+  }
+  fs.mkdirSync(dataFolder(harness), { recursive: true });
+  fs.writeFileSync(
+    path.join(dataFolder(harness), "identities.json"),
+    `${JSON.stringify({ server: FIXTURE_SERVER_ID, displays }, null, 2)}\n`,
+    { mode: 0o600 },
+  );
 }
 
 /**
@@ -1411,10 +1499,10 @@ async function seedInstanceData(harness, previous) {
  * @param {import("@iobroker/testing").IntegrationTestHarness} harness
  */
 async function seedInstanceObjects(harness) {
-    // hassemu: an installation sits among other adapters — the surroundings whose dashboards fill the mode dropdown — and
-    // here holds one display 1.x left behind, which the start moves (I22, K7).
-    await seedEnvironment(harness);
-    await seedLegacyDisplay(harness);
+  // hassemu: an installation sits among other adapters — the surroundings whose dashboards fill the mode dropdown — and
+  // here holds one display 1.x left behind, which the start moves (I22, K7).
+  await seedEnvironment(harness);
+  await seedLegacyDisplay(harness);
 }
 
 /**
@@ -1425,8 +1513,8 @@ async function seedInstanceObjects(harness) {
  * @param {import("@iobroker/testing").IntegrationTestHarness} harness
  */
 async function maskedSecretsLeft(harness) {
-    const list = await harness.objects.getObjectList({ startkey: NS, endkey: `${NS}香` });
-    return list.rows.filter((row) => JSON.stringify(row.value).includes(ENCRYPTED_MARKER)).map((row) => row.id);
+  const list = await harness.objects.getObjectList({ startkey: NS, endkey: `${NS}香` });
+  return list.rows.filter(row => JSON.stringify(row.value).includes(ENCRYPTED_MARKER)).map(row => row.id);
 }
 
 /**
@@ -1437,20 +1525,20 @@ async function maskedSecretsLeft(harness) {
  * @param {string} what what did not happen, in the failure message
  */
 async function waitForStates(harness, wanted, what) {
-    let wrong = [];
-    const held = async () => {
-        wrong = [];
-        for (const [id, val] of Object.entries(wanted)) {
-            const state = await harness.states.getStateAsync(`${NS}${id}`);
-            if (state?.val !== val) {
-                wrong.push(`${id} = ${JSON.stringify(state?.val)}, want ${JSON.stringify(val)}`);
-            }
-        }
-        return wrong.length === 0;
-    };
-    if (!(await waitWindow(`the wanted states, else ${what}`, OUTAGE_DEADLINE_MS, held, 250))) {
-        throw new Error(`${what} (deadline ${OUTAGE_DEADLINE_MS} ms):\n${wrong.join("\n")}`);
+  let wrong = [];
+  const held = async () => {
+    wrong = [];
+    for (const [id, val] of Object.entries(wanted)) {
+      const state = await harness.states.getStateAsync(`${NS}${id}`);
+      if (state?.val !== val) {
+        wrong.push(`${id} = ${JSON.stringify(state?.val)}, want ${JSON.stringify(val)}`);
+      }
     }
+    return wrong.length === 0;
+  };
+  if (!(await waitWindow(`the wanted states, else ${what}`, OUTAGE_DEADLINE_MS, held, 250))) {
+    throw new Error(`${what} (deadline ${OUTAGE_DEADLINE_MS} ms):\n${wrong.join("\n")}`);
+  }
 }
 
 /**
@@ -1465,52 +1553,63 @@ async function waitForStates(harness, wanted, what) {
  * @param {{ deleted: string[] }} watch the suite's write watcher (watchObjectWrites)
  */
 async function playOutage(harness, watch) {
-    assert.ok(Object.keys(OUTAGE_SHOWN).length > 0, "OUTAGE_SHOWN names no state — nothing would show the outage");
-    /** @type {Record<string, unknown>} */
-    const before = {};
-    for (const [id, val] of Object.entries(OUTAGE_SHOWN)) {
-        before[id] = (await harness.states.getStateAsync(`${NS}${id}`))?.val;
-        assert.notStrictEqual(before[id], val, `${id} already shows the outage before the cut`);
+  assert.ok(Object.keys(OUTAGE_SHOWN).length > 0, "OUTAGE_SHOWN names no state — nothing would show the outage");
+  /** @type {Record<string, unknown>} */
+  const before = {};
+  for (const [id, val] of Object.entries(OUTAGE_SHOWN)) {
+    before[id] = (await harness.states.getStateAsync(`${NS}${id}`))?.val;
+    assert.notStrictEqual(before[id], val, `${id} already shows the outage before the cut`);
+  }
+  const values = new Map();
+  const defs = new Map();
+  const list = await harness.objects.getObjectListAsync({ startkey: NS, endkey: `${NS}香` });
+  for (const row of list.rows) {
+    if (row.value?.type === "state") {
+      values.set(row.id, canonical((await harness.states.getStateAsync(row.id))?.val ?? null));
+      defs.set(row.id, canonical(row.value.common?.def ?? null));
     }
-    const values = new Map();
-    const defs = new Map();
-    const list = await harness.objects.getObjectListAsync({ startkey: NS, endkey: `${NS}香` });
-    for (const row of list.rows) {
-        if (row.value?.type === "state") {
-            values.set(row.id, canonical((await harness.states.getStateAsync(row.id))?.val ?? null));
-            defs.set(row.id, canonical(row.value.common?.def ?? null));
-        }
+  }
+  const writes = [];
+  const record = (id, state) => {
+    if (id.startsWith(NS) && (!state || state.from === `system.adapter.${ADAPTER}.0`)) {
+      writes.push([id, state ? canonical(state.val ?? null) : null, Date.now()]);
     }
-    const writes = [];
-    const record = (id, state) => {
-        if (id.startsWith(NS) && (!state || state.from === `system.adapter.${ADAPTER}.0`)) {
-            writes.push([id, state ? canonical(state.val ?? null) : null, Date.now()]);
-        }
-    };
-    harness.on("stateChange", record);
-    const outage = { cut: Date.now(), deleted: watch.deleted.length, line: harness.getLogs().length, values, defs, writes, back: 0 };
-    fs.writeFileSync(OUTAGE_FLAG, "");
-    try {
-        await waitForStates(harness, OUTAGE_SHOWN, "the adapter did not show the outage");
-        const shown = Date.now();
-        // round 157 (inventory-template audit V33): each phase says how long it took — the suite's minutes were not to be told
-        // apart in a log before
-        console.log(`      outage shown after ${Math.round((shown - outage.cut) / 1000)} s`);
-        await waitWindow("the outage holds", Math.max(OUTAGE_HOLD_MS, shown - outage.cut));
-    } finally {
-        // A cut that stays on after a failed wait would cut every later suite of the run too.
-        outage.back = Date.now();
-        fs.rmSync(OUTAGE_FLAG, { force: true });
-    }
-    try {
-        await waitForStates(harness, before, "the adapter did not show the return");
-        console.log(`      return shown after ${Math.round((Date.now() - outage.back) / 1000)} s`);
-        await waitWindow("settles after the return", SETTLE_MS);
-    } finally {
-        harness.removeListener("stateChange", record);
-    }
-    outage.lines = harness.getLogs().slice(outage.line).filter((l) => l.from === `${ADAPTER}.0`);
-    return outage;
+  };
+  harness.on("stateChange", record);
+  const outage = {
+    cut: Date.now(),
+    deleted: watch.deleted.length,
+    line: harness.getLogs().length,
+    values,
+    defs,
+    writes,
+    back: 0,
+  };
+  fs.writeFileSync(OUTAGE_FLAG, "");
+  try {
+    await waitForStates(harness, OUTAGE_SHOWN, "the adapter did not show the outage");
+    const shown = Date.now();
+    // round 157 (inventory-template audit V33): each phase says how long it took — the suite's minutes were not to be told
+    // apart in a log before
+    console.log(`      outage shown after ${Math.round((shown - outage.cut) / 1000)} s`);
+    await waitWindow("the outage holds", Math.max(OUTAGE_HOLD_MS, shown - outage.cut));
+  } finally {
+    // A cut that stays on after a failed wait would cut every later suite of the run too.
+    outage.back = Date.now();
+    fs.rmSync(OUTAGE_FLAG, { force: true });
+  }
+  try {
+    await waitForStates(harness, before, "the adapter did not show the return");
+    console.log(`      return shown after ${Math.round((Date.now() - outage.back) / 1000)} s`);
+    await waitWindow("settles after the return", SETTLE_MS);
+  } finally {
+    harness.removeListener("stateChange", record);
+  }
+  outage.lines = harness
+    .getLogs()
+    .slice(outage.line)
+    .filter(l => l.from === `${ADAPTER}.0`);
+  return outage;
 }
 
 /**
@@ -1522,16 +1621,16 @@ async function playOutage(harness, watch) {
  * @param {number} [from] the earliest call of interest (ms)
  */
 function readCalls(from = 0) {
-    const answered = new Map(recordLines(RESOURCE_DIR, ".answered", from).map((a) => [`${a.pid} ${a.n}`, a.t]));
-    return recordLines(RESOURCE_DIR, ".calls", from)
-        .filter((c) => c.t >= from)
-        .map((c) => (answered.has(`${c.pid} ${c.n}`) ? { ...c, answered: answered.get(`${c.pid} ${c.n}`) } : c))
-        .sort((a, b) => a.t - b.t);
+  const answered = new Map(recordLines(RESOURCE_DIR, ".answered", from).map(a => [`${a.pid} ${a.n}`, a.t]));
+  return recordLines(RESOURCE_DIR, ".calls", from)
+    .filter(c => c.t >= from)
+    .map(c => (answered.has(`${c.pid} ${c.n}`) ? { ...c, answered: answered.get(`${c.pid} ${c.n}`) } : c))
+    .sort((a, b) => a.t - b.t);
 }
 
 /** Round 100: one channel to a counterpart — the kind of call, the host and the port. */
 function channel(c) {
-    return `${c.kind} ${c.host}:${c.port}`;
+  return `${c.kind} ${c.host}:${c.port}`;
 }
 
 /**
@@ -1548,28 +1647,28 @@ function channel(c) {
  * show a wait, and is not judged.
  */
 function startHang() {
-    const calls = readCalls().filter((c) => !c.kind.startsWith("hang-"));
-    const opened = new Map();
-    /** @type {Record<string, number>} */
-    const usual = {};
-    for (const c of calls) {
-        opened.set(c.pid, opened.get(c.pid) ?? c.t);
-        usual[channel(c)] = Math.min(usual[channel(c)] ?? Infinity, c.t - opened.get(c.pid));
-    }
-    const hosts = [...new Set(calls.map((c) => c.host))];
-    if (hosts.length >= 2) {
-        fs.writeFileSync(HANG_FLAG, hosts[0]);
-        const others = [...new Set(calls.filter((c) => c.host !== hosts[0]).map(channel))];
-        return { hung: hosts[0], others, usual, since: Date.now() };
-    }
-    // Round 104: every counterpart on one host (fixtures on 127.0.0.1) — one CHANNEL hangs, the hook takes `<host> <port>`
-    const ports = [...new Set(calls.map((c) => `${c.host} ${c.port}`))];
-    if (ports.length < 2) {
-        return { hung: null, others: [], usual, since: Date.now() };
-    }
-    fs.writeFileSync(HANG_FLAG, ports[0]);
-    const others = [...new Set(calls.filter((c) => `${c.host} ${c.port}` !== ports[0]).map(channel))];
-    return { hung: ports[0], others, usual, since: Date.now() };
+  const calls = readCalls().filter(c => !c.kind.startsWith("hang-"));
+  const opened = new Map();
+  /** @type {Record<string, number>} */
+  const usual = {};
+  for (const c of calls) {
+    opened.set(c.pid, opened.get(c.pid) ?? c.t);
+    usual[channel(c)] = Math.min(usual[channel(c)] ?? Infinity, c.t - opened.get(c.pid));
+  }
+  const hosts = [...new Set(calls.map(c => c.host))];
+  if (hosts.length >= 2) {
+    fs.writeFileSync(HANG_FLAG, hosts[0]);
+    const others = [...new Set(calls.filter(c => c.host !== hosts[0]).map(channel))];
+    return { hung: hosts[0], others, usual, since: Date.now() };
+  }
+  // Round 104: every counterpart on one host (fixtures on 127.0.0.1) — one CHANNEL hangs, the hook takes `<host> <port>`
+  const ports = [...new Set(calls.map(c => `${c.host} ${c.port}`))];
+  if (ports.length < 2) {
+    return { hung: null, others: [], usual, since: Date.now() };
+  }
+  fs.writeFileSync(HANG_FLAG, ports[0]);
+  const others = [...new Set(calls.filter(c => `${c.host} ${c.port}` !== ports[0]).map(channel))];
+  return { hung: ports[0], others, usual, since: Date.now() };
 }
 
 /**
@@ -1580,33 +1679,38 @@ function startHang() {
  * @param {{ hung: string | null, others: string[], usual: Record<string, number>, since: number }} hang what startHang chose
  */
 async function playHang(harness, hang, restarts) {
-    let fed = Promise.resolve();
-    let played;
-    try {
-        if (hang.hung === null) {
-            return { ...hang, calls: [] };
-        }
-        fed = feedFixtures(harness).then(() => undefined, (err) => err);
-        let calls = [];
-        const reached = async () => {
-            // A restart the host plays ends the process, and its hung connections close as if it gave up: only the process
-            // started last is judged, its deadline counting from its own first call (a restart costs it nothing).
-            await restarts.done;
-            const all = readCalls(hang.since);
-            const pid = [...new Set(all.map((c) => c.pid))].at(-1);
-            calls = all.filter((c) => c.pid === pid);
-            return hang.others.every((k) => calls.some((c) => !c.kind.startsWith("hang-") && channel(c) === k))
-                || Date.now() > (calls[0]?.t ?? hang.since) + HANG_DEADLINE_MS;
-        };
-        await waitWindow("every other counterpart reached while one hangs", Infinity, reached, 500);
-        played = { ...hang, calls };
-    } finally {
-        fs.rmSync(HANG_FLAG, { force: true });
+  let fed = Promise.resolve();
+  let played;
+  try {
+    if (hang.hung === null) {
+      return { ...hang, calls: [] };
     }
-    // Round 157 (inventory-template audit V18): feedFixtures may wait on the hung counterpart — released, it ends before the
-    // next suite starts (at most START_DEADLINE_MS); left running it fed into the next suite's fresh database
-    await waitWindow("the feed ends", START_DEADLINE_MS, fed);
-    return played;
+    fed = feedFixtures(harness).then(
+      () => undefined,
+      err => err,
+    );
+    let calls = [];
+    const reached = async () => {
+      // A restart the host plays ends the process, and its hung connections close as if it gave up: only the process
+      // started last is judged, its deadline counting from its own first call (a restart costs it nothing).
+      await restarts.done;
+      const all = readCalls(hang.since);
+      const pid = [...new Set(all.map(c => c.pid))].at(-1);
+      calls = all.filter(c => c.pid === pid);
+      return (
+        hang.others.every(k => calls.some(c => !c.kind.startsWith("hang-") && channel(c) === k)) ||
+        Date.now() > (calls[0]?.t ?? hang.since) + HANG_DEADLINE_MS
+      );
+    };
+    await waitWindow("every other counterpart reached while one hangs", Infinity, reached, 500);
+    played = { ...hang, calls };
+  } finally {
+    fs.rmSync(HANG_FLAG, { force: true });
+  }
+  // Round 157 (inventory-template audit V18): feedFixtures may wait on the hung counterpart — released, it ends before the
+  // next suite starts (at most START_DEADLINE_MS); left running it fed into the next suite's fresh database
+  await waitWindow("the feed ends", START_DEADLINE_MS, fed);
+  return played;
 }
 
 /**
@@ -1619,17 +1723,17 @@ async function playHang(harness, hang, restarts) {
  * @param {{ kind: string, host: string, port: number, t: number }[]} seen the warm-up's calls of one process, oldest first
  */
 function midRunHang(seen) {
-    const asked = seen.filter((c) => c.kind !== "udp");
-    const byHost = new Set(asked.map((c) => c.host)).size >= 2;
-    const wordOf = (c) => (byHost ? c.host : `${c.host} ${c.port}`);
-    const count = new Map();
-    for (const c of asked) {
-        count.set(wordOf(c), (count.get(wordOf(c)) ?? 0) + 1);
-    }
-    const last = asked.filter((c) => count.get(wordOf(c)) >= 2).at(-1);
-    const word = last === undefined ? null : wordOf(last);
-    const others = word === null ? [] : [...new Set(seen.filter((c) => wordOf(c) !== word).map(channel))];
-    return { word, others };
+  const asked = seen.filter(c => c.kind !== "udp");
+  const byHost = new Set(asked.map(c => c.host)).size >= 2;
+  const wordOf = c => (byHost ? c.host : `${c.host} ${c.port}`);
+  const count = new Map();
+  for (const c of asked) {
+    count.set(wordOf(c), (count.get(wordOf(c)) ?? 0) + 1);
+  }
+  const last = asked.filter(c => count.get(wordOf(c)) >= 2).at(-1);
+  const word = last === undefined ? null : wordOf(last);
+  const others = word === null ? [] : [...new Set(seen.filter(c => wordOf(c) !== word).map(channel))];
+  return { word, others };
 }
 
 /**
@@ -1643,43 +1747,48 @@ function midRunHang(seen) {
  * @param {{ done: Promise<void> }} restarts the host play of the suite
  */
 async function playHangMidRun(harness, restarts) {
-    const since = Date.now();
-    const fed = feedFixtures(harness).then(() => undefined, (err) => err);
-    let pid;
-    let warm = since;
-    const warmedUp = async () => {
-        await restarts.done;
-        const calls = readCalls(since);
-        const last = [...new Set(calls.map((c) => c.pid))].at(-1);
-        if (last !== pid) {
-            pid = last;
-            warm = calls.find((c) => c.pid === pid)?.t ?? Date.now();
-        }
-        return Date.now() >= warm + HANG_WARMUP_MS;
-    };
-    // the warm-up counts from the first call of the process started last — the cap moves with it, so it is warmedUp's
-    await waitWindow("the warm-up before the hang", Infinity, warmedUp, 500);
-    const seen = readCalls(warm).filter((c) => c.pid === pid && !c.kind.startsWith("hang-"));
-    const { word, others } = midRunHang(seen);
-    if (word === null) {
-        console.log("      no counterpart was reached twice over a request or a connection in the warm-up — nothing hangs mid-run");
+  const since = Date.now();
+  const fed = feedFixtures(harness).then(
+    () => undefined,
+    err => err,
+  );
+  let pid;
+  let warm = since;
+  const warmedUp = async () => {
+    await restarts.done;
+    const calls = readCalls(since);
+    const last = [...new Set(calls.map(c => c.pid))].at(-1);
+    if (last !== pid) {
+      pid = last;
+      warm = calls.find(c => c.pid === pid)?.t ?? Date.now();
     }
-    const hang = { hung: others.length > 0 ? word : null, others, since: Date.now() };
+    return Date.now() >= warm + HANG_WARMUP_MS;
+  };
+  // the warm-up counts from the first call of the process started last — the cap moves with it, so it is warmedUp's
+  await waitWindow("the warm-up before the hang", Infinity, warmedUp, 500);
+  const seen = readCalls(warm).filter(c => c.pid === pid && !c.kind.startsWith("hang-"));
+  const { word, others } = midRunHang(seen);
+  if (word === null) {
+    console.log(
+      "      no counterpart was reached twice over a request or a connection in the warm-up — nothing hangs mid-run",
+    );
+  }
+  const hang = { hung: others.length > 0 ? word : null, others, since: Date.now() };
+  if (hang.hung !== null) {
+    fs.writeFileSync(HANG_FLAG, hang.hung);
+  }
+  let played;
+  try {
     if (hang.hung !== null) {
-        fs.writeFileSync(HANG_FLAG, hang.hung);
+      await waitWindow("one counterpart hangs mid-run", hang.since + HANG_DEADLINE_MS - Date.now());
     }
-    let played;
-    try {
-        if (hang.hung !== null) {
-            await waitWindow("one counterpart hangs mid-run", hang.since + HANG_DEADLINE_MS - Date.now());
-        }
-        played = { ...hang, pid, end: Date.now(), calls: readCalls(warm).filter((c) => c.pid === pid) };
-    } finally {
-        fs.rmSync(HANG_FLAG, { force: true });
-    }
-    // Round 157 (V18): as in playHang — the feed ends before the next suite, at most START_DEADLINE_MS
-    await waitWindow("the feed ends", START_DEADLINE_MS, fed);
-    return played;
+    played = { ...hang, pid, end: Date.now(), calls: readCalls(warm).filter(c => c.pid === pid) };
+  } finally {
+    fs.rmSync(HANG_FLAG, { force: true });
+  }
+  // Round 157 (V18): as in playHang — the feed ends before the next suite, at most START_DEADLINE_MS
+  await waitWindow("the feed ends", START_DEADLINE_MS, fed);
+  return played;
 }
 
 /**
@@ -1692,8 +1801,11 @@ async function playHangMidRun(harness, restarts) {
  * device; and the `source`: a link to the documentation, a measurement with its date, or the adapter's own cap).
  */
 function apiLimits() {
-    assert.ok(fs.existsSync(API_LIMITS), "src/lib/api-limits.json is missing — the adapter defines no limit for the counterparts it calls");
-    return JSON.parse(fs.readFileSync(API_LIMITS, "utf8")).counterparts;
+  assert.ok(
+    fs.existsSync(API_LIMITS),
+    "src/lib/api-limits.json is missing — the adapter defines no limit for the counterparts it calls",
+  );
+  return JSON.parse(fs.readFileSync(API_LIMITS, "utf8")).counterparts;
 }
 
 // Round 100: whether a counted call belongs to a declared counterpart — round 171: the one rule of test/fleet-suites.js
@@ -1713,35 +1825,35 @@ const { fits, limitCalls } = require("./fleet-suites.js");
  * @param {any} now its value now
  */
 function commandValue(common, now) {
-    if (common.states && typeof common.states === "object") {
-        const keys = Array.isArray(common.states) ? common.states.map(String) : Object.keys(common.states);
-        if (keys.length > 0) {
-            const next = keys.find((k) => k !== String(now)) ?? keys[0];
-            return common.type === "number" ? Number(next) : common.type === "boolean" ? next === "true" : next;
-        }
+  if (common.states && typeof common.states === "object") {
+    const keys = Array.isArray(common.states) ? common.states.map(String) : Object.keys(common.states);
+    if (keys.length > 0) {
+      const next = keys.find(k => k !== String(now)) ?? keys[0];
+      return common.type === "number" ? Number(next) : common.type === "boolean" ? next === "true" : next;
     }
-    if (common.type === "boolean") {
-        return String(common.role ?? "").startsWith("button") ? true : now !== true;
+  }
+  if (common.type === "boolean") {
+    return String(common.role ?? "").startsWith("button") ? true : now !== true;
+  }
+  if (common.type === "number") {
+    const min = typeof common.min === "number" ? common.min : 0;
+    const max = typeof common.max === "number" ? common.max : min + 100;
+    const step = typeof common.step === "number" && common.step > 0 ? common.step : 1;
+    return now === min ? Math.min(max, min + step) : min;
+  }
+  if (common.type === "string") {
+    if (typeof now === "string" && /^#[0-9a-f]{6}$/i.test(now)) {
+      return now.toLowerCase() === "#123456" ? "#654321" : "#123456";
     }
-    if (common.type === "number") {
-        const min = typeof common.min === "number" ? common.min : 0;
-        const max = typeof common.max === "number" ? common.max : min + 100;
-        const step = typeof common.step === "number" && common.step > 0 ? common.step : 1;
-        return now === min ? Math.min(max, min + step) : min;
+    if (typeof now === "string" && now !== "") {
+      return now;
     }
-    if (common.type === "string") {
-        if (typeof now === "string" && /^#[0-9a-f]{6}$/i.test(now)) {
-            return now.toLowerCase() === "#123456" ? "#654321" : "#123456";
-        }
-        if (typeof now === "string" && now !== "") {
-            return now;
-        }
-        return String(common.role ?? "").includes("color") ? "#123456" : "command";
-    }
-    if (now !== null && now !== undefined) {
-        return now;
-    }
-    return common.type === "array" ? "[]" : common.type === "json" || common.type === "object" ? "{}" : "command";
+    return String(common.role ?? "").includes("color") ? "#123456" : "command";
+  }
+  if (now !== null && now !== undefined) {
+    return now;
+  }
+  return common.type === "array" ? "[]" : common.type === "json" || common.type === "object" ? "{}" : "command";
 }
 
 /**
@@ -1751,17 +1863,17 @@ function commandValue(common, now) {
  * @param {number} since the first command
  */
 function commandGaveUp(since) {
-    const open = new Map();
-    let last = 0;
-    for (const c of readCalls(since)) {
-        const key = `${c.host} ${c.port}`;
-        if (c.kind === "hang-start") {
-            open.set(key, [...(open.get(key) ?? []), c.cause !== undefined]);
-        } else if (c.kind === "hang-end" && open.get(key)?.length && open.get(key).shift()) {
-            last = c.t;
-        }
+  const open = new Map();
+  let last = 0;
+  for (const c of readCalls(since)) {
+    const key = `${c.host} ${c.port}`;
+    if (c.kind === "hang-start") {
+      open.set(key, [...(open.get(key) ?? []), c.cause !== undefined]);
+    } else if (c.kind === "hang-end" && open.get(key)?.length && open.get(key).shift()) {
+      last = c.t;
     }
-    return [...open.values()].some((list) => list.includes(true)) ? null : last;
+  }
+  return [...open.values()].some(list => list.includes(true)) ? null : last;
 }
 
 /**
@@ -1775,51 +1887,57 @@ function commandGaveUp(since) {
  * @param {import("@iobroker/testing").IntegrationTestHarness} harness
  */
 async function playCommands(harness) {
-    const list = await harness.objects.getObjectListAsync({ startkey: NS, endkey: `${NS}香` });
-    const writable = list.rows.map((r) => r.value).filter((o) => o?.type === "state" && o.common?.write !== false);
-    const run = {
-        /** @type {Array<{ id: string, val: unknown, t: number, sole: boolean }>} */
-        writes: [],
-        /** @type {Array<[string, number]>} */
-        acks: [],
-        since: Date.now(),
-    };
-    const acknowledged = (id, state) => {
-        if (id.startsWith(NS) && state?.ack === true && state.from === `system.adapter.${ADAPTER}.0`) {
-            run.acks.push([id, state.ts]);
-        }
-    };
-    fs.writeFileSync(HANG_FLAG, "*");
-    harness.on("stateChange", acknowledged);
-    try {
-        for (const obj of writable) {
-            const now = (await harness.states.getStateAsync(obj._id))?.val ?? null;
-            const val = commandValue(obj.common, now);
-            if (val !== null) {
-                // round 134: a list whose only entry is the current one offers no command; D10 still hands the
-                // write to stateChange, the confirmation leaves it out (until round 133 it got no write at all)
-                const list = obj.common.states;
-                const sole = typeof list === "object" && list !== null && Object.keys(list).length > 0 && String(val) === String(now);
-                run.writes.push({ id: obj._id, val, t: Date.now(), sole });
-                await harness.states.setStateAsync(obj._id, { val, ack: false });
-            }
-        }
-        await waitWindow("commands nobody answers", COMMAND_WINDOW_MS);
-        // Round 157 (inventory-template audit V21): an adapter that confirms a command once its own timeout ran out did it
-        // unseen whenever that timeout is longer than the window — it stays open until every hung attempt of a command was
-        // given up and SETTLE_MS after it, at most HANG_DEADLINE_MS from the first command (a call that never ends is D21's)
-        const settledAfterGivingUp = () => {
-            const gaveUp = commandGaveUp(run.since);
-            return gaveUp !== null && Date.now() >= gaveUp + SETTLE_MS;
-        };
-        await waitWindow("every hung command given up", run.since + HANG_DEADLINE_MS - Date.now(), settledAfterGivingUp, 500);
-        console.log(`      commands watched ${Math.round((Date.now() - run.since) / 1000)} s`);
-    } finally {
-        harness.removeListener("stateChange", acknowledged);
-        fs.rmSync(HANG_FLAG, { force: true });
+  const list = await harness.objects.getObjectListAsync({ startkey: NS, endkey: `${NS}香` });
+  const writable = list.rows.map(r => r.value).filter(o => o?.type === "state" && o.common?.write !== false);
+  const run = {
+    /** @type {Array<{ id: string, val: unknown, t: number, sole: boolean }>} */
+    writes: [],
+    /** @type {Array<[string, number]>} */
+    acks: [],
+    since: Date.now(),
+  };
+  const acknowledged = (id, state) => {
+    if (id.startsWith(NS) && state?.ack === true && state.from === `system.adapter.${ADAPTER}.0`) {
+      run.acks.push([id, state.ts]);
     }
-    run.calls = readCalls(run.since).filter((c) => c.cause !== undefined && !c.kind.startsWith("hang-"));
-    return run;
+  };
+  fs.writeFileSync(HANG_FLAG, "*");
+  harness.on("stateChange", acknowledged);
+  try {
+    for (const obj of writable) {
+      const now = (await harness.states.getStateAsync(obj._id))?.val ?? null;
+      const val = commandValue(obj.common, now);
+      if (val !== null) {
+        // round 134: a list whose only entry is the current one offers no command; D10 still hands the
+        // write to stateChange, the confirmation leaves it out (until round 133 it got no write at all)
+        const list = obj.common.states;
+        const sole =
+          typeof list === "object" && list !== null && Object.keys(list).length > 0 && String(val) === String(now);
+        run.writes.push({ id: obj._id, val, t: Date.now(), sole });
+        await harness.states.setStateAsync(obj._id, { val, ack: false });
+      }
+    }
+    await waitWindow("commands nobody answers", COMMAND_WINDOW_MS);
+    // Round 157 (inventory-template audit V21): an adapter that confirms a command once its own timeout ran out did it
+    // unseen whenever that timeout is longer than the window — it stays open until every hung attempt of a command was
+    // given up and SETTLE_MS after it, at most HANG_DEADLINE_MS from the first command (a call that never ends is D21's)
+    const settledAfterGivingUp = () => {
+      const gaveUp = commandGaveUp(run.since);
+      return gaveUp !== null && Date.now() >= gaveUp + SETTLE_MS;
+    };
+    await waitWindow(
+      "every hung command given up",
+      run.since + HANG_DEADLINE_MS - Date.now(),
+      settledAfterGivingUp,
+      500,
+    );
+    console.log(`      commands watched ${Math.round((Date.now() - run.since) / 1000)} s`);
+  } finally {
+    harness.removeListener("stateChange", acknowledged);
+    fs.rmSync(HANG_FLAG, { force: true });
+  }
+  run.calls = readCalls(run.since).filter(c => c.cause !== undefined && !c.kind.startsWith("hang-"));
+  return run;
 }
 
 /**
@@ -1832,18 +1950,18 @@ async function playCommands(harness) {
  * @param {string} id
  */
 function sentWithoutAnswer(command, id) {
-    const rel = id.slice(NS.length).split(".");
-    const granted = SEND_CONFIRMED.some((p) => {
-        const parts = p.split(".");
-        return parts.length === rel.length && parts.every((s, i) => s === "*" || s === rel[i]);
-    });
-    const caused = command.calls.filter((c) => c.cause === id);
-    return granted && caused.length > 0 && caused.every((c) => c.kind === "udp" || c.kind === "tcp-write");
+  const rel = id.slice(NS.length).split(".");
+  const granted = SEND_CONFIRMED.some(p => {
+    const parts = p.split(".");
+    return parts.length === rel.length && parts.every((s, i) => s === "*" || s === rel[i]);
+  });
+  const caused = command.calls.filter(c => c.cause === id);
+  return granted && caused.length > 0 && caused.every(c => c.kind === "udp" || c.kind === "tcp-write");
 }
 
 /** Round 87: the network records (`<pid>.net`, test/network-hook.js) present now — a suite reads only the ones after. */
 function networkFiles() {
-    return new Set(fs.readdirSync(RESOURCE_DIR).filter((f) => f.endsWith(".net")));
+  return new Set(fs.readdirSync(RESOURCE_DIR).filter(f => f.endsWith(".net")));
 }
 
 /**
@@ -1853,8 +1971,8 @@ function networkFiles() {
  * @param {{ action: string, [key: string]: unknown }} message the message
  */
 function askDiagnostics(harness, message) {
-    const answer = new Promise((resolve) => harness.sendTo(`${ADAPTER}.0`, "diagnostics", message, resolve));
-    return withinDeadline(answer, REPORT_DEADLINE_MS, `no answer to the diagnostics message ${message.action}`);
+  const answer = new Promise(resolve => harness.sendTo(`${ADAPTER}.0`, "diagnostics", message, resolve));
+  return withinDeadline(answer, REPORT_DEADLINE_MS, `no answer to the diagnostics message ${message.action}`);
 }
 
 /**
@@ -1864,22 +1982,22 @@ function askDiagnostics(harness, message) {
  * @param {import("@iobroker/testing").IntegrationTestHarness} harness
  */
 function instanceFiles(harness) {
-    const files = {};
-    const walk = (dir) => {
-        for (const entry of fs.existsSync(dir) ? fs.readdirSync(dir, { withFileTypes: true }) : []) {
-            const file = path.join(dir, entry.name);
-            if (entry.isDirectory()) {
-                walk(file);
-            } else {
-                const stat = fs.statSync(file);
-                files[path.relative(internals(harness).testDir, file)] = `${stat.size} ${stat.mtimeMs}`;
-            }
-        }
-    };
-    const data = path.join(internals(harness).testDir, "iobroker-data");
-    walk(path.join(data, `${ADAPTER}.0`));
-    walk(path.join(data, "files", `${ADAPTER}.0`));
-    return files;
+  const files = {};
+  const walk = dir => {
+    for (const entry of fs.existsSync(dir) ? fs.readdirSync(dir, { withFileTypes: true }) : []) {
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(file);
+      } else {
+        const stat = fs.statSync(file);
+        files[path.relative(internals(harness).testDir, file)] = `${stat.size} ${stat.mtimeMs}`;
+      }
+    }
+  };
+  const data = path.join(internals(harness).testDir, "iobroker-data");
+  walk(path.join(data, `${ADAPTER}.0`));
+  walk(path.join(data, "files", `${ADAPTER}.0`));
+  return files;
 }
 
 /**
@@ -1896,87 +2014,98 @@ function instanceFiles(harness) {
  * @param {{ deleted: string[] }} watch the suite's write watcher (watchObjectWrites)
  */
 async function playReports(harness, watch) {
-    await harness.enableSendTo();
-    // The jobs of one round run side by side in the adapter; the messages go one at a time — the harness keeps one
-    // answer slot per message, two at once get each other's answer (measured round 104, yamaha copy: eight starts at once,
-    // eight answers naming the first device).
-    const fetchReports = async (devices) => {
-        const jobs = [];
-        for (const device of devices) {
-            const started = await askDiagnostics(harness, { action: "start", device });
-            assert.ok(typeof started?.job === "string", `start of the report for ${device} answered ${JSON.stringify(started)}`);
-            jobs.push({ device, job: started.job, deadline: Date.now() + REPORT_DEADLINE_MS });
-        }
-        const done = [];
-        const finished = async () => {
-            for (const job of [...jobs]) {
-                const answer = await askDiagnostics(harness, { action: "result", job: job.job });
-                if (!answer?.pending) {
-                    done.push({ device: job.device, answer });
-                    jobs.splice(jobs.indexOf(job), 1);
-                } else {
-                    assert.ok(Date.now() < job.deadline, `the report for ${job.device} was not done (deadline ${REPORT_DEADLINE_MS} ms)`);
-                }
-            }
-            return jobs.length === 0;
-        };
-        // past the last deadline every job still pending fails its assert — the cap itself never ends the wait
-        await waitWindow("every report done", Math.max(0, ...jobs.map((job) => job.deadline)) - Date.now() + REPORT_POLL_MS, finished, REPORT_POLL_MS);
-        return done;
-    };
-    const run = {
-        files: instanceFiles(harness),
-        keys: new Set(await harness.states.getKeys(`${NS}*`)),
-        values: await dumpStates(harness),
-        deleted: watch.deleted.length,
-        start: Date.now(),
-        /** @type {string[]} */
-        writes: [],
-        /** @type {string[]} */
-        onlineWrites: [],
-    };
-    const recordInto = (list) => (id, state) => {
-        if (id.startsWith(NS) && (!state || state.from === `system.adapter.${ADAPTER}.0`)) {
-            list.push(id);
-        }
-    };
-    const online = recordInto(run.onlineWrites);
-    harness.on("stateChange", online);
-    try {
-        run.devices = (await askDiagnostics(harness, { action: "list" }))?.devices ?? [];
-        run.reports = await fetchReports(run.devices.map((device) => device.value));
-    } finally {
-        harness.removeListener("stateChange", online);
+  await harness.enableSendTo();
+  // The jobs of one round run side by side in the adapter; the messages go one at a time — the harness keeps one
+  // answer slot per message, two at once get each other's answer (measured round 104, yamaha copy: eight starts at once,
+  // eight answers naming the first device).
+  const fetchReports = async devices => {
+    const jobs = [];
+    for (const device of devices) {
+      const started = await askDiagnostics(harness, { action: "start", device });
+      assert.ok(
+        typeof started?.job === "string",
+        `start of the report for ${device} answered ${JSON.stringify(started)}`,
+      );
+      jobs.push({ device, job: started.job, deadline: Date.now() + REPORT_DEADLINE_MS });
     }
-    run.valuesAfterOnline = await dumpStates(harness);
+    const done = [];
+    const finished = async () => {
+      for (const job of [...jobs]) {
+        const answer = await askDiagnostics(harness, { action: "result", job: job.job });
+        if (!answer?.pending) {
+          done.push({ device: job.device, answer });
+          jobs.splice(jobs.indexOf(job), 1);
+        } else {
+          assert.ok(
+            Date.now() < job.deadline,
+            `the report for ${job.device} was not done (deadline ${REPORT_DEADLINE_MS} ms)`,
+          );
+        }
+      }
+      return jobs.length === 0;
+    };
+    // past the last deadline every job still pending fails its assert — the cap itself never ends the wait
+    await waitWindow(
+      "every report done",
+      Math.max(0, ...jobs.map(job => job.deadline)) - Date.now() + REPORT_POLL_MS,
+      finished,
+      REPORT_POLL_MS,
+    );
+    return done;
+  };
+  const run = {
+    files: instanceFiles(harness),
+    keys: new Set(await harness.states.getKeys(`${NS}*`)),
+    values: await dumpStates(harness),
+    deleted: watch.deleted.length,
+    start: Date.now(),
+    /** @type {string[]} */
+    writes: [],
+    /** @type {string[]} */
+    onlineWrites: [],
+  };
+  const recordInto = list => (id, state) => {
+    if (id.startsWith(NS) && (!state || state.from === `system.adapter.${ADAPTER}.0`)) {
+      list.push(id);
+    }
+  };
+  const online = recordInto(run.onlineWrites);
+  harness.on("stateChange", online);
+  try {
+    run.devices = (await askDiagnostics(harness, { action: "list" }))?.devices ?? [];
+    run.reports = await fetchReports(run.devices.map(device => device.value));
+  } finally {
+    harness.removeListener("stateChange", online);
+  }
+  run.valuesAfterOnline = await dumpStates(harness);
+  // past the gap a finished report keeps before the same device's next one
+  await waitWindow("the gap before the next report", REPORT_POLL_MS);
+  fs.writeFileSync(HANG_FLAG, "*");
+  try {
+    run.silent = await fetchReports(run.devices.filter(d => d.connected).map(device => device.value));
+  } finally {
+    fs.rmSync(HANG_FLAG, { force: true });
+  }
+  // back to what showed the connection before the silence, before the outage round begins
+  const before = Object.fromEntries(Object.keys(OUTAGE_SHOWN).map(id => [id, run.values[`${NS}${id}`]?.val]));
+  await waitForStates(harness, before, "the adapter did not come back after the silent counterparts");
+  const record = recordInto(run.writes);
+  fs.writeFileSync(OUTAGE_FLAG, "");
+  try {
+    await waitForStates(harness, OUTAGE_SHOWN, "the adapter did not show the outage");
     // past the gap a finished report keeps before the same device's next one
     await waitWindow("the gap before the next report", REPORT_POLL_MS);
-    fs.writeFileSync(HANG_FLAG, "*");
-    try {
-        run.silent = await fetchReports(run.devices.filter((d) => d.connected).map((device) => device.value));
-    } finally {
-        fs.rmSync(HANG_FLAG, { force: true });
-    }
-    // back to what showed the connection before the silence, before the outage round begins
-    const before = Object.fromEntries(Object.keys(OUTAGE_SHOWN).map((id) => [id, run.values[`${NS}${id}`]?.val]));
-    await waitForStates(harness, before, "the adapter did not come back after the silent counterparts");
-    const record = recordInto(run.writes);
-    fs.writeFileSync(OUTAGE_FLAG, "");
-    try {
-        await waitForStates(harness, OUTAGE_SHOWN, "the adapter did not show the outage");
-        // past the gap a finished report keeps before the same device's next one
-        await waitWindow("the gap before the next report", REPORT_POLL_MS);
-        harness.on("stateChange", record);
-        run.offlineDevices = (await askDiagnostics(harness, { action: "list" }))?.devices ?? [];
-        run.offline = await fetchReports(run.offlineDevices.map((device) => device.value));
-    } finally {
-        harness.removeListener("stateChange", record);
-        run.end = Date.now();
-        fs.rmSync(OUTAGE_FLAG, { force: true });
-    }
-    run.filesAfter = instanceFiles(harness);
-    run.keysAfter = await harness.states.getKeys(`${NS}*`);
-    return run;
+    harness.on("stateChange", record);
+    run.offlineDevices = (await askDiagnostics(harness, { action: "list" }))?.devices ?? [];
+    run.offline = await fetchReports(run.offlineDevices.map(device => device.value));
+  } finally {
+    harness.removeListener("stateChange", record);
+    run.end = Date.now();
+    fs.rmSync(OUTAGE_FLAG, { force: true });
+  }
+  run.filesAfter = instanceFiles(harness);
+  run.keysAfter = await harness.states.getKeys(`${NS}*`);
+  return run;
 }
 
 /**
@@ -1986,11 +2115,17 @@ async function playReports(harness, watch) {
  * @param {Set<string>} seen the record files before the suite's start (networkFiles)
  */
 function networkUse(seen) {
-    return fs
-        .readdirSync(RESOURCE_DIR)
-        .filter((f) => f.endsWith(".net") && !seen.has(f))
-        .flatMap((f) => fs.readFileSync(path.join(RESOURCE_DIR, f), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)))
-        .filter((r) => !r.hook);
+  return fs
+    .readdirSync(RESOURCE_DIR)
+    .filter(f => f.endsWith(".net") && !seen.has(f))
+    .flatMap(f =>
+      fs
+        .readFileSync(path.join(RESOURCE_DIR, f), "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map(l => JSON.parse(l)),
+    )
+    .filter(r => !r.hook);
 }
 
 /**
@@ -2003,35 +2138,35 @@ function networkUse(seen) {
  * every port fleet.json names, at its fixture value (F6, round 104).
  */
 function listenPortPlan() {
-    const file = path.join(ADAPTER_DIR, "fleet.json");
-    const fleet = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : {};
-    const native = { ...require(path.join(ADAPTER_DIR, "io-package.json")).native, ...FIXTURE_NATIVE };
-    const taken = [];
-    const others = [];
-    const shared = [];
-    const declared = new Set();
-    for (const entry of fleet.listenPorts ?? []) {
-        if (entry.role === "perDevice") {
-            const [list, key] = String(entry.key).split("[].");
-            const ports = (Array.isArray(native[list]) ? native[list] : []).map((d) => Number(d?.[key])).filter((n) => n > 0);
-            taken.push(...ports.slice(0, 1).map((port) => ({ protocol: entry.protocol, port })));
-            others.push(...ports.slice(1));
-            ports.forEach((port) => declared.add(port));
-        } else {
-            const port = Number(entry.fixed ?? native[entry.key]);
-            if (port > 0) {
-                declared.add(port);
-                if (entry.role === "primary") {
-                    taken.push({ protocol: entry.protocol, port });
-                } else if (entry.role === "secondary") {
-                    others.push(port);
-                } else if (entry.role === "shared") {
-                    shared.push(port);
-                }
-            }
+  const file = path.join(ADAPTER_DIR, "fleet.json");
+  const fleet = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : {};
+  const native = { ...require(path.join(ADAPTER_DIR, "io-package.json")).native, ...FIXTURE_NATIVE };
+  const taken = [];
+  const others = [];
+  const shared = [];
+  const declared = new Set();
+  for (const entry of fleet.listenPorts ?? []) {
+    if (entry.role === "perDevice") {
+      const [list, key] = String(entry.key).split("[].");
+      const ports = (Array.isArray(native[list]) ? native[list] : []).map(d => Number(d?.[key])).filter(n => n > 0);
+      taken.push(...ports.slice(0, 1).map(port => ({ protocol: entry.protocol, port })));
+      others.push(...ports.slice(1));
+      ports.forEach(port => declared.add(port));
+    } else {
+      const port = Number(entry.fixed ?? native[entry.key]);
+      if (port > 0) {
+        declared.add(port);
+        if (entry.role === "primary") {
+          taken.push({ protocol: entry.protocol, port });
+        } else if (entry.role === "secondary") {
+          others.push(port);
+        } else if (entry.role === "shared") {
+          shared.push(port);
         }
+      }
     }
-    return { taken, others, shared, declared, address: native.bind || "0.0.0.0" };
+  }
+  return { taken, others, shared, declared, address: native.bind || "0.0.0.0" };
 }
 
 /**
@@ -2044,21 +2179,27 @@ function listenPortPlan() {
  * @param {string} address the address
  */
 async function takePorts(ports, address) {
-    const held = [];
-    const all = address === "0.0.0.0";
-    for (const { protocol, port } of ports) {
-        const holder = protocol === "udp" ? require("node:dgram").createSocket({ type: all ? "udp6" : "udp4", reuseAddr: false }) : require("node:net").createServer((socket) => socket.destroy());
-        await new Promise((resolve, reject) => {
-            holder.once("error", reject);
-            if (protocol === "udp") {
-                /** @type {import("node:dgram").Socket} */ (holder).bind({ port, address: all ? "::" : address, exclusive: true }, () => resolve(undefined));
-            } else {
-                /** @type {import("node:net").Server} */ (holder).listen(port, all ? "::" : address, () => resolve(undefined));
-            }
-        });
-        held.push(holder);
-    }
-    return held;
+  const held = [];
+  const all = address === "0.0.0.0";
+  for (const { protocol, port } of ports) {
+    const holder =
+      protocol === "udp"
+        ? require("node:dgram").createSocket({ type: all ? "udp6" : "udp4", reuseAddr: false })
+        : require("node:net").createServer(socket => socket.destroy());
+    await new Promise((resolve, reject) => {
+      holder.once("error", reject);
+      if (protocol === "udp") {
+        /** @type {import("node:dgram").Socket} */ (holder).bind(
+          { port, address: all ? "::" : address, exclusive: true },
+          () => resolve(undefined),
+        );
+      } else {
+        /** @type {import("node:net").Server} */ (holder).listen(port, all ? "::" : address, () => resolve(undefined));
+      }
+    });
+    held.push(holder);
+  }
+  return held;
 }
 
 /**
@@ -2069,15 +2210,24 @@ async function takePorts(ports, address) {
  * @param {Array<{ close: (cb: () => void) => void }>} held the holders of takePorts
  */
 function releasePorts(held) {
-    const closed = Promise.all(held.map((h) => /** @type {Promise<void>} */ (new Promise((resolve) => h.close(() => resolve())))));
-    return waitWindow("the held ports close", 1000, closed);
+  const closed = Promise.all(
+    held.map(h => /** @type {Promise<void>} */ (new Promise(resolve => h.close(() => resolve())))),
+  );
+  return waitWindow("the held ports close", 1000, closed);
 }
 
 /** Round 104 (DB-01): every file the adapter process wrote (`<pid>.files`, test/network-hook.js), with its time. */
 function fileWrites() {
-    return fs.readdirSync(RESOURCE_DIR)
-        .filter((f) => f.endsWith(".files"))
-        .flatMap((f) => fs.readFileSync(path.join(RESOURCE_DIR, f), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)));
+  return fs
+    .readdirSync(RESOURCE_DIR)
+    .filter(f => f.endsWith(".files"))
+    .flatMap(f =>
+      fs
+        .readFileSync(path.join(RESOURCE_DIR, f), "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map(l => JSON.parse(l)),
+    );
 }
 
 /**
@@ -2088,14 +2238,19 @@ function fileWrites() {
  * `asked`) marks that place and is never returned: the adapter serves it, no counterpart answered with it.
  */
 function readAnswers(from, until = Infinity, own = new Set()) {
-    return fs.readdirSync(RESOURCE_DIR)
-        .filter((f) => f.endsWith(".answers"))
-        .flatMap((f) => {
-            const all = fs.readFileSync(path.join(RESOURCE_DIR, f), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
-            const asked = all.findIndex((a) => own.has(a.local));
-            return (asked < 0 ? all : all.slice(0, asked)).filter((a) => a.kind !== "asked");
-        })
-        .filter((a) => a.t >= from && a.t < until);
+  return fs
+    .readdirSync(RESOURCE_DIR)
+    .filter(f => f.endsWith(".answers"))
+    .flatMap(f => {
+      const all = fs
+        .readFileSync(path.join(RESOURCE_DIR, f), "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map(l => JSON.parse(l));
+      const asked = all.findIndex(a => own.has(a.local));
+      return (asked < 0 ? all : all.slice(0, asked)).filter(a => a.kind !== "asked");
+    })
+    .filter(a => a.t >= from && a.t < until);
 }
 
 /**
@@ -2107,44 +2262,46 @@ function readAnswers(from, until = Infinity, own = new Set()) {
  * @param {string} address the chosen address
  */
 function offTheAddress(use, address) {
-    const wrong = [];
-    const sockets = new Map();
-    for (const r of use) {
-        if (r.kind === "listen" && r.host !== address) {
-            wrong.push(`listens on ${r.host}:${r.port}`);
-        }
-        if (r.kind === "connect" && r.localAddress !== address) {
-            wrong.push(`connects to ${r.host}:${r.port} from ${r.localAddress ?? "any address"}`);
-        }
-        // round 104: a fetch a fixture answers opens no socket — without a dispatcher of its own it is bound to nothing
-        if (r.kind === "fetch" && !r.bound) {
-            wrong.push(`fetches ${r.host}:${r.port} without a dispatcher on the chosen address`);
-        }
-        if (r.kind === "join" && r.iface !== address) {
-            wrong.push(`joins ${r.group} on ${r.iface ?? "the default interface"}`);
-        }
-        if (r.id !== undefined) {
-            const s = sockets.get(r.id) ?? { joins: 0, egress: [], sends: [] };
-            if (r.kind === "bind") s.bind = r;
-            if (r.kind === "join") s.joins++;
-            if (r.kind === "egress") s.egress.push(r.iface);
-            if (r.kind === "send") s.sends.push(r);
-            sockets.set(r.id, s);
-        }
+  const wrong = [];
+  const sockets = new Map();
+  for (const r of use) {
+    if (r.kind === "listen" && r.host !== address) {
+      wrong.push(`listens on ${r.host}:${r.port}`);
     }
-    for (const s of sockets.values()) {
-        const bound = s.bind?.address;
-        if (s.bind && bound !== address && s.joins === 0) {
-            wrong.push(`UDP socket on ${bound}:${s.bind.port}`);
-        }
-        for (const t of s.sends) {
-            const multicast = /^2(2[4-9]|3\d)\./.test(t.host);
-            if (multicast ? !s.egress.includes(address) : bound !== address) {
-                wrong.push(`sends to ${t.host}:${t.port} from ${multicast ? (s.egress.at(-1) ?? "the default interface") : (bound ?? "any address")}`);
-            }
-        }
+    if (r.kind === "connect" && r.localAddress !== address) {
+      wrong.push(`connects to ${r.host}:${r.port} from ${r.localAddress ?? "any address"}`);
     }
-    return [...new Set(wrong)];
+    // round 104: a fetch a fixture answers opens no socket — without a dispatcher of its own it is bound to nothing
+    if (r.kind === "fetch" && !r.bound) {
+      wrong.push(`fetches ${r.host}:${r.port} without a dispatcher on the chosen address`);
+    }
+    if (r.kind === "join" && r.iface !== address) {
+      wrong.push(`joins ${r.group} on ${r.iface ?? "the default interface"}`);
+    }
+    if (r.id !== undefined) {
+      const s = sockets.get(r.id) ?? { joins: 0, egress: [], sends: [] };
+      if (r.kind === "bind") s.bind = r;
+      if (r.kind === "join") s.joins++;
+      if (r.kind === "egress") s.egress.push(r.iface);
+      if (r.kind === "send") s.sends.push(r);
+      sockets.set(r.id, s);
+    }
+  }
+  for (const s of sockets.values()) {
+    const bound = s.bind?.address;
+    if (s.bind && bound !== address && s.joins === 0) {
+      wrong.push(`UDP socket on ${bound}:${s.bind.port}`);
+    }
+    for (const t of s.sends) {
+      const multicast = /^2(2[4-9]|3\d)\./.test(t.host);
+      if (multicast ? !s.egress.includes(address) : bound !== address) {
+        wrong.push(
+          `sends to ${t.host}:${t.port} from ${multicast ? (s.egress.at(-1) ?? "the default interface") : (bound ?? "any address")}`,
+        );
+      }
+    }
+  }
+  return [...new Set(wrong)];
 }
 
 /**
@@ -2159,839 +2316,1094 @@ function offTheAddress(use, address) {
  * @param {string} address the chosen address
  */
 async function askFromAnotherNetwork(use, address) {
-    const answered = [];
-    const asked = new Set();
-    for (const r of use) {
-        if (r.kind === "listen" && !asked.has(`tcp ${r.port}`)) {
-            asked.add(`tcp ${r.port}`);
-            const ask = (secure) =>
-                new Promise((resolve) => {
-                    let data = "";
-                    const where = { host: address, port: r.port, localAddress: LAN_ADDRESS };
-                    const socket = secure
-                        ? require("node:tls").connect({ ...where, rejectUnauthorized: false })
-                        : require("node:net").connect(where);
-                    const wait = setTimeout(() => socket.destroy(), 1500);
-                    socket.on(secure ? "secureConnect" : "connect", () => socket.write("GET / HTTP/1.0\r\n\r\n"));
-                    socket.on("data", (d) => (data += d));
-                    socket.on("error", () => {});
-                    socket.on("close", () => {
-                        clearTimeout(wait);
-                        resolve(data);
-                    });
-                });
-            const plain = await ask(false);
-            const reply = plain && !plain.startsWith("\u0015\u0003") ? plain : await ask(true);
-            const status = /^HTTP\/\d(?:\.\d)? (\d{3})/.exec(reply);
-            if (reply && !(status && Number(status[1]) >= 400)) {
-                answered.push(`TCP ${address}:${r.port} answered a client from ${LAN_ADDRESS}`);
-            }
-        }
-        if (r.kind === "bind" && r.port && !asked.has(`udp ${r.port}`)) {
-            asked.add(`udp ${r.port}`);
-            const reply = await new Promise((resolve) => {
-                const socket = require("node:dgram").createSocket("udp4");
-                const wait = setTimeout(() => {
-                    socket.close();
-                    resolve(false);
-                }, 1500);
-                socket.on("message", () => {
-                    clearTimeout(wait);
-                    socket.close();
-                    resolve(true);
-                });
-                socket.bind(0, LAN_ADDRESS, () =>
-                    socket.send('M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: "ssdp:discover"\r\nMX: 1\r\nST: ssdp:all\r\n\r\n', r.port, address),
-                );
-            });
-            if (reply) {
-                answered.push(`UDP ${address}:${r.port} answered a sender from ${LAN_ADDRESS}`);
-            }
-        }
+  const answered = [];
+  const asked = new Set();
+  for (const r of use) {
+    if (r.kind === "listen" && !asked.has(`tcp ${r.port}`)) {
+      asked.add(`tcp ${r.port}`);
+      const ask = secure =>
+        new Promise(resolve => {
+          let data = "";
+          const where = { host: address, port: r.port, localAddress: LAN_ADDRESS };
+          const socket = secure
+            ? require("node:tls").connect({ ...where, rejectUnauthorized: false })
+            : require("node:net").connect(where);
+          const wait = setTimeout(() => socket.destroy(), 1500);
+          socket.on(secure ? "secureConnect" : "connect", () => socket.write("GET / HTTP/1.0\r\n\r\n"));
+          socket.on("data", d => (data += d));
+          socket.on("error", () => {});
+          socket.on("close", () => {
+            clearTimeout(wait);
+            resolve(data);
+          });
+        });
+      const plain = await ask(false);
+      const reply = plain && !plain.startsWith("\u0015\u0003") ? plain : await ask(true);
+      const status = /^HTTP\/\d(?:\.\d)? (\d{3})/.exec(reply);
+      if (reply && !(status && Number(status[1]) >= 400)) {
+        answered.push(`TCP ${address}:${r.port} answered a client from ${LAN_ADDRESS}`);
+      }
     }
-    return answered;
+    if (r.kind === "bind" && r.port && !asked.has(`udp ${r.port}`)) {
+      asked.add(`udp ${r.port}`);
+      const reply = await new Promise(resolve => {
+        const socket = require("node:dgram").createSocket("udp4");
+        const wait = setTimeout(() => {
+          socket.close();
+          resolve(false);
+        }, 1500);
+        socket.on("message", () => {
+          clearTimeout(wait);
+          socket.close();
+          resolve(true);
+        });
+        socket.bind(0, LAN_ADDRESS, () =>
+          socket.send(
+            'M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: "ssdp:discover"\r\nMX: 1\r\nST: ssdp:all\r\n\r\n',
+            r.port,
+            address,
+          ),
+        );
+      });
+      if (reply) {
+        answered.push(`UDP ${address}:${r.port} answered a sender from ${LAN_ADDRESS}`);
+      }
+    }
+  }
+  return answered;
 }
 
 tests.integration(ADAPTER_DIR, {
-    controllerVersion: "stable",
-    defineAdditionalTests({ suite: harnessSuite }) {
-        // Round 165: the template's own suites write their suites, tests, starts and stops into d06-events.jsonl like the
-        // fleet suites (lab run 2026-10-31: without it 103 s of a 222 s D06 left events); B02 audit_inventory_suites_keyed.
-        // The contract of D06 per suite (pre-release.py runs only the suites whose key moved): suiteState names every
-        // binding of this file a function writes, as plain values; restoreState sets each of them again — the master hands
-        // a suite after a left-out one the state the whole run gives it (READ_ONLY gathers over every suite, the root
-        // after() judges with it). scripts/inventory-suites.mjs refuses a binding neither names: D06 then runs whole.
-        const suite = require("./fleet-suites.js").withProtocol(harnessSuite, {
-            RESOURCE_DIR,
-            suiteState: () => ({ counting, READ_ONLY: [...READ_ONLY], askAt }),
-            restoreState: (state) => {
-                counting = state.counting;
-                askAt = state.askAt;
-                READ_ONLY.clear();
-                state.READ_ONLY.forEach((id) => READ_ONLY.add(id));
-            },
+  controllerVersion: "stable",
+  defineAdditionalTests({ suite: harnessSuite }) {
+    // Round 165: the template's own suites write their suites, tests, starts and stops into d06-events.jsonl like the
+    // fleet suites (lab run 2026-10-31: without it 103 s of a 222 s D06 left events); B02 audit_inventory_suites_keyed.
+    // The contract of D06 per suite (pre-release.py runs only the suites whose key moved): suiteState names every
+    // binding of this file a function writes, as plain values; restoreState sets each of them again — the master hands
+    // a suite after a left-out one the state the whole run gives it (READ_ONLY gathers over every suite, the root
+    // after() judges with it). scripts/inventory-suites.mjs refuses a binding neither names: D06 then runs whole.
+    const suite = require("./fleet-suites.js").withProtocol(harnessSuite, {
+      RESOURCE_DIR,
+      suiteState: () => ({ counting, READ_ONLY: [...READ_ONLY], askAt }),
+      restoreState: state => {
+        counting = state.counting;
+        askAt = state.askAt;
+        READ_ONLY.clear();
+        state.READ_ONLY.forEach(id => READ_ONLY.add(id));
+      },
+    });
+    suite("object inventory", getHarness => {
+      let harness;
+      let watch;
+      let restarts;
+      let seen;
+      before(async function () {
+        this.timeout(120000);
+        harness = getHarness();
+        clearInstanceData(harness);
+        watch = await watchObjectWrites(harness);
+        await resetInstanceNative(harness, await fixtureNative());
+        await seedInstanceObjects(harness);
+        await setSystemLanguage(harness, FIRST_LANGUAGE);
+        seen = networkFiles();
+        restarts = playControllerRestarts(harness, watch, NETWORK_HOOK);
+        await harness.startAdapterAndWait(false, adapterEnv(NETWORK_HOOK));
+        await feedFixtures(harness);
+        await restarts.done;
+        await waitForAdapterWork(harness);
+      });
+
+      // Round 104 (krobi 2026-09-15 09:12: every listener, fixed ports included, F6): every port the adapter asks for
+      // while it runs stands in fleet.json `listenPorts` — the package check reads the source, this the running process.
+      it("listens only on the ports it declares", function () {
+        const { declared } = listenPortPlan();
+        const undeclared = [
+          ...new Set(
+            networkUse(seen)
+              .filter(r => (r.kind === "listen" || r.kind === "bind") && r.asked > 0 && !declared.has(r.asked))
+              .map(r => `${r.kind} ${r.asked}`),
+          ),
+        ];
+        assert.deepStrictEqual(
+          undeclared,
+          [],
+          `ports the adapter takes that fleet.json listenPorts does not declare:\n${undeclared.join("\n")}`,
+        );
+      });
+
+      it("writes test/objects.inventory.json", async function () {
+        this.timeout(30000);
+        const objects = await dumpObjects(harness);
+        assert.ok(Object.keys(objects).length > 0, "no objects created — fixtures did not reach the adapter");
+        fs.writeFileSync(INVENTORY, `${JSON.stringify(objects, null, 2)}\n`);
+      });
+
+      it("writes test/states.inventory.json", async function () {
+        this.timeout(30000);
+        const states = await dumpStates(harness);
+        assert.ok(Object.keys(states).length > 0, "no states written — fixtures did not reach the adapter");
+        fs.writeFileSync(STATES_INVENTORY, `${JSON.stringify(states, null, 2)}\n`);
+      });
+
+      it("writes no object more than MAX_OBJECT_WRITES times", function () {
+        const churn = [...watch.peak].filter(([, n]) => n > MAX_OBJECT_WRITES).map(([id, n]) => `${id} ×${n}`);
+        assert.deepStrictEqual(churn, [], `objects written more than ${MAX_OBJECT_WRITES} times in one start`);
+      });
+
+      it("rewrites no object unchanged", function () {
+        const idle = [...new Set(watch.unchanged)];
+        assert.deepStrictEqual(idle, [], `objects written without a change:\n${idle.join("\n")}`);
+      });
+
+      it("rewrites no state unchanged", function () {
+        const idle = [...new Set(watch.unchangedStates)];
+        assert.deepStrictEqual(idle, [], `states written without a change:\n${idle.join("\n")}`);
+      });
+
+      it("restarts at most once for its own instance object", function () {
+        assert.deepStrictEqual(restarts.again, [], "the instance object changed again after the restart it caused");
+      });
+    });
+
+    // The same run once more in a second system language: a label that stays the same in both was never
+    // translated. A suite of its own — the harness starts an adapter only once per suite (a second
+    // startAdapterAndWait in the same suite never resolves), and every suite gets a fresh database.
+    suite("second system language", getHarness => {
+      let harness;
+      let restarts;
+      before(async function () {
+        this.timeout(120000);
+        harness = getHarness();
+        clearInstanceData(harness);
+        await resetInstanceNative(harness, await fixtureNative());
+        await seedInstanceObjects(harness);
+        await setSystemLanguage(harness, SECOND_LANGUAGE);
+        restarts = playControllerRestarts(harness, null);
+        await harness.startAdapterAndWait(false, adapterEnv());
+        await feedFixtures(harness);
+        await restarts.done;
+        await waitForAdapterWork(harness);
+      });
+
+      it("restarts at most once for its own instance object", function () {
+        assert.deepStrictEqual(restarts.again, [], "the instance object changed again after the restart it caused");
+      });
+
+      it("writes test/objects.inventory.de.json", async function () {
+        this.timeout(30000);
+        const objects = await dumpObjects(harness);
+        assert.ok(Object.keys(objects).length > 0, "no objects created — fixtures did not reach the adapter");
+        fs.writeFileSync(OBJECTS_SECOND_LANGUAGE, `${JSON.stringify(objects, null, 2)}\n`);
+      });
+    });
+
+    // No counterpart suites here — "counterpart gone and back", "a restart right after the start", "one counterpart
+    // hangs" (both) and "a command nobody answers stays unconfirmed": an emulated Home Assistant server has no
+    // counterpart that can go away, hang or confirm a command — the displays come to it. The sealed register carries
+    // krobi's entry "counterpart: none" (Gate A14, 2026-10-02 22:05), the only thing that lets these suites go.
+
+    // Round 104 (krobi 2026-10-03 12:01, GV-28 for every listener: an adapter that cannot communicate has a fatal
+    // error): another program holds the adapter's own port before it starts. With no other path —
+    // nothing answers, no other declared port is open — the adapter stops with an error; with one it runs on.
+    if (listenPortPlan().taken.length > 0) {
+      suite("a taken port", getHarness => {
+        let harness;
+        let held = [];
+        let verdict;
+        before(async function () {
+          this.timeout(TAKEN_WINDOW_MS + 120000);
+          harness = getHarness();
+          clearInstanceData(harness);
+          await resetInstanceNative(harness, await fixtureNative());
+          await seedInstanceObjects(harness);
+          const plan = listenPortPlan();
+          held = await takePorts(plan.taken, plan.address);
+          const seen = networkFiles();
+          const since = Date.now();
+          await harness.startAdapter(adapterEnv(NETWORK_HOOK));
+          const fed = feedFixtures(harness).then(
+            () => undefined,
+            err => err,
+          );
+          // it stops — or the whole window shows it runs on
+          await waitWindow("a taken port", since + TAKEN_WINDOW_MS - Date.now(), () => harness.didAdapterStop(), 500);
+          await waitWindow("the feed ends", 1000, fed);
+          const taken = new Set(plan.taken.map(p => p.port));
+          // round 173: an answer that came in on a shared port (SSDP) is no path either — the port is none
+          const shared = new Set(plan.shared);
+          const via = answers => [
+            ...new Set(
+              answers
+                .filter(a => !taken.has(a.local) && !shared.has(a.local))
+                .map(a => `${a.kind} ${a.host}:${a.port} answers`),
+            ),
+          ];
+          const open = networkUse(seen)
+            .filter(r => (r.kind === "listen" || r.kind === "bind") && plan.others.includes(r.port))
+            .map(r => `listens on ${r.port}`);
+          // the suites before this one ran with the port free: what answered there on another port is a path too —
+          // an adapter that stops at once never gets to show it here. Round 174: of each start there only what
+          // answered before anything came in on a taken port — a request the adapter makes because a client
+          // asked it something over that port has no way left once another program holds the port
+          verdict = {
+            plan,
+            stopped: harness.didAdapterStop(),
+            exit: harness.adapterExit,
+            paths: [...open, ...via(readAnswers(since))],
+            before: via(readAnswers(0, since, taken)),
+            errors: harness.getLogs().filter(l => l.level === "error" && l.from === `${ADAPTER}.0`),
+          };
         });
-        suite("object inventory", getHarness => {
-            let harness;
-            let watch;
-            let restarts;
-            let seen;
-            before(async function () {
-                this.timeout(120000);
-                harness = getHarness();
-                clearInstanceData(harness);
-                watch = await watchObjectWrites(harness);
-                await resetInstanceNative(harness, await fixtureNative());
-                await seedInstanceObjects(harness);
-                await setSystemLanguage(harness, FIRST_LANGUAGE);
-                seen = networkFiles();
-                restarts = playControllerRestarts(harness, watch, NETWORK_HOOK);
-                await harness.startAdapterAndWait(false, adapterEnv(NETWORK_HOOK));
-                await feedFixtures(harness);
-                await restarts.done;
-                await waitForAdapterWork(harness);
-            });
+        after(() => releasePorts(held));
 
-            // Round 104 (krobi 2026-09-15 09:12: every listener, fixed ports included, F6): every port the adapter asks for
-            // while it runs stands in fleet.json `listenPorts` — the package check reads the source, this the running process.
-            it("listens only on the ports it declares", function () {
-                const { declared } = listenPortPlan();
-                const undeclared = [...new Set(networkUse(seen).filter((r) => (r.kind === "listen" || r.kind === "bind") && r.asked > 0 && !declared.has(r.asked)).map((r) => `${r.kind} ${r.asked}`))];
-                assert.deepStrictEqual(undeclared, [], `ports the adapter takes that fleet.json listenPorts does not declare:\n${undeclared.join("\n")}`);
-            });
+        it("stops with an error when it can talk to nothing, and runs on when it can", function () {
+          const ports = verdict.plan.taken.map(p => `${p.protocol} ${p.port}`).join(", ");
+          if (verdict.stopped) {
+            assert.strictEqual(
+              verdict.exit,
+              6,
+              `stopped with exit code ${verdict.exit} while ${ports} was taken — a start that cannot open its port ends with 6, the code js-controller tries again (start-failure standard)`,
+            );
+            assert.strictEqual(
+              verdict.errors.length,
+              1,
+              `stopped with ${verdict.errors.length} error lines while ${ports} was taken — exactly one names what failed, the user reads the log, not the exit code`,
+            );
+            assert.deepStrictEqual(
+              [...verdict.paths, ...verdict.before],
+              [],
+              `stopped although it still had a path while ${ports} was taken`,
+            );
+          } else {
+            assert.ok(
+              verdict.paths.length > 0,
+              `runs on ${TAKEN_WINDOW_MS} ms after a start with ${ports} taken, and nothing answered and no other port of it is open — it talks to nothing, that is a fatal error`,
+            );
+          }
+        });
+      });
+    }
 
-            it("writes test/objects.inventory.json", async function () {
-                this.timeout(30000);
-                const objects = await dumpObjects(harness);
-                assert.ok(Object.keys(objects).length > 0, "no objects created — fixtures did not reach the adapter");
-                fs.writeFileSync(INVENTORY, `${JSON.stringify(objects, null, 2)}\n`);
-            });
+    // Round 87 (krobi 2026-10-03 00:04): a device, account or entry named `info` never takes the place of the adapter's
+    // own `info` channel — `info` and everything below it stay exactly what a fresh installation has.
+    suite("a name that is the adapter's own", getHarness => {
+      let harness;
+      let watch;
+      let restarts;
+      let live;
+      before(async function () {
+        this.timeout(180000);
+        harness = getHarness();
+        clearInstanceData(harness);
+        watch = await watchObjectWrites(harness);
+        await resetInstanceNative(harness, await fixtureNative());
+        await seedInstanceObjects(harness);
+        await setSystemLanguage(harness, FIRST_LANGUAGE);
+        restarts = playControllerRestarts(harness, watch);
+        await harness.startAdapterAndWait(false, adapterEnv());
+        await feedFixtures(harness);
+        await feedReservedNames(harness);
+        await restarts.done;
+        await waitForAdapterWork(harness);
+        live = await dumpObjects(harness);
+      });
 
-            it("writes test/states.inventory.json", async function () {
-                this.timeout(30000);
-                const states = await dumpStates(harness);
-                assert.ok(Object.keys(states).length > 0, "no states written — fixtures did not reach the adapter");
-                fs.writeFileSync(STATES_INVENTORY, `${JSON.stringify(states, null, 2)}\n`);
-            });
+      it("keeps its own info channel", function () {
+        const current = JSON.parse(fs.readFileSync(INVENTORY, "utf8"));
+        const own = id => id === `${NS}info` || id.startsWith(`${NS}info.`);
+        const ids = [...new Set([...Object.keys(current), ...Object.keys(live)])].filter(own);
+        const taken = ids.filter(id => canonical(live[id] ?? null) !== canonical(current[id] ?? null));
+        const gone = [...new Set(watch.deleted)].filter(own);
+        assert.deepStrictEqual(
+          [...taken, ...gone],
+          [],
+          `objects below info that differ from a fresh installation or were deleted:\n${[...taken, ...gone].join("\n")}`,
+        );
+      });
 
-            it("writes no object more than MAX_OBJECT_WRITES times", function () {
-                const churn = [...watch.peak].filter(([, n]) => n > MAX_OBJECT_WRITES).map(([id, n]) => `${id} ×${n}`);
-                assert.deepStrictEqual(churn, [], `objects written more than ${MAX_OBJECT_WRITES} times in one start`);
-            });
+      it("restarts at most once for its own instance object", function () {
+        assert.deepStrictEqual(restarts.again, [], "the instance object changed again after the restart it caused");
+      });
+    });
 
-            it("rewrites no object unchanged", function () {
-                const idle = [...new Set(watch.unchanged)];
-                assert.deepStrictEqual(idle, [], `objects written without a change:\n${idle.join("\n")}`);
-            });
+    // hassemu: a display 1.x left behind — a `channel` with the legacy `visUrl` and an empty `hostname`, seeded into
+    // every fresh installation (seedInstanceObjects) — is a device after the start, under the id of K7, its URL
+    // carried into mode and manualUrl, visUrl and hostname gone (I22, K7). The inventory shows the tree; this shows
+    // the values the move carried.
+    suite("a display left from 1.x", getHarness => {
+      let harness;
+      let restarts;
+      let found;
+      before(async function () {
+        this.timeout(120000);
+        harness = getHarness();
+        clearInstanceData(harness);
+        await resetInstanceNative(harness, await fixtureNative());
+        await seedInstanceObjects(harness);
+        restarts = playControllerRestarts(harness, null);
+        await harness.startAdapterAndWait(false, adapterEnv());
+        await feedFixtures(harness);
+        await restarts.done;
+        await waitForAdapterWork(harness);
+        const base = `${NS}clients.${LEGACY.movedId}`;
+        found = {
+          kind: (await harness.objects.getObjectAsync(base))?.type,
+          oldId: (await harness.objects.getObjectAsync(`${NS}clients.${LEGACY.id}`)) ?? null,
+          visUrl: (await harness.objects.getObjectAsync(`${base}.visUrl`)) ?? null,
+          hostname: (await harness.objects.getObjectAsync(`${base}.hostname`)) ?? null,
+          mode: (await harness.states.getStateAsync(`${base}.mode`))?.val,
+          manualUrl: (await harness.states.getStateAsync(`${base}.manualUrl`))?.val,
+          recognised: await displayOfCookie(harness, LEGACY.cookie),
+        };
+      });
 
-            it("rewrites no state unchanged", function () {
-                const idle = [...new Set(watch.unchangedStates)];
-                assert.deepStrictEqual(idle, [], `states written without a change:\n${idle.join("\n")}`);
-            });
+      it("is a device under the id of K7 that kept its URL", function () {
+        assert.deepStrictEqual(found, {
+          kind: "device",
+          oldId: null,
+          visUrl: null,
+          hostname: null,
+          mode: "manual",
+          manualUrl: LEGACY.visUrl,
+          recognised: LEGACY.movedId,
+        });
+      });
 
-            it("restarts at most once for its own instance object", function () {
-                assert.deepStrictEqual(restarts.again, [], "the instance object changed again after the restart it caused");
-            });
+      it("restarts at most once for its own instance object", function () {
+        assert.deepStrictEqual(restarts.again, [], "the instance object changed again after the restart it caused");
+      });
+    });
+
+    // Round 87 (krobi 2026-10-03 00:27/00:28, 11:38): with an address chosen, the adapter listens, sends and connects
+    // there and nowhere else — the cloud included — and a client from another network gets no answer.
+    if (ADDRESS_KEY) {
+      suite("chosen network address", getHarness => {
+        let harness;
+        let restarts;
+        let use;
+        let strangers;
+        before(async function () {
+          this.timeout(180000);
+          assert.ok(
+            LAN_ADDRESS,
+            "this machine carries no non-internal IPv4 address a client of another network asks from",
+          );
+          harness = getHarness();
+          clearInstanceData(harness);
+          const seen = networkFiles();
+          await resetInstanceNative(harness, await fixtureNative({ [ADDRESS_KEY]: CHOSEN_ADDRESS }));
+          await seedInstanceObjects(harness);
+          restarts = playControllerRestarts(harness, null, NETWORK_HOOK);
+          await harness.startAdapterAndWait(false, adapterEnv(NETWORK_HOOK));
+          await feedFixtures(harness);
+          await restarts.done;
+          await waitForAdapterWork(harness);
+          use = networkUse(seen);
+          strangers = await askFromAnotherNetwork(use, /** @type {string} */ (CHOSEN_ADDRESS));
         });
 
-        // The same run once more in a second system language: a label that stays the same in both was never
-        // translated. A suite of its own — the harness starts an adapter only once per suite (a second
-        // startAdapterAndWait in the same suite never resolves), and every suite gets a fresh database.
-        suite("second system language", getHarness => {
-            let harness;
-            let restarts;
-            before(async function () {
-                this.timeout(120000);
-                harness = getHarness();
-                clearInstanceData(harness);
-                await resetInstanceNative(harness, await fixtureNative());
-                await seedInstanceObjects(harness);
-                await setSystemLanguage(harness, SECOND_LANGUAGE);
-                restarts = playControllerRestarts(harness, null);
-                await harness.startAdapterAndWait(false, adapterEnv());
-                await feedFixtures(harness);
-                await restarts.done;
-                await waitForAdapterWork(harness);
-            });
-
-            it("restarts at most once for its own instance object", function () {
-                assert.deepStrictEqual(restarts.again, [], "the instance object changed again after the restart it caused");
-            });
-
-            it("writes test/objects.inventory.de.json", async function () {
-                this.timeout(30000);
-                const objects = await dumpObjects(harness);
-                assert.ok(Object.keys(objects).length > 0, "no objects created — fixtures did not reach the adapter");
-                fs.writeFileSync(OBJECTS_SECOND_LANGUAGE, `${JSON.stringify(objects, null, 2)}\n`);
-            });
+        it("uses only the chosen address", function () {
+          assert.ok(
+            use.length > 0,
+            "the network hook recorded nothing — a start without NETWORK_HOOK as its last hook",
+          );
+          const wrong = offTheAddress(use, /** @type {string} */ (CHOSEN_ADDRESS));
+          assert.deepStrictEqual(wrong, [], `network use off ${CHOSEN_ADDRESS}:\n${wrong.join("\n")}`);
         });
 
-        // No counterpart suites here — "counterpart gone and back", "a restart right after the start", "one counterpart
-        // hangs" (both) and "a command nobody answers stays unconfirmed": an emulated Home Assistant server has no
-        // counterpart that can go away, hang or confirm a command — the displays come to it. The sealed register carries
-        // krobi's entry "counterpart: none" (Gate A14, 2026-10-02 22:05), the only thing that lets these suites go.
-
-        // Round 104 (krobi 2026-10-03 12:01, GV-28 for every listener: an adapter that cannot communicate has a fatal
-        // error): another program holds the adapter's own port before it starts. With no other path —
-        // nothing answers, no other declared port is open — the adapter stops with an error; with one it runs on.
-        if (listenPortPlan().taken.length > 0) {
-            suite("a taken port", getHarness => {
-                let harness;
-                let held = [];
-                let verdict;
-                before(async function () {
-                    this.timeout(TAKEN_WINDOW_MS + 120000);
-                    harness = getHarness();
-                    clearInstanceData(harness);
-                    await resetInstanceNative(harness, await fixtureNative());
-                    await seedInstanceObjects(harness);
-                    const plan = listenPortPlan();
-                    held = await takePorts(plan.taken, plan.address);
-                    const seen = networkFiles();
-                    const since = Date.now();
-                    await harness.startAdapter(adapterEnv(NETWORK_HOOK));
-                    const fed = feedFixtures(harness).then(() => undefined, (err) => err);
-                    // it stops — or the whole window shows it runs on
-                    await waitWindow("a taken port", since + TAKEN_WINDOW_MS - Date.now(), () => harness.didAdapterStop(), 500);
-                    await waitWindow("the feed ends", 1000, fed);
-                    const taken = new Set(plan.taken.map((p) => p.port));
-                    // round 173: an answer that came in on a shared port (SSDP) is no path either — the port is none
-                    const shared = new Set(plan.shared);
-                    const via = (answers) => [...new Set(answers.filter((a) => !taken.has(a.local) && !shared.has(a.local)).map((a) => `${a.kind} ${a.host}:${a.port} answers`))];
-                    const open = networkUse(seen).filter((r) => (r.kind === "listen" || r.kind === "bind") && plan.others.includes(r.port)).map((r) => `listens on ${r.port}`);
-                    // the suites before this one ran with the port free: what answered there on another port is a path too —
-                    // an adapter that stops at once never gets to show it here. Round 174: of each start there only what
-                    // answered before anything came in on a taken port — a request the adapter makes because a client
-                    // asked it something over that port has no way left once another program holds the port
-                    verdict = { plan, stopped: harness.didAdapterStop(), exit: harness.adapterExit, paths: [...open, ...via(readAnswers(since))], before: via(readAnswers(0, since, taken)),
-                        errors: harness.getLogs().filter((l) => l.level === "error" && l.from === `${ADAPTER}.0`) };
-                });
-                after(() => releasePorts(held));
-
-                it("stops with an error when it can talk to nothing, and runs on when it can", function () {
-                    const ports = verdict.plan.taken.map((p) => `${p.protocol} ${p.port}`).join(", ");
-                    if (verdict.stopped) {
-                        assert.strictEqual(verdict.exit, 6, `stopped with exit code ${verdict.exit} while ${ports} was taken — a start that cannot open its port ends with 6, the code js-controller tries again (start-failure standard)`);
-                        assert.strictEqual(verdict.errors.length, 1, `stopped with ${verdict.errors.length} error lines while ${ports} was taken — exactly one names what failed, the user reads the log, not the exit code`);
-                        assert.deepStrictEqual([...verdict.paths, ...verdict.before], [], `stopped although it still had a path while ${ports} was taken`);
-                    } else {
-                        assert.ok(verdict.paths.length > 0, `runs on ${TAKEN_WINDOW_MS} ms after a start with ${ports} taken, and nothing answered and no other port of it is open — it talks to nothing, that is a fatal error`);
-                    }
-                });
-            });
-        }
-
-        // Round 87 (krobi 2026-10-03 00:04): a device, account or entry named `info` never takes the place of the adapter's
-        // own `info` channel — `info` and everything below it stay exactly what a fresh installation has.
-        suite("a name that is the adapter's own", getHarness => {
-            let harness;
-            let watch;
-            let restarts;
-            let live;
-            before(async function () {
-                this.timeout(180000);
-                harness = getHarness();
-                clearInstanceData(harness);
-                watch = await watchObjectWrites(harness);
-                await resetInstanceNative(harness, await fixtureNative());
-                await seedInstanceObjects(harness);
-                await setSystemLanguage(harness, FIRST_LANGUAGE);
-                restarts = playControllerRestarts(harness, watch);
-                await harness.startAdapterAndWait(false, adapterEnv());
-                await feedFixtures(harness);
-                await feedReservedNames(harness);
-                await restarts.done;
-                await waitForAdapterWork(harness);
-                live = await dumpObjects(harness);
-            });
-
-            it("keeps its own info channel", function () {
-                const current = JSON.parse(fs.readFileSync(INVENTORY, "utf8"));
-                const own = (id) => id === `${NS}info` || id.startsWith(`${NS}info.`);
-                const ids = [...new Set([...Object.keys(current), ...Object.keys(live)])].filter(own);
-                const taken = ids.filter((id) => canonical(live[id] ?? null) !== canonical(current[id] ?? null));
-                const gone = [...new Set(watch.deleted)].filter(own);
-                assert.deepStrictEqual([...taken, ...gone], [], `objects below info that differ from a fresh installation or were deleted:\n${[...taken, ...gone].join("\n")}`);
-            });
-
-            it("restarts at most once for its own instance object", function () {
-                assert.deepStrictEqual(restarts.again, [], "the instance object changed again after the restart it caused");
-            });
+        it("answers no client from another network", function () {
+          assert.deepStrictEqual(strangers, [], `answers to another network:\n${strangers.join("\n")}`);
         });
 
-        // hassemu: a display 1.x left behind — a `channel` with the legacy `visUrl` and an empty `hostname`, seeded into
-        // every fresh installation (seedInstanceObjects) — is a device after the start, under the id of K7, its URL
-        // carried into mode and manualUrl, visUrl and hostname gone (I22, K7). The inventory shows the tree; this shows
-        // the values the move carried.
-        suite("a display left from 1.x", getHarness => {
-            let harness;
-            let restarts;
-            let found;
-            before(async function () {
-                this.timeout(120000);
-                harness = getHarness();
-                clearInstanceData(harness);
-                await resetInstanceNative(harness, await fixtureNative());
-                await seedInstanceObjects(harness);
-                restarts = playControllerRestarts(harness, null);
-                await harness.startAdapterAndWait(false, adapterEnv());
-                await feedFixtures(harness);
-                await restarts.done;
-                await waitForAdapterWork(harness);
-                const base = `${NS}clients.${LEGACY.movedId}`;
-                found = {
-                    kind: (await harness.objects.getObjectAsync(base))?.type,
-                    oldId: (await harness.objects.getObjectAsync(`${NS}clients.${LEGACY.id}`)) ?? null,
-                    visUrl: (await harness.objects.getObjectAsync(`${base}.visUrl`)) ?? null,
-                    hostname: (await harness.objects.getObjectAsync(`${base}.hostname`)) ?? null,
-                    mode: (await harness.states.getStateAsync(`${base}.mode`))?.val,
-                    manualUrl: (await harness.states.getStateAsync(`${base}.manualUrl`))?.val,
-                    recognised: await displayOfCookie(harness, LEGACY.cookie),
-                };
-            });
+        it("restarts at most once for its own instance object", function () {
+          assert.deepStrictEqual(restarts.again, [], "the instance object changed again after the restart it caused");
+        });
+      });
 
-            it("is a device under the id of K7 that kept its URL", function () {
-                assert.deepStrictEqual(found, {
-                    kind: "device",
-                    oldId: null,
-                    visUrl: null,
-                    hostname: null,
-                    mode: "manual",
-                    manualUrl: LEGACY.visUrl,
-                    recognised: LEGACY.movedId,
-                });
-            });
-
-            it("restarts at most once for its own instance object", function () {
-                assert.deepStrictEqual(restarts.again, [], "the instance object changed again after the restart it caused");
-            });
+      // Round 87 (krobi 2026-10-02 23:52, F-06 of fakeroku as the fleet rule): an address the host does not carry —
+      // the adapter falls back to every address, keeps working, and says so in exactly one warning.
+      suite("missing network address", getHarness => {
+        let harness;
+        let restarts;
+        let lines;
+        before(async function () {
+          this.timeout(180000);
+          harness = getHarness();
+          clearInstanceData(harness);
+          await resetInstanceNative(harness, await fixtureNative({ [ADDRESS_KEY]: MISSING_ADDRESS }));
+          await seedInstanceObjects(harness);
+          restarts = playControllerRestarts(harness, null, NETWORK_HOOK);
+          await harness.startAdapterAndWait(false, adapterEnv(NETWORK_HOOK));
+          // The fixtures reach the adapter on every address — that it keeps working. No waitForAdapterWork: a
+          // missing address may keep the adapter's state short of green (fakeroku F-06: yellow until changed).
+          await feedFixtures(harness);
+          await restarts.done;
+          // Round 157 (inventory-template audit V24): the warning may come after the fixtures — wait for it (at most
+          // START_DEADLINE_MS), then SETTLE_MS for a second one; read at once, a warning a moment later turned it red
+          const naming = () =>
+            harness.getLogs().filter(l => l.from === `${ADAPTER}.0` && l.message.includes(MISSING_ADDRESS));
+          const warned = () => naming().some(l => l.level === "warn" || l.level === "error");
+          await waitWindow("the warning of a missing address", START_DEADLINE_MS, warned, 250);
+          await waitWindow("a second warning", SETTLE_MS);
+          lines = naming();
         });
 
-        // Round 87 (krobi 2026-10-03 00:27/00:28, 11:38): with an address chosen, the adapter listens, sends and connects
-        // there and nowhere else — the cloud included — and a client from another network gets no answer.
-        if (ADDRESS_KEY) {
-            suite("chosen network address", getHarness => {
-                let harness;
-                let restarts;
-                let use;
-                let strangers;
-                before(async function () {
-                    this.timeout(180000);
-                    assert.ok(LAN_ADDRESS, "this machine carries no non-internal IPv4 address a client of another network asks from");
-                    harness = getHarness();
-                    clearInstanceData(harness);
-                    const seen = networkFiles();
-                    await resetInstanceNative(harness, await fixtureNative({ [ADDRESS_KEY]: CHOSEN_ADDRESS }));
-                    await seedInstanceObjects(harness);
-                    restarts = playControllerRestarts(harness, null, NETWORK_HOOK);
-                    await harness.startAdapterAndWait(false, adapterEnv(NETWORK_HOOK));
-                    await feedFixtures(harness);
-                    await restarts.done;
-                    await waitForAdapterWork(harness);
-                    use = networkUse(seen);
-                    strangers = await askFromAnotherNetwork(use, /** @type {string} */ (CHOSEN_ADDRESS));
-                });
-
-                it("uses only the chosen address", function () {
-                    assert.ok(use.length > 0, "the network hook recorded nothing — a start without NETWORK_HOOK as its last hook");
-                    const wrong = offTheAddress(use, /** @type {string} */ (CHOSEN_ADDRESS));
-                    assert.deepStrictEqual(wrong, [], `network use off ${CHOSEN_ADDRESS}:\n${wrong.join("\n")}`);
-                });
-
-                it("answers no client from another network", function () {
-                    assert.deepStrictEqual(strangers, [], `answers to another network:\n${strangers.join("\n")}`);
-                });
-
-                it("restarts at most once for its own instance object", function () {
-                    assert.deepStrictEqual(restarts.again, [], "the instance object changed again after the restart it caused");
-                });
-            });
-
-            // Round 87 (krobi 2026-10-02 23:52, F-06 of fakeroku as the fleet rule): an address the host does not carry —
-            // the adapter falls back to every address, keeps working, and says so in exactly one warning.
-            suite("missing network address", getHarness => {
-                let harness;
-                let restarts;
-                let lines;
-                before(async function () {
-                    this.timeout(180000);
-                    harness = getHarness();
-                    clearInstanceData(harness);
-                    await resetInstanceNative(harness, await fixtureNative({ [ADDRESS_KEY]: MISSING_ADDRESS }));
-                    await seedInstanceObjects(harness);
-                    restarts = playControllerRestarts(harness, null, NETWORK_HOOK);
-                    await harness.startAdapterAndWait(false, adapterEnv(NETWORK_HOOK));
-                    // The fixtures reach the adapter on every address — that it keeps working. No waitForAdapterWork: a
-                    // missing address may keep the adapter's state short of green (fakeroku F-06: yellow until changed).
-                    await feedFixtures(harness);
-                    await restarts.done;
-                    // Round 157 (inventory-template audit V24): the warning may come after the fixtures — wait for it (at most
-                    // START_DEADLINE_MS), then SETTLE_MS for a second one; read at once, a warning a moment later turned it red
-                    const naming = () => harness.getLogs().filter((l) => l.from === `${ADAPTER}.0` && l.message.includes(MISSING_ADDRESS));
-                    const warned = () => naming().some((l) => l.level === "warn" || l.level === "error");
-                    await waitWindow("the warning of a missing address", START_DEADLINE_MS, warned, 250);
-                    await waitWindow("a second warning", SETTLE_MS);
-                    lines = naming();
-                });
-
-                it("falls back to every address and warns once", function () {
-                    const said = lines.filter((l) => l.level === "warn" || l.level === "error").map((l) => `${l.level}: ${l.message}`);
-                    assert.deepStrictEqual(said.length === 1 && said[0].startsWith("warn: "), true, `lines naming ${MISSING_ADDRESS}:\n${said.join("\n")}`);
-                });
-
-                it("restarts at most once for its own instance object", function () {
-                    assert.deepStrictEqual(restarts.again, [], "the instance object changed again after the restart it caused");
-                });
-            });
-        }
-
-        // Round 97 (krobi 2026-10-06 19:07–19:14): the diagnostics report of every device, asked for like the admin card,
-        // with every counterpart there and with every counterpart gone. A report adds no datapoint ("db-10 NIEMALS!"),
-        // writes no value and no file (DB-01) — and an unconnected device is listed as such and not read live (DB-03).
-        if (DIAGNOSTICS_REPORT) {
-            suite("diagnostics report", getHarness => {
-                let harness;
-                let watch;
-                let restarts;
-                let reports;
-                before(async function () {
-                    // round 157 (V28): three report rounds (each up to REPORT_DEADLINE_MS), the return after the silence and the
-                    // outage shown again (each up to OUTAGE_DEADLINE_MS), and the start before them
-                    this.timeout(3 * REPORT_DEADLINE_MS + 2 * OUTAGE_DEADLINE_MS + 240000);
-                    harness = getHarness();
-                    clearInstanceData(harness);
-                    watch = await watchObjectWrites(harness);
-                    await resetInstanceNative(harness, await fixtureNative());
-                    await seedInstanceObjects(harness);
-                    await setSystemLanguage(harness, FIRST_LANGUAGE);
-                    restarts = playControllerRestarts(harness, watch, NETWORK_HOOK);
-                    await harness.startAdapterAndWait(false, adapterEnv(NETWORK_HOOK));
-                    await feedFixtures(harness);
-                    await restarts.done;
-                    await waitForAdapterWork(harness);
-                    reports = await playReports(harness, watch);
-                });
-                // Mocha may give up on before() while playReports still waits — the next suite must not start cut.
-                after(() => fs.rmSync(OUTAGE_FLAG, { force: true }));
-
-                it("hands over a report for every device", function () {
-                    assert.ok(reports.devices.length > 0, "the adapter lists no device — feedFixtures gives it none");
-                    const quote = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-                    const version = quote(require(path.join(ADAPTER_DIR, "io-package.json")).common.version);
-                    // DB-12 (krobi 2026-10-06 19:07, one file name for every adapter): the device part is the device id the card
-                    // lists — or, where the id falls back to a name, an address or a whole serial, the placeholder the content uses
-                    // for it (DB-04, round 105: the file goes out as the attachment of a public issue)
-                    const named = new RegExp(`^${ADAPTER}_([A-Za-z0-9_-]+)_v${version}_\\d{4}-\\d{2}-\\d{2}_\\d{6}\\.json$`);
-                    const ownName = (device, answer) => {
-                        const part = named.exec(answer?.fileName ?? "")?.[1];
-                        if (part === undefined) {
-                            return false;
-                        }
-                        // a placeholder has the core's form `<kind>-<n>` (placeholders.ts) and stands in the content too; the id
-                        // may keep its own parts around it (a second device of a model: `wx-010-serial-1`, measured by yamaha)
-                        const own = device.replace(/[^a-z0-9-]+/gi, "_");
-                        const placed = (part.match(/[a-z]+-\d+/g) ?? []).filter((t) => !own.includes(t));
-                        const rest = placed.reduce((text, t) => text.replace(t, ""), part);
-                        return part === own || (placed.length > 0 && placed.every((t) => (answer?.content ?? "").includes(t)) && own.includes(rest));
-                    };
-                    const wrong = [...reports.reports, ...reports.silent, ...reports.offline]
-                        .filter(({ device, answer }) => !ownName(device, answer) || JSON.parse(answer.content).adapter !== `iobroker.${ADAPTER}`)
-                        .map(({ device, answer }) => `${device}: ${JSON.stringify(answer).slice(0, 300)}`);
-                    assert.deepStrictEqual(wrong, [], `no report, or not named <adapter>_<device-id>_v<version>_<date>_<time>.json:\n${wrong.join("\n")}`);
-                });
-
-                it("reads every connected device live and makes no answer up", function () {
-                    // DB-02 (krobi 2026-10-05 22:47 for yamaha, 2026-10-06 13:40 for govee): a connected device is read live
-                    const unread = reports.reports
-                        .filter(({ device }) => reports.devices.find((d) => d.value === device)?.connected)
-                        .filter(({ answer }) => JSON.parse(answer?.content ?? "{}").liveRead !== "read")
-                        .map(({ device, answer }) => `${device}: ${JSON.parse(answer?.content ?? "{}").liveRead}`);
-                    assert.deepStrictEqual(unread, [], `connected devices the report did not read live:\n${unread.join("\n")}`);
-                    assert.ok(reports.silent.length > 0, "no connected device — the live read was never played");
-                    const madeUp = reports.silent.filter(({ answer }) => JSON.parse(answer?.content ?? "{}").liveRead === "read").map(({ device }) => device);
-                    assert.deepStrictEqual(madeUp, [], `reports that say the device was read while no counterpart answered:\n${madeUp.join("\n")}`);
-                });
-
-                it("lists an unconnected device as such and does not read it live", function () {
-                    const listed = reports.offlineDevices.filter((d) => d.connected !== false).map((d) => d.value);
-                    assert.deepStrictEqual(listed, [], `listed as connected while every counterpart is gone:\n${listed.join("\n")}`);
-                    const read = reports.offline.filter(({ answer }) => JSON.parse(answer?.content ?? "{}").connected !== false).map(({ device }) => device);
-                    assert.deepStrictEqual(read, [], `reports that do not say the device was not connected:\n${read.join("\n")}`);
-                    // DB-03 (krobi 2026-10-06 13:02: every device is listed and reported, online and offline): every device stays listed
-                    const listedThen = reports.devices.map((d) => d.value).sort();
-                    const listedNow = reports.offlineDevices.map((d) => d.value).sort();
-                    assert.deepStrictEqual(listedNow, listedThen, "the card does not list every device while every counterpart is gone");
-                });
-
-                it("adds no datapoint and writes no value for a report", function () {
-                    const written = [...new Set(watch.times.filter(([, t]) => t >= reports.start && t <= reports.end).map(([id]) => id))];
-                    const added = reports.keysAfter.filter((id) => !reports.keys.has(id));
-                    const lost = [...new Set(watch.deleted.slice(reports.deleted))];
-                    const shown = new Set(Object.keys(OUTAGE_SHOWN).map((id) => `${NS}${id}`));
-                    const values = [...new Set(reports.writes.filter((id) => !shown.has(id)))];
-                    // DB-02, the read changes nothing in the adapter: a value the live read changes while the counterparts answer as before
-                    const same = (id) => JSON.stringify(reports.values[id]?.val) === JSON.stringify(reports.valuesAfterOnline[id]?.val);
-                    const changed = [...new Set(reports.onlineWrites)].filter((id) => !same(id));
-                    const all = [...written.map((id) => `object ${id}`), ...added.map((id) => `state ${id}`), ...lost.map((id) => `deleted ${id}`), ...values.map((id) => `value ${id}`), ...changed.map((id) => `changed ${id}`)];
-                    assert.deepStrictEqual(all, [], `the reports added, wrote or deleted:\n${all.join("\n")}`);
-                });
-
-                it("writes no file for a report", function () {
-                    // round 171 (homeconnect 2026-11-07): a file the adapter process writes while no report is made too is its own
-                    // record — a hand-over of its request times that a kill or a crash must not lose fell into the window
-                    const writes = fileWrites();
-                    const outside = writes.filter((w) => w.t < reports.start || w.t > reports.end).map((w) => w.path);
-                    const own = (f) => outside.some((p) => p === f || p.endsWith(`${path.sep}${f}`));
-                    const files = [...new Set([...Object.keys(reports.files), ...Object.keys(reports.filesAfter)])];
-                    const changed = files.filter((f) => reports.files[f] !== reports.filesAfter[f] && !own(f));
-                    // round 104: anywhere — the network hook notes every file the adapter process writes (os.tmpdir too)
-                    const anywhere = [...new Set(writes.filter((w) => w.t >= reports.start && w.t <= reports.end && !own(w.path)).map((w) => w.path))];
-                    const all = [...changed, ...anywhere.filter((f) => !changed.includes(f))];
-                    assert.deepStrictEqual(all, [], `files the reports wrote, changed or removed:\n${all.join("\n")}`);
-                });
-
-                it("shows no address, hardware id or mail address in plain text", function () {
-                    const forms = [/(?<![\w.])(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?![\w.])/, /(?<![0-9A-Fa-f:-])[0-9A-Fa-f]{2}(?:[:-][0-9A-Fa-f]{2}){5}(?![0-9A-Fa-f:-])/, /(?<![\w.+-])[\w.+-]+@[\w-]+(?:\.[\w-]+)*\.[A-Za-z]{2,}\b/];
-                    // round 104: IPv6 too — two colons in a row or at least four groups, one group with two hex digits
-                    // (measured on 24 reports of the yamaha copy: no time, date or id matched)
-                    const v6 = (text) => (text.match(/(?<![\w:.])[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}(?![\w:.])/g) ?? []).filter((m) => (m.includes("::") || m.split(":").length >= 4) && /[0-9A-Fa-f]{2}/.test(m));
-                    // round 105: the file name too — its device part is never pseudonymised by anyone but the adapter
-                    const part = (answer) => (answer?.fileName ?? "").replace(/_v[^_]*_\d{4}-\d{2}-\d{2}_\d{6}\.json$/, "");
-                    const dashed = /(?<!\d)(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)[._-]){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?!\d)/;
-                    const plain = [...reports.reports, ...reports.silent, ...reports.offline].flatMap(({ device, answer }) => [
-                        ...forms.filter((f) => f.test(answer?.content ?? "")).map((f) => `${device}: ${f}`),
-                        ...v6(answer?.content ?? "").map((m) => `${device}: ${m}`),
-                        ...(dashed.test(part(answer)) ? [`${device}: file name ${answer.fileName}`] : []),
-                    ]);
-                    assert.deepStrictEqual(plain, [], `reports that show an address, a hardware id or a mail address in plain text (DB-04):\n${plain.join("\n")}`);
-                });
-
-                it("shows no name, account or key of the user in plain text", function () {
-                    assert.ok(REPORT_PERSONAL.length > 0, "REPORT_PERSONAL names no value — list the fixtures' names, accounts, tokens and serials a user owns (DB-04, DB-05)");
-                    // round 105: the file name too, in the spelling a file name takes (Küche → kueche, k_che)
-                    const slug = (v) => v.toLowerCase().replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss").normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-                    const loose = (v) => v.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-                    const part = (answer) => slug((answer?.fileName ?? "").replace(`${ADAPTER}_`, "").replace(/_v[^_]*_\d{4}-\d{2}-\d{2}_\d{6}\.json$/, ""));
-                    const inName = (answer, v) => [slug(v), loose(v)].some((s) => s !== "" && part(answer).includes(s));
-                    const plain = [...reports.reports, ...reports.silent, ...reports.offline].flatMap(({ device, answer }) => REPORT_PERSONAL.filter((v) => (answer?.content ?? "").includes(v) || inName(answer, v)).map((v) => `${device}: ${v}`));
-                    assert.deepStrictEqual(plain, [], `reports that show the user's own values in plain text (DB-04, DB-05):\n${plain.join("\n")}`);
-                });
-
-                it("carries the object tree, the environment and log lines in every report", function () {
-                    // DB-03 (krobi 2026-10-06 13:03): a report holds the object tree, the environment and log lines, also for
-                    // a device that is not connected; the master's ReportContent names them the same in every adapter (round 129)
-                    const filled = (v) => (Array.isArray(v) ? v.length > 0 : v !== null && typeof v === "object" && Object.keys(v).length > 0);
-                    const missing = [...reports.reports, ...reports.silent, ...reports.offline].flatMap(({ device, answer }) => {
-                        const report = JSON.parse(answer?.content ?? "{}");
-                        return ["environment", "objectTree", "logs"].filter((part) => !filled(report[part])).map((part) => `${device}: ${part}`);
-                    });
-                    assert.deepStrictEqual(missing, [], `reports without their object tree, environment or log lines (DB-03):\n${missing.join("\n")}`);
-                });
-
-                it("holds every block once", function () {
-                    // krobi 2026-10-20 00:46 for every adapter with a report, no content twice (DB-14): a block the file holds
-                    // twice stands at its second place as a pointer to the first — the master's onceEach writes it
-                    const twice = [...reports.reports, ...reports.silent, ...reports.offline].flatMap(({ device, answer }) => {
-                        const seen = new Map();
-                        const found = [];
-                        const walk = (node, pointer) => {
-                            if (node === null || typeof node !== "object") {
-                                return;
-                            }
-                            // a pointer onceEach wrote is no block: a block the file repeats twice leaves two equal pointers
-                            // to its first place (round 132, govee 2026-10-20)
-                            const keys = Object.keys(node);
-                            if (keys.length === 1 && keys[0] === "sameAs" && typeof node.sameAs === "string") {
-                                return;
-                            }
-                            const text = JSON.stringify(node);
-                            const first = seen.get(text);
-                            if (first !== undefined && JSON.stringify({ sameAs: first }).length < text.length) {
-                                found.push(`${device}: ${pointer} repeats ${first}`);
-                                return;
-                            }
-                            if (first === undefined) {
-                                seen.set(text, pointer);
-                            }
-                            Object.entries(node).forEach(([key, item]) => walk(item, `${pointer}/${key.replace(/~/g, "~0").replace(/\//g, "~1")}`));
-                        };
-                        walk(JSON.parse(answer?.content ?? "{}"), "");
-                        return found;
-                    });
-                    assert.deepStrictEqual(twice, [], `blocks a report holds twice (DB-14):\n${twice.join("\n")}`);
-                });
-
-                it("carries no fixed text", function () {
-                    // krobi 2026-10-20 00:29 "no dummy text", 00:46 for the fleet (DB-14): a sentence of four words or more that
-                    // stands the same in the report of every device and holds a text of the adapter's own source says nothing
-                    // about one device. A counterpart's answer or error text is no text of the source, so an account-wide block
-                    // the same for every device stays out; so do the frame, the environment, the object tree and every log line
-                    // (two real govee reports of 2026-10-18: exactly the five fixed sentences, no other hit)
-                    const RECORDS = ["readMe", "adapter", "version", "exportedAt", "runtime", "connected", "liveRead", "environment", "objectTree", "logs"];
-                    const words = (text) => text.trim().split(/\s+/).length;
-                    const own = [];
-                    const read = (dir) => {
-                        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-                            const file = path.join(dir, entry.name);
-                            if (entry.isDirectory()) {
-                                read(file);
-                            } else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
-                                for (const m of fs.readFileSync(file, "utf8").matchAll(/\x22((?:\\.|[^\x22\\\n])*)\x22|\x27((?:\\.|[^\x27\\\n])*)\x27|\x60((?:\\.|[^\x60\\])*)\x60/g)) {
-                                    own.push(...(m[1] ?? m[2] ?? m[3]).split(/\$\x7b[^\x7d]*\x7d/).map((part) => part.replace(/\\(.)/g, "$1").trim()).filter((part) => words(part) >= 4));
-                                }
-                            }
-                        }
-                    };
-                    read(path.join(ADAPTER_DIR, "src"));
-                    const sentences = (answer) => {
-                        const found = new Set();
-                        const walk = (node) => {
-                            if (typeof node === "string") {
-                                if (words(node) >= 4 && own.some((text) => node.includes(text))) {
-                                    found.add(node);
-                                }
-                            } else if (node !== null && typeof node === "object" && !["ts", "level", "msg"].every((k) => k in node)) {
-                                Object.values(node).forEach(walk);
-                            }
-                        };
-                        Object.entries(JSON.parse(answer?.content ?? "{}")).filter(([key]) => !RECORDS.includes(key)).forEach(([, part]) => walk(part));
-                        return found;
-                    };
-                    const fixed = [reports.reports, reports.offline].filter((group) => new Set(group.map(({ device }) => device)).size > 1).flatMap((group) => {
-                        const each = group.map(({ answer }) => sentences(answer));
-                        return [...each[0]].filter((s) => each.every((set) => set.has(s)));
-                    });
-                    assert.deepStrictEqual([...new Set(fixed)], [], `sentences of the adapter's own source that stand the same in the report of every device (DB-14):\n${[...new Set(fixed)].join("\n")}`);
-                });
-
-                it("restarts at most once for its own instance object", function () {
-                    assert.deepStrictEqual(restarts.again, [], "the instance object changed again after the restart it caused");
-                });
-            });
-        }
-
-        const previousFile = process.env.INVENTORY_PREVIOUS;
-        if (previousFile && fs.existsSync(previousFile)) {
-            suite("upgrade from the previous release", getHarness => {
-                let harness;
-                let watch;
-                let restarts;
-                let verdictAt;
-                let maskedLeft;
-                const previous = JSON.parse(fs.readFileSync(previousFile, "utf8"));
-                before(async function () {
-                    this.timeout(120000);
-                    harness = getHarness();
-                    clearInstanceData(harness);
-                    watch = await watchObjectWrites(harness);
-                    // The harness registers its own before() (fresh DB) ahead of this one,
-                    // so the seed survives and the adapter starts on top of the OLD objects.
-                    await seedPrevious(harness, previous);
-                    await seedInstanceData(harness, previous);
-                    await restoreMaskedSecrets(harness);
-                    maskedLeft = await maskedSecretsLeft(harness);
-                    await resetInstanceNative(harness, await fixtureNative());
-                    // The inventory was written in FIRST_LANGUAGE: labels an adapter localises itself (`states`)
-                    // only compare in the same language.
-                    await setSystemLanguage(harness, FIRST_LANGUAGE);
-                    restarts = playControllerRestarts(harness, watch);
-                    await harness.startAdapterAndWait(false, adapterEnv());
-                    await feedFixtures(harness);
-                    // On the seeded set feedFixtures may return at once, or wait for a state this run writes
-                    // itself; waitForAdapterWork adds the adapter's last start step either way.
-                    await waitForAdapterWork(harness);
-                    // A migration that wrote the instance object restarts the instance (round 64) — the verdict
-                    // comes after the second start has done its work.
-                    await restarts.done;
-                    await waitForAdapterWork(harness);
-                    verdictAt = Date.now();
-                    fs.writeFileSync(path.join(RESOURCE_DIR, "window.json"), JSON.stringify({ start: verdictAt, end: verdictAt + SETTLE_MS }));
-                });
-
-                it("every current object carries the current texts and roles", async function () {
-                    this.timeout(30000);
-                    const current = JSON.parse(fs.readFileSync(INVENTORY, "utf8"));
-                    const live = await dumpObjects(harness);
-                    const stale = [];
-                    for (const [id, obj] of Object.entries(current)) {
-                        const got = live[id];
-                        if (!got) { stale.push(`${id}: missing after upgrade`); continue; }
-                        // Every field of `common`, not a chosen few: an adapter writes only what differs (round 61),
-                        // so every changed field must reach an existing installation.
-                        for (const f of new Set([...Object.keys(obj.common ?? {}), ...Object.keys(got.common ?? {})])) {
-                            if (f === "custom") {
-                                continue; // the user's recording — judged on its own below (round 64)
-                            }
-                            if (canonical(got.common?.[f]) !== canonical(obj.common?.[f])) {
-                                stale.push(`${id}: ${f} still ${JSON.stringify(got.common?.[f])}`);
-                            }
-                        }
-                        // The KIND of the object (state/channel/device/folder/meta) lives one level
-                        // ABOVE `common`; `common.type` is the VALUE type (string/number/
-                        // boolean) — something entirely different that merely shares the name. Without
-                        // this comparison a type migration that never reaches an existing installation
-                        // stays green: every text matches while every datapoint under the wrongly
-                        // declared container is a repochecker E2001 (hueemu v1.17.0, `clients` from
-                        // `meta` to `folder` — found on the live tree, by no gate).
-                        if (got.type !== obj.type) {
-                            stale.push(`${id}: type still ${JSON.stringify(got.type)}, want ${JSON.stringify(obj.type)}`);
-                        }
-                    }
-                    assert.deepStrictEqual(stale, [], "objects an update did not reach:\n" + stale.join("\n"));
-                });
-
-                it("objects the release removed are gone (no leftovers)", async function () {
-                    this.timeout(30000);
-                    const current = JSON.parse(fs.readFileSync(INVENTORY, "utf8"));
-                    const live = await dumpObjects(harness);
-                    const leftovers = Object.keys(previous).filter(id => !(id in current) && id in live);
-                    assert.deepStrictEqual(leftovers, [], "leftover objects:\n" + leftovers.join("\n"));
-                });
-
-                it("rewrites no object unchanged", function () {
-                    const idle = [...new Set(watch.unchanged)];
-                    assert.deepStrictEqual(idle, [], `objects written without a change:\n${idle.join("\n")}`);
-                });
-
-                it("rewrites no state unchanged", function () {
-                    const idle = [...new Set(watch.unchangedStates)];
-                    assert.deepStrictEqual(idle, [], `states written without a change:\n${idle.join("\n")}`);
-                });
-
-                // A kept object that is deleted and created anew makes the suite judge a fresh object, not the
-                // upgraded one (hassemu v1.43.1: the stale cleanup removed 18 seeded clients before the dump).
-                it("deletes no object the release keeps", function () {
-                    const current = JSON.parse(fs.readFileSync(INVENTORY, "utf8"));
-                    const lost = [...new Set(watch.deleted)].filter((id) => id in previous && id in current);
-                    assert.deepStrictEqual(lost, [], `kept objects deleted during the upgrade:\n${lost.join("\n")}`);
-                });
-
-                it("starts on no masked secret from the previous dump", function () {
-                    assert.deepStrictEqual(maskedLeft, [], `seeded objects still carry ${ENCRYPTED_MARKER}:\n${maskedLeft.join("\n")}`);
-                });
-
-                it("a recording goes on only with its own datapoint", async function () {
-                    this.timeout(30000);
-                    const live = await dumpObjects(harness);
-                    const carriers = new Map();
-                    for (const [id, obj] of Object.entries(live)) {
-                        const origin = obj.common?.custom?.[RECORDING]?.origin;
-                        if (origin) {
-                            carriers.set(origin, [...(carriers.get(origin) ?? []), id]);
-                        }
-                    }
-                    const wrong = [];
-                    for (const [origin, ids] of carriers) {
-                        if (ids.length > 1) {
-                            wrong.push(`${origin} → ${ids.join(", ")}: one recording on several datapoints`);
-                        } else if (ids[0] !== origin && live[origin]?.type === "state") {
-                            wrong.push(`${origin} → ${ids[0]}: copied while ${origin} lives on`);
-                        } else if (ids[0] !== origin && MOVES[origin] !== ids[0] && live[ids[0]].common?.type !== previous[origin]?.common?.type) {
-                            wrong.push(`${origin} → ${ids[0]}: another value type — a new datapoint, not the same one moved`);
-                        }
-                    }
-                    // A state that lives on keeps what hangs on it — the recording is the user's, never destroyed.
-                    for (const [id, obj] of Object.entries(previous)) {
-                        if (obj.type === "state" && live[id]?.type === "state" && !carriers.get(id)?.includes(id)) {
-                            wrong.push(`${id}: its recording is gone although the datapoint lives on`);
-                        }
-                    }
-                    // A state the release moves under a new id (MOVES) takes its recording along (krobi 2026-09-02).
-                    // Round 174 (a responder 2026-11-12: a state that moved and changed its value type in one release had
-                    // no green way): the move the adapter declares is the same datapoint — the value-type line above
-                    // judges only a recording that landed on another id without one; the type change itself is the
-                    // tree's to judge (A14 G8).
-                    for (const [from, to] of Object.entries(MOVES)) {
-                        if (previous[from]?.type === "state" && !carriers.get(from)?.includes(to)) {
-                            wrong.push(`${from} → ${to}: its recording did not move with the datapoint`);
-                        }
-                    }
-                    assert.deepStrictEqual(wrong, [], `recordings that left their datapoint:\n${wrong.join("\n")}`);
-                });
-
-                // Round 177 (krobi 2026-11-12 20:02–20:06, a fleet decision): an alias of the user follows a datapoint the
-                // release moves (the fleet master enum-carry.ts carries it), and one on a datapoint that stays is left alone.
-                it("an alias of the user follows its datapoint", async function () {
-                    this.timeout(30000);
-                    const wrong = [];
-                    for (const { id, seeded, expected } of userAliases(previous)) {
-                        const target = (await harness.objects.getObjectAsync(id))?.common?.alias?.id;
-                        if (canonical(target) !== canonical(expected)) {
-                            wrong.push(`${id}: points at ${JSON.stringify(target)}, want ${JSON.stringify(expected)} (seeded on ${JSON.stringify(seeded)})`);
-                        }
-                    }
-                    assert.deepStrictEqual(wrong, [], `aliases of the user that did not follow their datapoint:\n${wrong.join("\n")}`);
-                });
-
-                // What a fresh installation does not have, an upgrade must not have either — whatever made it (round 64:
-                // a datapoint created because the old one was recorded is exactly that).
-                it("creates nothing a fresh installation lacks", async function () {
-                    this.timeout(30000);
-                    const current = JSON.parse(fs.readFileSync(INVENTORY, "utf8"));
-                    const live = await dumpObjects(harness);
-                    const extra = Object.keys(live).filter((id) => !(id in current));
-                    assert.deepStrictEqual(extra, [], `objects a fresh installation does not have:\n${extra.join("\n")}`);
-                });
-
-                it("restarts at most once for its own instance object", function () {
-                    assert.deepStrictEqual(restarts.again, [], "the instance object changed again after the restart it caused");
-                });
-
-                // Last in the suite: a write after the verdict means waitForAdapterWork ended before the adapter did.
-                it("writes nothing after the verdict", async function () {
-                    this.timeout(SETTLE_MS + 5000);
-                    await waitWindow("writes after the verdict", verdictAt + SETTLE_MS - Date.now());
-                    const late = [...new Set(watch.times.filter(([, t]) => t > verdictAt).map(([id]) => id))];
-                    assert.deepStrictEqual(late, [], `objects written after the verdict:\n${late.join("\n")}`);
-                });
-            });
-        }
-
-        // Round 124 (plan P5): the fleet suites — one master for every adapter, called with this copy's own helpers.
-        require("./fleet-suites.js")(suite, {
-            ADAPTER_DIR, ADAPTER, NS, FIRST_LANGUAGE, SECOND_LANGUAGE, NETWORK_HOOK, OUTAGE_FLAG, RESOURCE_DIR, HANG_DEADLINE_MS,
-            CHOSEN_ADDRESS, clearInstanceData, resetInstanceNative, fixtureNative, seedInstanceObjects, setSystemLanguage,
-            playControllerRestarts, restartAsTheHost, adapterEnv, feedFixtures, waitForAdapterWork, dumpObjects, dumpStates,
-            withinDeadline, readCalls, PACING_HOOKS, countThisInstallation, stopCounting,
+        it("falls back to every address and warns once", function () {
+          const said = lines
+            .filter(l => l.level === "warn" || l.level === "error")
+            .map(l => `${l.level}: ${l.message}`);
+          assert.deepStrictEqual(
+            said.length === 1 && said[0].startsWith("warn: "),
+            true,
+            `lines naming ${MISSING_ADDRESS}:\n${said.join("\n")}`,
+          );
         });
-    },
+
+        it("restarts at most once for its own instance object", function () {
+          assert.deepStrictEqual(restarts.again, [], "the instance object changed again after the restart it caused");
+        });
+      });
+    }
+
+    // Round 97 (krobi 2026-10-06 19:07–19:14): the diagnostics report of every device, asked for like the admin card,
+    // with every counterpart there and with every counterpart gone. A report adds no datapoint ("db-10 NIEMALS!"),
+    // writes no value and no file (DB-01) — and an unconnected device is listed as such and not read live (DB-03).
+    if (DIAGNOSTICS_REPORT) {
+      suite("diagnostics report", getHarness => {
+        let harness;
+        let watch;
+        let restarts;
+        let reports;
+        before(async function () {
+          // round 157 (V28): three report rounds (each up to REPORT_DEADLINE_MS), the return after the silence and the
+          // outage shown again (each up to OUTAGE_DEADLINE_MS), and the start before them
+          this.timeout(3 * REPORT_DEADLINE_MS + 2 * OUTAGE_DEADLINE_MS + 240000);
+          harness = getHarness();
+          clearInstanceData(harness);
+          watch = await watchObjectWrites(harness);
+          await resetInstanceNative(harness, await fixtureNative());
+          await seedInstanceObjects(harness);
+          await setSystemLanguage(harness, FIRST_LANGUAGE);
+          restarts = playControllerRestarts(harness, watch, NETWORK_HOOK);
+          await harness.startAdapterAndWait(false, adapterEnv(NETWORK_HOOK));
+          await feedFixtures(harness);
+          await restarts.done;
+          await waitForAdapterWork(harness);
+          reports = await playReports(harness, watch);
+        });
+        // Mocha may give up on before() while playReports still waits — the next suite must not start cut.
+        after(() => fs.rmSync(OUTAGE_FLAG, { force: true }));
+
+        it("hands over a report for every device", function () {
+          assert.ok(reports.devices.length > 0, "the adapter lists no device — feedFixtures gives it none");
+          const quote = text => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const version = quote(require(path.join(ADAPTER_DIR, "io-package.json")).common.version);
+          // DB-12 (krobi 2026-10-06 19:07, one file name for every adapter): the device part is the device id the card
+          // lists — or, where the id falls back to a name, an address or a whole serial, the placeholder the content uses
+          // for it (DB-04, round 105: the file goes out as the attachment of a public issue)
+          const named = new RegExp(`^${ADAPTER}_([A-Za-z0-9_-]+)_v${version}_\\d{4}-\\d{2}-\\d{2}_\\d{6}\\.json$`);
+          const ownName = (device, answer) => {
+            const part = named.exec(answer?.fileName ?? "")?.[1];
+            if (part === undefined) {
+              return false;
+            }
+            // a placeholder has the core's form `<kind>-<n>` (placeholders.ts) and stands in the content too; the id
+            // may keep its own parts around it (a second device of a model: `wx-010-serial-1`, measured by yamaha)
+            const own = device.replace(/[^a-z0-9-]+/gi, "_");
+            const placed = (part.match(/[a-z]+-\d+/g) ?? []).filter(t => !own.includes(t));
+            const rest = placed.reduce((text, t) => text.replace(t, ""), part);
+            return (
+              part === own ||
+              (placed.length > 0 && placed.every(t => (answer?.content ?? "").includes(t)) && own.includes(rest))
+            );
+          };
+          const wrong = [...reports.reports, ...reports.silent, ...reports.offline]
+            .filter(
+              ({ device, answer }) =>
+                !ownName(device, answer) || JSON.parse(answer.content).adapter !== `iobroker.${ADAPTER}`,
+            )
+            .map(({ device, answer }) => `${device}: ${JSON.stringify(answer).slice(0, 300)}`);
+          assert.deepStrictEqual(
+            wrong,
+            [],
+            `no report, or not named <adapter>_<device-id>_v<version>_<date>_<time>.json:\n${wrong.join("\n")}`,
+          );
+        });
+
+        it("reads every connected device live and makes no answer up", function () {
+          // DB-02 (krobi 2026-10-05 22:47 for yamaha, 2026-10-06 13:40 for govee): a connected device is read live
+          const unread = reports.reports
+            .filter(({ device }) => reports.devices.find(d => d.value === device)?.connected)
+            .filter(({ answer }) => JSON.parse(answer?.content ?? "{}").liveRead !== "read")
+            .map(({ device, answer }) => `${device}: ${JSON.parse(answer?.content ?? "{}").liveRead}`);
+          assert.deepStrictEqual(unread, [], `connected devices the report did not read live:\n${unread.join("\n")}`);
+          assert.ok(reports.silent.length > 0, "no connected device — the live read was never played");
+          const madeUp = reports.silent
+            .filter(({ answer }) => JSON.parse(answer?.content ?? "{}").liveRead === "read")
+            .map(({ device }) => device);
+          assert.deepStrictEqual(
+            madeUp,
+            [],
+            `reports that say the device was read while no counterpart answered:\n${madeUp.join("\n")}`,
+          );
+        });
+
+        it("lists an unconnected device as such and does not read it live", function () {
+          const listed = reports.offlineDevices.filter(d => d.connected !== false).map(d => d.value);
+          assert.deepStrictEqual(
+            listed,
+            [],
+            `listed as connected while every counterpart is gone:\n${listed.join("\n")}`,
+          );
+          const read = reports.offline
+            .filter(({ answer }) => JSON.parse(answer?.content ?? "{}").connected !== false)
+            .map(({ device }) => device);
+          assert.deepStrictEqual(read, [], `reports that do not say the device was not connected:\n${read.join("\n")}`);
+          // DB-03 (krobi 2026-10-06 13:02: every device is listed and reported, online and offline): every device stays listed
+          const listedThen = reports.devices.map(d => d.value).sort();
+          const listedNow = reports.offlineDevices.map(d => d.value).sort();
+          assert.deepStrictEqual(
+            listedNow,
+            listedThen,
+            "the card does not list every device while every counterpart is gone",
+          );
+        });
+
+        it("adds no datapoint and writes no value for a report", function () {
+          const written = [
+            ...new Set(watch.times.filter(([, t]) => t >= reports.start && t <= reports.end).map(([id]) => id)),
+          ];
+          const added = reports.keysAfter.filter(id => !reports.keys.has(id));
+          const lost = [...new Set(watch.deleted.slice(reports.deleted))];
+          const shown = new Set(Object.keys(OUTAGE_SHOWN).map(id => `${NS}${id}`));
+          const values = [...new Set(reports.writes.filter(id => !shown.has(id)))];
+          // DB-02, the read changes nothing in the adapter: a value the live read changes while the counterparts answer as before
+          const same = id =>
+            JSON.stringify(reports.values[id]?.val) === JSON.stringify(reports.valuesAfterOnline[id]?.val);
+          const changed = [...new Set(reports.onlineWrites)].filter(id => !same(id));
+          const all = [
+            ...written.map(id => `object ${id}`),
+            ...added.map(id => `state ${id}`),
+            ...lost.map(id => `deleted ${id}`),
+            ...values.map(id => `value ${id}`),
+            ...changed.map(id => `changed ${id}`),
+          ];
+          assert.deepStrictEqual(all, [], `the reports added, wrote or deleted:\n${all.join("\n")}`);
+        });
+
+        it("writes no file for a report", function () {
+          // round 171 (homeconnect 2026-11-07): a file the adapter process writes while no report is made too is its own
+          // record — a hand-over of its request times that a kill or a crash must not lose fell into the window
+          const writes = fileWrites();
+          const outside = writes.filter(w => w.t < reports.start || w.t > reports.end).map(w => w.path);
+          const own = f => outside.some(p => p === f || p.endsWith(`${path.sep}${f}`));
+          const files = [...new Set([...Object.keys(reports.files), ...Object.keys(reports.filesAfter)])];
+          const changed = files.filter(f => reports.files[f] !== reports.filesAfter[f] && !own(f));
+          // round 104: anywhere — the network hook notes every file the adapter process writes (os.tmpdir too)
+          const anywhere = [
+            ...new Set(writes.filter(w => w.t >= reports.start && w.t <= reports.end && !own(w.path)).map(w => w.path)),
+          ];
+          const all = [...changed, ...anywhere.filter(f => !changed.includes(f))];
+          assert.deepStrictEqual(all, [], `files the reports wrote, changed or removed:\n${all.join("\n")}`);
+        });
+
+        it("shows no address, hardware id or mail address in plain text", function () {
+          const forms = [
+            /(?<![\w.])(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?![\w.])/,
+            /(?<![0-9A-Fa-f:-])[0-9A-Fa-f]{2}(?:[:-][0-9A-Fa-f]{2}){5}(?![0-9A-Fa-f:-])/,
+            /(?<![\w.+-])[\w.+-]+@[\w-]+(?:\.[\w-]+)*\.[A-Za-z]{2,}\b/,
+          ];
+          // round 104: IPv6 too — two colons in a row or at least four groups, one group with two hex digits
+          // (measured on 24 reports of the yamaha copy: no time, date or id matched)
+          const v6 = text =>
+            (text.match(/(?<![\w:.])[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}(?![\w:.])/g) ?? []).filter(
+              m => (m.includes("::") || m.split(":").length >= 4) && /[0-9A-Fa-f]{2}/.test(m),
+            );
+          // round 105: the file name too — its device part is never pseudonymised by anyone but the adapter
+          const part = answer => (answer?.fileName ?? "").replace(/_v[^_]*_\d{4}-\d{2}-\d{2}_\d{6}\.json$/, "");
+          const dashed =
+            /(?<!\d)(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)[._-]){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?!\d)/;
+          const plain = [...reports.reports, ...reports.silent, ...reports.offline].flatMap(({ device, answer }) => [
+            ...forms.filter(f => f.test(answer?.content ?? "")).map(f => `${device}: ${f}`),
+            ...v6(answer?.content ?? "").map(m => `${device}: ${m}`),
+            ...(dashed.test(part(answer)) ? [`${device}: file name ${answer.fileName}`] : []),
+          ]);
+          assert.deepStrictEqual(
+            plain,
+            [],
+            `reports that show an address, a hardware id or a mail address in plain text (DB-04):\n${plain.join("\n")}`,
+          );
+        });
+
+        it("shows no name, account or key of the user in plain text", function () {
+          assert.ok(
+            REPORT_PERSONAL.length > 0,
+            "REPORT_PERSONAL names no value — list the fixtures' names, accounts, tokens and serials a user owns (DB-04, DB-05)",
+          );
+          // round 105: the file name too, in the spelling a file name takes (Küche → kueche, k_che)
+          const slug = v =>
+            v
+              .toLowerCase()
+              .replace(/ä/g, "ae")
+              .replace(/ö/g, "oe")
+              .replace(/ü/g, "ue")
+              .replace(/ß/g, "ss")
+              .normalize("NFKD")
+              .replace(/[^a-z0-9]+/g, "-")
+              .replace(/^-+|-+$/g, "");
+          const loose = v =>
+            v
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "-")
+              .replace(/^-+|-+$/g, "");
+          const part = answer =>
+            slug(
+              (answer?.fileName ?? "").replace(`${ADAPTER}_`, "").replace(/_v[^_]*_\d{4}-\d{2}-\d{2}_\d{6}\.json$/, ""),
+            );
+          const inName = (answer, v) => [slug(v), loose(v)].some(s => s !== "" && part(answer).includes(s));
+          const plain = [...reports.reports, ...reports.silent, ...reports.offline].flatMap(({ device, answer }) =>
+            REPORT_PERSONAL.filter(v => (answer?.content ?? "").includes(v) || inName(answer, v)).map(
+              v => `${device}: ${v}`,
+            ),
+          );
+          assert.deepStrictEqual(
+            plain,
+            [],
+            `reports that show the user's own values in plain text (DB-04, DB-05):\n${plain.join("\n")}`,
+          );
+        });
+
+        it("carries the object tree, the environment and log lines in every report", function () {
+          // DB-03 (krobi 2026-10-06 13:03): a report holds the object tree, the environment and log lines, also for
+          // a device that is not connected; the master's ReportContent names them the same in every adapter (round 129)
+          const filled = v =>
+            Array.isArray(v) ? v.length > 0 : v !== null && typeof v === "object" && Object.keys(v).length > 0;
+          const missing = [...reports.reports, ...reports.silent, ...reports.offline].flatMap(({ device, answer }) => {
+            const report = JSON.parse(answer?.content ?? "{}");
+            return ["environment", "objectTree", "logs"]
+              .filter(part => !filled(report[part]))
+              .map(part => `${device}: ${part}`);
+          });
+          assert.deepStrictEqual(
+            missing,
+            [],
+            `reports without their object tree, environment or log lines (DB-03):\n${missing.join("\n")}`,
+          );
+        });
+
+        it("holds every block once", function () {
+          // krobi 2026-10-20 00:46 for every adapter with a report, no content twice (DB-14): a block the file holds
+          // twice stands at its second place as a pointer to the first — the master's onceEach writes it
+          const twice = [...reports.reports, ...reports.silent, ...reports.offline].flatMap(({ device, answer }) => {
+            const seen = new Map();
+            const found = [];
+            const walk = (node, pointer) => {
+              if (node === null || typeof node !== "object") {
+                return;
+              }
+              // a pointer onceEach wrote is no block: a block the file repeats twice leaves two equal pointers
+              // to its first place (round 132, govee 2026-10-20)
+              const keys = Object.keys(node);
+              if (keys.length === 1 && keys[0] === "sameAs" && typeof node.sameAs === "string") {
+                return;
+              }
+              const text = JSON.stringify(node);
+              const first = seen.get(text);
+              if (first !== undefined && JSON.stringify({ sameAs: first }).length < text.length) {
+                found.push(`${device}: ${pointer} repeats ${first}`);
+                return;
+              }
+              if (first === undefined) {
+                seen.set(text, pointer);
+              }
+              Object.entries(node).forEach(([key, item]) =>
+                walk(item, `${pointer}/${key.replace(/~/g, "~0").replace(/\//g, "~1")}`),
+              );
+            };
+            walk(JSON.parse(answer?.content ?? "{}"), "");
+            return found;
+          });
+          assert.deepStrictEqual(twice, [], `blocks a report holds twice (DB-14):\n${twice.join("\n")}`);
+        });
+
+        it("carries no fixed text", function () {
+          // krobi 2026-10-20 00:29 "no dummy text", 00:46 for the fleet (DB-14): a sentence of four words or more that
+          // stands the same in the report of every device and holds a text of the adapter's own source says nothing
+          // about one device. A counterpart's answer or error text is no text of the source, so an account-wide block
+          // the same for every device stays out; so do the frame, the environment, the object tree and every log line
+          // (two real govee reports of 2026-10-18: exactly the five fixed sentences, no other hit)
+          const RECORDS = [
+            "readMe",
+            "adapter",
+            "version",
+            "exportedAt",
+            "runtime",
+            "connected",
+            "liveRead",
+            "environment",
+            "objectTree",
+            "logs",
+          ];
+          const words = text => text.trim().split(/\s+/).length;
+          const own = [];
+          const read = dir => {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              const file = path.join(dir, entry.name);
+              if (entry.isDirectory()) {
+                read(file);
+              } else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
+                for (const m of fs
+                  .readFileSync(file, "utf8")
+                  .matchAll(
+                    /\x22((?:\\.|[^\x22\\\n])*)\x22|\x27((?:\\.|[^\x27\\\n])*)\x27|\x60((?:\\.|[^\x60\\])*)\x60/g,
+                  )) {
+                  own.push(
+                    ...(m[1] ?? m[2] ?? m[3])
+                      .split(/\$\x7b[^\x7d]*\x7d/)
+                      .map(part => part.replace(/\\(.)/g, "$1").trim())
+                      .filter(part => words(part) >= 4),
+                  );
+                }
+              }
+            }
+          };
+          read(path.join(ADAPTER_DIR, "src"));
+          const sentences = answer => {
+            const found = new Set();
+            const walk = node => {
+              if (typeof node === "string") {
+                if (words(node) >= 4 && own.some(text => node.includes(text))) {
+                  found.add(node);
+                }
+              } else if (node !== null && typeof node === "object" && !["ts", "level", "msg"].every(k => k in node)) {
+                Object.values(node).forEach(walk);
+              }
+            };
+            Object.entries(JSON.parse(answer?.content ?? "{}"))
+              .filter(([key]) => !RECORDS.includes(key))
+              .forEach(([, part]) => walk(part));
+            return found;
+          };
+          const fixed = [reports.reports, reports.offline]
+            .filter(group => new Set(group.map(({ device }) => device)).size > 1)
+            .flatMap(group => {
+              const each = group.map(({ answer }) => sentences(answer));
+              return [...each[0]].filter(s => each.every(set => set.has(s)));
+            });
+          assert.deepStrictEqual(
+            [...new Set(fixed)],
+            [],
+            `sentences of the adapter's own source that stand the same in the report of every device (DB-14):\n${[...new Set(fixed)].join("\n")}`,
+          );
+        });
+
+        it("restarts at most once for its own instance object", function () {
+          assert.deepStrictEqual(restarts.again, [], "the instance object changed again after the restart it caused");
+        });
+      });
+    }
+
+    const previousFile = process.env.INVENTORY_PREVIOUS;
+    if (previousFile && fs.existsSync(previousFile)) {
+      suite("upgrade from the previous release", getHarness => {
+        let harness;
+        let watch;
+        let restarts;
+        let verdictAt;
+        let maskedLeft;
+        const previous = JSON.parse(fs.readFileSync(previousFile, "utf8"));
+        before(async function () {
+          this.timeout(120000);
+          harness = getHarness();
+          clearInstanceData(harness);
+          watch = await watchObjectWrites(harness);
+          // The harness registers its own before() (fresh DB) ahead of this one,
+          // so the seed survives and the adapter starts on top of the OLD objects.
+          await seedPrevious(harness, previous);
+          await seedInstanceData(harness, previous);
+          await restoreMaskedSecrets(harness);
+          maskedLeft = await maskedSecretsLeft(harness);
+          await resetInstanceNative(harness, await fixtureNative());
+          // The inventory was written in FIRST_LANGUAGE: labels an adapter localises itself (`states`)
+          // only compare in the same language.
+          await setSystemLanguage(harness, FIRST_LANGUAGE);
+          restarts = playControllerRestarts(harness, watch);
+          await harness.startAdapterAndWait(false, adapterEnv());
+          await feedFixtures(harness);
+          // On the seeded set feedFixtures may return at once, or wait for a state this run writes
+          // itself; waitForAdapterWork adds the adapter's last start step either way.
+          await waitForAdapterWork(harness);
+          // A migration that wrote the instance object restarts the instance (round 64) — the verdict
+          // comes after the second start has done its work.
+          await restarts.done;
+          await waitForAdapterWork(harness);
+          verdictAt = Date.now();
+          fs.writeFileSync(
+            path.join(RESOURCE_DIR, "window.json"),
+            JSON.stringify({ start: verdictAt, end: verdictAt + SETTLE_MS }),
+          );
+        });
+
+        it("every current object carries the current texts and roles", async function () {
+          this.timeout(30000);
+          const current = JSON.parse(fs.readFileSync(INVENTORY, "utf8"));
+          const live = await dumpObjects(harness);
+          const stale = [];
+          for (const [id, obj] of Object.entries(current)) {
+            const got = live[id];
+            if (!got) {
+              stale.push(`${id}: missing after upgrade`);
+              continue;
+            }
+            // Every field of `common`, not a chosen few: an adapter writes only what differs (round 61),
+            // so every changed field must reach an existing installation.
+            for (const f of new Set([...Object.keys(obj.common ?? {}), ...Object.keys(got.common ?? {})])) {
+              if (f === "custom") {
+                continue; // the user's recording — judged on its own below (round 64)
+              }
+              if (canonical(got.common?.[f]) !== canonical(obj.common?.[f])) {
+                stale.push(`${id}: ${f} still ${JSON.stringify(got.common?.[f])}`);
+              }
+            }
+            // The KIND of the object (state/channel/device/folder/meta) lives one level
+            // ABOVE `common`; `common.type` is the VALUE type (string/number/
+            // boolean) — something entirely different that merely shares the name. Without
+            // this comparison a type migration that never reaches an existing installation
+            // stays green: every text matches while every datapoint under the wrongly
+            // declared container is a repochecker E2001 (hueemu v1.17.0, `clients` from
+            // `meta` to `folder` — found on the live tree, by no gate).
+            if (got.type !== obj.type) {
+              stale.push(`${id}: type still ${JSON.stringify(got.type)}, want ${JSON.stringify(obj.type)}`);
+            }
+          }
+          assert.deepStrictEqual(stale, [], "objects an update did not reach:\n" + stale.join("\n"));
+        });
+
+        it("objects the release removed are gone (no leftovers)", async function () {
+          this.timeout(30000);
+          const current = JSON.parse(fs.readFileSync(INVENTORY, "utf8"));
+          const live = await dumpObjects(harness);
+          const leftovers = Object.keys(previous).filter(id => !(id in current) && id in live);
+          assert.deepStrictEqual(leftovers, [], "leftover objects:\n" + leftovers.join("\n"));
+        });
+
+        it("rewrites no object unchanged", function () {
+          const idle = [...new Set(watch.unchanged)];
+          assert.deepStrictEqual(idle, [], `objects written without a change:\n${idle.join("\n")}`);
+        });
+
+        it("rewrites no state unchanged", function () {
+          const idle = [...new Set(watch.unchangedStates)];
+          assert.deepStrictEqual(idle, [], `states written without a change:\n${idle.join("\n")}`);
+        });
+
+        // A kept object that is deleted and created anew makes the suite judge a fresh object, not the
+        // upgraded one (hassemu v1.43.1: the stale cleanup removed 18 seeded clients before the dump).
+        it("deletes no object the release keeps", function () {
+          const current = JSON.parse(fs.readFileSync(INVENTORY, "utf8"));
+          const lost = [...new Set(watch.deleted)].filter(id => id in previous && id in current);
+          assert.deepStrictEqual(lost, [], `kept objects deleted during the upgrade:\n${lost.join("\n")}`);
+        });
+
+        it("starts on no masked secret from the previous dump", function () {
+          assert.deepStrictEqual(
+            maskedLeft,
+            [],
+            `seeded objects still carry ${ENCRYPTED_MARKER}:\n${maskedLeft.join("\n")}`,
+          );
+        });
+
+        it("a recording goes on only with its own datapoint", async function () {
+          this.timeout(30000);
+          const live = await dumpObjects(harness);
+          const carriers = new Map();
+          for (const [id, obj] of Object.entries(live)) {
+            const origin = obj.common?.custom?.[RECORDING]?.origin;
+            if (origin) {
+              carriers.set(origin, [...(carriers.get(origin) ?? []), id]);
+            }
+          }
+          const wrong = [];
+          for (const [origin, ids] of carriers) {
+            if (ids.length > 1) {
+              wrong.push(`${origin} → ${ids.join(", ")}: one recording on several datapoints`);
+            } else if (ids[0] !== origin && live[origin]?.type === "state") {
+              wrong.push(`${origin} → ${ids[0]}: copied while ${origin} lives on`);
+            } else if (
+              ids[0] !== origin &&
+              MOVES[origin] !== ids[0] &&
+              live[ids[0]].common?.type !== previous[origin]?.common?.type
+            ) {
+              wrong.push(`${origin} → ${ids[0]}: another value type — a new datapoint, not the same one moved`);
+            }
+          }
+          // A state that lives on keeps what hangs on it — the recording is the user's, never destroyed.
+          for (const [id, obj] of Object.entries(previous)) {
+            if (obj.type === "state" && live[id]?.type === "state" && !carriers.get(id)?.includes(id)) {
+              wrong.push(`${id}: its recording is gone although the datapoint lives on`);
+            }
+          }
+          // A state the release moves under a new id (MOVES) takes its recording along (krobi 2026-09-02).
+          // Round 174 (a responder 2026-11-12: a state that moved and changed its value type in one release had
+          // no green way): the move the adapter declares is the same datapoint — the value-type line above
+          // judges only a recording that landed on another id without one; the type change itself is the
+          // tree's to judge (A14 G8).
+          for (const [from, to] of Object.entries(MOVES)) {
+            if (previous[from]?.type === "state" && !carriers.get(from)?.includes(to)) {
+              wrong.push(`${from} → ${to}: its recording did not move with the datapoint`);
+            }
+          }
+          assert.deepStrictEqual(wrong, [], `recordings that left their datapoint:\n${wrong.join("\n")}`);
+        });
+
+        // Round 177 (krobi 2026-11-12 20:02–20:06, a fleet decision): an alias of the user follows a datapoint the
+        // release moves (the fleet master enum-carry.ts carries it), and one on a datapoint that stays is left alone.
+        it("an alias of the user follows its datapoint", async function () {
+          this.timeout(30000);
+          const wrong = [];
+          for (const { id, seeded, expected } of userAliases(previous)) {
+            const target = (await harness.objects.getObjectAsync(id))?.common?.alias?.id;
+            if (canonical(target) !== canonical(expected)) {
+              wrong.push(
+                `${id}: points at ${JSON.stringify(target)}, want ${JSON.stringify(expected)} (seeded on ${JSON.stringify(seeded)})`,
+              );
+            }
+          }
+          assert.deepStrictEqual(
+            wrong,
+            [],
+            `aliases of the user that did not follow their datapoint:\n${wrong.join("\n")}`,
+          );
+        });
+
+        // What a fresh installation does not have, an upgrade must not have either — whatever made it (round 64:
+        // a datapoint created because the old one was recorded is exactly that).
+        it("creates nothing a fresh installation lacks", async function () {
+          this.timeout(30000);
+          const current = JSON.parse(fs.readFileSync(INVENTORY, "utf8"));
+          const live = await dumpObjects(harness);
+          const extra = Object.keys(live).filter(id => !(id in current));
+          assert.deepStrictEqual(extra, [], `objects a fresh installation does not have:\n${extra.join("\n")}`);
+        });
+
+        it("restarts at most once for its own instance object", function () {
+          assert.deepStrictEqual(restarts.again, [], "the instance object changed again after the restart it caused");
+        });
+
+        // Last in the suite: a write after the verdict means waitForAdapterWork ended before the adapter did.
+        it("writes nothing after the verdict", async function () {
+          this.timeout(SETTLE_MS + 5000);
+          await waitWindow("writes after the verdict", verdictAt + SETTLE_MS - Date.now());
+          const late = [...new Set(watch.times.filter(([, t]) => t > verdictAt).map(([id]) => id))];
+          assert.deepStrictEqual(late, [], `objects written after the verdict:\n${late.join("\n")}`);
+        });
+      });
+    }
+
+    // Round 124 (plan P5): the fleet suites — one master for every adapter, called with this copy's own helpers.
+    require("./fleet-suites.js")(suite, {
+      ADAPTER_DIR,
+      ADAPTER,
+      NS,
+      FIRST_LANGUAGE,
+      SECOND_LANGUAGE,
+      NETWORK_HOOK,
+      OUTAGE_FLAG,
+      RESOURCE_DIR,
+      HANG_DEADLINE_MS,
+      CHOSEN_ADDRESS,
+      clearInstanceData,
+      resetInstanceNative,
+      fixtureNative,
+      seedInstanceObjects,
+      setSystemLanguage,
+      playControllerRestarts,
+      restartAsTheHost,
+      adapterEnv,
+      feedFixtures,
+      waitForAdapterWork,
+      dumpObjects,
+      dumpStates,
+      withinDeadline,
+      readCalls,
+      PACING_HOOKS,
+      countThisInstallation,
+      stopCounting,
+    });
+  },
 });
 
 // Round 62: after every suite, every adapter process of this run has exited — what it left open after onUnload fails
 // the run. Every start leaves a marker: no marker means a start without adapterEnv(), a marker without a report a
 // process that never reached its exit (killed after a hanging onUnload, or crashed).
 after(function () {
-    const files = fs.readdirSync(RESOURCE_DIR);
-    const starts = files.filter((f) => f.endsWith(".start")).map((f) => f.slice(0, -".start".length));
-    const silent = starts.filter((pid) => !files.includes(`${pid}.json`));
-    const reports = starts
-        .filter((pid) => !silent.includes(pid))
-        .map((pid) => JSON.parse(fs.readFileSync(path.join(RESOURCE_DIR, `${pid}.json`), "utf8")));
-    const left = reports.flatMap((r) => r.left);
-    const reread = reports.flatMap((r) => Object.entries(r.quiet).filter(([id]) => READ_ONLY.has(id)).map(([id, n]) => `${id} ×${n}`));
-    const single = reports.flatMap((r) => Object.entries(r.single).filter(([id]) => READ_ONLY.has(id)).map(([id, n]) => `${id} ×${n}`));
-    // Round 113: every TCP connection and unicast datagram of the run ends on this machine (the probe sees where a fixture
-    // hook sent it)
-    const away = [...new Set(files.filter((f) => f.endsWith(".lands"))
-        .flatMap((f) => fs.readFileSync(path.join(RESOURCE_DIR, f), "utf8").split("\n").filter(Boolean))
-        .map((l) => JSON.parse(l))
-        .map((c) => `${c.kind} ${c.host}:${c.port}`))];
-    // Round 157 (inventory-template audit V13): `calls only counterparts it declares` reads the calls up to its own suite —
-    // every call after it (the commands, the reports, the fleet suites) is judged here, over the whole run; a copy without a
-    // counterpart (its sealed register) carries no apiLimits
-    const undeclared = typeof apiLimits === "function" && fs.existsSync(API_LIMITS)
-        ? [...new Set(limitCalls(RESOURCE_DIR, readCalls(), false).filter((c) => !apiLimits().some((d) => fits(c, d.match))).map(channel))]
-        : [];
-    // Round 170 (R170-64): in a run folder the probe stays with the run (its retention removes it) — the lab run of
-    // round 170 had to run again to read its answer stamps; elsewhere (CI, the tmpdir) it goes
-    if (!process.env.KROBI_RUN_DIR) {
-        fs.rmSync(RESOURCE_DIR, { recursive: true, force: true });
-    }
-    assert.ok(starts.length > 0, "no adapter start loaded the resource probe — a start without adapterEnv()");
-    assert.deepStrictEqual(silent, [], "adapter processes that never reached their exit (killed or crashed)");
-    assert.deepStrictEqual(left, [], `left open after onUnload:\n${left.join("\n")}`);
-    assert.deepStrictEqual(reread, [], `read-only states read back from the database while nothing changed:\n${reread.join("\n")}`);
-    assert.deepStrictEqual(single, [], `read-only states read one by one from the database (one bulk getStatesAsync at the start, then compare in memory):\n${single.join("\n")}`);
-    assert.deepStrictEqual(undeclared, [], `calls in the run to counterparts src/lib/api-limits.json does not declare:\n${undeclared.join("\n")}`);
-    assert.deepStrictEqual(away, [], `connections that left this machine — the run reached the real world (a route missing in FIXTURE_HOOKS, a device on the network):\n${away.join("\n")}`);
+  const files = fs.readdirSync(RESOURCE_DIR);
+  const starts = files.filter(f => f.endsWith(".start")).map(f => f.slice(0, -".start".length));
+  const silent = starts.filter(pid => !files.includes(`${pid}.json`));
+  const reports = starts
+    .filter(pid => !silent.includes(pid))
+    .map(pid => JSON.parse(fs.readFileSync(path.join(RESOURCE_DIR, `${pid}.json`), "utf8")));
+  const left = reports.flatMap(r => r.left);
+  const reread = reports.flatMap(r =>
+    Object.entries(r.quiet)
+      .filter(([id]) => READ_ONLY.has(id))
+      .map(([id, n]) => `${id} ×${n}`),
+  );
+  const single = reports.flatMap(r =>
+    Object.entries(r.single)
+      .filter(([id]) => READ_ONLY.has(id))
+      .map(([id, n]) => `${id} ×${n}`),
+  );
+  // Round 113: every TCP connection and unicast datagram of the run ends on this machine (the probe sees where a fixture
+  // hook sent it)
+  const away = [
+    ...new Set(
+      files
+        .filter(f => f.endsWith(".lands"))
+        .flatMap(f => fs.readFileSync(path.join(RESOURCE_DIR, f), "utf8").split("\n").filter(Boolean))
+        .map(l => JSON.parse(l))
+        .map(c => `${c.kind} ${c.host}:${c.port}`),
+    ),
+  ];
+  // Round 157 (inventory-template audit V13): `calls only counterparts it declares` reads the calls up to its own suite —
+  // every call after it (the commands, the reports, the fleet suites) is judged here, over the whole run; a copy without a
+  // counterpart (its sealed register) carries no apiLimits
+  const undeclared =
+    typeof apiLimits === "function" && fs.existsSync(API_LIMITS)
+      ? [
+          ...new Set(
+            limitCalls(RESOURCE_DIR, readCalls(), false)
+              .filter(c => !apiLimits().some(d => fits(c, d.match)))
+              .map(channel),
+          ),
+        ]
+      : [];
+  // Round 170 (R170-64): in a run folder the probe stays with the run (its retention removes it) — the lab run of
+  // round 170 had to run again to read its answer stamps; elsewhere (CI, the tmpdir) it goes
+  if (!process.env.KROBI_RUN_DIR) {
+    fs.rmSync(RESOURCE_DIR, { recursive: true, force: true });
+  }
+  assert.ok(starts.length > 0, "no adapter start loaded the resource probe — a start without adapterEnv()");
+  assert.deepStrictEqual(silent, [], "adapter processes that never reached their exit (killed or crashed)");
+  assert.deepStrictEqual(left, [], `left open after onUnload:\n${left.join("\n")}`);
+  assert.deepStrictEqual(
+    reread,
+    [],
+    `read-only states read back from the database while nothing changed:\n${reread.join("\n")}`,
+  );
+  assert.deepStrictEqual(
+    single,
+    [],
+    `read-only states read one by one from the database (one bulk getStatesAsync at the start, then compare in memory):\n${single.join("\n")}`,
+  );
+  assert.deepStrictEqual(
+    undeclared,
+    [],
+    `calls in the run to counterparts src/lib/api-limits.json does not declare:\n${undeclared.join("\n")}`,
+  );
+  assert.deepStrictEqual(
+    away,
+    [],
+    `connections that left this machine — the run reached the real world (a route missing in FIXTURE_HOOKS, a device on the network):\n${away.join("\n")}`,
+  );
 });
