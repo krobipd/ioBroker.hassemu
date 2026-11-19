@@ -84,5 +84,11 @@
   "header_https": "HTTPS",
   "secure": "Use HTTPS",
   "secureTooltip": "Encrypts login, password and tokens with a certificate from ioBroker; off, everything stays plain HTTP",
-  "httpsInfo": "With HTTPS the displays reach hassemu under the name in the certificate instead of the IP address, so that name must resolve on every display. With ioBroker's default certificate (self-signed, issued for the computer name) an Android display needs both: the certificate installed as trusted, and a network that resolves the computer name. A dashboard on plain HTTP cannot be shown inside an HTTPS page — choose an HTTPS address for it. Switching HTTPS on changes the address of hassemu: every display shows up once as a new device and must be pointed at the new address."
+  "httpsInfo": "With HTTPS the displays reach hassemu under the name in the certificate instead of the IP address, so that name must resolve on every display. With ioBroker's default certificate (self-signed, issued for the computer name) an Android display needs both: the certificate installed as trusted, and a network that resolves the computer name. A dashboard on plain HTTP cannot be shown inside an HTTPS page — choose an HTTPS address for it. Switching HTTPS on changes the address of hassemu: every display shows up once as a new device and must be pointed at the new address.",
+  "removalHeader": "Deleting datapoints",
+  "removalInfo": "When the adapter no longer provides a datapoint, it deletes it. These two options decide what happens to a datapoint you record (history, sql, influxdb). The log counts the datapoints kept.",
+  "deleteRecordedStates": "Delete datapoints with recording",
+  "deleteRecordedStatesHelp": "Off: a datapoint with recording stays and is counted in the log — check it manually",
+  "deleteRecordedHistory": "Delete the recorded data too",
+  "deleteRecordedHistoryHelp": "Each recording instance deletes the data of the datapoint first"
 }

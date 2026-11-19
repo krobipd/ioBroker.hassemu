@@ -42,6 +42,10 @@ export interface AdapterConfig {
   certChained?: string;
   /** Let's Encrypt collections of the acme adapter: `false` none, `true` every one, a string the one of that id. */
   leCollection?: boolean | string;
+  /** Fleet deletion option (object-removal.ts): a vanished datapoint goes although a user records it — default on. */
+  deleteRecordedStates?: boolean;
+  /** Fleet deletion option: every recording instance deletes the recorded data first — default off. */
+  deleteRecordedHistory?: boolean;
 }
 
 /**

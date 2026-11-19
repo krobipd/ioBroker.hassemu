@@ -84,5 +84,11 @@
   "header_https": "HTTPS",
   "secure": "Usa HTTPS",
   "secureTooltip": "Cifra accesso, password e token con un certificato di ioBroker; disattivato, tutto resta in HTTP",
-  "httpsInfo": "Con HTTPS i display raggiungono hassemu con il nome nel certificato invece dell'indirizzo IP, quindi quel nome deve essere risolvibile su ogni display. Con il certificato predefinito di ioBroker (autofirmato, emesso per il nome del computer) un display Android ha bisogno di entrambe le cose: il certificato installato come attendibile e una rete che risolva il nome del computer. Una dashboard in semplice HTTP non può essere mostrata in una pagina HTTPS: scegli un indirizzo HTTPS. Attivare HTTPS cambia l'indirizzo di hassemu: ogni display compare una volta come nuovo dispositivo e va puntato al nuovo indirizzo."
+  "httpsInfo": "Con HTTPS i display raggiungono hassemu con il nome nel certificato invece dell'indirizzo IP, quindi quel nome deve essere risolvibile su ogni display. Con il certificato predefinito di ioBroker (autofirmato, emesso per il nome del computer) un display Android ha bisogno di entrambe le cose: il certificato installato come attendibile e una rete che risolva il nome del computer. Una dashboard in semplice HTTP non può essere mostrata in una pagina HTTPS: scegli un indirizzo HTTPS. Attivare HTTPS cambia l'indirizzo di hassemu: ogni display compare una volta come nuovo dispositivo e va puntato al nuovo indirizzo.",
+  "removalHeader": "Eliminazione dei punti dati",
+  "removalInfo": "Quando l'adattatore non fornisce più un punto dati, lo elimina. Queste due opzioni decidono cosa succede a un punto dati che registri (history, sql, influxdb). Il log conta i punti dati mantenuti.",
+  "deleteRecordedStates": "Elimina i punti dati con registrazione",
+  "deleteRecordedStatesHelp": "Disattivato: un punto dati con registrazione resta ed è contato nel log — controllalo manualmente",
+  "deleteRecordedHistory": "Elimina anche i dati registrati",
+  "deleteRecordedHistoryHelp": "Ogni istanza di registrazione elimina prima i dati del punto dati"
 }

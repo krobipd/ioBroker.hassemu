@@ -84,5 +84,11 @@
   "header_https": "HTTPS",
   "secure": "使用 HTTPS",
   "secureTooltip": "使用 ioBroker 中的证书加密登录、密码和令牌；关闭时一切仍为 HTTP",
-  "httpsInfo": "启用 HTTPS 后，显示屏通过证书中的名称而不是 IP 地址访问 hassemu，因此每个显示屏都必须能解析该名称。使用 ioBroker 默认证书（自签名，签发给计算机名）时，Android 显示屏需要两者兼备：证书已安装为受信任证书，并且网络能解析该计算机名。纯 HTTP 的仪表板无法显示在 HTTPS 页面中——请为其选择 HTTPS 地址。启用 HTTPS 会改变 hassemu 的地址：每个显示屏会作为新设备出现一次，并需要指向新地址。"
+  "httpsInfo": "启用 HTTPS 后，显示屏通过证书中的名称而不是 IP 地址访问 hassemu，因此每个显示屏都必须能解析该名称。使用 ioBroker 默认证书（自签名，签发给计算机名）时，Android 显示屏需要两者兼备：证书已安装为受信任证书，并且网络能解析该计算机名。纯 HTTP 的仪表板无法显示在 HTTPS 页面中——请为其选择 HTTPS 地址。启用 HTTPS 会改变 hassemu 的地址：每个显示屏会作为新设备出现一次，并需要指向新地址。",
+  "removalHeader": "删除数据点",
+  "removalInfo": "当适配器不再提供某个数据点时，会将其删除。这两个选项决定您记录的数据点（history、sql、influxdb）如何处理。日志会统计保留的数据点数量。",
+  "deleteRecordedStates": "删除有记录的数据点",
+  "deleteRecordedStatesHelp": "关闭：有记录的数据点保留并计入日志——请手动检查",
+  "deleteRecordedHistory": "同时删除已记录的数据",
+  "deleteRecordedHistoryHelp": "每个记录实例先删除该数据点的数据"
 }

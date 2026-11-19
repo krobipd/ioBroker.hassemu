@@ -126,11 +126,19 @@ function createMockAdapter(namespace = "hassemu.0"): {
       value: { val: unknown; ack?: boolean },
     ) => Promise<{ id: string; notChanged: boolean }>;
     delObjectAsync: (id: string, options?: { recursive?: boolean }) => Promise<void>;
+    getObjectListAsync: (params: {
+      startkey: string;
+      endkey: string;
+    }) => Promise<{ rows: Array<{ id: string; value: ObjEntry }> }>;
+    sendToAsync: () => Promise<unknown>;
+    config: Record<string, unknown>;
     encrypt: (value: string) => string;
     decrypt: (value: string) => string;
   } {
     return {
       namespace,
+      // The fleet's two deletion options at their defaults (io-package native): delete, keep the recorded data.
+      config: { deleteRecordedStates: true, deleteRecordedHistory: false },
       encrypt: TEST_CIPHER.encrypt,
       decrypt: TEST_CIPHER.decrypt,
       log: {
@@ -226,11 +234,23 @@ function createMockAdapter(namespace = "hassemu.0"): {
         store.states.set(`${namespace}.${id}`, { val: value.val, ack: value.ack ?? false });
         return Promise.resolve({ id, notChanged: false });
       },
-      // Like 7.2.2: a missing object deletes nothing, the value goes only with a state object.
+      // Like 7.2.2: a missing object deletes nothing, the value goes only with a state object; an id that already
+      // carries the namespace stays as it is (`fixId`) — the fleet's removal deletes by full id.
       delObjectAsync: (id: string, options?: { recursive?: boolean }) => {
-        brokerDelObject(store.objects, store.states, `${namespace}.${id}`, options?.recursive === true);
+        const fullId = id.startsWith(`${namespace}.`) ? id : `${namespace}.${id}`;
+        brokerDelObject(store.objects, store.states, fullId, options?.recursive === true);
         return Promise.resolve();
       },
+      // Like the controller: every object between the two ids, sorted — a copy each (the fleet's removal reads here).
+      getObjectListAsync: (params: { startkey: string; endkey: string }) => {
+        const rows = [...store.objects]
+          .filter(([id]) => id >= params.startkey && id <= params.endkey)
+          .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+          .map(([id, value]) => ({ id, value: structuredClone(value) }));
+        return Promise.resolve({ rows });
+      },
+      // No recording instance answers here; with the defaults above the removal never asks one.
+      sendToAsync: () => Promise.reject(new Error("no recording instance in this stub")),
     };
   }
 
@@ -969,6 +989,26 @@ describe("ClientRegistry", () => {
       expect(rec2.cookie).to.not.equal(oldCookie);
     });
 
+    it("keeps a datapoint the user records while the deletion option says so, with the device above it", async () => {
+      // Fleet deletion option (R185-13, krobi 2026-11-17 20:38–20:44): off keeps a recorded datapoint.
+      adapter.config.deleteRecordedStates = false;
+      const rec = await registry.identifyOrCreate(null, "1.2.3.4");
+      const base = `hassemu.0.clients.${rec.id}`;
+      const ip = store.objects.get(`${base}.ip`)!;
+      store.objects.set(`${base}.ip`, { ...ip, common: { ...ip.common, custom: { "history.0": { enabled: true } } } });
+      store.logs.length = 0;
+      await registry.remove(rec.id);
+      expect(registry.getById(rec.id), "forgotten in memory").to.be.null;
+      expect(store.objects.has(`${base}.ip`), "the recorded datapoint stays").to.be.true;
+      expect(store.objects.has(base), "and the device above it").to.be.true;
+      expect(store.objects.has(`${base}.mode`), "what records nothing goes").to.be.false;
+      expect(store.objects.has(`${base}.manualUrl`)).to.be.false;
+      const lines = store.logs.filter(l => l.level === "info").map(l => l.msg);
+      expect(lines).to.deep.equal([
+        "Object tree updated: removed 4 datapoint(s), kept 1 datapoint(s) with recording (history.0) — please check them manually",
+      ]);
+    });
+
     it("logs the removal on debug, never on info (a button gets no info line)", async () => {
       const rec = await registry.identifyOrCreate(null, null);
       await registry.remove(rec.id);
@@ -1359,6 +1399,25 @@ describe("ClientRegistry", () => {
       expect(store.objects.has(`hassemu.0.clients.${id}`), "orphan object deleted").to.be.false;
       const warns = store.logs.filter(l => l.level === "warn" && l.msg.includes("orphaned client channel"));
       expect(warns.length).to.be.greaterThan(0);
+    });
+
+    it("warns about an orphan only when something of it went — a recorded datapoint the option keeps is named once by the removal", async () => {
+      adapter.config.deleteRecordedStates = false;
+      const id = "orphan2";
+      store.objects.set(`hassemu.0.clients.${id}`, { type: "device", native: {} });
+      store.objects.set(`hassemu.0.clients.${id}.ip`, {
+        type: "state",
+        common: { type: "string", role: "info.ip", custom: { "influxdb.0": { enabled: true } } },
+        native: {},
+      });
+      await registry.restore();
+      expect(registry.getById(id)).to.be.null;
+      expect(store.objects.has(`hassemu.0.clients.${id}.ip`)).to.be.true;
+      expect(store.objects.has(`hassemu.0.clients.${id}`)).to.be.true;
+      expect(store.logs.some(l => l.level === "warn" && l.msg.includes("orphaned client channel"))).to.be.false;
+      expect(store.logs.filter(l => l.level === "info").map(l => l.msg)).to.deep.equal([
+        "Object tree updated: removed 0 datapoint(s), kept 1 datapoint(s) with recording (influxdb.0) — please check them manually",
+      ]);
     });
 
     it("skips channels without a valid cookie", async () => {

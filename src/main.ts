@@ -12,6 +12,7 @@ import { KnownObjects } from "./lib/known-objects";
 import { migrateLegacyDefaultVisUrl, migrateVisUrlToMode } from "./lib/legacy-migration";
 import { migrateNativeKeys } from "./lib/native-key-migration";
 import { MDNSService } from "./lib/mdns";
+import { removeObject } from "./lib/object-removal";
 import { listAddress } from "./lib/network";
 import { carriesAddress, chosenAddress } from "./lib/network-address";
 import { resolveRedirect } from "./lib/redirect-resolver";
@@ -470,7 +471,7 @@ class HassEmu extends utils.Adapter {
    */
   private async dropLegacyServerUuid(): Promise<void> {
     if (await this.getObjectAsync("info.serverUuid")) {
-      await this.delObjectAsync("info.serverUuid");
+      await removeObject(this, "info.serverUuid");
     }
   }
 

@@ -84,5 +84,11 @@
   "header_https": "HTTPS",
   "secure": "Usar HTTPS",
   "secureTooltip": "Cifra el inicio de sesión, la contraseña y los tokens con un certificado de ioBroker; desactivado, todo sigue en HTTP",
-  "httpsInfo": "Con HTTPS las pantallas acceden a hassemu con el nombre del certificado en lugar de la dirección IP, así que ese nombre debe resolverse en cada pantalla. Con el certificado predeterminado de ioBroker (autofirmado, emitido para el nombre del equipo) una pantalla Android necesita las dos cosas: el certificado instalado como de confianza y una red que resuelva el nombre del equipo. Un panel en HTTP simple no puede mostrarse dentro de una página HTTPS: elige una dirección HTTPS para él. Activar HTTPS cambia la dirección de hassemu: cada pantalla aparece una vez como dispositivo nuevo y debe apuntar a la nueva dirección."
+  "httpsInfo": "Con HTTPS las pantallas acceden a hassemu con el nombre del certificado en lugar de la dirección IP, así que ese nombre debe resolverse en cada pantalla. Con el certificado predeterminado de ioBroker (autofirmado, emitido para el nombre del equipo) una pantalla Android necesita las dos cosas: el certificado instalado como de confianza y una red que resuelva el nombre del equipo. Un panel en HTTP simple no puede mostrarse dentro de una página HTTPS: elige una dirección HTTPS para él. Activar HTTPS cambia la dirección de hassemu: cada pantalla aparece una vez como dispositivo nuevo y debe apuntar a la nueva dirección.",
+  "removalHeader": "Eliminar puntos de datos",
+  "removalInfo": "Cuando el adaptador deja de proporcionar un punto de datos, lo elimina. Estas dos opciones deciden qué ocurre con un punto de datos que registras (history, sql, influxdb). El log cuenta los puntos de datos conservados.",
+  "deleteRecordedStates": "Eliminar puntos de datos con registro",
+  "deleteRecordedStatesHelp": "Desactivado: un punto de datos con registro se conserva y se cuenta en el log — revísalo manualmente",
+  "deleteRecordedHistory": "Eliminar también los datos registrados",
+  "deleteRecordedHistoryHelp": "Cada instancia de registro elimina primero los datos del punto de datos"
 }

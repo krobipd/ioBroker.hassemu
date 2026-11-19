@@ -84,5 +84,11 @@
   "header_https": "HTTPS",
   "secure": "Usar HTTPS",
   "secureTooltip": "Criptografa login, senha e tokens com um certificado do ioBroker; desligado, tudo continua em HTTP",
-  "httpsInfo": "Com HTTPS as telas acessam o hassemu pelo nome do certificado em vez do endereço IP, então esse nome precisa ser resolvido em cada tela. Com o certificado padrão do ioBroker (autoassinado, emitido para o nome do computador), uma tela Android precisa das duas coisas: o certificado instalado como confiável e uma rede que resolva o nome do computador. Um painel em HTTP simples não pode ser exibido dentro de uma página HTTPS — escolha um endereço HTTPS para ele. Ativar HTTPS muda o endereço do hassemu: cada tela aparece uma vez como novo dispositivo e precisa apontar para o novo endereço."
+  "httpsInfo": "Com HTTPS as telas acessam o hassemu pelo nome do certificado em vez do endereço IP, então esse nome precisa ser resolvido em cada tela. Com o certificado padrão do ioBroker (autoassinado, emitido para o nome do computador), uma tela Android precisa das duas coisas: o certificado instalado como confiável e uma rede que resolva o nome do computador. Um painel em HTTP simples não pode ser exibido dentro de uma página HTTPS — escolha um endereço HTTPS para ele. Ativar HTTPS muda o endereço do hassemu: cada tela aparece uma vez como novo dispositivo e precisa apontar para o novo endereço.",
+  "removalHeader": "Eliminar pontos de dados",
+  "removalInfo": "Quando o adaptador deixa de fornecer um ponto de dados, elimina-o. Estas duas opções decidem o que acontece a um ponto de dados que regista (history, sql, influxdb). O log conta os pontos de dados mantidos.",
+  "deleteRecordedStates": "Eliminar pontos de dados com registo",
+  "deleteRecordedStatesHelp": "Desligado: um ponto de dados com registo permanece e é contado no log — verifique-o manualmente",
+  "deleteRecordedHistory": "Eliminar também os dados registados",
+  "deleteRecordedHistoryHelp": "Cada instância de registo elimina primeiro os dados do ponto de dados"
 }

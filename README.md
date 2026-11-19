@@ -226,6 +226,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 - Changed: the redirect mode datapoints are of type text
 - New: every display carries a display pictogram in the object tree
 - Changed: a new instance is created disabled
+- New: two settings decide whether a datapoint you record is deleted when hassemu no longer needs it, and whether its recorded data goes too
 - Improved: a start puts less load on the ioBroker database
 - Fixed: an update from 1.0 or 1.1 removes the empty hostname and visUrl datapoints a display kept until now
 - Fixed: the dashboard list takes the page of the devices adapter and other admin tiles it used to drop

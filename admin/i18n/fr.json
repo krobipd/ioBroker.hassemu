@@ -84,5 +84,11 @@
   "header_https": "HTTPS",
   "secure": "Utiliser HTTPS",
   "secureTooltip": "Chiffre la connexion, le mot de passe et les jetons avec un certificat d'ioBroker ; désactivé, tout reste en HTTP",
-  "httpsInfo": "Avec HTTPS, les écrans joignent hassemu sous le nom du certificat au lieu de l'adresse IP ; ce nom doit donc être résolu sur chaque écran. Avec le certificat par défaut d'ioBroker (auto-signé, émis pour le nom de l'ordinateur), un écran Android a besoin des deux : le certificat installé comme approuvé et un réseau qui résout le nom de l'ordinateur. Un tableau de bord en HTTP simple ne peut pas s'afficher dans une page HTTPS — choisissez une adresse HTTPS. Activer HTTPS change l'adresse de hassemu : chaque écran apparaît une fois comme nouvel appareil et doit être dirigé vers la nouvelle adresse."
+  "httpsInfo": "Avec HTTPS, les écrans joignent hassemu sous le nom du certificat au lieu de l'adresse IP ; ce nom doit donc être résolu sur chaque écran. Avec le certificat par défaut d'ioBroker (auto-signé, émis pour le nom de l'ordinateur), un écran Android a besoin des deux : le certificat installé comme approuvé et un réseau qui résout le nom de l'ordinateur. Un tableau de bord en HTTP simple ne peut pas s'afficher dans une page HTTPS — choisissez une adresse HTTPS. Activer HTTPS change l'adresse de hassemu : chaque écran apparaît une fois comme nouvel appareil et doit être dirigé vers la nouvelle adresse.",
+  "removalHeader": "Suppression des points de données",
+  "removalInfo": "Lorsque l'adaptateur ne fournit plus un point de données, il le supprime. Ces deux options déterminent ce qui arrive à un point de données que vous enregistrez (history, sql, influxdb). Le journal compte les points de données conservés.",
+  "deleteRecordedStates": "Supprimer les points de données enregistrés",
+  "deleteRecordedStatesHelp": "Désactivé : un point de données enregistré est conservé et compté dans le journal — vérifiez-le manuellement",
+  "deleteRecordedHistory": "Supprimer aussi les données enregistrées",
+  "deleteRecordedHistoryHelp": "Chaque instance d'enregistrement supprime d'abord les données du point de données"
 }

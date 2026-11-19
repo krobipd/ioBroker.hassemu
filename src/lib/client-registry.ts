@@ -53,6 +53,7 @@ import { moveAllWithEnums } from "./enum-carry";
 import { errText } from "./err-text";
 import { resolveLabel, tName, tRaw } from "./i18n";
 import { coveredBy } from "./known-objects";
+import { removeObject } from "./object-removal";
 import { replaceObjectPreservingValue } from "./object-repair";
 import type { AdapterInterface, ClientRecord, UrlStates } from "./types";
 
@@ -71,6 +72,9 @@ export type RegistryAdapter = AdapterInterface &
     | "extendObject"
     | "setState"
     | "delObjectAsync"
+    | "getObjectListAsync"
+    | "sendToAsync"
+    | "config"
     | "setForeignObject"
     | "encrypt"
     | "decrypt"
@@ -554,10 +558,10 @@ export class ClientRegistry {
         for (const id of below) {
           await this.adapter.delObjectAsync(local(id));
         }
+        await this.adapter.delObjectAsync(`${CLIENTS_PREFIX}${move.from}`);
       },
       errText,
     );
-    await this.adapter.delObjectAsync(`${CLIENTS_PREFIX}${move.from}`);
     this.adapter.log.info(
       `Display ${move.from} is now ${move.to} — scripts and visualisations that use clients.${move.from} need the new id`,
     );
@@ -653,9 +657,13 @@ export class ClientRegistry {
       // mid-creation here, and an unreadable file stopped the start before
       // this point; delete it so it stops lingering in the object tree (where
       // nothing ever reaps it — it has no cookie to restore). v1.37.0 (M5).
-      this.adapter.log.warn(`client-registry: removing orphaned client channel without cookie: ${id}`);
       try {
-        await this.adapter.delObjectAsync(`clients.${id}`, { recursive: true });
+        // Through the fleet's removal: a datapoint the user records stays while the deletion option says so, and the
+        // removal names it in its own line — the warning tells only what actually went.
+        const { removed } = await removeObject(this.adapter, `clients.${id}`, { recursive: true });
+        if (removed.length > 0) {
+          this.adapter.log.warn(`client-registry: removed orphaned client channel without cookie: ${id}`);
+        }
       } catch (err) {
         this.adapter.log.debug(`client-registry: orphan cleanup failed for ${id}: ${errText(err)}`);
       }
@@ -714,7 +722,7 @@ export class ClientRegistry {
         );
       }
       try {
-        await this.adapter.delObjectAsync(`clients.${id}.hostname`);
+        await removeObject(this.adapter, `clients.${id}.hostname`);
       } catch {
         /* best effort — ignore */
       }
@@ -1263,7 +1271,8 @@ export class ClientRegistry {
     this.persistQuietly(`forgetting ${id}`);
     let objectRemoved = true;
     try {
-      await this.adapter.delObjectAsync(`clients.${id}`, { recursive: true });
+      // The fleet's removal reads the user's deletion options: a datapoint with a recording may stay (it names it).
+      await removeObject(this.adapter, `clients.${id}`, { recursive: true });
     } catch (err) {
       objectRemoved = false;
       // Stack-trace level — Maintainer-Diagnose, EN bleibt.

@@ -84,5 +84,11 @@
   "header_https": "HTTPS",
   "secure": "HTTPS verwenden",
   "secureTooltip": "Verschlüsselt Anmeldung, Passwort und Tokens mit einem Zertifikat aus ioBroker; aus bleibt alles bei HTTP",
-  "httpsInfo": "Mit HTTPS erreichen die Displays hassemu unter dem Namen im Zertifikat statt unter der IP-Adresse; dieser Name muss also auf jedem Display auflösbar sein. Mit dem Standard-Zertifikat von ioBroker (selbst ausgestellt, auf den Rechnernamen) braucht ein Android-Display beides: das Zertifikat als vertrauenswürdig installiert und ein Netz, das den Rechnernamen auflöst. Ein Dashboard über reines HTTP lässt sich in einer HTTPS-Seite nicht anzeigen — wähle dafür eine HTTPS-Adresse. Das Einschalten ändert die Adresse von hassemu: Jedes Display erscheint einmal als neues Gerät und muss auf die neue Adresse eingestellt werden."
+  "httpsInfo": "Mit HTTPS erreichen die Displays hassemu unter dem Namen im Zertifikat statt unter der IP-Adresse; dieser Name muss also auf jedem Display auflösbar sein. Mit dem Standard-Zertifikat von ioBroker (selbst ausgestellt, auf den Rechnernamen) braucht ein Android-Display beides: das Zertifikat als vertrauenswürdig installiert und ein Netz, das den Rechnernamen auflöst. Ein Dashboard über reines HTTP lässt sich in einer HTTPS-Seite nicht anzeigen — wähle dafür eine HTTPS-Adresse. Das Einschalten ändert die Adresse von hassemu: Jedes Display erscheint einmal als neues Gerät und muss auf die neue Adresse eingestellt werden.",
+  "removalHeader": "Löschen von Datenpunkten",
+  "removalInfo": "Stellt der Adapter einen Datenpunkt nicht mehr bereit, löscht er ihn. Diese zwei Optionen entscheiden, was mit einem Datenpunkt geschieht, den du aufzeichnest (history, sql, influxdb). Das Log zählt die behaltenen Datenpunkte.",
+  "deleteRecordedStates": "Datenpunkte mit Aufzeichnung löschen",
+  "deleteRecordedStatesHelp": "Aus: ein Datenpunkt mit Aufzeichnung bleibt und wird im Log gezählt — bitte manuell prüfen",
+  "deleteRecordedHistory": "Auch die aufgezeichneten Daten löschen",
+  "deleteRecordedHistoryHelp": "Jede aufzeichnende Instanz löscht zuerst die Daten des Datenpunkts"
 }

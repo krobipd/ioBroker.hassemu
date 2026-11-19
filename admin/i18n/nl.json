@@ -84,5 +84,11 @@
   "header_https": "HTTPS",
   "secure": "HTTPS gebruiken",
   "secureTooltip": "Versleutelt aanmelding, wachtwoord en tokens met een certificaat uit ioBroker; uit blijft alles HTTP",
-  "httpsInfo": "Met HTTPS bereiken de displays hassemu onder de naam in het certificaat in plaats van het IP-adres; die naam moet dus op elk display opgelost kunnen worden. Met het standaardcertificaat van ioBroker (zelfondertekend, uitgegeven voor de computernaam) heeft een Android-display beide nodig: het certificaat als vertrouwd geïnstalleerd en een netwerk dat de computernaam oplost. Een dashboard via gewoon HTTP kan niet in een HTTPS-pagina worden getoond — kies er een HTTPS-adres voor. Inschakelen verandert het adres van hassemu: elk display verschijnt één keer als nieuw apparaat en moet op het nieuwe adres worden ingesteld."
+  "httpsInfo": "Met HTTPS bereiken de displays hassemu onder de naam in het certificaat in plaats van het IP-adres; die naam moet dus op elk display opgelost kunnen worden. Met het standaardcertificaat van ioBroker (zelfondertekend, uitgegeven voor de computernaam) heeft een Android-display beide nodig: het certificaat als vertrouwd geïnstalleerd en een netwerk dat de computernaam oplost. Een dashboard via gewoon HTTP kan niet in een HTTPS-pagina worden getoond — kies er een HTTPS-adres voor. Inschakelen verandert het adres van hassemu: elk display verschijnt één keer als nieuw apparaat en moet op het nieuwe adres worden ingesteld.",
+  "removalHeader": "Datapunten verwijderen",
+  "removalInfo": "Als de adapter een datapunt niet meer levert, verwijdert hij het. Deze twee opties bepalen wat er gebeurt met een datapunt dat je registreert (history, sql, influxdb). Het logboek telt de behouden datapunten.",
+  "deleteRecordedStates": "Datapunten met registratie verwijderen",
+  "deleteRecordedStatesHelp": "Uit: een datapunt met registratie blijft en wordt in het logboek geteld — controleer het handmatig",
+  "deleteRecordedHistory": "Ook de geregistreerde gegevens verwijderen",
+  "deleteRecordedHistoryHelp": "Elke registrerende instantie verwijdert eerst de gegevens van het datapunt"
 }

@@ -24,75 +24,34 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 /** The instance data folder of the running test. */
 const data = vi.hoisted(() => ({ dir: "" }));
 
-vi.mock("@iobroker/adapter-core", () => {
+vi.mock("@iobroker/adapter-core", async () => {
+  const { FakeAdapter } = await import("../lib/adapter-fake.js");
   const noop = (): void => undefined;
-  /** The adapter base class over a database in memory. */
-  class Adapter {
-    namespace = "hassemu.0";
-    config: Record<string, unknown> = {};
+  /** The adapter base class: the fleet's fake adapter over a database in memory, plus what hassemu itself calls. */
+  class Adapter extends FakeAdapter {
     handlers = new Map<string, (...args: unknown[]) => unknown>();
-    objects = new Map<string, ioBroker.Object>();
     states = new Map<string, ioBroker.State>();
     log = { silly: noop, debug: noop, info: noop, warn: noop, error: noop, level: "info" };
-    on(event: string, handler: (...args: unknown[]) => unknown): this {
-      this.handlers.set(event, handler);
+    on(event: string, handler: (...args: never[]) => unknown): this {
+      this.handlers.set(event, handler as (...args: unknown[]) => unknown);
       return this;
-    }
-    full(id: string): string {
-      return id.startsWith(`${this.namespace}.`) ? id : `${this.namespace}.${id}`;
     }
     setInterval(): object {
       return {};
     }
     clearInterval(): void {}
-    setTimeout(): object {
-      return {};
-    }
-    clearTimeout(): void {}
-    getObjectAsync(id: string): Promise<ioBroker.Object | null> {
+    getObjectAsync(id: string): Promise<Record<string, unknown> | null> {
       return Promise.resolve(structuredClone(this.objects.get(this.full(id)) ?? null));
     }
-    getForeignObjectAsync(id: string): Promise<ioBroker.Object | null> {
-      return Promise.resolve(structuredClone(this.objects.get(id) ?? null));
-    }
-    getForeignObjectsAsync(pattern: string, type?: string): Promise<Record<string, ioBroker.Object>> {
-      const prefix = pattern.replace(/\*$/, "");
-      const wanted = type ?? "state";
-      const found = [...this.objects].filter(([id, obj]) => id.startsWith(prefix) && obj.type === wanted);
-      return Promise.resolve(structuredClone(Object.fromEntries(found)));
-    }
-    getAdapterObjectsAsync(): Promise<Record<string, ioBroker.Object>> {
+    getAdapterObjectsAsync(): Promise<Record<string, Record<string, unknown>>> {
       const own = [...this.objects].filter(([id]) => id.startsWith(`${this.namespace}.`));
       return Promise.resolve(structuredClone(Object.fromEntries(own)));
     }
     setObjectNotExistsAsync(id: string, obj: ioBroker.Object): Promise<{ id: string }> {
       if (!this.objects.has(this.full(id))) {
-        this.objects.set(this.full(id), { ...structuredClone(obj), _id: this.full(id) } as ioBroker.Object);
+        this.objects.set(this.full(id), { ...structuredClone(obj), _id: this.full(id) });
       }
       return Promise.resolve({ id: this.full(id) });
-    }
-    extendObject(id: string, patch: Record<string, unknown>): Promise<{ id: string }> {
-      const before = (this.objects.get(this.full(id)) ?? {}) as unknown as Record<string, unknown>;
-      const after: Record<string, unknown> = { ...before, _id: this.full(id) };
-      for (const [key, value] of Object.entries(patch)) {
-        const old = before[key];
-        after[key] =
-          typeof old === "object" && old !== null && typeof value === "object" && value !== null
-            ? { ...old, ...value }
-            : value;
-      }
-      this.objects.set(this.full(id), after as unknown as ioBroker.Object);
-      return Promise.resolve({ id: this.full(id) });
-    }
-    delObjectAsync(id: string, options?: { recursive?: boolean }): Promise<void> {
-      const key = this.full(id);
-      for (const stored of [...this.objects.keys()]) {
-        if (stored === key || (options?.recursive === true && stored.startsWith(`${key}.`))) {
-          this.objects.delete(stored);
-          this.states.delete(stored);
-        }
-      }
-      return Promise.resolve();
     }
     getStateAsync(id: string): Promise<ioBroker.State | null> {
       return Promise.resolve(structuredClone(this.states.get(this.full(id)) ?? null));
@@ -120,12 +79,6 @@ vi.mock("@iobroker/adapter-core", () => {
       }
       this.states.set(this.full(id), { ...next, ts: Date.now(), lc: Date.now() });
       return Promise.resolve({ id: this.full(id), notChanged: false });
-    }
-    public encrypt(value: string): string {
-      return `$/aes-192-cbc:${Buffer.from(value).toString("base64")}`;
-    }
-    public decrypt(value: string): string {
-      return Buffer.from(value.replace("$/aes-192-cbc:", ""), "base64").toString();
     }
   }
   return {
