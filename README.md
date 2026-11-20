@@ -131,7 +131,6 @@ Leave _Trust Reverse Proxy Headers_ off unless that proxy really exists: without
 hassemu.0.
 ├── info.
 │   ├── connection      — server is running
-│   ├── serverUuid      — server identity (read-only)
 │   └── refreshUrls     — re-scan URL list (button, set to true)
 ├── global.
 │   ├── enabled         — master switch

@@ -128,7 +128,6 @@ never on a page you did not choose for them.
 hassemu.0.
 ├── info.
 │   ├── connection      the adapter is running
-│   ├── serverUuid      the identity the displays remember the server by
 │   └── refreshUrls     button: search for dashboards again
 ├── global.
 │   ├── enabled         master switch (see above)
@@ -143,13 +142,16 @@ hassemu.0.
         └── remove      button: forget this display
 ```
 
-**serverUuid** is worth knowing about: the displays recognise the server by it. It is
-created once and kept, so restarting the adapter does not look like a different server to
-the display. If it changed, every display would want to be set up again.
+**The server's identity** is not in the tree: the displays recognise the server by an ID that
+is created once and kept in a file in the instance's data folder, together with each display's
+cookie and tokens. Restarting the adapter does not change it, so a restart does not look like a
+different server to the display. If it changed, every display would want to be set up again.
 
-**remove** deletes the entry, and with it the display's identity. The next time that display
-connects it is a new one and starts at `---`. Use it for displays you have got rid of; the
-adapter also clears entries by itself once they have not been seen for 30 days.
+**remove** deletes the entry, and with it the display's identity. A connection the display has
+open ends at once; the next time that display connects it is a new one and starts at `---`. Use
+it for displays you have got rid of. At start the adapter also removes every display that was
+last seen more than 30 days before the most recently seen one — measured against that display,
+not the clock, so after a long standstill of the whole installation none is removed.
 
 **resolvedUrl** is the answer to "where did this display actually end up". It is read-only and
 follows every change: pick a dashboard and it holds that address, switch the display to Global URL
@@ -258,6 +260,9 @@ happens by itself at the first start: values, rooms, functions and aliases move 
 history continues in its old series, and the display stays recognised, so nothing has to be set up
 again. The log names every move. Scripts and visualisations that use the old IDs must be updated.
 Do not go back to 1.x afterwards.
+
+The datapoint `info.serverUuid` is gone: the server's identity moves into the instance's data
+folder at the same start, so the displays keep recognising the server.
 
 A display that connects for the first time gets the model its Home Assistant app reports followed
 by four characters hassemu picks itself, for example `clients.pixel-tablet-02b7`; when the display

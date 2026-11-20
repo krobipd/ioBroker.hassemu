@@ -13,10 +13,10 @@
  * to save device registration".
  *
  * A session is bound to the display's REFRESH token, like HA core (websocket_api/auth.py:116-117
- * at tag 2026.9.3 closes the socket when that token is revoked): a revoke, or removing the display,
- * ends the connection at the next frame or heartbeat. Not the access token — it rotates on
- * every refresh, and binding to it would cut every connection after 30 minutes (audit
- * 2026-09-25, H9).
+ * at tag 2026.9.3 closes the socket when that token is revoked): a revoke ends the connection at the
+ * next frame or heartbeat, removing the display ends it at once (`endDeadSessions`, K20). Not the
+ * access token — it rotates on every refresh, and binding to it would cut every connection after
+ * 30 minutes (audit 2026-09-25, H9).
  */
 
 import type { FastifyInstance } from "fastify";

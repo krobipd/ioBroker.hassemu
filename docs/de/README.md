@@ -130,7 +130,6 @@ nie auf einer Seite, die du für sie nicht ausgewählt hast.
 hassemu.0.
 ├── info.
 │   ├── connection      der Adapter läuft
-│   ├── serverUuid      die Identität, an der die Displays den Server wiedererkennen
 │   └── refreshUrls     Knopf: erneut nach Dashboards suchen
 ├── global.
 │   ├── enabled         Hauptschalter (siehe oben)
@@ -145,13 +144,18 @@ hassemu.0.
         └── remove      Knopf: dieses Display vergessen
 ```
 
-**serverUuid** ist gut zu kennen: Daran erkennen die Displays den Server wieder. Sie wird
-einmal erzeugt und behalten, damit ein Adapter-Neustart für das Display nicht wie ein anderer
-Server aussieht. Änderte sie sich, wollte sich jedes Display neu einrichten.
+**Die Identität des Servers** steht nicht im Baum: Die Displays erkennen den Server an einer
+Kennung, die einmal erzeugt und in einer Datei im Datenordner der Instanz behalten wird, zusammen
+mit Cookie und Tokens jedes Displays. Ein Adapter-Neustart ändert sie nicht, damit er für das
+Display nicht wie ein anderer Server aussieht. Änderte sie sich, wollte sich jedes Display neu
+einrichten.
 
-**remove** löscht den Eintrag und damit die Identität des Displays. Verbindet es sich das
-nächste Mal, ist es ein neues und startet auf `---`. Gedacht für Displays, die du abgebaut
-hast; Einträge, die 30 Tage nicht gesehen wurden, räumt der Adapter ohnehin selbst weg.
+**remove** löscht den Eintrag und damit die Identität des Displays. Eine offene Verbindung des
+Displays endet sofort; verbindet es sich das nächste Mal, ist es ein neues und startet auf `---`.
+Gedacht für Displays, die du abgebaut hast. Beim Start entfernt der Adapter außerdem jedes
+Display, das mehr als 30 Tage vor dem zuletzt gesehenen Display zuletzt gesehen wurde — gemessen
+an diesem Display, nicht an der Uhr, sodass nach einem langen Stillstand der ganzen Anlage keines
+fällt.
 
 **resolvedUrl** beantwortet die Frage „wo ist dieses Display tatsächlich gelandet". Der Wert
 ist nur lesbar und folgt jeder Änderung: Wählst du ein Dashboard, steht dessen Adresse drin;
@@ -265,6 +269,9 @@ beim ersten Start von selbst: Werte, Räume, Funktionen und Aliase ziehen mit, a
 Verläufe laufen in ihrer bisherigen Reihe weiter, und das Display wird weiter erkannt, nichts muss
 neu eingerichtet werden. Das Log nennt jeden Umzug. Skripte und Visualisierungen mit den alten IDs
 müssen angepasst werden. Danach nicht auf 1.x zurückgehen.
+
+Den Datenpunkt `info.serverUuid` gibt es nicht mehr: Die Identität des Servers zieht beim selben
+Start in den Datenordner der Instanz, die Displays erkennen den Server weiter.
 
 Ein Display, das sich zum ersten Mal verbindet, bekommt das Modell, das seine Home-Assistant-App
 meldet, und vier Zeichen, die hassemu selbst wählt, zum Beispiel `clients.pixel-tablet-02b7`;
