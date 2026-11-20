@@ -80,19 +80,6 @@
         "pl": "Cofnięcie wyboru dociera teraz od razu do wyświetlacza — dotąd pokazywał on stary pulpit, dopóki ktoś nie odświeżył go ręcznie.",
         "uk": "Скасування вибору тепер одразу доходить до дисплея — досі він показував стару панель, доки хтось не перезавантажував її вручну.",
         "zh-cn": "撤销选择现在会立即传达到显示器——此前它会一直显示旧的仪表板，直到有人手动重新加载。"
-      },
-      "1.42.0": {
-        "en": "A leftover setting from older versions is now removed from the instance completely instead of only being switched off — switched off, it stayed behind for good.",
-        "de": "Eine Alt-Einstellung aus früheren Versionen wird jetzt vollständig aus der Instanz entfernt statt nur abgeschaltet — abgeschaltet blieb sie dauerhaft stehen.",
-        "ru": "Устаревшая настройка из прежних версий теперь полностью удаляется из экземпляра, а не просто выключается — выключенной она оставалась навсегда.",
-        "pt": "Uma definição antiga de versões anteriores é agora removida por completo da instância em vez de apenas desligada — desligada, ficava lá para sempre.",
-        "nl": "Een oude instelling uit eerdere versies wordt nu volledig uit de instantie verwijderd in plaats van alleen uitgeschakeld — uitgeschakeld bleef ze voorgoed staan.",
-        "fr": "Un réglage résiduel des versions précédentes est désormais entièrement supprimé de l'instance au lieu d'être seulement désactivé — désactivé, il restait là pour toujours.",
-        "it": "Un'impostazione residua delle versioni precedenti ora viene rimossa del tutto dall'istanza invece di essere solo disattivata — disattivata restava lì per sempre.",
-        "es": "Un ajuste residual de versiones anteriores ahora se elimina por completo de la instancia en lugar de solo desactivarse — desactivado se quedaba allí para siempre.",
-        "pl": "Pozostała po starszych wersjach opcja jest teraz całkowicie usuwana z instancji, a nie tylko wyłączana — wyłączona zostawała tam na zawsze.",
-        "uk": "Залишкове налаштування з попередніх версій тепер повністю видаляється з екземпляра, а не лише вимикається — вимкненим воно лишалося назавжди.",
-        "zh-cn": "旧版本遗留的设置现在会从实例中彻底移除，而不再只是关闭——仅关闭时它会永远留在那里。"
       }
     },
     "messages": [
@@ -182,8 +169,17 @@
       "uk": "Емулює мінімальний сервер Home Assistant, щоб пристрої, що очікують панель Home Assistant, могли відображати будь-яку користувацьку URL-адресу.",
       "zh-cn": "模拟一个最小的Home Assistant服务器，使期望Home Assistant仪表板的设备能够显示任何自定义网址。"
     },
-    "authors": ["krobi <krobi@power-dreams.com>"],
-    "keywords": ["homeassistant", "hass", "emulator", "dashboard", "redirect", "vis"],
+    "authors": [
+      "krobi <krobi@power-dreams.com>"
+    ],
+    "keywords": [
+      "homeassistant",
+      "hass",
+      "emulator",
+      "dashboard",
+      "redirect",
+      "vis"
+    ],
     "licenseInformation": {
       "license": "MIT",
       "type": "free"
@@ -193,8 +189,12 @@
     "extIcon": "https://cdn.jsdelivr.net/gh/krobipd/ioBroker.hassemu@main/admin/hassemu.svg",
     "readme": "https://github.com/krobipd/ioBroker.hassemu/blob/main/README.md",
     "docs": {
-      "en": ["docs/en/README.md"],
-      "de": ["docs/de/README.md"]
+      "en": [
+        "docs/en/README.md"
+      ],
+      "de": [
+        "docs/de/README.md"
+      ]
     },
     "enabled": false,
     "tier": 3,
@@ -286,8 +286,12 @@
       ]
     }
   ],
-  "encryptedNative": ["password"],
-  "protectedNative": ["password"],
+  "encryptedNative": [
+    "password"
+  ],
+  "protectedNative": [
+    "password"
+  ],
   "native": {
     "port": 8123,
     "bind": "0.0.0.0",
