@@ -1,7 +1,8 @@
 /**
- * Guard K14 — at start, a display seen 30 days less recently than the most recently seen display is removed with its
- * settings; measured at that display, never at the clock (capped at now), tokens or not; the most recently seen
- * display never falls by itself.
+ * Guard K14 — at start hassemu removes every display that was last seen 30 days longer ago than the most recently seen
+ * one, with its settings and its assignment to room and function; the measure is the most recently seen display, not
+ * the clock: if the whole installation stood still for long, none falls; the most recently seen display never falls by
+ * itself.
  *
  * The page, K14: "At start, hassemu removes every display that was not seen for 30 days longer than the one seen last,
  * with its settings and its assignment to room and function. It is measured at the display seen last, not at the
@@ -11,8 +12,9 @@
  * Path: the adapter class from main.ts, started through the ready handler its constructor registers — the registry
  * restores the displays and their last-seen stamps from the data file, then the start's clean-up runs, then the web
  * server opens on a free port — over an adapter whose object and state database lives in memory. A removal is the
- * recursive delete of the display's device; its room and function assignments leave with that delete in js-controller.
- * The data folder is a fresh folder in the temporary directory, written through the data-folder master as on a host.
+ * recursive delete of the display's device; its room and function assignments leave with that delete, which takes
+ * every deleted id out of every enum as js-controller does. The data folder is a fresh folder in the temporary
+ * directory, written through the data-folder master as on a host.
  */
 
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -178,14 +180,15 @@ interface Seed {
   id: string;
   /** Its last-seen stamp. */
   lastSeen: number;
-  /** An access token and a refresh token, as a signed-in display holds them. */
-  signedIn?: boolean;
 }
 
 const { HassEmu } = mainModule as unknown as { HassEmu: new () => ioBroker.Adapter };
 
 const NS = "hassemu.0";
 const DAY = 24 * 60 * 60 * 1000;
+/** A room and a function the user assigned the displays to. */
+const ROOM = "enum.rooms.hall";
+const FUNCTION = "enum.functions.screens";
 const CONFIG = {
   port: 0,
   bind: "0.0.0.0",
@@ -227,7 +230,7 @@ function uuid(n: number): string {
 
 /**
  * The installation: the manifest's instance objects as js-controller creates them, and the displays — each with its
- * device, its settings (mode on a manual URL) and its entry in the data file.
+ * device, its settings (mode on a manual URL), its entry in the data file, and its device in a room and a function.
  *
  * @param displays the displays
  */
@@ -268,12 +271,20 @@ function seedInstall(displays: Seed[]): void {
     }
     entries[display.id] = {
       cookie: uuid(100 + n),
-      token: display.signedIn ? uuid(200 + n) : null,
-      tokenExpiresAt: display.signedIn ? Date.now() + 1_800_000 : null,
-      refreshToken: display.signedIn ? uuid(300 + n) : null,
+      token: null,
+      tokenExpiresAt: null,
+      refreshToken: null,
       lastSeen: display.lastSeen,
     };
   });
+  for (const id of [ROOM, FUNCTION]) {
+    db.objects.set(id, {
+      _id: id,
+      type: "enum",
+      common: { name: id, members: displays.map(display => `${NS}.clients.${display.id}`) },
+      native: {},
+    } as unknown as ioBroker.Object);
+  }
   writeDataFile(data.dir, "identities.json", { server: "0d5b8e2a-7c41-4f3e-9a26-5b8c1d7e3f90", displays: entries });
 }
 
@@ -295,11 +306,11 @@ function devices(): string[] {
 }
 
 /**
- * What is left of a display: its objects, its values and its entry in the data file.
+ * What is left of a display: its objects, its values, its entry in the data file and the enums that list its device.
  *
  * @param id the display id
  */
-function leftOf(id: string): { objects: string[]; values: string[]; fileEntry: boolean } {
+function leftOf(id: string): { objects: string[]; values: string[]; fileEntry: boolean; inEnums: string[] } {
   const prefix = `${NS}.clients.${id}`;
   const file = join(data.dir, "identities.json");
   const stored = (existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {}) as {
@@ -309,16 +320,19 @@ function leftOf(id: string): { objects: string[]; values: string[]; fileEntry: b
     objects: [...db.objects.keys()].filter(key => key === prefix || key.startsWith(`${prefix}.`)),
     values: [...db.states.keys()].filter(key => key.startsWith(`${prefix}.`)),
     fileEntry: stored.displays?.[id] !== undefined,
+    inEnums: [ROOM, FUNCTION].filter(enumId =>
+      ((db.objects.get(enumId)?.common as { members?: string[] } | undefined)?.members ?? []).includes(prefix),
+    ),
   };
 }
 
-describe("K14: the start removes displays long unseen, measured at the display seen last", () => {
-  it("removes a display 31 days behind the one seen last with its settings, signed in or not; keeps one 29 days behind and the one seen last, though everything stood still for 60 days", async () => {
-    const newest = Date.now() - 60 * DAY;
+describe("K14: at start hassemu removes displays long unseen, measured at the most recently seen display", () => {
+  it("removes a display last seen 30 days longer ago than the most recently seen one, with its settings and its assignment to room and function", async () => {
+    const newest = Date.now() - DAY;
     seedInstall([
       { id: "display-a001", lastSeen: newest },
       { id: "display-b002", lastSeen: newest - 29 * DAY },
-      { id: "display-c003", lastSeen: newest - 31 * DAY, signedIn: true },
+      { id: "display-c003", lastSeen: newest - 31 * DAY },
     ]);
 
     await started();
@@ -327,26 +341,34 @@ describe("K14: the start removes displays long unseen, measured at the display s
       problems: [],
       devices: ["display-a001", "display-b002"],
     });
-    expect(leftOf("display-c003")).toEqual({ objects: [], values: [], fileEntry: false });
-    expect({ seenLast: leftOf("display-a001").fileEntry, behind29: leftOf("display-b002").fileEntry }).toEqual({
-      seenLast: true,
-      behind29: true,
-    });
+    expect(leftOf("display-c003")).toEqual({ objects: [], values: [], fileEntry: false, inEnums: [] });
+    expect(leftOf("display-b002").inEnums).toEqual([ROOM, FUNCTION]);
   });
 
-  it("measures against now at the latest: a stamp from a clock that ran ahead ages no other display", async () => {
+  it("if the whole installation stood still for long, none falls", async () => {
+    const newest = Date.now() - 60 * DAY;
     seedInstall([
-      { id: "display-d004", lastSeen: Date.now() + 40 * DAY },
-      { id: "display-e005", lastSeen: Date.now() - 10 * DAY },
-      { id: "display-f006", lastSeen: Date.now() - 45 * DAY },
+      { id: "display-d004", lastSeen: newest },
+      { id: "display-e005", lastSeen: newest - 20 * DAY },
     ]);
 
     await started();
 
-    expect({ problems: db.problems, devices: devices(), behind45: leftOf("display-f006").fileEntry }).toEqual({
+    expect({ problems: db.problems, devices: devices() }).toEqual({
       problems: [],
       devices: ["display-d004", "display-e005"],
-      behind45: false,
+    });
+  });
+
+  it("the most recently seen display never falls by itself", async () => {
+    seedInstall([{ id: "display-f006", lastSeen: Date.now() - 400 * DAY }]);
+
+    await started();
+
+    expect({ problems: db.problems, devices: devices(), fileEntry: leftOf("display-f006").fileEntry }).toEqual({
+      problems: [],
+      devices: ["display-f006"],
+      fileEntry: true,
     });
   });
 });

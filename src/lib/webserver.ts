@@ -41,7 +41,7 @@ import {
   renderAuthorizeForm,
   renderAuthorizeRedirect,
 } from "./auth-page";
-import { registerHaWebSocket } from "./ha-websocket";
+import { type HaWebSocketEndpoint, registerHaWebSocket } from "./ha-websocket";
 import { registerMobileAppRoutes } from "./mobile-app-routes";
 import { HostnameResolver } from "./hostname-resolver";
 import { tPage } from "./i18n";
@@ -160,6 +160,8 @@ export class WebServer {
    */
   private readonly targetHealth: TargetHealth;
   private cleanupTimer: ioBroker.Interval | null = null;
+  /** The WebSocket endpoint, once the routes are registered. */
+  private webSocket: HaWebSocketEndpoint | null = null;
   /**
    * Test-only injection surface ({@link WebserverInject}). v1.14.0 (H8): bound
    * once in the constructor instead of via a getter — a getter allocated a new
@@ -364,6 +366,7 @@ export class WebServer {
       this.adapter.clearInterval(this.cleanupTimer);
       this.cleanupTimer = null;
     }
+    this.registry.setRemovalListener(null);
     this.terminateWebSockets();
     try {
       await this.app.close();
@@ -1305,7 +1308,9 @@ export class WebServer {
    * it the four things it needs.
    */
   private setupWebSocket(): void {
-    registerHaWebSocket(this.app, {
+    // K20: a removed display's running connection ends at once, not at its next frame
+    this.registry.setRemovalListener(() => this.webSocket?.endDeadSessions());
+    this.webSocket = registerHaWebSocket(this.app, {
       adapter: this.adapter,
       clientForToken: token => this.registry.getByToken(token),
       // Bound to the refresh token like HA core (websocket_api/auth.py:116-117) — the access

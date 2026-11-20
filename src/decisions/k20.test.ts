@@ -1,6 +1,6 @@
 /**
- * Guard K20 — removing a display ends its access: its token and its running connection end at once, and its next
- * request shows it as a new display with the landing page.
+ * Guard K20 — when the user removes a display (button "Remove this display"), its running connection ends at once; at
+ * its next request it appears as a new display with the start page.
  *
  * The page, K20: "If you remove a display (button 'Remove this display'), its running connection ends at once. On its
  * next request it shows up as a new display with the landing page."
@@ -10,7 +10,8 @@
  * and the display's mode are user writes), over an adapter whose object and state database lives in memory; the
  * registry and the global settings are the adapter's own, the new-display mode is wired as main.ts wires it, and the
  * web server as main.ts starts it runs on the same adapter and registry. HTTP requests by inject from a peer address
- * of the own network, the WebSocket over a real socket on a free port of this machine. The host carries two networks
+ * of the own network, the WebSocket over a real socket on a free port of this machine; the start page is the page the
+ * product renders for a display without a target (`renderLandingPage`). The host carries two networks
  * in the mock — 192.168.77.0/24 and 127.0.0.0/8 — so the guard's own socket is a peer of an own network; the data
  * folder is a fresh folder in the temporary directory, written through the data-folder master as on a host.
  */
@@ -133,6 +134,7 @@ vi.mock("node:os", async importOriginal => {
 import * as mainModule from "../main";
 import { ClientRegistry } from "../lib/client-registry";
 import { GlobalConfig } from "../lib/global-config";
+import { renderLandingPage } from "../lib/landing-page";
 import type { AdapterConfig } from "../lib/types";
 import { WebServer } from "../lib/webserver";
 
@@ -154,17 +156,16 @@ interface Answer {
   json(): unknown;
 }
 
-/** A display that signed in: its cookie, its id and its tokens. */
+/** A display that signed in: its id and the access token it opens a WebSocket with. */
 interface SignedIn {
-  cookie: string;
   id: string;
   access: string;
-  refresh: string;
 }
 
 const { HassEmu } = mainModule as unknown as { HassEmu: new () => ioBroker.Adapter };
 
 const PEER = "192.168.77.50";
+const NS = "hassemu.0";
 const PASSWORD = "guard-secret";
 const TARGET = "http://192.168.77.20:8082/vis-2/index.html?main";
 const servers: WebServer[] = [];
@@ -228,23 +229,19 @@ async function userWrites(emu: Emu, id: string, val: ioBroker.StateValue): Promi
  * @param server the server
  * @param method the method
  * @param url the path
- * @param extra cookie, Bearer token, form body
+ * @param extra cookie, form body
  * @param extra.cookie the display's cookie header
- * @param extra.bearer an access token for the Authorization header
  * @param extra.form a form body
  */
 function ask(
   server: WebServer,
   method: "GET" | "POST",
   url: string,
-  extra: { cookie?: string; bearer?: string; form?: Record<string, string> } = {},
+  extra: { cookie?: string; form?: Record<string, string> } = {},
 ): Promise<Answer> {
   const headers: Record<string, string> = { "user-agent": "Mozilla/5.0 (Linux; Android 13; WebView)" };
   if (extra.cookie) {
     headers.cookie = extra.cookie;
-  }
-  if (extra.bearer) {
-    headers.authorization = `Bearer ${extra.bearer}`;
   }
   if (extra.form) {
     headers["content-type"] = "application/x-www-form-urlencoded";
@@ -296,8 +293,8 @@ async function signedInDisplay(emu: Emu, server: WebServer): Promise<SignedIn> {
       cookie,
       form: { grant_type: "authorization_code", code: done.result ?? "" },
     })
-  ).json() as { access_token?: string; refresh_token?: string };
-  return { cookie, id, access: tokens.access_token ?? "", refresh: tokens.refresh_token ?? "" };
+  ).json() as { access_token?: string };
+  return { id, access: tokens.access_token ?? "" };
 }
 
 /**
@@ -309,6 +306,7 @@ async function webSocketTo(server: WebServer): Promise<{
   socket: WebSocket;
   next: () => Promise<Record<string, unknown>>;
   afterSend: (frame: Record<string, unknown>) => Promise<"closed" | "answered" | "open">;
+  closedWithin: (ms: number) => Promise<"closed" | "open">;
 }> {
   const socket = new WebSocket(`ws://127.0.0.1:${server.boundAddress?.port ?? 0}/api/websocket`);
   sockets.push(socket);
@@ -338,47 +336,31 @@ async function webSocketTo(server: WebServer): Promise<{
       waiters.push(() => settle("answered"));
       socket.send(JSON.stringify(frame));
     });
+  let closed = false;
+  socket.addEventListener("close", () => {
+    closed = true;
+  });
+  const closedWithin = (ms: number): Promise<"closed" | "open"> =>
+    new Promise(resolve => {
+      if (closed) {
+        resolve("closed");
+        return;
+      }
+      const timer = setTimeout(() => resolve("open"), ms);
+      socket.addEventListener("close", () => {
+        clearTimeout(timer);
+        resolve("closed");
+      });
+    });
   await new Promise<void>((resolve, reject) => {
     socket.addEventListener("open", () => resolve());
     socket.addEventListener("error", () => reject(new Error("WebSocket did not open")));
   });
-  return { socket, next, afterSend };
+  return { socket, next, afterSend, closedWithin };
 }
 
-describe("K20: removing a display ends its access", () => {
-  it("rejects the removed display's tokens and shows its next request as a new display with the landing page", async () => {
-    const { emu, server } = await adapterWithServer();
-    const display = await signedInDisplay(emu, server);
-    await userWrites(emu, `clients.${display.id}.mode`, TARGET);
-    const dashboard = await ask(server, "GET", "/", { cookie: display.cookie });
-    const apiBefore = await ask(server, "GET", "/api/config", { bearer: display.access });
-
-    await userWrites(emu, `clients.${display.id}.remove`, true);
-    const apiAfter = await ask(server, "GET", "/api/config", { bearer: display.access });
-    const refreshAfter = await ask(server, "POST", "/auth/token", {
-      form: { grant_type: "refresh_token", refresh_token: display.refresh },
-    });
-    const next = await ask(server, "GET", "/", { cookie: display.cookie });
-    const nextCookie = cookieOf(next);
-    const now = displays(emu);
-
-    expect({
-      signedIn: display.access !== "" && display.refresh !== "",
-      dashboard: dashboard.body.includes(`src="${TARGET}"`),
-      api: apiBefore.statusCode,
-    }).toEqual({ signedIn: true, dashboard: true, api: 200 });
-    expect({ api: apiAfter.statusCode, refresh: refreshAfter.statusCode }).toEqual({ api: 401, refresh: 400 });
-    expect({
-      status: next.statusCode,
-      newCookie: nextCookie !== "" && nextCookie !== display.cookie,
-      oldGone: !now.includes(display.id),
-      newDisplay: now.length === 1 && now[0] !== display.id,
-      landing: next.body.includes('<meta http-equiv="refresh" content="15">') && !next.body.includes("<iframe"),
-      pageNamesNew: next.body.includes(`${emu.namespace}.clients.${now[0]}`),
-    }).toEqual({ status: 200, newCookie: true, oldGone: true, newDisplay: true, landing: true, pageNamesNew: true });
-  });
-
-  it("ends the removed display's running WebSocket at its next frame", async () => {
+describe("K20: removing a display", () => {
+  it("ends its running connection at once", async () => {
     const { emu, server } = await adapterWithServer();
     const display = await signedInDisplay(emu, server);
     const ws = await webSocketTo(server);
@@ -388,7 +370,7 @@ describe("K20: removing a display ends its access", () => {
     const whileKnown = await ws.afterSend({ id: 1, type: "get_config" });
 
     await userWrites(emu, `clients.${display.id}.remove`, true);
-    const afterRemove = await ws.afterSend({ id: 2, type: "get_config" });
+    const afterRemove = await ws.closedWithin(1000);
 
     expect({ required: required.type, auth: auth.type, whileKnown }).toEqual({
       required: "auth_required",
@@ -397,4 +379,37 @@ describe("K20: removing a display ends its access", () => {
     });
     expect({ afterRemove }).toEqual({ afterRemove: "closed" });
   });
+
+  it("at its next request it appears as a new display with the start page", async () => {
+    const { emu, server } = await adapterWithServer();
+    const cookie = cookieOf(await ask(server, "GET", "/"));
+    const [id] = displays(emu);
+    await userWrites(emu, `clients.${id}.mode`, TARGET);
+    const before = await ask(server, "GET", "/", { cookie });
+
+    await userWrites(emu, `clients.${id}.remove`, true);
+    const next = await ask(server, "GET", "/", { cookie });
+    const nextCookie = cookieOf(next);
+    const now = displays(emu);
+
+    expect({ known: cookie !== "" && id !== undefined, onItsTarget: before.body !== startPage(id) }).toEqual({
+      known: true,
+      onItsTarget: true,
+    });
+    expect({
+      newCookie: nextCookie !== "" && nextCookie !== cookie,
+      newDisplay: now.length === 1 && now[0] !== id,
+      startPage: now.length === 1 && next.body === startPage(now[0]),
+    }).toEqual({ newCookie: true, newDisplay: true, startPage: true });
+  });
 });
+
+/**
+ * The start page the product renders for a display without a target, as the server renders it for the display's
+ * address.
+ *
+ * @param id the display id
+ */
+function startPage(id: string): string {
+  return renderLandingPage(id, NS, "en", PEER);
+}

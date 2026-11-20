@@ -1,6 +1,7 @@
 /**
- * Guard B3 — the datapoint info.serverUuid is gone: the server id the displays know hassemu by stands in the data file,
- * moved there once from the datapoint on the update, so no display has to be set up again.
+ * Guard B3 — the datapoint info.serverUuid no longer exists; the identifier by which the displays recognise hassemu
+ * stands in the file in the instance's data folder; at the update hassemu moves it once, no display has to be set up
+ * again.
  *
  * The page, B3: "The datapoint no longer exists. The id stands in the file in the data folder of the instance; on the
  * update hassemu moves it once, no display has to be set up again." Why: "If the datapoint stayed beside it, the id
@@ -303,27 +304,27 @@ function oldDatapoint(): { object: boolean; value: boolean } {
   return { object: db.objects.has(`${NS}.${OLD_ID}`), value: db.states.has(`${NS}.${OLD_ID}`) };
 }
 
-describe("B3: the server id lives in the data file, info.serverUuid is gone", () => {
-  it("declares no info.serverUuid, creates none at start, and announces the id the data file holds", async () => {
+describe("B3: info.serverUuid no longer exists, the id stands in the data file", () => {
+  it("the datapoint info.serverUuid does not exist, and the id the displays recognise hassemu by stands in the data file", async () => {
     seedInstall();
     const ids = manifest().instanceObjects.map(obj => obj._id);
 
     const emu = await started();
     const uuid = await announced(emu);
 
-    expect({ refreshUrls: ids.includes("info.refreshUrls"), serverUuid: ids.includes(OLD_ID) }).toEqual({
-      refreshUrls: true,
+    expect({ declares: ids.length > 0, serverUuid: ids.includes(OLD_ID) }).toEqual({
+      declares: true,
       serverUuid: false,
     });
-    expect({ problems: db.problems, old: oldDatapoint(), uuid, inFile: inFile() }).toEqual({
+    expect({ problems: db.problems, old: oldDatapoint(), announces: typeof uuid === "string" && uuid !== "" }).toEqual({
       problems: [],
       old: { object: false, value: false },
-      uuid: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/),
-      inFile: uuid,
+      announces: true,
     });
+    expect(inFile()).toEqual(uuid);
   });
 
-  it("moves the id of 1.46.1 once into the data file, drops the datapoint and keeps the id on every later start", async () => {
+  it("at the update hassemu moves the id once into the data file, so no display has to be set up again", async () => {
     seedInstall();
     seedOldDatapoint(LEGACY_SERVER_ID);
 

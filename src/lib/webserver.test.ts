@@ -3203,12 +3203,20 @@ describe("WebServer /api/websocket (v1.34.0)", () => {
       await closed;
     });
 
-    it("a removed display's session is closed", async () => {
+    it("a removed display's session is closed at once, without a further frame (K20)", async () => {
       const { ws, id } = await authedSocket("acc-3", "ref-3");
-      await reg.remove(id);
       const closed = once(ws, "close");
-      ws.send(JSON.stringify({ id: 3, type: "get_config" }));
+      await reg.remove(id);
       await closed;
+    });
+
+    it("removing another display leaves a session standing", async () => {
+      const { ws, col } = await authedSocket("acc-5", "ref-5");
+      const other = await reg.identifyOrCreate(null, "127.0.0.3");
+      await reg.remove(other.id);
+      ws.send(JSON.stringify({ id: 5, type: "get_config" }));
+      expect(await col.next()).to.deep.include({ id: 5, type: "result", success: true });
+      ws.close();
     });
   });
 

@@ -1023,6 +1023,23 @@ describe("ClientRegistry", () => {
       expect(store.objects.has("hassemu.0.clients.xxxxxx")).to.be.true;
       expect(store.logs.some(l => l.msg.includes("forgotten"))).to.be.false;
     });
+
+    it("tells the removal listener once the display is forgotten, before its object goes (K20)", async () => {
+      const rec = await registry.identifyOrCreate(null, null);
+      const heard: { known: boolean; objectLeft: boolean }[] = [];
+      registry.setRemovalListener(() =>
+        heard.push({
+          known: registry.getById(rec.id) !== null,
+          objectLeft: store.objects.has(`hassemu.0.clients.${rec.id}`),
+        }),
+      );
+      await registry.remove(rec.id);
+      await registry.remove("xxxxxx");
+      registry.setRemovalListener(null);
+      const other = await registry.identifyOrCreate(null, null);
+      await registry.remove(other.id);
+      expect(heard).to.deep.equal([{ known: false, objectLeft: true }]);
+    });
   });
 
   describe("syncUrlDropdown", () => {

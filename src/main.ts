@@ -550,13 +550,13 @@ class HassEmu extends utils.Adapter {
    * adapter or its host was off, nobody could be seen, and `now` counted that downtime as
    * absence — one start after 30+ days off removed every display with its settings, room
    * assignments and tokens (audit 2026-09-25, L3). The most recently seen display is thus
-   * never removed automatically; `remove` is the tool for that. Capped at `now`, so one
-   * stamp from a clock that ran ahead cannot age all the others.
+   * never removed automatically; `remove` is the tool for that. The measure is that display
+   * alone (K14, krobi 2026-11-11 19:55), also when its stamp lies ahead of the clock.
    */
   private async gcStaleClients(): Promise<void> {
     const now = Date.now();
     const records = this.registry?.listAll() ?? [];
-    const newestSeen = Math.min(now, Math.max(0, ...records.map(r => this.registry!.lastSeenOf(r.id) ?? 0)));
+    const newestSeen = Math.max(0, ...records.map(r => this.registry!.lastSeenOf(r.id) ?? 0));
     if (records.length > 0) {
       const ttlDays = Math.round(STALE_CLIENT_TTL_MS / (24 * 60 * 60 * 1000));
       this.log.debug(`gcStaleClients: scanning ${records.length} client(s) for staleness (TTL=${ttlDays}d)`);

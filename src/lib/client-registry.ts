@@ -176,6 +176,8 @@ export class ClientRegistry {
   private readonly byRefreshToken = new Map<string, ClientRecord>();
   private currentUrlStates: UrlStates = {};
   private newClientModeProvider: NewClientModeProvider = () => MODE_GLOBAL;
+  /** Hears of every removed display at the moment it is forgotten — the web server ends its connection there (K20). */
+  private removalListener: (() => void) | null = null;
   /**
    * In-flight client creations keyed by remote IP. Keeps parallel cookieless
    * requests from the same display (typical on first connect: HA clients fire
@@ -266,6 +268,16 @@ export class ClientRegistry {
    */
   setNewClientModeProvider(provider: NewClientModeProvider): void {
     this.newClientModeProvider = provider;
+  }
+
+  /**
+   * Wires the listener that hears of every removed display at the moment it is forgotten: the web server ends the
+   * display's running connection there and then, not at its next frame (K20).
+   *
+   * @param listener the listener, or null to unwire it
+   */
+  setRemovalListener(listener: (() => void) | null): void {
+    this.removalListener = listener;
   }
 
   /**
@@ -1268,6 +1280,7 @@ export class ClientRegistry {
       return;
     }
     this.untrack(record);
+    this.removalListener?.();
     this.persistQuietly(`forgetting ${id}`);
     let objectRemoved = true;
     try {

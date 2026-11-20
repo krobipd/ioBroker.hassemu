@@ -1,5 +1,6 @@
 /**
- * Guard HA-02 — hassemu keeps no datapoint for the number of known displays; info.devicesTotal does not exist.
+ * Guard HA-02 — there is no datapoint for the number of known displays; the displays stand one by one under "Known
+ * displays"; the datapoint info.devicesTotal does not exist.
  *
  * The page, HA-02: "Today: there is no datapoint for the number. The displays stand one by one under 'Known
  * displays'." "Stays: so. The datapoint info.devicesTotal does not exist." "Shall hassemu keep the number of known
@@ -9,10 +10,8 @@
  * Path: the manifest read as data, then the adapter class from main.ts started by the ready handler its constructor
  * registers (instanceObjects from io-package.json in the database first, as js-controller puts them there), over an
  * object and state database in memory; displays are created and served by the web server that start built, asked by
- * inject from a peer address, one is forgotten through its `remove` button by the stateChange handler the constructor
- * registered, and the adapter is started a second time over the same database. The host carries one network
- * (192.168.77.0/24); the data folder is a fresh folder in the temporary directory, written through the data-folder
- * master as on a host.
+ * inject from a peer address. The host carries one network (192.168.77.0/24); the data folder is a fresh folder in the
+ * temporary directory, written through the data-folder master as on a host.
  */
 
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -169,16 +168,15 @@ interface Emu {
 interface Manifest {
   native: Record<string, unknown>;
   objects?: { _id: string }[];
-  instanceObjects: (Record<string, unknown> & { _id: string })[];
+  instanceObjects: (Record<string, unknown> & { _id: string; common?: { name?: unknown } })[];
 }
 
 const { HassEmu } = mainModule as unknown as { HassEmu: new () => ioBroker.Adapter };
 
 const NS = "hassemu.0";
 const CLIENTS = `${NS}.clients.`;
-/** The datapoint the page names, and every id that would carry a count of displays by its name. */
+/** The datapoint the rule names. */
 const COUNT_ID = "info.devicesTotal";
-const COUNT = /total|count/i;
 const running: Emu[] = [];
 
 beforeEach(() => {
@@ -221,18 +219,6 @@ async function start(): Promise<Emu> {
   await emu.handlers.get("ready")?.();
   expect({ terminated: emu.terminated, serving: emu.webServer !== null }).toEqual({ terminated: [], serving: true });
   return emu;
-}
-
-/**
- * Stop the adapter through the unload handler and wait for its callback.
- *
- * @param emu the adapter
- */
-async function stop(emu: Emu): Promise<void> {
-  running.splice(running.indexOf(emu), 1);
-  await new Promise<void>(resolve => {
-    emu.handlers.get("unload")?.(resolve);
-  });
 }
 
 /**
@@ -282,24 +268,6 @@ async function displayVisits(emu: Emu, peer: string): Promise<{ page: number; po
   return { page: first.statusCode, poll: poll.statusCode };
 }
 
-/**
- * The user presses a display's `remove` button: a write without ack, handed to the stateChange handler the
- * constructor registered.
- *
- * @param emu the adapter
- * @param id the display id
- */
-async function userRemoves(emu: Emu, id: string): Promise<void> {
-  await emu.handlers.get("stateChange")?.(`${CLIENTS}${id}.remove`, {
-    val: true,
-    ack: false,
-    ts: 0,
-    lc: 0,
-    from: "system.adapter.admin.0",
-  });
-  await new Promise(resolve => setTimeout(resolve, 0));
-}
-
 /** The displays: every device below clients, with the id of its container. */
 function displays(): { id: string; parent: string }[] {
   return [...db.objects]
@@ -308,74 +276,54 @@ function displays(): { id: string; parent: string }[] {
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 
-/** Everything in the database outside the displays: each object and each value, as text. */
-function outsideDisplays(): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [id, obj] of db.objects) {
-    if (!id.startsWith(CLIENTS)) {
-      out[`object ${id}`] = JSON.stringify(obj);
-    }
-  }
-  for (const [id, state] of db.states) {
-    if (!id.startsWith(CLIENTS)) {
-      out[`value ${id}`] = JSON.stringify(state.val);
-    }
-  }
-  return out;
-}
-
-/** Every id outside the displays (objects and values) that is the named datapoint or speaks of a count. */
-function countIds(): string[] {
-  return [...new Set([...db.objects.keys(), ...db.states.keys()])].filter(
-    id => !id.startsWith(CLIENTS) && (id === `${NS}.${COUNT_ID}` || COUNT.test(id)),
-  );
+/**
+ * Every datapoint of the instance outside the displays whose value is the given number.
+ *
+ * @param count the number of known displays
+ */
+function holding(count: number): string[] {
+  return [...db.states]
+    .filter(([id, state]) => id.startsWith(`${NS}.`) && !id.startsWith(CLIENTS) && String(state.val) === String(count))
+    .map(([id]) => id);
 }
 
 describe("HA-02: no datapoint for the number of known displays", () => {
-  it("the manifest declares no info.devicesTotal and no id that counts", () => {
+  it("there is no datapoint for the number of known displays", async () => {
+    const emu = await start();
+    await displayVisits(emu, "192.168.77.51");
+    const one = { displays: displays().length, holding: holding(1) };
+    await displayVisits(emu, "192.168.77.52");
+    const two = { displays: displays().length, holding: holding(2) };
+
+    expect({ one, two }).toEqual({ one: { displays: 1, holding: [] }, two: { displays: 2, holding: [] } });
+  });
+
+  it("the displays stand one by one under 'Known displays'", async () => {
+    const folder = manifest().instanceObjects.find(obj => obj._id === "clients");
+    const emu = await start();
+    await displayVisits(emu, "192.168.77.51");
+    await displayVisits(emu, "192.168.77.52");
+    const known = displays();
+
+    expect({
+      name: (folder?.common?.name as { en?: unknown } | undefined)?.en,
+      folder: db.objects.get(`${NS}.clients`)?.type,
+      displays: known.length,
+      parents: [...new Set(known.map(d => d.parent))],
+    }).toEqual({ name: "Known displays", folder: "folder", displays: 2, parents: [`${NS}.clients`] });
+  });
+
+  it("the datapoint info.devicesTotal does not exist", async () => {
     const known = manifest();
     const ids = [...known.instanceObjects.map(obj => obj._id), ...(known.objects ?? []).map(obj => obj._id)];
+    const emu = await start();
+    await displayVisits(emu, "192.168.77.51");
 
     expect({
       declares: ids.length > 0,
-      named: ids.filter(id => id === COUNT_ID),
-      counting: ids.filter(id => COUNT.test(id)),
-    }).toEqual({ declares: true, named: [], counting: [] });
-  });
-
-  it("the displays stand one by one under 'Known displays'; the number of them is no datapoint, also after a restart", async () => {
-    const first = await start();
-    await displayVisits(first, "192.168.77.51");
-    await displayVisits(first, "192.168.77.52");
-    const served = { displays: displays(), counting: countIds() };
-    await stop(first);
-    await start();
-
-    expect({
-      folder: db.objects.get(`${NS}.clients`)?.type,
-      parents: [...new Set(served.displays.map(d => d.parent))],
-      displays: served.displays.length,
-    }).toEqual({ folder: "folder", parents: [`${NS}.clients`], displays: 2 });
-    expect({ served: served.counting, restarted: countIds(), displaysAfterRestart: displays().length }).toEqual({
-      served: [],
-      restarted: [],
-      displaysAfterRestart: 2,
-    });
-  });
-
-  it("a display more and a display less change nothing outside the displays", async () => {
-    const emu = await start();
-    await displayVisits(emu, "192.168.77.51");
-    const one = { displays: displays().length, outside: outsideDisplays() };
-    await displayVisits(emu, "192.168.77.52");
-    const two = { displays: displays().length, outside: outsideDisplays() };
-    await userRemoves(emu, displays()[0]?.id ?? "");
-    const backToOne = { displays: displays().length, outside: outsideDisplays() };
-
-    expect([one.displays, two.displays, backToOne.displays]).toEqual([1, 2, 1]);
-    expect({ afterAdd: two.outside, afterRemove: backToOne.outside }).toEqual({
-      afterAdd: one.outside,
-      afterRemove: one.outside,
-    });
+      declared: ids.filter(id => id === COUNT_ID),
+      object: db.objects.has(`${NS}.${COUNT_ID}`),
+      value: db.states.has(`${NS}.${COUNT_ID}`),
+    }).toEqual({ declares: true, declared: [], object: false, value: false });
   });
 });

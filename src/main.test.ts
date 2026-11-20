@@ -1573,10 +1573,10 @@ describe("gcStaleClients", () => {
     expect(logsOf(stub, "info").some(m => m.includes("Removed"))).toBe(false);
   });
 
-  it("a stamp from a clock that ran ahead does not age every other display (L3)", async () => {
+  it("measures only at the most recently seen display, also when its stamp lies ahead of the clock (K14)", async () => {
     const { internal, stub } = setup();
     const day = 24 * 60 * 60 * 1000;
-    seedDisplay(stub, "ahead", Date.now() + 365 * day);
+    seedDisplay(stub, "ahead", Date.now() + 40 * day);
     seedDisplay(stub, "today", Date.now() - day);
     internal.registry = internal.makeRegistry();
     await internal.registry.restore();
@@ -1584,7 +1584,7 @@ describe("gcStaleClients", () => {
     await internal.gcStaleClients();
 
     expect(internal.registry.getById("ahead")).not.toBeNull();
-    expect(internal.registry.getById("today")).not.toBeNull();
+    expect(internal.registry.getById("today")).toBeNull();
   });
 
   it("a stale display is removed even though it holds a token and a refresh token (DD14, T4)", async () => {

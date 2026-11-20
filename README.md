@@ -236,6 +236,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 - Fixed: the password of a rejected address with credentials no longer appears in the log
 - Fixed: the sign-in pages show their text in the language set in ioBroker
 - Fixed: an update from 1.0 or 1.1 with several displays keeps the room and function assignments of every display
+- Fixed: removing a display ends its running app connection at once, not only at its next message
 - Fixed: known security advisories in bundled libraries are closed
 
 ### 1.46.1 (2026-09-25) — stable

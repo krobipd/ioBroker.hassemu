@@ -55,6 +55,12 @@ export interface HaWebSocketDeps {
   buildHaConfig: () => Record<string, unknown>;
 }
 
+/** What the registered endpoint offers the server it runs in. */
+export interface HaWebSocketEndpoint {
+  /** Ends every authenticated connection whose session no longer stands — at once, not at its next frame (K20). */
+  endDeadSessions(): void;
+}
+
 /**
  * Safely serialize + send a WS frame; swallows errors from an already-closed socket.
  *
@@ -209,8 +215,11 @@ function handleWsCommand(socket: WebSocket, msg: Record<string, unknown>, deps: 
  *
  * @param app  The Fastify instance (`@fastify/websocket` must already be registered).
  * @param deps Endpoint dependencies.
+ * @returns the endpoint, to end dead sessions at once
  */
-export function registerHaWebSocket(app: FastifyInstance, deps: HaWebSocketDeps): void {
+export function registerHaWebSocket(app: FastifyInstance, deps: HaWebSocketDeps): HaWebSocketEndpoint {
+  /** Every authenticated connection with the session it is bound to. */
+  const sessions = new Map<WebSocket, WsSession>();
   app.get("/api/websocket", { websocket: true, ...PUBLIC_ROUTE }, (socket: WebSocket) => {
     let authed = false;
     let session: WsSession | null = null;
@@ -263,6 +272,7 @@ export function registerHaWebSocket(app: FastifyInstance, deps: HaWebSocketDeps)
           if (client) {
             authed = true;
             session = { clientId: client.id, refreshToken: client.refreshToken, accessToken: token };
+            sessions.set(socket, session);
             if (authTimer) {
               deps.adapter.clearTimeout(authTimer);
               authTimer = undefined;
@@ -308,7 +318,19 @@ export function registerHaWebSocket(app: FastifyInstance, deps: HaWebSocketDeps)
     });
 
     socket.on("close", () => {
+      sessions.delete(socket);
       clearTimers();
     });
   });
+  return {
+    endDeadSessions: (): void => {
+      for (const [socket, session] of sessions) {
+        if (!deps.sessionAlive(session)) {
+          deps.adapter.log.debug("WS: session revoked or display removed — closing");
+          sessions.delete(socket);
+          socket.terminate();
+        }
+      }
+    },
+  };
 }
