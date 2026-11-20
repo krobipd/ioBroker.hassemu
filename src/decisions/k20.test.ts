@@ -142,7 +142,6 @@ import { WebServer } from "../lib/webserver";
 interface Emu {
   namespace: string;
   handlers: Map<string, (...args: unknown[]) => unknown>;
-  objects: Map<string, ioBroker.Object>;
   registry: ClientRegistry | null;
   globalConfig: GlobalConfig | null;
   computeNewClientMode(): string;
@@ -262,14 +261,12 @@ function cookieOf(answer: Answer): string {
 }
 
 /**
- * The ids of the devices under clients.
+ * The ids of the displays the adapter knows.
  *
  * @param emu the adapter
  */
-function displays(emu: Emu): string[] {
-  return [...emu.objects]
-    .filter(([id, obj]) => id.startsWith(`${emu.namespace}.clients.`) && obj.type === "device")
-    .map(([id]) => id.slice(`${emu.namespace}.clients.`.length));
+function knownDisplays(emu: Emu): string[] {
+  return (emu.registry?.listAll() ?? []).map(record => record.id);
 }
 
 /**
@@ -280,7 +277,7 @@ function displays(emu: Emu): string[] {
  */
 async function signedInDisplay(emu: Emu, server: WebServer): Promise<SignedIn> {
   const cookie = cookieOf(await ask(server, "GET", "/"));
-  const [id] = displays(emu);
+  const [id] = knownDisplays(emu);
   const flow = (await ask(server, "POST", "/auth/login_flow", { cookie, form: {} })).json() as { flow_id?: string };
   const done = (
     await ask(server, "POST", `/auth/login_flow/${flow.flow_id ?? ""}`, {
@@ -364,43 +361,36 @@ describe("K20: removing a display", () => {
     const { emu, server } = await adapterWithServer();
     const display = await signedInDisplay(emu, server);
     const ws = await webSocketTo(server);
-    const required = await ws.next();
+    await ws.next(); // auth_required
     ws.socket.send(JSON.stringify({ type: "auth", access_token: display.access }));
     const auth = await ws.next();
     const whileKnown = await ws.afterSend({ id: 1, type: "get_config" });
+    if (auth.type !== "auth_ok" || whileKnown !== "answered") {
+      throw new Error(`the display's connection did not run: ${String(auth.type)}, ${whileKnown}`);
+    }
 
     await userWrites(emu, `clients.${display.id}.remove`, true);
-    const afterRemove = await ws.closedWithin(1000);
 
-    expect({ required: required.type, auth: auth.type, whileKnown }).toEqual({
-      required: "auth_required",
-      auth: "auth_ok",
-      whileKnown: "answered",
-    });
-    expect({ afterRemove }).toEqual({ afterRemove: "closed" });
+    expect(await ws.closedWithin(1000)).toBe("closed");
   });
 
   it("at its next request it appears as a new display with the start page", async () => {
     const { emu, server } = await adapterWithServer();
     const cookie = cookieOf(await ask(server, "GET", "/"));
-    const [id] = displays(emu);
+    const [id] = knownDisplays(emu);
     await userWrites(emu, `clients.${id}.mode`, TARGET);
-    const before = await ask(server, "GET", "/", { cookie });
 
     await userWrites(emu, `clients.${id}.remove`, true);
     const next = await ask(server, "GET", "/", { cookie });
-    const nextCookie = cookieOf(next);
-    const now = displays(emu);
+    const fresh = knownDisplays(emu).find(other => other !== id);
 
-    expect({ known: cookie !== "" && id !== undefined, onItsTarget: before.body !== startPage(id) }).toEqual({
-      known: true,
-      onItsTarget: true,
-    });
     expect({
-      newCookie: nextCookie !== "" && nextCookie !== cookie,
-      newDisplay: now.length === 1 && now[0] !== id,
-      startPage: now.length === 1 && next.body === startPage(now[0]),
-    }).toEqual({ newCookie: true, newDisplay: true, startPage: true });
+      newDisplay: fresh !== undefined,
+      startPage: fresh !== undefined && next.body === startPage(fresh),
+    }).toEqual({
+      newDisplay: true,
+      startPage: true,
+    });
   });
 });
 

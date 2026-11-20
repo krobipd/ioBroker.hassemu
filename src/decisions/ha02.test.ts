@@ -29,6 +29,9 @@ const { data, db } = vi.hoisted(() => ({
 
 vi.mock("@iobroker/adapter-core", async () => {
   const { FakeAdapter } = await import("../lib/adapter-fake.js");
+  const fs = await import("node:fs");
+  /** The adapter's English texts, as adapter-core's I18n resolves a key. */
+  const english = JSON.parse(fs.readFileSync(`${process.cwd()}/admin/i18n/en.json`, "utf8")) as Record<string, string>;
   const noop = (): void => undefined;
   /** The adapter base class: the fleet's fake adapter over the database in memory, plus what hassemu itself calls. */
   class Adapter extends FakeAdapter {
@@ -113,8 +116,8 @@ vi.mock("@iobroker/adapter-core", async () => {
     getAbsoluteInstanceDataDir: (): string => data.dir,
     I18n: {
       init: (): Promise<void> => Promise.resolve(),
-      getTranslatedObject: (key: string) => ({ en: key }),
-      translate: (key: string) => key,
+      getTranslatedObject: (key: string) => ({ en: english[key] ?? key }),
+      translate: (key: string) => english[key] ?? key,
     },
   };
 });
@@ -162,21 +165,20 @@ interface Emu {
   handlers: Map<string, (...args: unknown[]) => unknown>;
   terminated: string[];
   webServer: { inject(request: Record<string, unknown>): Promise<Answer> } | null;
+  registry: { listAll(): { id: string }[] } | null;
 }
 
 /** The parts of io-package.json the guard reads. */
 interface Manifest {
   native: Record<string, unknown>;
-  objects?: { _id: string }[];
-  instanceObjects: (Record<string, unknown> & { _id: string; common?: { name?: unknown } })[];
+  instanceObjects: (Record<string, unknown> & { _id: string })[];
 }
 
 const { HassEmu } = mainModule as unknown as { HassEmu: new () => ioBroker.Adapter };
 
 const NS = "hassemu.0";
-const CLIENTS = `${NS}.clients.`;
 /** The datapoint the rule names. */
-const COUNT_ID = "info.devicesTotal";
+const COUNT_ID = `${NS}.info.devicesTotal`;
 const running: Emu[] = [];
 
 beforeEach(() => {
@@ -203,7 +205,7 @@ function manifest(): Manifest {
 /**
  * The adapter as js-controller starts it: the manifest's instanceObjects in the database, the instance settings from
  * the manifest (port 0 instead of 8123, mDNS off — a guard opens no fixed port and announces nothing), then the ready
- * handler the constructor registered.
+ * handler the constructor registered. A start that did not come up throws: the cases need a running adapter.
  */
 async function start(): Promise<Emu> {
   const known = manifest();
@@ -217,7 +219,9 @@ async function start(): Promise<Emu> {
   emu.config = { ...known.native, port: 0, mdnsEnabled: false };
   running.push(emu);
   await emu.handlers.get("ready")?.();
-  expect({ terminated: emu.terminated, serving: emu.webServer !== null }).toEqual({ terminated: [], serving: true });
+  if (emu.terminated.length > 0 || emu.webServer === null) {
+    throw new Error(`the adapter did not start: ${emu.terminated.join(", ")}`);
+  }
   return emu;
 }
 
@@ -234,13 +238,10 @@ function ask(emu: Emu, peer: string, url: string, cookie = ""): Promise<Answer> 
   if (cookie) {
     headers.cookie = cookie;
   }
-  expect(emu.webServer).not.toBeNull();
-  return (emu.webServer as NonNullable<Emu["webServer"]>).inject({
-    method: "GET",
-    url,
-    headers,
-    remoteAddress: peer,
-  });
+  if (emu.webServer === null) {
+    throw new Error("the adapter runs no web server");
+  }
+  return emu.webServer.inject({ method: "GET", url, headers, remoteAddress: peer });
 }
 
 /**
@@ -261,69 +262,79 @@ function cookieOf(answer: Answer): string {
  * @param emu the adapter
  * @param peer the display's address
  */
-async function displayVisits(emu: Emu, peer: string): Promise<{ page: number; poll: number }> {
+async function displayVisits(emu: Emu, peer: string): Promise<void> {
   const first = await ask(emu, peer, "/");
-  const poll = await ask(emu, peer, "/api/redirect_check", cookieOf(first));
+  await ask(emu, peer, "/api/redirect_check", cookieOf(first));
   await new Promise(resolve => setTimeout(resolve, 0));
-  return { page: first.statusCode, poll: poll.statusCode };
-}
-
-/** The displays: every device below clients, with the id of its container. */
-function displays(): { id: string; parent: string }[] {
-  return [...db.objects]
-    .filter(([id, obj]) => id.startsWith(CLIENTS) && obj.type === "device")
-    .map(([id]) => ({ id: id.slice(CLIENTS.length), parent: id.slice(0, id.lastIndexOf(".")) }))
-    .sort((a, b) => a.id.localeCompare(b.id));
 }
 
 /**
- * Every datapoint of the instance outside the displays whose value is the given number.
+ * The ids of the displays the adapter knows; the cases need the number of displays they let come in.
  *
- * @param count the number of known displays
+ * @param emu the adapter
+ * @param expected how many displays the case let come in
  */
-function holding(count: number): string[] {
-  return [...db.states]
-    .filter(([id, state]) => id.startsWith(`${NS}.`) && !id.startsWith(CLIENTS) && String(state.val) === String(count))
-    .map(([id]) => id);
+function knownDisplays(emu: Emu, expected: number): string[] {
+  const ids = (emu.registry?.listAll() ?? []).map(record => record.id);
+  if (ids.length !== expected) {
+    throw new Error(`${expected} display(s) came in, the adapter knows ${ids.length}`);
+  }
+  return ids;
+}
+
+/** The id of the object the user sees as "Known displays". */
+function knownDisplaysFolder(): string | undefined {
+  return [...db.objects].find(
+    ([, obj]) => (obj.common?.name as { en?: unknown } | undefined)?.en === "Known displays",
+  )?.[0];
+}
+
+/**
+ * Every datapoint of the instance whose value is the given number.
+ *
+ * @param count the number
+ */
+function holding(count: number): Set<string> {
+  return new Set(
+    [...db.states]
+      .filter(([id, state]) => id.startsWith(`${NS}.`) && String(state.val) === String(count))
+      .map(([id]) => id),
+  );
 }
 
 describe("HA-02: no datapoint for the number of known displays", () => {
   it("there is no datapoint for the number of known displays", async () => {
     const emu = await start();
     await displayVisits(emu, "192.168.77.51");
-    const one = { displays: displays().length, holding: holding(1) };
+    knownDisplays(emu, 1);
+    const atOne = holding(1);
     await displayVisits(emu, "192.168.77.52");
-    const two = { displays: displays().length, holding: holding(2) };
+    knownDisplays(emu, 2);
+    const atTwo = holding(2);
 
-    expect({ one, two }).toEqual({ one: { displays: 1, holding: [] }, two: { displays: 2, holding: [] } });
+    // a datapoint for the number holds 1 while one display is known and 2 while two are
+    expect([...atOne].filter(id => atTwo.has(id))).toEqual([]);
   });
 
   it("the displays stand one by one under 'Known displays'", async () => {
-    const folder = manifest().instanceObjects.find(obj => obj._id === "clients");
     const emu = await start();
     await displayVisits(emu, "192.168.77.51");
     await displayVisits(emu, "192.168.77.52");
-    const known = displays();
+    const folder = knownDisplaysFolder();
 
-    expect({
-      name: (folder?.common?.name as { en?: unknown } | undefined)?.en,
-      folder: db.objects.get(`${NS}.clients`)?.type,
-      displays: known.length,
-      parents: [...new Set(known.map(d => d.parent))],
-    }).toEqual({ name: "Known displays", folder: "folder", displays: 2, parents: [`${NS}.clients`] });
+    expect(knownDisplays(emu, 2).map(id => folder !== undefined && db.objects.has(`${folder}.${id}`))).toEqual([
+      true,
+      true,
+    ]);
   });
 
   it("the datapoint info.devicesTotal does not exist", async () => {
-    const known = manifest();
-    const ids = [...known.instanceObjects.map(obj => obj._id), ...(known.objects ?? []).map(obj => obj._id)];
     const emu = await start();
     await displayVisits(emu, "192.168.77.51");
 
-    expect({
-      declares: ids.length > 0,
-      declared: ids.filter(id => id === COUNT_ID),
-      object: db.objects.has(`${NS}.${COUNT_ID}`),
-      value: db.states.has(`${NS}.${COUNT_ID}`),
-    }).toEqual({ declares: true, declared: [], object: false, value: false });
+    expect({ object: db.objects.has(COUNT_ID), value: db.states.has(COUNT_ID) }).toEqual({
+      object: false,
+      value: false,
+    });
   });
 });

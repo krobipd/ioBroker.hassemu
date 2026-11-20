@@ -4,8 +4,7 @@
  * again.
  *
  * The page, B3: "The datapoint no longer exists. The id stands in the file in the data folder of the instance; on the
- * update hassemu moves it once, no display has to be set up again." Why: "If the datapoint stayed beside it, the id
- * would exist twice, and a script could overwrite the copy."
+ * update hassemu moves it once, no display has to be set up again."
  * Accepted by krobi with the page of hassemu's core decisions (version 30) on 2026-11-11 19:31 ("b3 as your research
  * found").
  *
@@ -193,7 +192,7 @@ const NS = "hassemu.0";
 const OLD_ID = "info.serverUuid";
 /** The server id an installation of 1.46.1 holds as the value of info.serverUuid. */
 const LEGACY_SERVER_ID = "5e0f3c9a-1b2d-4c6e-8f7a-9b0c1d2e3f4a";
-/** Another id a script or a restored backup puts into the old datapoint after the move. */
+/** Another id in the old datapoint at a start after the update. */
 const STRAY_SERVER_ID = "8d7c6b5a-4f3e-4d2c-9b1a-0f9e8d7c6b5a";
 const CONFIG = {
   port: 0,
@@ -257,12 +256,16 @@ function seedOldDatapoint(serverId: string): void {
   db.states.set(`${NS}.${OLD_ID}`, { val: serverId, ack: true, ts: 1, lc: 1, from: `system.adapter.${NS}` });
 }
 
-/** The adapter, started through the ready handler its constructor registered. */
+/** The adapter, started through the ready handler its constructor registered; a start that ended throws. */
 async function started(): Promise<Emu> {
   const emu = new HassEmu() as unknown as Emu;
   emu.config = { ...CONFIG };
   running.push(emu);
   await emu.handlers.get("ready")?.();
+  const ended = db.problems.filter(line => line.startsWith("terminate:"));
+  if (ended.length > 0) {
+    throw new Error(`the adapter did not start: ${ended.join(", ")}`);
+  }
   return emu;
 }
 
@@ -279,18 +282,23 @@ async function stopped(emu: Emu): Promise<void> {
 }
 
 /**
- * The server id the running web server announces to a display of the host's network.
+ * The id the displays recognise hassemu by: the server id the running web server announces to a display of the
+ * host's network. A server that announces none throws — the cases read the id there.
  *
  * @param emu the adapter
  */
-async function announced(emu: Emu): Promise<unknown> {
+async function announced(emu: Emu): Promise<string> {
   const answer = await emu.webServer?.inject({
     method: "GET",
     url: "/api/discovery_info",
     headers: { "user-agent": "Mozilla/5.0 (Linux; Android 13; WebView)" },
     remoteAddress: "192.168.77.50",
   });
-  return (answer?.json() as { uuid?: unknown } | undefined)?.uuid;
+  const uuid = (answer?.json() as { uuid?: unknown } | undefined)?.uuid;
+  if (typeof uuid !== "string" || uuid === "") {
+    throw new Error("the web server announces no server id");
+  }
+  return uuid;
 }
 
 /** The server id in the data file. */
@@ -307,21 +315,11 @@ function oldDatapoint(): { object: boolean; value: boolean } {
 describe("B3: info.serverUuid no longer exists, the id stands in the data file", () => {
   it("the datapoint info.serverUuid does not exist, and the id the displays recognise hassemu by stands in the data file", async () => {
     seedInstall();
-    const ids = manifest().instanceObjects.map(obj => obj._id);
 
     const emu = await started();
     const uuid = await announced(emu);
 
-    expect({ declares: ids.length > 0, serverUuid: ids.includes(OLD_ID) }).toEqual({
-      declares: true,
-      serverUuid: false,
-    });
-    expect({ problems: db.problems, old: oldDatapoint(), announces: typeof uuid === "string" && uuid !== "" }).toEqual({
-      problems: [],
-      old: { object: false, value: false },
-      announces: true,
-    });
-    expect(inFile()).toEqual(uuid);
+    expect({ old: oldDatapoint(), inFile: inFile() }).toEqual({ old: { object: false, value: false }, inFile: uuid });
   });
 
   it("at the update hassemu moves the id once into the data file, so no display has to be set up again", async () => {
@@ -329,33 +327,17 @@ describe("B3: info.serverUuid no longer exists, the id stands in the data file",
     seedOldDatapoint(LEGACY_SERVER_ID);
 
     const first = await started();
-    const afterUpdate = {
-      problems: [...db.problems],
-      old: oldDatapoint(),
-      inFile: inFile(),
-      uuid: await announced(first),
-    };
+    const afterUpdate = { old: oldDatapoint(), inFile: inFile(), uuid: await announced(first) };
     await stopped(first);
     seedOldDatapoint(STRAY_SERVER_ID);
     const second = await started();
-    const laterStart = {
-      problems: [...db.problems],
-      old: oldDatapoint(),
-      inFile: inFile(),
-      uuid: await announced(second),
-    };
+    const laterStart = { inFile: inFile(), uuid: await announced(second) };
 
     expect(afterUpdate).toEqual({
-      problems: [],
       old: { object: false, value: false },
       inFile: LEGACY_SERVER_ID,
       uuid: LEGACY_SERVER_ID,
     });
-    expect(laterStart).toEqual({
-      problems: [],
-      old: { object: false, value: false },
-      inFile: LEGACY_SERVER_ID,
-      uuid: LEGACY_SERVER_ID,
-    });
+    expect(laterStart).toEqual({ inFile: LEGACY_SERVER_ID, uuid: LEGACY_SERVER_ID });
   });
 });

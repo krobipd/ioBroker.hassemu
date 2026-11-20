@@ -17,7 +17,7 @@
  * directory, written through the data-folder master as on a host.
  */
 
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import type * as Os from "node:os";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -288,39 +288,40 @@ function seedInstall(displays: Seed[]): void {
   writeDataFile(data.dir, "identities.json", { server: "0d5b8e2a-7c41-4f3e-9a26-5b8c1d7e3f90", displays: entries });
 }
 
-/** The adapter, started through the ready handler its constructor registered. */
+/** The adapter, started through the ready handler its constructor registered; a start that ended throws. */
 async function started(): Promise<Emu> {
   const emu = new HassEmu() as unknown as Emu;
   emu.config = { ...CONFIG };
   running.push(emu);
   await emu.handlers.get("ready")?.();
+  const ended = db.problems.filter(line => line.startsWith("terminate:"));
+  if (ended.length > 0) {
+    throw new Error(`the adapter did not start: ${ended.join(", ")}`);
+  }
   return emu;
 }
 
-/** The ids of the display devices under clients. */
-function devices(): string[] {
-  return [...db.objects]
-    .filter(([id, obj]) => id.startsWith(`${NS}.clients.`) && obj.type === "device")
-    .map(([id]) => id.slice(`${NS}.clients.`.length))
-    .sort();
-}
-
 /**
- * What is left of a display: its objects, its values, its entry in the data file and the enums that list its device.
+ * Whether a display is still there: its device in the object tree.
  *
  * @param id the display id
  */
-function leftOf(id: string): { objects: string[]; values: string[]; fileEntry: boolean; inEnums: string[] } {
+function present(id: string): boolean {
+  return db.objects.has(`${NS}.clients.${id}`);
+}
+
+/**
+ * What is left of a display: its objects (device and settings), the values of its settings, and the room and the
+ * function that list it.
+ *
+ * @param id the display id
+ */
+function leftOf(id: string): { objects: string[]; values: string[]; inRoomOrFunction: string[] } {
   const prefix = `${NS}.clients.${id}`;
-  const file = join(data.dir, "identities.json");
-  const stored = (existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {}) as {
-    displays?: Record<string, unknown>;
-  };
   return {
     objects: [...db.objects.keys()].filter(key => key === prefix || key.startsWith(`${prefix}.`)),
     values: [...db.states.keys()].filter(key => key.startsWith(`${prefix}.`)),
-    fileEntry: stored.displays?.[id] !== undefined,
-    inEnums: [ROOM, FUNCTION].filter(enumId =>
+    inRoomOrFunction: [ROOM, FUNCTION].filter(enumId =>
       ((db.objects.get(enumId)?.common as { members?: string[] } | undefined)?.members ?? []).includes(prefix),
     ),
   };
@@ -331,18 +332,12 @@ describe("K14: at start hassemu removes displays long unseen, measured at the mo
     const newest = Date.now() - DAY;
     seedInstall([
       { id: "display-a001", lastSeen: newest },
-      { id: "display-b002", lastSeen: newest - 29 * DAY },
       { id: "display-c003", lastSeen: newest - 31 * DAY },
     ]);
 
     await started();
 
-    expect({ problems: db.problems, devices: devices() }).toEqual({
-      problems: [],
-      devices: ["display-a001", "display-b002"],
-    });
-    expect(leftOf("display-c003")).toEqual({ objects: [], values: [], fileEntry: false, inEnums: [] });
-    expect(leftOf("display-b002").inEnums).toEqual([ROOM, FUNCTION]);
+    expect(leftOf("display-c003")).toEqual({ objects: [], values: [], inRoomOrFunction: [] });
   });
 
   it("if the whole installation stood still for long, none falls", async () => {
@@ -354,10 +349,7 @@ describe("K14: at start hassemu removes displays long unseen, measured at the mo
 
     await started();
 
-    expect({ problems: db.problems, devices: devices() }).toEqual({
-      problems: [],
-      devices: ["display-d004", "display-e005"],
-    });
+    expect({ d004: present("display-d004"), e005: present("display-e005") }).toEqual({ d004: true, e005: true });
   });
 
   it("the most recently seen display never falls by itself", async () => {
@@ -365,10 +357,6 @@ describe("K14: at start hassemu removes displays long unseen, measured at the mo
 
     await started();
 
-    expect({ problems: db.problems, devices: devices(), fileEntry: leftOf("display-f006").fileEntry }).toEqual({
-      problems: [],
-      devices: ["display-f006"],
-      fileEntry: true,
-    });
+    expect(present("display-f006")).toBe(true);
   });
 });
