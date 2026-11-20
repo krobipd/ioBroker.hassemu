@@ -12,7 +12,6 @@
 
 import { coerceSafeUrl } from "./coerce";
 import { MODE_GLOBAL, MODE_MANUAL } from "./constants";
-import { isNoChoice } from "./state-write-rules";
 import type { ClientRecord } from "./types";
 
 /** The global override as the resolver sees it — a snapshot, not the class. */
@@ -49,13 +48,7 @@ export interface RedirectResolution {
  * @param manualUrl The `manualUrl` paired with `mode === 'manual'`.
  */
 function resolveOne(mode: unknown, manualUrl: string | null): RedirectResolution {
-  // Deliberately without its own test: removing this shortcut changes nothing observable
-  // — a no-choice value is not a safe URL either, so the tail below returns the same
-  // `{ url: null, chain: "landing" }` (measured as an equivalent mutant in the 2026-08-22
-  // test audit). It stays because it names the case a reader is looking for.
-  if (isNoChoice(mode)) {
-    return { url: null, chain: "landing" };
-  }
+  // A no-choice value (`0`, `"0"`, `""`) is no safe URL, so the tail returns `{ url: null, chain: "landing" }` for it.
   if (mode === MODE_MANUAL) {
     return { url: manualUrl, chain: manualUrl ? `manual→${manualUrl}` : "manual→landing" };
   }
