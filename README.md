@@ -105,17 +105,19 @@ Want the same URL on every display? Set `global.mode` (plus `global.manualUrl` f
 
 ## Configuration
 
-| Option                      | What                                                                                                              | Default   |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------- | --------- |
-| Port                        | The port the displays connect to — 8123 like Home Assistant; the form warns if another instance holds it          | 8123      |
-| Bind to Interface           | The address hassemu listens, announces and connects on — all addresses when empty                                 | 0.0.0.0   |
-| Service Name                | Name the display sees                                                                                             | ioBroker  |
-| Enable mDNS Discovery       | LAN auto-discovery. Off → set `http://<ioBroker-IP>:8123` on the display by hand.                                 | on        |
-| Require Authentication      | Login required (guards the HA API on the LAN; credentials travel in plain HTTP)                                   | off       |
-| Username / Password         | When authentication is on                                                                                         | admin / — |
-| Use HTTPS                   | Encrypts login, password and tokens with a certificate from ioBroker — see [Ports](#ports) for its rules          | off       |
-| Certificates                | Public, private and chained certificate, or a Let's Encrypt collection, from ioBroker's certificates (with HTTPS) | —         |
-| Trust Reverse Proxy Headers | Only behind a trusted reverse proxy that terminates TLS and strips X-Forwarded-*                                  | off       |
+| Option                           | What                                                                                                              | Default   |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------- | --------- |
+| Port                             | The port the displays connect to — 8123 like Home Assistant; the form warns if another instance holds it          | 8123      |
+| Bind to Interface                | The address hassemu listens, announces and connects on — all addresses when empty                                 | 0.0.0.0   |
+| Service Name                     | Name the display sees                                                                                             | ioBroker  |
+| Enable mDNS Discovery            | LAN auto-discovery. Off → set `http://<ioBroker-IP>:8123` on the display by hand.                                 | on        |
+| Require Authentication           | Login required (guards the HA API on the LAN; credentials travel in plain HTTP)                                   | off       |
+| Username / Password              | When authentication is on                                                                                         | admin / — |
+| Use HTTPS                        | Encrypts login, password and tokens with a certificate from ioBroker — see [Ports](#ports) for its rules          | off       |
+| Certificates                     | Public, private and chained certificate, or a Let's Encrypt collection, from ioBroker's certificates (with HTTPS) | —         |
+| Trust Reverse Proxy Headers      | Only behind a trusted reverse proxy that terminates TLS and strips X-Forwarded-*                                  | off       |
+| Delete datapoints with recording | Off: a datapoint you record stays when hassemu no longer needs it, and the log counts it                          | on        |
+| Delete the recorded data too     | With the option above on: each recording instance deletes the datapoint's recorded data first                     | off       |
 
 hassemu answers only displays in its own networks: with an interface chosen, the network of that interface; with all addresses, every network the host sits in. A display or reverse proxy in another network — a routed VLAN, for example — gets no answer; choose the interface of that network instead. A chosen address the host does not carry falls back to all addresses with one warning in the log.
 
