@@ -3110,6 +3110,32 @@ describe("ClientRegistry display ids move once (K7, krobi 2026-11-11 19:51)", ()
     expect(s.states.get("hassemu.0.clients.display-c3a1.ip")?.val).to.equal("10.0.0.9");
   });
 
+  it("a move keeps every other display's identity in the data file — also when the start fails after it", async () => {
+    const built = createMockAdapter();
+    const s = built.store;
+    // A display of the new form whose identity stands in the data file only.
+    const kept = crypto.randomUUID();
+    rewriteClients(
+      s.dataDir,
+      new Map([["display-0b0b", { cookie: kept, token: null, tokenExpiresAt: null, refreshToken: null }]]),
+    );
+    s.objects.set("hassemu.0.clients.display-0b0b", { type: "device", common: { name: { en: "b" } }, native: {} });
+    seedOldDisplay(built, "aac3a1");
+    seedOldDisplay(built, "ffff02");
+    // The first move stores the identities it re-keys, then the second one fails.
+    const a = built.adapter as unknown as { setForeignObject: (id: string, obj: ObjEntry) => Promise<void> };
+    const write = a.setForeignObject;
+    a.setForeignObject = (id: string, obj: ObjEntry) =>
+      id === "hassemu.0.clients.display-ff02.ip" ? Promise.reject(new Error("broker down")) : write(id, obj);
+
+    let failed: unknown;
+    await new ClientRegistry(built.adapter as never, s.dataDir).restore().catch((err: unknown) => (failed = err));
+
+    expect(failed).to.be.instanceOf(Error);
+    expect(s.objects.has("hassemu.0.clients.display-c3a1"), "the first move happened").to.be.true;
+    expect(storedEntry(s, "display-0b0b")?.cookie, "the next start still knows the other display").to.equal(kept);
+  });
+
   it("two old ids that end alike get display-c3a1 and display-c3a1-2, by id", async () => {
     const built = createMockAdapter();
     const second = seedOldDisplay(built, "bbc3a1");
