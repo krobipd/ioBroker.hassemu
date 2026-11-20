@@ -2203,6 +2203,12 @@ describe("ClientRegistry data file — cookie, tokens and lastSeen out of the ob
   // they live in a file of the instance data folder (client-store.ts).
   type Bundle = ReturnType<typeof createMockAdapter>;
 
+  it("hands out no server id before the restore has read it (design decision 2)", () => {
+    const built = createMockAdapter();
+    const reg = new ClientRegistry(built.adapter as never, built.store.dataDir);
+    expect(() => reg.serverUuid).to.throw("restore");
+  });
+
   /**
    * Seed a display the way an earlier version stored it: cookie, tokens and lastSeen in the device
    * object's `native`, the six leaves beside it.

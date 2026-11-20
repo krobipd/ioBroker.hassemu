@@ -496,6 +496,25 @@ describe("MDNSService cross-platform", () => {
       expect(localAdapter._intervals.size, "stop ends the address check").to.equal(0);
     });
 
+    it("two address checks at the same time announce the new address once", async () => {
+      let nets = [net("192.168.1.5")];
+      const local = new MDNSService(
+        createMockAdapter() as never,
+        MDNS_CONFIG,
+        crypto.randomUUID(),
+        undefined,
+        () => nets,
+      );
+      local.start();
+      try {
+        nets = [net("192.168.1.77")];
+        await Promise.all([local.refreshIfAddressChanged(), local.refreshIfAddressChanged()]);
+        expect((local as unknown as Internals).announced).to.have.lengthOf(1);
+      } finally {
+        await local.stop(true);
+      }
+    });
+
     it("a concrete bind address arms no address check", async () => {
       const localAdapter = createMockAdapter();
       const local = new MDNSService(

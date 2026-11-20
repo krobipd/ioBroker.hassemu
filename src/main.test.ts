@@ -276,6 +276,7 @@ vi.mock("@iobroker/adapter-core", async () => {
   };
 });
 
+import { I18n } from "@iobroker/adapter-core";
 import * as mainModule from "./main";
 import type { ClientRegistry } from "./lib/client-registry";
 import type { GlobalConfig } from "./lib/global-config";
@@ -858,6 +859,70 @@ describe("a stop that arrives while onReady is still running (L4)", () => {
     expect(webServer.start).not.toHaveBeenCalled();
     expect(logsOf(stub, "error")).toEqual([]);
     expect(stub.terminations).toEqual([]);
+  });
+
+  it("during the translations: no setting is read and nothing starts (DD 28)", async () => {
+    const { internal, webServer } = setup();
+    const gate = hold();
+    vi.mocked(I18n.init).mockImplementationOnce(() => gate.promise);
+    const makeGlobalConfig = vi.spyOn(internal, "makeGlobalConfig");
+    const ready = internal.onReady();
+    internal.onUnload(vi.fn());
+
+    gate.release();
+    await ready;
+
+    expect(makeGlobalConfig).not.toHaveBeenCalled();
+    expect(webServer.start).not.toHaveBeenCalled();
+  });
+
+  it("during the restore of the settings: no display is restored and nothing starts (DD 28)", async () => {
+    const { internal, webServer } = setup();
+    const gate = hold();
+    let restoring = false;
+    const realMake = internal.makeGlobalConfig;
+    internal.makeGlobalConfig = () => {
+      const g = realMake();
+      (g as unknown as { restore: () => Promise<void> }).restore = () => {
+        restoring = true;
+        return gate.promise;
+      };
+      return g;
+    };
+    const makeRegistry = vi.spyOn(internal, "makeRegistry");
+    const ready = internal.onReady();
+    await vi.waitFor(() => expect(restoring).toBe(true));
+    internal.onUnload(vi.fn());
+
+    gate.release();
+    await ready;
+
+    expect(makeRegistry).not.toHaveBeenCalled();
+    expect(webServer.start).not.toHaveBeenCalled();
+  });
+
+  it("during the restore of the displays: the start writes nothing after it — info.serverUuid of 1.46.1 stays (DD 28)", async () => {
+    const { internal, stub } = setup();
+    stub.objects.set("hassemu.0.info.serverUuid", { type: "state" });
+    const gate = hold();
+    let restoring = false;
+    const realMake = internal.makeRegistry;
+    internal.makeRegistry = () => {
+      const r = realMake();
+      (r as unknown as { restore: () => Promise<void> }).restore = () => {
+        restoring = true;
+        return gate.promise;
+      };
+      return r;
+    };
+    const ready = internal.onReady();
+    await vi.waitFor(() => expect(restoring).toBe(true));
+    internal.onUnload(vi.fn());
+
+    gate.release();
+    await ready;
+
+    expect(stub.objects.has("hassemu.0.info.serverUuid")).toBe(true);
   });
 
   it("a start that fails BECAUSE of the stop logs no error and asks for no restart (N3)", async () => {

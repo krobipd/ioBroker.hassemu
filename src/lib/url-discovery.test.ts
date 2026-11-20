@@ -1120,6 +1120,17 @@ describe("UrlDiscovery", () => {
         expect(Object.keys(await discovery.collect())).to.have.lengthOf(1);
       });
 
+      it("a link card with the address of a tile adds nothing — the tile keeps its entry", async () => {
+        adapter._instances = {
+          "system.adapter.x.0": enabledInstance({ common: { localLink: "http://192.0.2.5/" } }),
+        };
+        adapter._config = {
+          common: {},
+          native: { introLinks: [{ name: "Same page", link: "http://192.0.2.5/", enabled: true }] },
+        };
+        expect(await discovery.collect()).to.deep.equal({ "http://192.0.2.5/": "x.0" });
+      });
+
       it("keeps the tile of the lowest instance when two instances advertise the same address", async () => {
         adapter._instances = {
           "system.adapter.x.10": enabledInstance({ common: { localLink: "http://192.0.2.5/" } }),
