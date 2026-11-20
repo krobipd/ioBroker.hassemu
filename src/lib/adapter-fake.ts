@@ -14,7 +14,11 @@
  * that is not there changes nothing; a recursive delete takes the root first and then every id below it in list order,
  * leaves an object with `common.dontDelete`, deletes the state of every state object and takes the id out of every enum
  * that lists it (`removeIdFromAllEnums`). Timers fire only when the test runs them; messages are answered by `answer`;
- * events reach their listeners only through `emit`.
+ * events reach their listeners only through `emit`. The objects it returns have the form of `ioBroker.Object`, as
+ * `ioBroker.Adapter` returns them, so an adapter's own port typed like the real adapter takes this class without a cast —
+ * a cast would switch off the very type check that shows a drift between port and stand-in. It holds them as plain
+ * records (`objects`): a sealed guard that hands it its own map declares that form, and a narrower type would break the
+ * guard's type check in every adapter that carries it.
  *
  * Test code: nothing outside a test imports it. The adapter build (`build-adapter ts`) compiles every `src/**` source but
  * a test, so the file is part of the package without being loaded.
@@ -119,6 +123,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * A copy of a held object in the form `ioBroker.Adapter` returns it — the one place the plain record a test or a guard
+ * stored becomes that form: what the database holds is whatever the test wrote, js-controller does not check it either.
+ *
+ * @param held the object as held
+ * @returns the copy
+ */
+function objectOf(held: Record<string, unknown>): ioBroker.Object {
+  return structuredClone(held) as unknown as ioBroker.Object;
+}
+
+/**
  * The regular expression of an object id pattern (`*` for any text).
  *
  * @param pattern e.g. `enum.*`
@@ -205,11 +220,11 @@ export class FakeAdapter implements KnownObjectsAdapter, StartFailureAdapter {
   public getObjectListAsync(params: {
     startkey: string;
     endkey: string;
-  }): Promise<{ rows: Array<{ id: string; value: unknown }> }> {
-    const rows = [...this.objects.keys()]
-      .filter(id => id >= params.startkey && id <= params.endkey)
-      .sort()
-      .map(id => ({ id, value: structuredClone(this.objects.get(id)) }));
+  }): Promise<{ rows: Array<{ id: string; value: ioBroker.Object }> }> {
+    const rows = [...this.objects.entries()]
+      .filter(([id]) => id >= params.startkey && id <= params.endkey)
+      .sort(([a], [b]) => (a < b ? -1 : 1)) // the ids of a map are unique, two of them are never equal
+      .map(([id, value]) => ({ id, value: objectOf(value) }));
     return Promise.resolve({ rows });
   }
 
@@ -219,9 +234,9 @@ export class FakeAdapter implements KnownObjectsAdapter, StartFailureAdapter {
    * @param id the full id
    * @returns the object, null when there is none
    */
-  public getForeignObjectAsync(id: string): Promise<Record<string, unknown> | null> {
+  public getForeignObjectAsync(id: string): Promise<ioBroker.Object | null> {
     const obj = this.objects.get(id);
-    return Promise.resolve(obj ? structuredClone(obj) : null);
+    return Promise.resolve(obj ? objectOf(obj) : null);
   }
 
   /**
@@ -231,12 +246,12 @@ export class FakeAdapter implements KnownObjectsAdapter, StartFailureAdapter {
    * @param type the object type
    * @returns the objects
    */
-  public getForeignObjectsAsync(pattern: string, type: "enum" | "state"): Promise<Record<string, unknown>> {
+  public getForeignObjectsAsync(pattern: string, type: "enum" | "state"): Promise<Record<string, ioBroker.Object>> {
     const match = patternOf(pattern);
-    const found: Record<string, unknown> = {};
+    const found: Record<string, ioBroker.Object> = {};
     for (const [id, obj] of this.objects) {
       if (match.test(id) && obj.type === type) {
-        found[id] = structuredClone(obj);
+        found[id] = objectOf(obj);
       }
     }
     return Promise.resolve(found);

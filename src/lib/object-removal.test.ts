@@ -301,6 +301,39 @@ describe("removeObject — one line per pass", () => {
     expect(calls.filter(c => c.startsWith("info"))).toHaveLength(1);
   });
 
+  // Round 187 (R187-4, hassemu 2026-11-19 06:52): a start that failed after removing a datapoint nobody recorded left
+  // the pass's timer open — `terminate` skips the unload that clears it, and the fleet's resource probe reported it
+  it("starts no timer while the pass kept nothing, and counts a silent pass into no later line", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(10_000);
+      const { adapter, calls, fire } = fakeAdapter(
+        { ...tree(plain), "demo.0.other": recorded("sql.0"), "demo.0.late": recorded("sql.0") },
+        { deleteRecordedStates: false },
+      );
+      await removeObject(adapter, "dev", { recursive: true });
+      expect(calls.filter(c => c.startsWith("timer") || c.startsWith("clear"))).toEqual([]);
+      vi.setSystemTime(10_000 + REPORT_MS - 1);
+      await removeObject(adapter, "other");
+      expect(calls.filter(c => c.startsWith("timer"))).toEqual([`timer 1 ${REPORT_MS}`]);
+      fire();
+      vi.setSystemTime(20_000);
+      await removeObject(adapter, "dev-2");
+      expect(calls.filter(c => c.startsWith("timer"))).toHaveLength(1);
+      vi.setSystemTime(20_000 + REPORT_MS);
+      await removeObject(adapter, "late");
+      fire();
+      expect(calls.filter(c => c.startsWith("info"))).toEqual([
+        "info Object tree updated: removed 5 datapoint(s), kept 1 datapoint(s) with recording (sql.0) " +
+          "— please check them manually",
+        "info Object tree updated: removed 0 datapoint(s), kept 1 datapoint(s) with recording (sql.0) " +
+          "— please check them manually",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("writes the line at once while the adapter stops and hands out no timer", async () => {
     const { adapter, calls } = fakeAdapter(tree(recorded("history.0")), { deleteRecordedStates: false }, {}, false);
     await removeObject(adapter, "dev", { recursive: true });

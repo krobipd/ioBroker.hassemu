@@ -59,7 +59,12 @@
 //                                       command to every writable datapoint, the counterparts gone and back, a restart
 //                                       like the host's: no lane above the lowered maximum, one lane at it, every
 //                                       process loaded the declaration
-//   "the whole run"                     (no start, round 157) D4 nothing is written after the unload callback in any stop
+//   "every device manager dialog runs to its end" D23 (round 187, adapters with
+//                                       common.supportedMessages.deviceManager) every message the admin's device manager
+//                                       sends — the instance, the devices, the details, every control and every action
+//                                       with each dialog answered as the user does, DIALOG_SECRET in every password
+//                                       field — gets its answer, and every dialog ends; what its log lines carry S8 judges
+//   "the whole run"                  (no start, round 157) D4 nothing is written after the unload callback in any stop
 //                                       of the run (resource probe) · D17 no datagram to 255.255.255.255, and every own
 //                                       address it names to others is the chosen one (network hook, section 8) · round
 //                                       171: no lane of any installation above a declared limit, any window, sliding ·
@@ -73,6 +78,8 @@ const path = require("node:path");
 const assert = require("node:assert");
 // round 172 (R172-21): which counterpart a call belongs to — one reading, shared with test/network-hook.js
 const { privateHost, fits } = require("./counterparts.js");
+// round 187 (R187-15): what the device manager play types into a password field — the resource probe knows it as a secret
+const { DIALOG_SECRET } = require("./resource-probe.js");
 
 // D7: how long the run stays watched after its start is done — several cycles of every fleet poll.
 const QUIET_WINDOW_MS = 60000;
@@ -1972,6 +1979,236 @@ function plainValue(common) {
   return common.type === "json" || common.type === "object" ? "{}" : "";
 }
 
+// D23 (round 187, R187-15, finding 8204263955b4): the admin's device manager talks to the adapter only through messages
+// (@iobroker/dm-utils, common.supportedMessages.deviceManager), and no other suite sent one — a log line that only a
+// dialog causes stayed outside the log watch (S8). The play sends what the admin's device manager sends
+// (@iobroker/dm-gui-components 10.0.23: protocol/DmProtocolV1.js and DmProtocolV3.js, Communication.js, DeviceCard.js,
+// DeviceControl.js), one message at a time, and gives each dialog the user's answer — a form at most DM_FORM_TRIES times
+// in one action, then it is closed as the user closes it; an action still in its dialogs after DM_DIALOG_STEPS answers
+// never ends.
+const DM_DIALOG_STEPS = 20;
+const DM_FORM_TRIES = 2;
+const DM_BATCHES = 1000;
+// the controls a card only shows (DeviceControl.js renders no input for them)
+const DM_SHOWN_CONTROLS = new Set(["info", "divider", "header", "group"]);
+
+/**
+ * D23: what a form of the device manager is answered with — its own data (Communication.js; a value left undefined does
+ * not survive the message), the first option of a select without a value, and DIALOG_SECRET in every password field, a
+ * panel's or a tab's too.
+ *
+ * @param {any} form the form of a `form` answer of dm-utils (`schema`, `data`)
+ * @returns {{ data: Record<string, unknown>, secrets: number }} the answer and how many password fields it filled
+ */
+function dialogAnswer(form) {
+  /** @type {Record<string, unknown>} */
+  const data = { ...form?.data };
+  let secrets = 0;
+  /** @param {any} items the fields of a schema or of a panel */
+  const fill = items => {
+    for (const [key, item] of Object.entries(items ?? {})) {
+      if (!item || typeof item !== "object") {
+        continue;
+      }
+      fill(item.items);
+      if (item.type === "password") {
+        data[key] = DIALOG_SECRET;
+        secrets++;
+      } else if (
+        item.type === "select" &&
+        data[key] === undefined &&
+        Array.isArray(item.options) &&
+        item.options.length
+      ) {
+        data[key] = item.options[0]?.value;
+      }
+    }
+  };
+  fill(form?.schema?.items);
+  return { data, secrets };
+}
+
+/**
+ * D23: the value one click or one move sends a control of a device card (DeviceControl.js `sendControl`) — a button
+ * true, a switch or an icon the opposite of its state, a slider or a number its minimum, a select its first option, a
+ * text or a color what it holds.
+ *
+ * @param {any} control a control of a device of dm:loadDevices
+ */
+function controlValue(control) {
+  const now = control?.state?.val;
+  switch (control?.type) {
+    case "button":
+      return true;
+    case "switch":
+    case "icon":
+      return !now;
+    case "slider":
+    case "number":
+      return typeof control.min === "number" ? control.min : 0;
+    case "select":
+      return Array.isArray(control.options) && control.options.length ? control.options[0]?.value : null;
+    default:
+      return now ?? "";
+  }
+}
+
+/**
+ * D23: the value an action asks before it runs (`inputBefore`, Communication.js `onShowInputOk`) — its default, else a
+ * checkbox false, a number or slider its minimum, a select its first option, a text that may not stay empty a word.
+ *
+ * @param {any} input the action's `inputBefore`
+ */
+function inputValue(input) {
+  if (input.defaultValue !== undefined && input.defaultValue !== "") {
+    return input.defaultValue;
+  }
+  switch (input.type) {
+    case "checkbox":
+      return false;
+    case "number":
+    case "slider":
+      return typeof input.min === "number" ? input.min : 0;
+    case "select":
+      return Array.isArray(input.options) && input.options.length ? input.options[0]?.value : "";
+    default:
+      return input.allowEmptyValue ? "" : "inventory";
+  }
+}
+
+/**
+ * D23: every message the admin's device manager sends, in its order — the instance's info; its devices (one batch with
+ * API v1 and v2, the batches of dm:deviceLoadProgress with v3); the details of each device that shows a details button; the
+ * state of each control bound to a state and its value; every action of the instance; the devices again (an action may
+ * have added one) and every action of each device, its deletes last. An action whose button is a link or has no handler
+ * (dm-utils sends it `disabled`) is no message.
+ *
+ * @param {(command: string, message: unknown, ms: number) => Promise<any>} send one message — resolves with its answer,
+ *   rejects when none came within `ms`
+ */
+async function playDeviceManager(send) {
+  const out = {
+    played: 0,
+    dialogs: 0,
+    secrets: 0,
+    /** @type {string[]} */ silent: [],
+    /** @type {string[]} */ unended: [],
+    /** @type {string[]} */ unplayed: [],
+  };
+  /**
+   * @param {string} command the message
+   * @param {unknown} message what it carries
+   * @param {string} what what it asks, for a finding
+   * @param {number} [ms] how long the play waits for its answer — ANSWER_MS, an action's own timeout when longer
+   */
+  const ask = async (command, message, what, ms = ANSWER_MS) => {
+    try {
+      const answer = await send(command, message, ms);
+      out.played++;
+      return answer;
+    } catch {
+      out.silent.push(`${command} ${what}`);
+      return undefined;
+    }
+  };
+  /**
+   * @param {string} command dm:instanceAction or dm:deviceAction
+   * @param {Record<string, unknown>} message the action
+   * @param {string} what the action, for a finding
+   * @param {any} action the button the action comes from
+   */
+  const act = async (command, message, what, action) => {
+    const ms = Math.max(ANSWER_MS, typeof action.timeout === "number" ? action.timeout : 0);
+    const sent = action.inputBefore ? { ...message, value: inputValue(action.inputBefore) } : message;
+    let answer = await ask(command, { ...sent, timeout: action.timeout }, what, ms);
+    let forms = 0;
+    for (let step = 0; step < DM_DIALOG_STEPS; step++) {
+      if (!answer || typeof answer !== "object" || answer.type === "result" || answer.origin === undefined) {
+        return;
+      }
+      // a message or a progress is answered with its origin alone (Communication.js), as a closed form is
+      /** @type {Record<string, unknown>} */
+      const reply = { origin: answer.origin };
+      out.dialogs++;
+      if (answer.type === "form") {
+        forms++;
+        if (forms <= DM_FORM_TRIES) {
+          const { data, secrets } = dialogAnswer(answer.form);
+          reply.data = data;
+          out.secrets += secrets;
+        }
+      } else if (answer.type === "confirm") {
+        reply.confirm = true;
+      }
+      answer = await ask("dm:actionProgress", reply, `${what} after its ${answer.type}`, ms);
+    }
+    out.unended.push(what);
+  };
+  /** @param {any} list buttons of the instance or of a device */
+  const buttons = list => (Array.isArray(list) ? list : []).filter(a => a && !a.disabled && !a.url && a.id);
+  const info = await ask("dm:instanceInfo", undefined, "of the instance");
+  if (!info || typeof info !== "object") {
+    return out;
+  }
+  const loadDevices = async () => {
+    // API v1 and v2: one batch (DmProtocolV1.js, V2 extends it); v3: batches while an answer adds devices
+    if (info.apiVersion === "v1" || info.apiVersion === "v2") {
+      const list = await ask("dm:listDevices", undefined, "of the instance");
+      return Array.isArray(list) ? list : [];
+    }
+    const list = [];
+    let answer = await ask("dm:loadDevices", undefined, "of the instance");
+    for (let batch = 2; Array.isArray(answer?.add) && batch < DM_BATCHES; batch++) {
+      list.push(...answer.add);
+      if (!answer.next) {
+        break;
+      }
+      answer = await ask("dm:deviceLoadProgress", answer.next, `batch ${batch} of the devices`);
+    }
+    return list;
+  };
+  /** @param {any} device a device of dm:loadDevices */
+  const named = device => JSON.stringify(device?.id);
+  for (const device of await loadDevices()) {
+    if (device?.hasDetails === true) {
+      await ask("dm:deviceDetails", device.id, `of the device ${named(device)}`);
+    } else if (device?.hasDetails && typeof device.hasDetails === "object") {
+      out.unplayed.push(`dm:deviceDetails of the device ${named(device)} (shown by a state or an object)`);
+    }
+    for (const control of Array.isArray(device?.controls) ? device.controls : []) {
+      if (!control || DM_SHOWN_CONTROLS.has(control.type)) {
+        continue;
+      }
+      const at = { deviceId: device.id, controlId: control.id };
+      const what = `${control.id} of the device ${named(device)}`;
+      if (control.stateId) {
+        await ask("dm:deviceControlState", at, what);
+      }
+      await ask("dm:deviceControl", { ...at, state: controlValue(control) }, what);
+    }
+  }
+  for (const action of buttons(info.actions)) {
+    await act("dm:instanceAction", { actionId: action.id }, `the action ${action.id} of the instance`, action);
+  }
+  const devices = await loadDevices();
+  const deletes = /** @type {[any, any][]} */ ([]);
+  for (const device of devices) {
+    for (const action of buttons(device?.actions)) {
+      if (action.id === "delete" || action.icon === "delete") {
+        deletes.push([device, action]);
+        continue;
+      }
+      const what = `the action ${action.id} of the device ${named(device)}`;
+      await act("dm:deviceAction", { deviceId: device.id, actionId: action.id }, what, action);
+    }
+  }
+  for (const [device, action] of deletes) {
+    const what = `the action ${action.id} of the device ${named(device)}`;
+    await act("dm:deviceAction", { deviceId: device.id, actionId: action.id }, what, action);
+  }
+  return out;
+}
+
 module.exports = function fleetSuites(templateSuite, ctx) {
   const mutexProblem = workshopMutexProblem(ctx.ADAPTER_DIR);
   if (mutexProblem) {
@@ -2077,9 +2314,10 @@ module.exports = function fleetSuites(templateSuite, ctx) {
     return restarts;
   }
 
-  function ask(harness, command, message) {
+  // round 187 (D23): `ms` — a device manager action waits as long as its button says (`timeout`), ANSWER_MS at least
+  function ask(harness, command, message, ms = ANSWER_MS) {
     const answer = new Promise(resolve => harness.sendTo(`${ADAPTER}.0`, command, message, resolve));
-    return withinDeadline(answer, ANSWER_MS, `no answer to the message ${command}`);
+    return withinDeadline(answer, ms, `no answer to the message ${command}`);
   }
 
   // round 177 (the start-failure standard): a start that is to fail — prepared like `start` (`prepare` runs right before
@@ -3394,6 +3632,48 @@ module.exports = function fleetSuites(templateSuite, ctx) {
   // Round 157 (fleet-suite audit): the records of the WHOLE run, read after its last start — in the first suite they saw
   // only the stops and network records up to there; every later stop (language, group switch, rename, the six processes of
   // the wrong answers, the dropped device, the hang) went unjudged. No start of its own.
+  // D23 (round 187, R187-15, finding 8204263955b4 of dl-Manager): every message of the admin's device manager, played as
+  // the admin sends it (playDeviceManager) — no other suite sends one; the lines it causes reach the log watch of the
+  // suite "the whole run" (S8), and what the user types into a password field comes as DIALOG_SECRET, which the probe
+  // knows in every process
+  suite("every device manager dialog runs to its end", getHarness => {
+    const managed = manifest.common?.supportedMessages?.deviceManager === true;
+    let play;
+    before(async function () {
+      this.timeout(FIRST_START_MS + 900000);
+      if (!managed) {
+        return;
+      }
+      const harness = getHarness();
+      await start(harness, FIRST_LANGUAGE, ...NET);
+      play = await playDeviceManager((command, message, ms) => ask(harness, command, message, ms));
+    });
+
+    it("answers every message of its device manager, and every dialog ends (D23)", function () {
+      if (!managed) {
+        console.log("      no device manager (common.supportedMessages.deviceManager) — nothing to play");
+        return;
+      }
+      assert.ok(play, "the device manager was not played");
+      const unplayed = play.unplayed.length > 0 ? `; not played: ${play.unplayed.join(", ")}` : "";
+      console.log(
+        `      played ${play.played} message(s) of the device manager, ${play.dialogs} dialog(s), ` +
+          `${play.secrets} password field(s) answered${unplayed}`,
+      );
+      assert.deepStrictEqual(
+        play.silent,
+        [],
+        `messages of the device manager without an answer (the admin shows "no response from the backend"):\n` +
+          play.silent.join("\n"),
+      );
+      assert.deepStrictEqual(
+        play.unended,
+        [],
+        `actions still in their dialogs after ${DM_DIALOG_STEPS} answers:\n${play.unended.join("\n")}`,
+      );
+    });
+  });
+
   suite("the whole run", () => {
     it("writes nothing after its unload callback, in any stop of the run (D4)", function () {
       // resource probe: a write after the callback never reaches the database
@@ -3549,6 +3829,10 @@ module.exports.SECRET_NAME_PHRASES = SECRET_NAME_PHRASES;
 module.exports.secretFields = secretFields;
 module.exports.secretFileFindings = secretFileFindings;
 module.exports.watchedSecrets = watchedSecrets;
+module.exports.dialogAnswer = dialogAnswer;
+module.exports.controlValue = controlValue;
+module.exports.inputValue = inputValue;
+module.exports.playDeviceManager = playDeviceManager;
 // Round 165: the suites that judge the records of the whole run — pre-release.py's run of single suites reads it through
 // scripts/inventory-suites.mjs. "every" judges each record of every process (it runs along with every partial run, and a
 // move of its own code runs D06 whole); a list names the suites whose records it needs (it runs with them, and they with

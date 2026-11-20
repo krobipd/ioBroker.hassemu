@@ -29,6 +29,19 @@ function commonOf(fake: FakeAdapter, id: string): Record<string, unknown> | unde
   return fake.objects.get(id)?.common as Record<string, unknown> | undefined;
 }
 
+/** An adapter's own port to the object database, typed like `ioBroker.Adapter` returns objects. */
+interface ObjectPort {
+  /** One object. */
+  getForeignObjectAsync(id: string): Promise<ioBroker.Object | null | undefined>;
+  /** The objects of one type. */
+  getForeignObjectsAsync(pattern: string, type: "enum"): Promise<Record<string, ioBroker.Object>>;
+  /** The objects between two ids. */
+  getObjectListAsync(params: {
+    startkey: string;
+    endkey: string;
+  }): Promise<{ rows: Array<{ id: string; value: ioBroker.Object }> }>;
+}
+
 describe("FakeAdapter — start", () => {
   it("takes the namespace from the name, or as given, and copies the settings", () => {
     expect(new FakeAdapter().namespace).toBe("demo.0");
@@ -57,7 +70,7 @@ describe("FakeAdapter — reading the database", () => {
     const fake = new FakeAdapter({ objects: { c: state(), b: state(), "a.x": state(), a: state(), ab: state() } });
     const { rows } = await fake.getObjectListAsync({ startkey: "demo.0.a", endkey: "demo.0.b" });
     expect(rows.map(row => row.id)).toEqual(["demo.0.a", "demo.0.a.x", "demo.0.ab", "demo.0.b"]);
-    ((rows[0].value as Record<string, unknown>).common as Record<string, unknown>).name = "changed";
+    (rows[0].value.common as Record<string, unknown>).name = "changed";
     expect(commonOf(fake, "demo.0.a")?.name).toBe("x");
   });
 
@@ -80,6 +93,34 @@ describe("FakeAdapter — reading the database", () => {
     });
     const enums = await fake.getForeignObjectsAsync("demo.0.enum.*", "enum");
     expect(Object.keys(enums)).toEqual(["demo.0.enum.rooms.kitchen"]);
+  });
+
+  // Round 187 (R187-3, hueemu 2026-11-19 06:37): its own port, typed like ioBroker.Adapter, took the stand-in only through
+  // a cast, which switches off the type check that shows a drift between port and stand-in — the form of ioBroker.Object
+  it("is an own port typed like the real adapter, without a cast", async () => {
+    const fake = new FakeAdapter({
+      objects: { a: state(), "enum.x": { type: "enum", common: { name: "e", members: [] } } },
+    });
+    const port: ObjectPort = fake;
+    expect((await port.getForeignObjectAsync("demo.0.a"))?.type).toBe("state");
+    expect(Object.keys(await port.getForeignObjectsAsync("demo.0.enum.*", "enum"))).toEqual(["demo.0.enum.x"]);
+    expect(
+      (await port.getObjectListAsync({ startkey: "demo.0.a", endkey: "demo.0.a" })).rows[0].value.common.name,
+    ).toBe("x");
+  });
+
+  // Round 187 (R187-3): sealed guards hand the stand-in their own map of plain records — a narrower type of `objects`
+  // broke their type check in the pre-check of 2026-11-19 15:12, and a sealed guard never breaks under a round's master
+  it("keeps the map of plain records a guard hands it, and returns those objects in the port's form", async () => {
+    const shared = new Map<string, Record<string, unknown>>([["demo.0.a", { ...state(), _id: "demo.0.a" }]]);
+    class GuardAdapter extends FakeAdapter {
+      public override readonly objects = shared;
+    }
+    const port: ObjectPort = new GuardAdapter();
+    expect((await port.getForeignObjectAsync("demo.0.a"))?.common.name).toBe("x");
+    const copy = await port.getForeignObjectAsync("demo.0.a");
+    (copy?.common as Record<string, unknown>).name = "changed";
+    expect((shared.get("demo.0.a")?.common as Record<string, unknown>).name).toBe("x");
   });
 });
 

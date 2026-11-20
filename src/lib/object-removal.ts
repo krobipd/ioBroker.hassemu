@@ -16,7 +16,8 @@
  * it removes them: a user switches a recording on at any time, and a copy read at the start does not know it. Each
  * datapoint kept is named once per process, in one info line per pass ("Object tree updated: removed 3 datapoint(s),
  * kept 10 datapoint(s) with recording (history.0, influxdb.0) — please check them manually"), written when no removal
- * came for {@link REPORT_MS}; nothing newly kept, no line.
+ * came for {@link REPORT_MS}; nothing newly kept, no line — and no timer: a pass that kept nothing ends by itself, so a
+ * start that fails after a removal leaves no timer open (`terminate` skips the unload that clears the adapter's timers).
  *
  * A move is no removal: the datapoint lives on under its new id, and the old one goes through the delete the caller
  * hands to `moveWithEnums`/`moveAllWithEnums` (`enum-carry.ts`). Every other delete of an own object goes through
@@ -73,12 +74,13 @@ export interface Removal {
   kept: string[];
 }
 
-/** The pass of one adapter: what it removed and kept since its last line, and what it named before. */
+/** The pass of one adapter: what it removed and kept since its last line, what it named before, its last removal. */
 interface Pass {
   removed: number;
   kept: Map<string, string[]>;
   named: Set<string>;
   timer: ioBroker.Timeout | undefined;
+  last: number;
 }
 
 const passes = new WeakMap<RemovalAdapter, Pass>();
@@ -157,34 +159,40 @@ async function deleteRecordedData(adapter: RemovalAdapter, recorded: Map<string,
 }
 
 /**
- * Writes the pass's line when something was newly kept, and starts the next pass.
+ * Writes the pass's line and starts the next pass — `count` calls it only while the pass newly kept a datapoint.
  *
  * @param adapter the adapter
  * @param pass its pass
  */
 function report(adapter: RemovalAdapter, pass: Pass): void {
-  if (pass.kept.size > 0) {
-    const instances = [...new Set([...pass.kept.values()].flat())].sort().join(", ");
-    adapter.log.info(
-      `Object tree updated: removed ${pass.removed} datapoint(s), kept ${pass.kept.size} datapoint(s) with recording ` +
-        `(${instances}) — please check them manually`,
-    );
-  }
+  const instances = [...new Set([...pass.kept.values()].flat())].sort().join(", ");
+  adapter.log.info(
+    `Object tree updated: removed ${pass.removed} datapoint(s), kept ${pass.kept.size} datapoint(s) with recording ` +
+      `(${instances}) — please check them manually`,
+  );
   pass.removed = 0;
   pass.kept = new Map();
   pass.timer = undefined;
 }
 
 /**
- * Counts one removal into the adapter's pass and moves the end of the pass behind it.
+ * Counts one removal into the adapter's pass and moves the end of the pass behind it — with a timer only while the pass
+ * kept a datapoint it has to name (hassemu 2026-11-19: a start that failed after removing a datapoint nobody recorded
+ * left the timer open, and the fleet's resource probe reported it).
  *
  * @param adapter the adapter
  * @param removed how many objects the removal deleted
  * @param kept full id → recording instances of each datapoint it kept
  */
 function count(adapter: RemovalAdapter, removed: number, kept: Map<string, string[]>): void {
-  const pass = passes.get(adapter) ?? { removed: 0, kept: new Map(), named: new Set(), timer: undefined };
+  const pass = passes.get(adapter) ?? { removed: 0, kept: new Map(), named: new Set(), timer: undefined, last: 0 };
   passes.set(adapter, pass);
+  const now = Date.now();
+  if (pass.timer === undefined && now - pass.last >= REPORT_MS) {
+    // the pass before ended without a datapoint to name: no line, and its removals count into none
+    pass.removed = 0;
+  }
+  pass.last = now;
   pass.removed += removed;
   for (const [id, instances] of kept) {
     if (!pass.named.has(id)) {
@@ -193,9 +201,12 @@ function count(adapter: RemovalAdapter, removed: number, kept: Map<string, strin
     }
   }
   adapter.clearTimeout(pass.timer);
-  pass.timer = adapter.setTimeout(() => report(adapter, pass), REPORT_MS);
-  if (pass.timer === undefined) {
-    report(adapter, pass);
+  pass.timer = undefined;
+  if (pass.kept.size > 0) {
+    pass.timer = adapter.setTimeout(() => report(adapter, pass), REPORT_MS);
+    if (pass.timer === undefined) {
+      report(adapter, pass);
+    }
   }
 }
 

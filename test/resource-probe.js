@@ -18,6 +18,13 @@ const path = require("node:path");
 const asyncHooks = require("node:async_hooks");
 const { EventEmitter } = require("node:events");
 
+// Round 187 (R187-15, finding 8204263955b4): what the suite "every device manager dialog runs to its end" of
+// test/fleet-suites.js types into every password field of a dialog — a secret from the first log line on, in every
+// process: the dialog's answer reaches the log (a line of @iobroker/dm-utils) before the adapter encrypts it, and an
+// answer the adapter stores in its settings comes back as `config` only in the process the restart starts
+const DIALOG_SECRET = "inventory-dialog-secret-5b9e";
+module.exports.DIALOG_SECRET = DIALOG_SECRET;
+
 const dir = process.env.RESOURCE_PROBE_DIR;
 if (dir) {
   fs.writeFileSync(path.join(dir, `${process.pid}.start`), "");
@@ -86,6 +93,9 @@ if (dir) {
   // ("learn") or that the source carried one too short to follow ("short"), never the text or its length — so a run in
   // which no log line was held to anything does not read like one in which every line was.
   const SECRET_MIN = 8;
+  // Round 187 (R187-15): DIALOG_SECRET is a secret from the first watched line on (the head of this file); the watch has
+  // learned it once an ioBroker message carrying it reached the process — a dialog's answer
+  const DIALOG_SOURCE = "a text typed into a password field of a device manager dialog";
   const LOG_LEVELS = ["silly", "debug", "info", "warn", "error"];
   const LOG_WATCHED = Symbol("resourceProbeLogWatched");
   const secretLog = path.join(dir, `${process.pid}.secrets`);
@@ -115,6 +125,14 @@ if (dir) {
       }
     }
   };
+  // an ioBroker message whose content carries DIALOG_SECRET; one that cannot be written as JSON carries none
+  const dialogAnswered = msg => {
+    try {
+      return JSON.stringify(msg.message ?? null).includes(DIALOG_SECRET);
+    } catch {
+      return false;
+    }
+  };
   const watchLog = adapter => {
     const log = adapter.log;
     if (!log || typeof log !== "object" || log[LOG_WATCHED] || typeof adapter.encrypt !== "function") {
@@ -129,6 +147,7 @@ if (dir) {
     } catch {
       // no manifest, or one that names no encrypted setting: no setting is a secret
     }
+    secrets.set(DIALOG_SECRET, DIALOG_SOURCE);
     fs.appendFileSync(secretLog, `${JSON.stringify({ t: Date.now(), kind: "watch" })}\n`);
     for (const level of LOG_LEVELS) {
       const original = log[level];
@@ -176,6 +195,8 @@ if (dir) {
       }
     } else if (event === "unload" && typeof args[0] === "function") {
       args[0] = watchUnload(this, args[0]);
+    } else if (event === "message" && typeof args[0]?.command === "string" && dialogAnswered(args[0])) {
+      noteSource("learn", DIALOG_SOURCE);
     } else if (event === "ready") {
       watchLog(this);
       watchStart(this);
