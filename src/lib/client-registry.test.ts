@@ -8,7 +8,7 @@ vi.mock("@iobroker/adapter-core", async () => {
   return { I18n: realI18n() };
 });
 
-import { ClientRegistry, parseClientStateId } from "./client-registry";
+import { ClientRegistry, movedObject, parseClientStateId } from "./client-registry";
 import { readStore, STORE_FILE, type StoredClient, writeStore } from "./client-store";
 import { displayIcon } from "./device-icon";
 import * as displayId from "./display-id";
@@ -1574,6 +1574,16 @@ describe("ClientRegistry", () => {
       const reg = new ClientRegistry(built.adapter as never, built.store.dataDir);
       reg.seedLastSeen("foo", 9999);
       expect(readStore(built.store.dataDir, TEST_CIPHER).clients.size).to.equal(0);
+      expect(reg.lastSeenOf("foo"), "and remembers no stamp for it (K14)").to.be.undefined;
+    });
+
+    it("gives a display removed meanwhile no stamp (K14, K20)", async () => {
+      const built = createMockAdapter();
+      const reg = await startedRegistry(built);
+      const rec = await reg.identifyOrCreate(null, "10.0.0.9");
+      await reg.remove(rec.id);
+      reg.seedLastSeen(rec.id, 9999);
+      expect(reg.lastSeenOf(rec.id)).to.be.undefined;
     });
   });
 
@@ -1608,6 +1618,28 @@ describe("ClientRegistry", () => {
       await new Promise(r => setImmediate(r));
       expect(built.store.objects.has(key), "removed client must stay removed").to.be.false;
       expect(storedEntry(built.store, rec.id), "and its identity stays out of the data file").to.be.undefined;
+    });
+
+    it("a display removed while its new address is written gets no name written — its device does not come back (K7, K20)", async () => {
+      const built = createMockAdapter();
+      const reg = await startedRegistry(built);
+      const rec = await reg.identifyOrCreate(null, "10.0.0.1");
+      const key = `hassemu.0.clients.${rec.id}`;
+      let release!: () => void;
+      const held = new Promise<void>(resolve => {
+        release = resolve;
+      });
+      const setState = built.adapter.setState.bind(built.adapter);
+      built.adapter.setState = (id: string, value: { val: unknown; ack?: boolean }) =>
+        id.endsWith(".ip") ? held.then(() => setState(id, value)) : setState(id, value);
+
+      // A new address: its write is under way when the user presses `remove`.
+      const pending = reg.identifyOrCreate(rec.cookie, "10.0.0.2");
+      await reg.remove(rec.id);
+      expect(built.store.objects.has(key)).to.be.false;
+      release();
+      await pending;
+      expect(built.store.objects.has(key), "the name that follows the new address writes nothing").to.be.false;
     });
   });
 
@@ -2618,6 +2650,81 @@ describe("ClientRegistry start cost (audit 2026-09-15 — C1, C2, D1)", () => {
     expect(reg.lastSeenOf("nobody")).to.be.undefined;
   });
 
+  it("restores the displays side by side — one display's slow write does not hold the others (D1)", async () => {
+    const built = createMockAdapter();
+    for (const id of ["display-0001", "display-0002"]) {
+      seedDisplay(built, id, Date.now() - 5000);
+      // An empty mode from an old version: the start lifts it to "0" — one write per display.
+      built.store.states.set(`hassemu.0.clients.${id}.mode`, { val: "", ack: true });
+    }
+    let release!: () => void;
+    const held = new Promise<void>(resolve => {
+      release = resolve;
+    });
+    let first: string | undefined;
+    const written = new Set<string>();
+    const setState = built.adapter.setState.bind(built.adapter);
+    built.adapter.setState = (id: string, value: { val: unknown; ack?: boolean }) => {
+      const display = /^clients\.([^.]+)\./.exec(id)?.[1] ?? id;
+      written.add(display);
+      first ??= display;
+      return display === first ? held.then(() => setState(id, value)) : setState(id, value);
+    };
+    const reg = new ClientRegistry(built.adapter as never, built.store.dataDir);
+    const restoring = reg.restore();
+    try {
+      for (let i = 0; i < 50 && written.size < 2; i++) {
+        await new Promise(resolve => setImmediate(resolve));
+      }
+      expect([...written], "the second display is written while the first one's write hangs").to.have.lengthOf(2);
+    } finally {
+      release();
+      await restoring;
+    }
+  });
+
+  it("a display stored with an empty mode shows '---' and counts as no choice (v1.37.0 L24)", async () => {
+    const built = createMockAdapter();
+    seedDisplay(built, "display-0003", Date.now() - 5000);
+    built.store.states.set("hassemu.0.clients.display-0003.mode", { val: "", ack: true });
+    const reg = new ClientRegistry(built.adapter as never, built.store.dataDir);
+    await reg.restore();
+
+    expect(built.store.states.get("hassemu.0.clients.display-0003.mode")?.val, "the dropdown shows ---").to.equal(
+      NO_CHOICE,
+    );
+    expect(await reg.bulkSetMode(NO_CHOICE), "switching the master off finds nothing to change (K8)").to.equal(0);
+  });
+
+  it("a failed read of the display datapoints fails the start and touches no display (K16)", async () => {
+    const built = createMockAdapter();
+    seedDisplay(built, "display-0004", Date.now() - 5000);
+    // Behind the text revision: the start reads the datapoint objects once to compare their texts.
+    built.store.objects.get("hassemu.0.clients.display-0004")!.native = { objectsVersion: CLIENT_OBJECTS_VERSION - 1 };
+    const read = built.adapter.getForeignObjectsAsync.bind(built.adapter);
+    built.adapter.getForeignObjectsAsync = (pattern: string, type?: string) =>
+      pattern === "hassemu.0.clients.*" && type === "state"
+        ? Promise.reject(new Error("objects db down"))
+        : read(pattern, type);
+    const counts = count(built);
+    const reg = new ClientRegistry(built.adapter as never, built.store.dataDir);
+
+    await expect(reg.restore()).rejects.toThrow("reading the display datapoints failed (objects db down)");
+    expect(writes(counts), JSON.stringify(counts)).to.equal(0);
+  });
+
+  it("a host name that resolves to the same name again writes nothing — the data file neither", async () => {
+    const built = createMockAdapter();
+    const reg = await startedRegistry(built);
+    const rec = await reg.identifyOrCreate(null, "10.0.0.9", { hostname: "tablet.lan" });
+    const counts = count(built);
+    const inode = fileInode(built);
+
+    await reg.updateHostname(rec.cookie, "tablet.lan");
+    expect(fileInode(built), "the data file is not written again").to.equal(inode);
+    expect(writes(counts), JSON.stringify(counts)).to.equal(0);
+  });
+
   it("a NEW display is created with the current texts and stamp — no second name write, no stamp write (G2)", async () => {
     const built = createMockAdapter();
     const reg = await startedRegistry(built);
@@ -3174,6 +3281,75 @@ describe("ClientRegistry display ids move once (K7, krobi 2026-11-11 19:51)", ()
     });
     expect(rec.id).to.match(/^pixel-tablet-[0-9a-f]{4}$/);
     expect(built.store.objects.get(`hassemu.0.clients.${rec.id}`)?.type).to.equal("device");
+  });
+
+  // Measured on the copy itself: the start names every display from its sources right after the move, which would
+  // hide a name left as the old id.
+  it("the copy of the device leaves the journal behind and renames a name that is the old id", () => {
+    const from = "hassemu.0.clients.61c3a1";
+    const move = { from: "61c3a1", to: "display-c3a1" };
+    const device = {
+      type: "device",
+      common: { name: "61c3a1" },
+      native: { movingTo: "display-c3a1", objectsVersion: CLIENT_OBJECTS_VERSION },
+    };
+    type Copy = { common: { name: unknown }; native: Record<string, unknown> };
+    const copy = movedObject(from, device as never, move, from) as unknown as Copy;
+    expect(copy.native, "the journal stays at the old device").to.deep.equal({
+      objectsVersion: CLIENT_OBJECTS_VERSION,
+    });
+    expect(copy.common.name).to.deep.equal(tRaw("display-c3a1"));
+    const named = movedObject(from, { ...device, common: { name: "Kitchen" } } as never, move, from) as unknown as Copy;
+    expect(named.common.name, "any other name moves as it is").to.equal("Kitchen");
+    expect(device.native, "the object as read stays as it was").to.have.property("movingTo", "display-c3a1");
+  });
+
+  it("a display of the old form without an identity does not move — it falls as an orphan under its old id", async () => {
+    const built = createMockAdapter();
+    const s = built.store;
+    seedOldDisplay(built, "61c3a1");
+    s.objects.get("hassemu.0.clients.61c3a1")!.native = { objectsVersion: CLIENT_OBJECTS_VERSION };
+    const copied: string[] = [];
+    const setForeignObject = built.adapter.setForeignObject.bind(built.adapter);
+    built.adapter.setForeignObject = (fullId, obj) => {
+      copied.push(fullId);
+      return setForeignObject(fullId, obj);
+    };
+    const reg = new ClientRegistry(built.adapter as never, s.dataDir);
+
+    await reg.restore();
+
+    expect(
+      copied.filter(id => id.includes("display-c3a1")),
+      "nothing is copied to a new id",
+    ).to.deep.equal([]);
+    expect(
+      s.logs.some(l => l.msg.includes("is now")),
+      "no move is announced",
+    ).to.be.false;
+    expect(s.objects.has("hassemu.0.clients.61c3a1")).to.be.false;
+    expect(reg.listAll()).to.deep.equal([]);
+  });
+
+  it("an identity the data file holds under the old id moves with the display — it is recognised under the new id", async () => {
+    const built = createMockAdapter();
+    const s = built.store;
+    const cookie = seedOldDisplay(built, "61c3a1");
+    rewriteClients(
+      s.dataDir,
+      new Map([
+        ["61c3a1", { cookie, token: null, tokenExpiresAt: null, refreshToken: null, lastSeen: Date.now() - 1000 }],
+      ]),
+    );
+    // Only in the file: the device's own copy would be found again under the new id.
+    s.objects.get("hassemu.0.clients.61c3a1")!.native = { objectsVersion: CLIENT_OBJECTS_VERSION };
+    const reg = new ClientRegistry(built.adapter as never, s.dataDir);
+
+    await reg.restore();
+
+    expect(reg.getByCookie(cookie)?.id).to.equal("display-c3a1");
+    expect(storedEntry(s, "display-c3a1")?.cookie).to.equal(cookie);
+    expect(storedEntry(s, "61c3a1")).to.be.undefined;
   });
 });
 

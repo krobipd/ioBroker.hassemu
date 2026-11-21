@@ -1131,6 +1131,28 @@ describe("UrlDiscovery", () => {
         expect(await discovery.collect()).to.deep.equal({ "http://192.0.2.5/": "x.0" });
       });
 
+      it("a tile without a link adds nothing, and the instance's other tiles stay", async () => {
+        adapter._instances = {
+          "system.adapter.x.0": enabledInstance({
+            common: { localLinks: { empty: { name: "No link" }, page: { link: "http://192.0.2.7/", name: "Page" } } },
+          }),
+        };
+        expect(Object.keys(await discovery.collect())).to.deep.equal(["http://192.0.2.7/"]);
+      });
+
+      it("a link card without a link adds nothing, and the other cards stay", async () => {
+        adapter._config = {
+          common: {},
+          native: {
+            introLinks: [
+              { name: "No link", enabled: true },
+              { name: "Grafana", link: "http://192.0.2.30:3000/", enabled: true },
+            ],
+          },
+        };
+        expect(await discovery.collect()).to.deep.equal({ "http://192.0.2.30:3000/": "Grafana" });
+      });
+
       it("keeps the tile of the lowest instance when two instances advertise the same address", async () => {
         adapter._instances = {
           "system.adapter.x.10": enabledInstance({ common: { localLink: "http://192.0.2.5/" } }),
@@ -1187,6 +1209,16 @@ describe("UrlDiscovery", () => {
       it("stays on its own port when the named web instance is switched off", async () => {
         adapter._instances = {
           "system.adapter.web.0": web(false, 8082, "192.0.2.10"),
+          "system.adapter.aura.0": enabledInstance({
+            native: { port: 8095, bind: "192.0.2.40", webInstance: "web.0", customUrl: "" },
+          }),
+        };
+        expect(await discovery.collect()).to.deep.equal({ "http://192.0.2.40:8095/": "Aura" });
+      });
+
+      it("stays on its own port when the named web instance has no port", async () => {
+        adapter._instances = {
+          "system.adapter.web.0": { common: { enabled: true }, native: { bind: "192.0.2.10", secure: false } },
           "system.adapter.aura.0": enabledInstance({
             native: { port: 8095, bind: "192.0.2.40", webInstance: "web.0", customUrl: "" },
           }),

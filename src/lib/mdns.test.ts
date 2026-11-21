@@ -490,6 +490,12 @@ describe("MDNSService cross-platform", () => {
         expect(txtOf().base_url).to.equal("http://192.168.1.77:8123");
         expect(txtOf().uuid).to.equal(uuid);
         expect(local.isActive()).to.be.true;
+
+        const second = internal.announced[0].published;
+        await local.refreshIfAddressChanged();
+        expect(internal.announced[0].published, "the new address is remembered — no second announcement").to.equal(
+          second,
+        );
       } finally {
         await local.stop(true);
       }

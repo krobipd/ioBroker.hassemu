@@ -217,9 +217,10 @@ export class ClientRegistry {
    * The value each display's read-only `resolvedUrl` holds, in memory only: only hassemu writes it, so the start reads
    * it once with every other state of the displays (restore) and a later write compares here — a read of the
    * datapoint before each write (`setStateChangedAsync`) cost one database read per changed answer
-   * (inventory suite, 2026-11-12). A display created after the start has no entry, so its first answer is written.
+   * (inventory suite, 2026-11-12). A display created after the start has no entry, so its first answer is written;
+   * `undefined` (a failed first write put back) means the same — no answer equals it.
    */
-  private readonly resolvedUrls = new Map<string, string>();
+  private readonly resolvedUrls = new Map<string, string | undefined>();
   /**
    * v1.19.0 (G5): per-IP burst tracking for broken-cookie displays. v1.37.0 (M4):
    * the window is now SLIDING — keyed on `lastActivity`, not a fixed start — so an
@@ -1001,11 +1002,7 @@ export class ClientRegistry {
       await this.adapter.setState(`clients.${id}.resolvedUrl`, { val, ack: true });
     } catch (err) {
       if (this.resolvedUrls.get(id) === val) {
-        if (before === undefined) {
-          this.resolvedUrls.delete(id);
-        } else {
-          this.resolvedUrls.set(id, before);
-        }
+        this.resolvedUrls.set(id, before);
       }
       this.adapter.log.debug(`setResolvedUrl failed for ${id}: ${errText(err)}`);
     }
