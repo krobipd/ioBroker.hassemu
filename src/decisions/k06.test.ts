@@ -1,6 +1,9 @@
 /**
- * Guard K6 — a display is recognised by its cookie: ten years valid, the same display after a restart, a new address
- * or a new name, a new display once it deleted its data.
+ * Guard K6 — on its first visit the display gets a cookie, valid for ten years; hassemu recognises it by that, also
+ * after a restart, with a new IP or a new name; if the display deletes its data, it appears as a new display; the old
+ * device of a display that deleted its data stays in the object tree until it has not been there for 30 days or the
+ * user removes it; for the apps their sign-in counts in addition: if an app deletes only the storage of its page, the
+ * page appears as a new display, the app itself keeps running under the old one.
  *
  * The page, K6: "On its first visit the display gets a cookie, valid for ten years. By it hassemu recognises it again,
  * also after a restart, with a new IP or a new name. If the display deletes its data, it shows up as a new display."
@@ -10,25 +13,135 @@
  * Accepted by krobi with the page of hassemu's core decisions (version 30) on 2026-11-11 19:35 ("k6 yes, if that is
  * so, then it is so").
  *
- * Path: the web server as main.ts starts it (plugins, peer guard, auth guard, routes, listener on a free port),
- * answered by inject from peer addresses of its own network, over an adapter whose object and state database lives in
- * memory; a restart is a new registry and a new web server over the same database and the same data file. The app's
- * device name arrives through the Companion registration route. The host carries one network (192.168.77.0/24); the
- * the data folder is a fresh folder in the temporary directory, written through the data-folder master as on a host.
+ * Path: the adapter class from main.ts, started through the ready handler its constructor registers, over the fleet's
+ * fake adapter with its object and state database in memory (the manifest's instance objects and the instance object
+ * as js-controller creates them); displays are asked by inject from peer addresses of its own network on the web server
+ * that start opened; a restart is the unload handler and a new start over the same database and data folder; the
+ * user's "Remove this display" is a write handed to the stateChange handler; the app's device name arrives through the
+ * Companion registration route after its sign-in. The host carries one network (192.168.77.0/24); the data folder is a
+ * fresh folder in the temporary directory, written through the data-folder master as on a host.
  */
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import type * as Os from "node:os";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { FakeState } from "../lib/adapter-fake";
 
-/** The instance data folder of the running test. */
-const data = vi.hoisted(() => ({ dir: "" }));
-
-vi.mock("@iobroker/adapter-core", () => ({
-  I18n: { getTranslatedObject: (key: string) => ({ en: key }), translate: (key: string) => key },
+const { data, db } = vi.hoisted(() => ({
+  /** The instance data folder of the running test. */
+  data: { dir: "" },
+  db: {
+    objects: new Map<string, ioBroker.Object>(),
+    states: new Map<string, ioBroker.State>(),
+    /** Every warning, error and termination of the adapter — a start that failed shows here. */
+    problems: [] as string[],
+  },
 }));
+
+vi.mock("@iobroker/adapter-core", async () => {
+  const { FakeAdapter } = await import("../lib/adapter-fake.js");
+  const noop = (): void => undefined;
+  const ns = "hassemu.0";
+  const full = (id: string): string => (id.startsWith(`${ns}.`) ? id : `${ns}.${id}`);
+  /** The adapter base class: the fleet's fake adapter over the database in memory, plus what hassemu itself calls. */
+  class Adapter extends FakeAdapter {
+    override readonly objects = db.objects as unknown as Map<string, Record<string, unknown>>;
+    override readonly states = db.states as unknown as Map<string, FakeState>;
+    adapterDir = "/guard/adapter";
+    handlers = new Map<string, (...args: unknown[]) => unknown>();
+    log = {
+      silly: noop,
+      debug: noop,
+      info: noop,
+      warn: (msg: string): void => void db.problems.push(`warn: ${msg}`),
+      error: (msg: string): void => void db.problems.push(`error: ${msg}`),
+      level: "info",
+    };
+    on(event: string, handler: (...args: never[]) => unknown): this {
+      this.handlers.set(event, handler as (...args: unknown[]) => unknown);
+      return this;
+    }
+    setInterval(): object {
+      return {};
+    }
+    clearInterval(): void {}
+    override terminate(reason: string, exitCode: number): never {
+      db.problems.push(`terminate: ${String(reason)}`);
+      return super.terminate(reason, exitCode);
+    }
+    getObjectAsync(id: string): Promise<ioBroker.Object | null> {
+      return Promise.resolve(structuredClone(db.objects.get(full(id)) ?? null));
+    }
+    getAdapterObjectsAsync(): Promise<Record<string, ioBroker.Object>> {
+      const own = [...db.objects].filter(([id]) => id.startsWith(`${ns}.`));
+      return Promise.resolve(structuredClone(Object.fromEntries(own)));
+    }
+    setObjectNotExistsAsync(id: string, obj: object): Promise<{ id: string }> {
+      if (!db.objects.has(full(id))) {
+        db.objects.set(full(id), { ...structuredClone(obj), _id: full(id) } as ioBroker.Object);
+      }
+      return Promise.resolve({ id: full(id) });
+    }
+    delStateAsync(id: string): Promise<void> {
+      db.states.delete(full(id));
+      return Promise.resolve();
+    }
+    getStateAsync(id: string): Promise<ioBroker.State | null> {
+      return Promise.resolve(structuredClone(db.states.get(full(id)) ?? null));
+    }
+    getStatesAsync(pattern: string): Promise<Record<string, ioBroker.State | null>> {
+      // js-controller 7.2.5 getStates: every state object below the pattern, with its value or null.
+      const prefix = full(pattern.replace(/\*/g, ""));
+      const found: Record<string, ioBroker.State | null> = {};
+      for (const [id, obj] of db.objects) {
+        if (obj.type === "state" && id.startsWith(prefix)) {
+          found[id] = structuredClone(db.states.get(id) ?? null);
+        }
+      }
+      return Promise.resolve(found);
+    }
+    setState(id: string, state: ioBroker.SettableState): Promise<string> {
+      db.states.set(full(id), { ...(state as ioBroker.State), ts: Date.now(), lc: Date.now() });
+      return Promise.resolve(full(id));
+    }
+    setStateChangedAsync(id: string, state: ioBroker.SettableState): Promise<{ id: string; notChanged: boolean }> {
+      const before = db.states.get(full(id));
+      const next = state as ioBroker.State;
+      if (before && before.val === next.val && before.ack === (next.ack ?? false)) {
+        return Promise.resolve({ id: full(id), notChanged: true });
+      }
+      db.states.set(full(id), { ...next, ts: Date.now(), lc: Date.now() });
+      return Promise.resolve({ id: full(id), notChanged: false });
+    }
+    subscribeStatesAsync(): Promise<void> {
+      return Promise.resolve();
+    }
+    unsubscribeStatesAsync(): Promise<void> {
+      return Promise.resolve();
+    }
+    unsubscribeForeignObjectsAsync(): Promise<void> {
+      return Promise.resolve();
+    }
+    readDirAsync(): Promise<unknown[]> {
+      return Promise.resolve([]);
+    }
+    readFileAsync(): Promise<never> {
+      return Promise.reject(new Error("no such file"));
+    }
+  }
+  return {
+    Adapter,
+    EXIT_CODES: { UNCAUGHT_EXCEPTION: 6 },
+    getAbsoluteInstanceDataDir: (): string => data.dir,
+    I18n: {
+      init: (): Promise<void> => Promise.resolve(),
+      getTranslatedObject: (key: string) => ({ en: key }),
+      translate: (key: string) => key,
+    },
+  };
+});
 vi.mock("node:dns/promises", () => ({
   default: {
     reverse: (): Promise<string[]> => Promise.resolve([]),
@@ -57,10 +170,7 @@ vi.mock("node:os", async importOriginal => {
   return { ...real, networkInterfaces, default: { ...real, networkInterfaces } };
 });
 
-import { ClientRegistry } from "../lib/client-registry";
-import { GlobalConfig } from "../lib/global-config";
-import type { AdapterConfig } from "../lib/types";
-import { WebServer } from "../lib/webserver";
+import * as mainModule from "../main";
 
 /** What a route answers. */
 interface Answer {
@@ -70,175 +180,120 @@ interface Answer {
   json(): unknown;
 }
 
-/** An adapter over a database in memory. */
-interface Memory {
-  adapter: Record<string, unknown>;
-  objects: Map<string, ioBroker.Object>;
-  states: Map<string, ioBroker.State>;
+/** The adapter instance with what the guard reads from its stub base and its own fields. */
+interface Emu {
+  config: Record<string, unknown>;
+  handlers: Map<string, (...args: unknown[]) => unknown>;
+  webServer: { inject(request: Record<string, unknown>): Promise<Answer> } | null;
 }
 
+const { HassEmu } = mainModule as unknown as { HassEmu: new () => ioBroker.Adapter };
+
 const NS = "hassemu.0";
-const servers: WebServer[] = [];
+const DAY = 24 * 60 * 60 * 1000;
+const CONFIG = {
+  port: 0,
+  bind: "0.0.0.0",
+  authRequired: false,
+  username: "admin",
+  password: "",
+  mdnsEnabled: false,
+  serviceName: "ioBroker",
+};
+const PEER = "192.168.77.50";
+
+const running: Emu[] = [];
 
 beforeEach(() => {
   data.dir = mkdtempSync(join(tmpdir(), "hassemu-guard-k06-"));
 });
 
 afterEach(async () => {
-  for (const server of servers.splice(0)) {
-    await server.stop();
+  vi.useRealTimers();
+  for (const emu of [...running]) {
+    await stopped(emu);
   }
   rmSync(data.dir, { recursive: true, force: true });
   data.dir = "";
+  db.objects.clear();
+  db.states.clear();
+  db.problems.length = 0;
 });
 
-/**
- * Merge a patch into an object the way js-controller's extendObject does: plain objects key by key, everything else
- * replaced.
- *
- * @param base the stored value
- * @param patch the patch
- */
-function merged(base: unknown, patch: unknown): unknown {
-  const plain = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
-  if (!plain(base) || !plain(patch)) {
-    return structuredClone(patch);
-  }
-  const out: Record<string, unknown> = { ...base };
-  for (const [key, value] of Object.entries(patch)) {
-    out[key] = merged(base[key], value);
-  }
-  return out;
-}
-
-/** An adapter whose database lives in memory. */
-function memory(): Memory {
-  const objects = new Map<string, ioBroker.Object>();
-  const states = new Map<string, ioBroker.State>();
-  const full = (id: string): string => (id.startsWith(`${NS}.`) ? id : `${NS}.${id}`);
-  const noop = (): void => undefined;
-  const adapter: Record<string, unknown> = {
-    namespace: NS,
-    log: { silly: noop, debug: noop, info: noop, warn: noop, error: noop, level: "info" },
-    setInterval: () => ({}),
-    clearInterval: noop,
-    setTimeout: () => undefined,
-    clearTimeout: noop,
-    getForeignObjectsAsync(pattern: string, type?: string) {
-      const prefix = pattern.replace(/\*$/, "");
-      const wanted = type ?? "state";
-      const found = [...objects].filter(([id, obj]) => id.startsWith(prefix) && obj.type === wanted);
-      return Promise.resolve(structuredClone(Object.fromEntries(found)));
-    },
-    getForeignObjectAsync: (id: string) => Promise.resolve(structuredClone(objects.get(id) ?? null)),
-    getAdapterObjectsAsync: () =>
-      Promise.resolve(structuredClone(Object.fromEntries([...objects].filter(([id]) => id.startsWith(`${NS}.`))))),
-    getObjectAsync: (id: string) => Promise.resolve(structuredClone(objects.get(full(id)) ?? null)),
-    getStateAsync: (id: string) => Promise.resolve(structuredClone(states.get(full(id)) ?? null)),
-    getStatesAsync: (pattern: string) => {
-      // js-controller 7.2.5 getStates: every state object below the pattern, with its value or null.
-      const prefix = full(pattern.replace(/\*/g, ""));
-      const found: Record<string, ioBroker.State | null> = {};
-      for (const [id, obj] of objects) {
-        if (obj.type === "state" && id.startsWith(prefix)) {
-          found[id] = structuredClone(states.get(id) ?? null);
-        }
-      }
-      return Promise.resolve(found);
-    },
-    setObjectNotExistsAsync(id: string, obj: ioBroker.Object) {
-      if (!objects.has(full(id))) {
-        objects.set(full(id), { ...structuredClone(obj), _id: full(id) } as ioBroker.Object);
-      }
-      return Promise.resolve({ id: full(id) });
-    },
-    extendObject(id: string, patch: Partial<ioBroker.Object>) {
-      objects.set(full(id), {
-        ...(merged(objects.get(full(id)) ?? {}, patch) as object),
-        _id: full(id),
-      } as ioBroker.Object);
-      return Promise.resolve({ id: full(id) });
-    },
-    setState(id: string, state: ioBroker.SettableState) {
-      states.set(full(id), { ...(state as ioBroker.State), ts: Date.now(), lc: Date.now() });
-      return Promise.resolve(full(id));
-    },
-    setStateChangedAsync(id: string, state: ioBroker.SettableState) {
-      const before = states.get(full(id));
-      const value = (state as ioBroker.State).val;
-      if (before && before.val === value && before.ack === ((state as ioBroker.State).ack ?? false)) {
-        return Promise.resolve({ id: full(id), notChanged: true });
-      }
-      states.set(full(id), { ...(state as ioBroker.State), ts: Date.now(), lc: Date.now() });
-      return Promise.resolve({ id: full(id), notChanged: false });
-    },
-    delObjectAsync(id: string, options?: { recursive?: boolean }) {
-      const key = full(id);
-      for (const stored of [...objects.keys()]) {
-        if (stored === key || (options?.recursive === true && stored.startsWith(`${key}.`))) {
-          objects.delete(stored);
-          states.delete(stored);
-        }
-      }
-      return Promise.resolve();
-    },
-    encrypt(value: string): string {
-      return `$/aes-192-cbc:${Buffer.from(value).toString("base64")}`;
-    },
-    decrypt(value: string): string {
-      return Buffer.from(value.replace("$/aes-192-cbc:", ""), "base64").toString();
-    },
+/** The installation as js-controller creates it: the manifest's instance objects and the instance object. */
+function install(): void {
+  const manifest = JSON.parse(readFileSync(join(process.cwd(), "io-package.json"), "utf8")) as {
+    instanceObjects: { _id: string }[];
   };
-  return { adapter, objects, states };
+  for (const obj of manifest.instanceObjects) {
+    db.objects.set(`${NS}.${obj._id}`, { ...obj, _id: `${NS}.${obj._id}` } as unknown as ioBroker.Object);
+  }
+  db.objects.set(`system.adapter.${NS}`, {
+    _id: `system.adapter.${NS}`,
+    type: "instance",
+    common: { name: "hassemu", enabled: true, host: "guard" },
+    native: { ...CONFIG },
+  } as unknown as ioBroker.Object);
+}
+
+/** The adapter, started through the ready handler its constructor registered; a start that ended throws. */
+async function started(): Promise<Emu> {
+  const emu = new HassEmu() as unknown as Emu;
+  emu.config = { ...CONFIG };
+  running.push(emu);
+  await emu.handlers.get("ready")?.();
+  const ended = db.problems.filter(line => line.startsWith("terminate:"));
+  if (ended.length > 0 || emu.webServer === null) {
+    throw new Error(`the adapter did not start: ${ended.join(", ")}`);
+  }
+  return emu;
 }
 
 /**
- * The web server as main.ts starts it over the adapter's database and data file — no address chosen for the displays,
- * so a display's page names it (the landing page).
+ * The adapter stopped through its unload handler.
  *
- * @param mem the adapter
+ * @param emu the adapter
  */
-async function started(mem: Memory): Promise<WebServer> {
-  const registry = new ClientRegistry(mem.adapter as never, data.dir);
-  await registry.restore();
-  const global = new GlobalConfig(mem.adapter as never);
-  const config: AdapterConfig = {
-    port: 0,
-    bind: "0.0.0.0",
-    authRequired: false,
-    username: "admin",
-    password: "",
-    mdnsEnabled: false,
-    serviceName: "ioBroker",
-  };
-  const server = new WebServer(mem.adapter as never, config, registry, global, registry.serverUuid, "en", () =>
-    Promise.resolve(true),
-  );
-  servers.push(server);
-  await server.start();
-  return server;
+async function stopped(emu: Emu): Promise<void> {
+  running.splice(running.indexOf(emu), 1);
+  await new Promise<void>(resolve => {
+    emu.handlers.get("unload")?.(resolve);
+  });
 }
 
 /**
- * One request to the server from a peer address.
+ * A restart: the adapter stops, and starts again over the same database and data folder.
  *
- * @param server the server
+ * @param emu the running adapter
+ */
+async function restarted(emu: Emu): Promise<Emu> {
+  await stopped(emu);
+  return started();
+}
+
+/**
+ * One request to the adapter's web server from a peer address.
+ *
+ * @param emu the adapter
  * @param peer the peer address on the socket
  * @param method the method
  * @param url the path
- * @param extra cookie, Bearer token, form or JSON body
+ * @param extra cookie, bearer token, form or JSON body
  * @param extra.cookie the display's cookie header
- * @param extra.bearer an access token for the Authorization header
+ * @param extra.bearer the app's access token
  * @param extra.form a form body
  * @param extra.json a JSON body
  */
-function ask(
-  server: WebServer,
+async function ask(
+  emu: Emu,
   peer: string,
   method: "GET" | "POST",
   url: string,
   extra: { cookie?: string; bearer?: string; form?: Record<string, string>; json?: Record<string, string> } = {},
 ): Promise<Answer> {
+  if (emu.webServer === null) {
+    throw new Error("the case needs the adapter's web server");
+  }
   const headers: Record<string, string> = { "user-agent": "Mozilla/5.0 (Linux; Android 13; WebView)" };
   if (extra.cookie) {
     headers.cookie = extra.cookie;
@@ -254,11 +309,13 @@ function ask(
     headers["content-type"] = "application/json";
     payload = JSON.stringify(extra.json);
   }
-  return server.inject({ method, url, headers, payload, remoteAddress: peer });
+  const answer = await emu.webServer.inject({ method, url, headers, payload, remoteAddress: peer });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  return answer;
 }
 
 /**
- * The Set-Cookie header of an answer as one string, empty when there is none.
+ * The Set-Cookie header of an answer.
  *
  * @param answer the answer
  */
@@ -268,156 +325,207 @@ function setCookieOf(answer: Answer): string {
 }
 
 /**
- * The display cookie an answer sets, as a Cookie header, empty when it sets none.
+ * The cookie an answer set, as the display sends it back.
  *
  * @param answer the answer
  */
 function cookieOf(answer: Answer): string {
-  return /hassemu_client=[^;]+/.exec(setCookieOf(answer))?.[0] ?? "";
+  return /^\s*([^=;\s]+=[^;]*)/.exec(setCookieOf(answer))?.[1] ?? "";
 }
 
-/**
- * The ids of the devices under clients.
- *
- * @param mem the adapter
- */
-function displays(mem: Memory): string[] {
-  return [...mem.objects]
+/** The displays: the devices below clients. */
+function displays(): string[] {
+  return [...db.objects]
     .filter(([id, obj]) => id.startsWith(`${NS}.clients.`) && obj.type === "device")
     .map(([id]) => id.slice(`${NS}.clients.`.length));
 }
 
 /**
- * The name a device carries, as text over every language.
+ * The display a visit created: the one display that was not there before it.
  *
- * @param mem the adapter
- * @param id the display id
+ * @param before the displays before the visit
  */
-function nameOf(mem: Memory, id: string): string {
-  return JSON.stringify(mem.objects.get(`${NS}.clients.${id}`)?.common.name ?? null);
+function createdSince(before: string[]): string {
+  const created = displays().filter(id => !before.includes(id));
+  if (created.length !== 1) {
+    throw new Error(`the case needs one display created by the visit, found ${created.length}`);
+  }
+  return created[0];
 }
 
 /**
- * Run the sign-in a display or app makes (login flow, code, token) and return the access token.
+ * The name of a display's device, as text.
  *
- * @param server the server
- * @param peer the peer address
+ * @param id the display id
+ */
+function nameOf(id: string): string {
+  return JSON.stringify(db.objects.get(`${NS}.clients.${id}`)?.common.name ?? null);
+}
+
+/**
+ * Whether an answer is the page for this display — the start page names the display's own path.
+ *
+ * @param answer the answer
+ * @param id the display id
+ */
+function pageOf(answer: Answer, id: string): boolean {
+  return answer.body.includes(`${NS}.clients.${id}`);
+}
+
+/**
+ * The app's sign-in with the display's cookie: login flow, code, token.
+ *
+ * @param emu the adapter
  * @param cookie the display's cookie header
  */
-async function signIn(server: WebServer, peer: string, cookie: string): Promise<string> {
-  const flow = (await ask(server, peer, "POST", "/auth/login_flow", { cookie, form: {} })).json() as {
-    flow_id?: string;
-  };
+async function signIn(emu: Emu, cookie: string): Promise<string> {
+  const flow = (await ask(emu, PEER, "POST", "/auth/login_flow", { cookie, form: {} })).json() as { flow_id?: string };
   const done = (
-    await ask(server, peer, "POST", `/auth/login_flow/${flow.flow_id ?? ""}`, { cookie, form: {} })
+    await ask(emu, PEER, "POST", `/auth/login_flow/${flow.flow_id ?? ""}`, { cookie, form: {} })
   ).json() as { result?: string };
   const token = (
-    await ask(server, peer, "POST", "/auth/token", {
+    await ask(emu, PEER, "POST", "/auth/token", {
       cookie,
       form: { grant_type: "authorization_code", code: done.result ?? "" },
     })
   ).json() as { access_token?: string };
-  return token.access_token ?? "";
+  if (!token.access_token) {
+    throw new Error("the case needs the app signed in");
+  }
+  return token.access_token;
+}
+
+/**
+ * The app reports its device name, with its access token.
+ *
+ * @param emu the adapter
+ * @param token the app's access token
+ * @param name the device name
+ */
+async function appReports(emu: Emu, token: string, name: string): Promise<void> {
+  await ask(emu, PEER, "POST", "/api/mobile_app/registrations", {
+    bearer: token,
+    json: { app_id: "io.homeassistant.companion.android", device_name: name },
+  });
+}
+
+/**
+ * A user write (ack false), handed to the stateChange handler the constructor registered.
+ *
+ * @param emu the adapter
+ * @param id the id below the namespace
+ * @param val the value
+ */
+async function userWrites(emu: Emu, id: string, val: ioBroker.StateValue): Promise<void> {
+  await emu.handlers.get("stateChange")?.(`${NS}.${id}`, {
+    val,
+    ack: false,
+    ts: 0,
+    lc: 0,
+    from: "system.adapter.admin.0",
+  });
+  await new Promise(resolve => setTimeout(resolve, 0));
+}
+
+/**
+ * A display on its first visit and the same display after it deleted its data: the old and the new id, the new page.
+ *
+ * @param emu the adapter
+ */
+async function deletedItsData(emu: Emu): Promise<{ oldId: string; newId: string; newCookie: string; page: Answer }> {
+  const first = await ask(emu, PEER, "GET", "/");
+  const oldId = createdSince([]);
+  if (cookieOf(first) === "") {
+    throw new Error("the case needs the cookie of the first visit");
+  }
+  const page = await ask(emu, PEER, "GET", "/");
+  return { oldId, newId: createdSince([oldId]), newCookie: cookieOf(page), page };
 }
 
 describe("K6: a display is recognised by its cookie", () => {
-  it("gives a display on its first visit the cookie hassemu_client, valid for ten years, HttpOnly, SameSite=Lax", async () => {
-    const mem = memory();
-    const server = await started(mem);
-    const peer = "192.168.77.50";
+  it("on its first visit the display gets a cookie, valid for ten years", async () => {
+    install();
+    const emu = await started();
 
-    const first = await ask(server, peer, "GET", "/");
-    const setCookie = setCookieOf(first);
-    const again = await ask(server, peer, "GET", "/", { cookie: cookieOf(first) });
+    const first = await ask(emu, PEER, "GET", "/");
+    const maxAge = Number(/;\s*Max-Age=(\d+)/i.exec(setCookieOf(first))?.[1] ?? Number.NaN);
+    const days = maxAge / (DAY / 1000);
 
-    expect({
-      status: first.statusCode,
-      name: /^hassemu_client=/.test(setCookie),
-      uuid: /^hassemu_client=[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12};/i.test(setCookie),
-      maxAge: /;\s*Max-Age=(\d+)/i.exec(setCookie)?.[1],
-      httpOnly: /;\s*HttpOnly(;|$)/i.test(setCookie),
-      sameSite: /;\s*SameSite=([A-Za-z]+)/i.exec(setCookie)?.[1],
-      path: /;\s*Path=([^;]+)/i.exec(setCookie)?.[1],
-    }).toEqual({
-      status: 200,
-      name: true,
-      uuid: true,
-      maxAge: "315360000",
-      httpOnly: true,
-      sameSite: "Lax",
-      path: "/",
-    });
-    expect({ displays: displays(mem).length, againSetsCookie: setCookieOf(again) }).toEqual({
-      displays: 1,
-      againSetsCookie: "",
+    expect({ getsACookie: cookieOf(first) !== "", tenYears: days >= 3650 && days <= 3653 }).toEqual({
+      getsACookie: true,
+      tenYears: true,
     });
   });
 
-  it("recognises the display by its cookie after a restart, from a new address and under a new name", async () => {
-    const mem = memory();
-    const before = await started(mem);
-    const first = await ask(before, "192.168.77.50", "GET", "/");
-    const cookie = cookieOf(first);
-    const [id] = displays(mem);
-    const token = await signIn(before, "192.168.77.50", cookie);
-    const registration = await ask(before, "192.168.77.50", "POST", "/api/mobile_app/registrations", {
-      bearer: token,
-      json: { app_id: "io.homeassistant.companion.android", device_name: "Kitchen panel" },
-    });
-    await new Promise(resolve => setTimeout(resolve, 0));
-    const renamed = nameOf(mem, id);
-    await before.stop();
+  it("hassemu recognises it by that, also after a restart, with a new IP and a new name", async () => {
+    install();
+    const before = await started();
+    const cookie = cookieOf(await ask(before, PEER, "GET", "/"));
+    const id = createdSince([]);
+    await appReports(before, await signIn(before, cookie), "Kitchen panel");
+    if (!nameOf(id).includes("Kitchen panel")) {
+      throw new Error("the case needs the display under a new name");
+    }
 
-    const after = await started(mem);
+    const after = await restarted(before);
     const back = await ask(after, "192.168.77.60", "GET", "/", { cookie });
 
-    expect({ registered: registration.statusCode, renamed: renamed.includes("Kitchen panel") }).toEqual({
-      registered: 201,
-      renamed: true,
-    });
-    expect({
-      status: back.statusCode,
-      setsCookie: setCookieOf(back),
-      displays: displays(mem),
-      pageNamesIt: back.body.includes(`${NS}.clients.${id}`),
-    }).toEqual({
-      status: 200,
-      setsCookie: "",
-      displays: [id],
-      pageNamesIt: true,
-    });
+    expect({ displays: displays(), recognised: pageOf(back, id) }).toEqual({ displays: [id], recognised: true });
   });
 
-  it("shows a display that deleted its data as a new display; the old device stays and the app keeps it", async () => {
-    const mem = memory();
-    const server = await started(mem);
-    const peer = "192.168.77.50";
-    const first = await ask(server, peer, "GET", "/");
-    const oldCookie = cookieOf(first);
-    const [oldId] = displays(mem);
-    const token = await signIn(server, peer, oldCookie);
+  it("if the display deletes its data, it appears as a new display", async () => {
+    install();
+    const emu = await started();
 
-    const wiped = await ask(server, peer, "GET", "/");
-    const newCookie = cookieOf(wiped);
-    const newId = displays(mem).find(id => id !== oldId) ?? "";
-    const newNameBefore = nameOf(mem, newId);
-    const app = await ask(server, peer, "POST", "/api/mobile_app/registrations", {
-      bearer: token,
-      json: { app_id: "io.homeassistant.companion.android", device_name: "Hall app" },
-    });
-    await new Promise(resolve => setTimeout(resolve, 0));
+    const { oldId, newId, page } = await deletedItsData(emu);
+
+    expect({ newDisplay: newId !== oldId, itsPage: pageOf(page, newId) }).toEqual({ newDisplay: true, itsPage: true });
+  });
+
+  it("the old device of a display that deleted its data stays in the object tree until it has not been there for 30 days", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    install();
+    let emu = await started();
+    const start = Date.now();
+    const { oldId, newCookie } = await deletedItsData(emu);
+
+    vi.setSystemTime(start + 29 * DAY);
+    await ask(emu, PEER, "GET", "/", { cookie: newCookie });
+    emu = await restarted(emu);
+    const after29Days = displays().includes(oldId);
+
+    vi.setSystemTime(start + 31 * DAY);
+    await ask(emu, PEER, "GET", "/", { cookie: newCookie });
+    emu = await restarted(emu);
+
+    expect({ after29Days, after31Days: displays().includes(oldId) }).toEqual({ after29Days: true, after31Days: false });
+  });
+
+  it("… or the user removes it", async () => {
+    install();
+    const emu = await started();
+    const { oldId } = await deletedItsData(emu);
+
+    await userWrites(emu, `clients.${oldId}.remove`, true);
+
+    expect(displays().includes(oldId)).toBe(false);
+  });
+
+  it("for the apps their sign-in counts in addition: the app deletes only the storage of its page — the page appears as a new display, the app keeps running under the old one", async () => {
+    install();
+    const emu = await started();
+    const first = await ask(emu, PEER, "GET", "/");
+    const oldId = createdSince([]);
+    const token = await signIn(emu, cookieOf(first));
+
+    const page = await ask(emu, PEER, "GET", "/");
+    const newId = createdSince([oldId]);
+    await appReports(emu, token, "Hall app");
 
     expect({
-      newCookie: newCookie !== "" && newCookie !== oldCookie,
-      newDisplay: newId !== "" && newId !== oldId,
-      pageNamesNew: wiped.body.includes(`${NS}.clients.${newId}`),
-      oldStays: displays(mem).includes(oldId),
-      count: displays(mem).length,
-    }).toEqual({ newCookie: true, newDisplay: true, pageNamesNew: true, oldStays: true, count: 2 });
-    expect({
-      registered: app.statusCode,
-      appOnOld: nameOf(mem, oldId).includes("Hall app"),
-      newUntouched: nameOf(mem, newId) === newNameBefore && !newNameBefore.includes("Hall app"),
-    }).toEqual({ registered: 201, appOnOld: true, newUntouched: true });
+      pageIsNew: pageOf(page, newId),
+      appUnderTheOld: nameOf(oldId).includes("Hall app"),
+      appUnderTheNew: nameOf(newId).includes("Hall app"),
+    }).toEqual({ pageIsNew: true, appUnderTheOld: true, appUnderTheNew: false });
   });
 });

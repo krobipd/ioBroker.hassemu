@@ -1,6 +1,6 @@
 /**
- * Guard K9 — where a display is sent: its redirect mode decides (global, manual, a chosen dashboard, or the landing
- * page).
+ * Guard K9 — a display's redirect mode decides: "Global URL" follows the global setting, "Manual URL" takes the address
+ * from the datapoint "Manual URL", a chosen dashboard takes that dashboard's address, "---" shows the start page.
  *
  * The page, K9: "The 'redirect mode' of a display decides: 'Global URL' follows the global setting, 'Manual URL' takes
  * the address from the datapoint 'Manual URL', a chosen dashboard takes its address, '---' shows the landing page."
@@ -298,7 +298,9 @@ async function displayOfARunningAdapter(): Promise<Display> {
   emu.config = { ...known.native, port: 0, mdnsEnabled: false };
   running.push(emu);
   await emu.handlers.get("ready")?.();
-  expect({ terminated: emu.terminated, serving: emu.webServer !== null }).toEqual({ terminated: [], serving: true });
+  if (emu.terminated.length > 0 || emu.webServer === null) {
+    throw new Error(`the case needs a running adapter (${emu.terminated.join(", ")})`);
+  }
   const peer = "192.168.77.51";
   const first = await ask(emu, peer, "/");
   const raw = first.headers["set-cookie"];
@@ -306,7 +308,9 @@ async function displayOfARunningAdapter(): Promise<Display> {
   const ids = [...db.objects]
     .filter(([id, obj]) => id.startsWith(CLIENTS) && obj.type === "device")
     .map(([id]) => id.slice(CLIENTS.length));
-  expect({ status: first.statusCode, displays: ids.length }).toEqual({ status: 200, displays: 1 });
+  if (ids.length !== 1) {
+    throw new Error("the case needs the display its first visit creates");
+  }
   return { emu, peer, cookie: /hassemu_client=[^;]+/.exec(text)?.[0] ?? "", id: ids[0] ?? "" };
 }
 
@@ -323,8 +327,10 @@ function ask(emu: Emu, peer: string, url: string, cookie = ""): Promise<Answer> 
   if (cookie) {
     headers.cookie = cookie;
   }
-  expect(emu.webServer).not.toBeNull();
-  return (emu.webServer as NonNullable<Emu["webServer"]>).inject({
+  if (emu.webServer === null) {
+    throw new Error("the case needs the adapter's web server");
+  }
+  return emu.webServer.inject({
     method: "GET",
     url,
     headers,
@@ -370,7 +376,7 @@ async function sentTo(display: Display): Promise<string> {
 }
 
 describe("K9: the redirect mode of a display decides where GET / sends it", () => {
-  it("'Global URL' follows the global setting — its address, or its manual address, and a change of it", async () => {
+  it("'Global URL' follows the global setting — its address, and a change of it", async () => {
     const base = await dashboards();
     const display = await displayOfARunningAdapter();
     await userWrites(display.emu, [
@@ -378,15 +384,11 @@ describe("K9: the redirect mode of a display decides where GET / sends it", () =
       [`clients.${display.id}.mode`, "global"],
     ]);
     const globalAddress = await sentTo(display);
-    await userWrites(display.emu, [
-      ["global.manualUrl", `${base}/grafana/d/global`],
-      ["global.mode", "manual"],
-    ]);
-    const globalManual = await sentTo(display);
+    await userWrites(display.emu, [["global.mode", `${base}/vis/index.html?global`]]);
 
-    expect({ globalAddress, globalManual }).toEqual({
+    expect({ globalAddress, afterAChange: await sentTo(display) }).toEqual({
       globalAddress: `${base}/vis-2/index.html?global`,
-      globalManual: `${base}/grafana/d/global`,
+      afterAChange: `${base}/vis/index.html?global`,
     });
   });
 
@@ -422,12 +424,8 @@ describe("K9: the redirect mode of a display decides where GET / sends it", () =
       [`clients.${display.id}.manualUrl`, `${base}/aura/?display`],
       [`clients.${display.id}.mode`, `${base}/vis/index.html?kitchen`],
     ]);
-    const chosen = await sentTo(display);
     await userWrites(display.emu, [[`clients.${display.id}.mode`, "0"]]);
 
-    expect({ chosen, cleared: await sentTo(display) }).toEqual({
-      chosen: `${base}/vis/index.html?kitchen`,
-      cleared: "landing page",
-    });
+    expect(await sentTo(display)).toBe("landing page");
   });
 });

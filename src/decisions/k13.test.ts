@@ -1,6 +1,7 @@
 /**
- * Guard K13 — the card "target not reachable": two unanswered checks in a row show it, the first answer reloads, and
- * hassemu itself checks the target.
+ * Guard K13 — when the target page does not answer twice in a row, the display shows a card instead of an empty
+ * screen; as soon as the page answers again, it reloads; whether the target answers is checked by hassemu itself, not
+ * by the display.
  *
  * The page, K13: "If the target page does not answer twice in a row, the display shows a card instead of an empty
  * screen. As soon as the page answers again, it reloads. Whether the target answers is checked by hassemu itself, not
@@ -10,9 +11,8 @@
  *
  * Path: the web server as main.ts starts it, with the production reachability probe, every display following the
  * global target — a small HTTP server on a free local port that answers or drops each connection. A display's first
- * page (GET /) is taken from the server, and its inline scripts — the decision copy embedded in the page included — run
- * in a sandbox whose fetch asks the same server; each poll tick is fired by hand with the clock moved on by the poll
- * interval. The host carries one network (192.168.77.0/24); the data folder is a map in memory, since a guard writes
+ * page (GET /) is taken from the server, and its inline scripts run in a sandbox whose fetch asks the same server; each
+ * poll tick is fired by hand with the clock moved on by the poll interval. The host carries one network (192.168.77.0/24); the data folder is a map in memory, since a guard writes
  * no file.
  */
 
@@ -66,7 +66,6 @@ vi.mock("../lib/data-file", () => ({
 
 import { ClientRegistry } from "../lib/client-registry";
 import { GlobalConfig } from "../lib/global-config";
-import { decidePollAction } from "../lib/redirect-wrapper";
 import type { AdapterConfig } from "../lib/types";
 import { WebServer } from "../lib/webserver";
 
@@ -100,10 +99,7 @@ interface Display {
   tick(): Promise<void>;
   /** Every URL the page fetched. */
   fetched: string[];
-  /** Every answer of /api/redirect_check the page received. */
-  answers: unknown[];
   cardVisible(): boolean;
-  iframeHidden(): boolean;
   reloads(): number;
 }
 
@@ -329,7 +325,6 @@ async function openPage(server: WebServer): Promise<Display> {
   };
   const intervals: (() => void)[] = [];
   const fetched: string[] = [];
-  const answers: unknown[] = [];
   let pending: Promise<unknown> = Promise.resolve();
   let reloads = 0;
   const window: Record<string, unknown> = {
@@ -346,7 +341,6 @@ async function openPage(server: WebServer): Promise<Display> {
         .inject({ method: "GET", url, headers: { cookie, "user-agent": UA }, remoteAddress: PEER })
         .then(res => {
           const body: unknown = res.json();
-          answers.push(body);
           return { json: (): Promise<unknown> => Promise.resolve(body) };
         });
       pending = answer;
@@ -366,119 +360,62 @@ async function openPage(server: WebServer): Promise<Display> {
       await new Promise(resolve => setTimeout(resolve, 0));
     },
     fetched,
-    answers,
     cardVisible: (): boolean => card.classList.contains("visible"),
-    iframeHidden: (): boolean => iframe.style.display === "none",
     reloads: (): number => reloads,
   };
 }
 
-/**
- * The decision copy a page carries, taken out of the served page and evaluated in an empty context, the way the
- * display's browser runs it.
- *
- * @param html the served page
- */
-function embeddedDecision(html: string): typeof decidePollAction | null {
-  const text = /var decide=([\s\S]*?);\n\s*window\.setInterval\(/.exec(html)?.[1];
-  return text ? (vm.runInNewContext(`(${text})`) as typeof decidePollAction) : null;
-}
-
-describe("K13: two unanswered checks show the card, the first answer reloads, and hassemu checks the target", () => {
-  it("shows the card after the second unanswered check in a row and reloads as soon as the target answers", async () => {
+describe("K13: the target page does not answer", () => {
+  it("when the target page does not answer twice in a row, the display shows a card instead of an empty screen", async () => {
     clock.now = Date.now();
     vi.spyOn(Date, "now").mockImplementation(() => clock.now);
     const target = await targetServer();
     const server = await started(memory(), target.url);
     const display = await openPage(server);
-    const atStart = { card: display.cardVisible(), hidden: display.iframeHidden(), reloads: display.reloads() };
 
     target.state.down = true;
     await display.tick();
-    const afterFirst = { card: display.cardVisible(), hidden: display.iframeHidden(), reloads: display.reloads() };
+    const afterOnce = display.cardVisible();
     await display.tick();
-    const afterSecond = { card: display.cardVisible(), hidden: display.iframeHidden(), reloads: display.reloads() };
+
+    expect({ afterOnce, afterTwiceInARow: display.cardVisible() }).toEqual({
+      afterOnce: false,
+      afterTwiceInARow: true,
+    });
+  });
+
+  it("as soon as the page answers again, it reloads", async () => {
+    clock.now = Date.now();
+    vi.spyOn(Date, "now").mockImplementation(() => clock.now);
+    const target = await targetServer();
+    const server = await started(memory(), target.url);
+    target.state.down = true;
+    const display = await openPage(server);
+    if (!display.cardVisible() || display.reloads() !== 0) {
+      throw new Error("the case needs the card on screen before the target answers again");
+    }
+
     target.state.down = false;
     await display.tick();
-    const afterAnswer = { reloads: display.reloads() };
 
-    expect({ atStart, afterFirst, afterSecond, afterAnswer }).toEqual({
-      atStart: { card: false, hidden: false, reloads: 0 },
-      afterFirst: { card: false, hidden: false, reloads: 0 },
-      afterSecond: { card: true, hidden: true, reloads: 0 },
-      afterAnswer: { reloads: 1 },
-    });
-    expect(display.answers).toEqual([
-      { target: target.url, targetReachable: false },
-      { target: target.url, targetReachable: false },
-      { target: target.url, targetReachable: true },
-    ]);
+    expect(display.reloads()).toBe(1);
   });
 
-  it("checks the target from the server: the page only ever asks hassemu, the target sees hassemu's probes", async () => {
+  it("whether the target answers is checked by hassemu itself, not by the display", async () => {
     clock.now = Date.now();
     vi.spyOn(Date, "now").mockImplementation(() => clock.now);
     const target = await targetServer();
     const server = await started(memory(), target.url);
     const display = await openPage(server);
-    const beforeTicks = target.state.connections;
+    const before = target.state.connections;
 
-    target.state.down = true;
     await display.tick();
     await display.tick();
 
+    const origin = new URL(target.url).origin;
     expect({
-      firstPageProbed: beforeTicks,
-      pageFetched: display.fetched,
-      probesDuringTicks: target.state.connections - beforeTicks,
-      answers: display.answers.length,
-    }).toEqual({
-      firstPageProbed: 1,
-      pageFetched: ["/api/redirect_check", "/api/redirect_check"],
-      probesDuringTicks: 2,
-      answers: 2,
-    });
-  });
-
-  it("runs the same decision in the page as in the adapter, for unanswered, answered and recovered checks", async () => {
-    const target = await targetServer();
-    const server = await started(memory(), target.url);
-    const page = await server.inject({ method: "GET", url: "/", headers: { "user-agent": UA }, remoteAddress: PEER });
-    const copy = embeddedDecision(page.body);
-    const current = target.url;
-    const inputs = [
-      {
-        current,
-        body: { target: current, targetReachable: false },
-        targetFails: 0,
-        targetThreshold: 2,
-        targetDownVisible: false,
-      },
-      {
-        current,
-        body: { target: current, targetReachable: false },
-        targetFails: 1,
-        targetThreshold: 2,
-        targetDownVisible: false,
-      },
-      {
-        current,
-        body: { target: current, targetReachable: true },
-        targetFails: 1,
-        targetThreshold: 2,
-        targetDownVisible: false,
-      },
-      {
-        current,
-        body: { target: current, targetReachable: true },
-        targetFails: 2,
-        targetThreshold: 2,
-        targetDownVisible: true,
-      },
-    ];
-
-    expect({ embedded: copy !== null }).toEqual({ embedded: true });
-    expect(inputs.map(input => copy?.(input))).toEqual(inputs.map(input => decidePollAction(input)));
-    expect(inputs.map(input => decidePollAction(input).action)).toEqual(["none", "show-target-down", "none", "reload"]);
+      displayAskedTheTarget: display.fetched.some(url => url.startsWith(origin) || !url.startsWith("/")),
+      hassemuAskedTheTarget: target.state.connections > before,
+    }).toEqual({ displayAskedTheTarget: false, hassemuAskedTheTarget: true });
   });
 });

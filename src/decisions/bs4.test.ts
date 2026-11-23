@@ -1,23 +1,22 @@
 /**
- * Guard BS-4 — the question before a foreign target: "Continue sign-in?", the address the code would go to and the
- * button "Continue", in the system language.
+ * Guard BS-4 — the question before a foreign target: when a foreign address wants the access code during sign-in, the
+ * page shows the question "Continue sign-in?" („Anmeldung fortsetzen?“), the address the code would go to, and the
+ * button "Continue" („Weiter“).
  *
- * The page, BS-4 (question before a foreign target): "When a foreign address wants the access code at the sign-in. You
- * accepted the behaviour in K19; here it is about the picture." "Shows the question 'Continue sign-in?', the address the
- * code would go to, and the button 'Continue'." The screens: "the texts exist in eleven languages", shown "in German
- * system language".
+ * The page, BS-4 (question before a foreign target): "When a foreign address wants the access code during sign-in."
+ * "Shows the question 'Continue sign-in?', the address the code would go to, and the button 'Continue'." krobi's
+ * wording of the rule is German: „Anmeldung fortsetzen?“ and „Weiter“; the screen he accepted shows the address as
+ * host and port.
  * Accepted by krobi with the page of hassemu's core decisions (version 30) on 2026-11-11 20:19 ("so bs1 to bs9 are
  * ok").
  *
- * Path: the web server as main.ts starts it with German as the system language, asked for /auth/authorize by an app
- * whose redirect address is neither a Companion app nor the host the request came in on — once without a required
- * sign-in (GET), once with it, the form sent back with the right credentials (POST). The texts come from the adapter's
- * own admin/i18n files, read as data. The host carries one network (192.168.77.0/24); the data folder is a map in
- * memory, since a guard writes no file.
+ * Path: the web server as main.ts starts it, asked for /auth/authorize on the Host the display reaches hassemu by —
+ * without a required sign-in the GET alone, with one the sign-in form sent back with the right credentials. The system
+ * language is German, the language of krobi's wording, so the texts read as the rule names them; they come from the
+ * adapter's own admin/i18n files, as adapter-core's I18n resolves a key. The host carries one network
+ * (192.168.77.0/24); the data folder is a map in memory, since a guard writes no file.
  */
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type * as Os from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -309,18 +308,6 @@ function ask(
 }
 
 /**
- * One language file of the adapter, read as data.
- *
- * @param lang the language
- */
-function language(lang: string): Record<string, string> {
-  return JSON.parse(readFileSync(join(process.cwd(), "admin", "i18n", `${lang}.json`), "utf8")) as Record<
-    string,
-    string
-  >;
-}
-
-/**
  * The text of an HTML fragment with its entities resolved.
  *
  * @param html the escaped text
@@ -349,57 +336,37 @@ const OWN_HOST = "192.168.77.10:8123";
  *
  * @param page the answer
  */
-function question(page: Answer): Record<string, unknown> {
-  const button = /<a class="button" href="([^"]*)">([^<]*)<\/a>/.exec(page.body);
+function question(page: Answer): { question?: string; showsTheAddress: boolean; button?: string } {
+  const shown = unescaped(/<code>([^<]*)<\/code>/.exec(page.body)?.[1]) ?? "";
   return {
-    status: page.statusCode,
-    lang: /<html lang="([^"]+)"/.exec(page.body)?.[1],
     question: unescaped(/<h1>([^<]*)<\/h1>/.exec(page.body)?.[1]),
-    address: unescaped(/<code>([^<]*)<\/code>/.exec(page.body)?.[1]),
-    button: unescaped(button?.[2]),
-    buttonGoesTo: unescaped(button?.[1])?.replace(/code=[0-9a-f-]{36}&/, "code=<code>&"),
-    handsOverByItself: /<script\b|http-equiv="refresh"/.test(page.body),
+    showsTheAddress: shown.includes(new URL(QUERY.redirect_uri).host),
+    button: unescaped(/<a class="button" href="[^"]*">([^<]*)<\/a>/.exec(page.body)?.[1]),
   };
 }
 
-describe("BS-4: before a foreign target the page asks 'Continue sign-in?', shows the address and a 'Continue' button", () => {
-  const expected = (de: Record<string, string>): Record<string, unknown> => ({
-    status: 200,
-    lang: "de",
-    question: de.authContinueTitle,
-    address: "192.168.77.99:8080",
-    button: de.authContinueButton,
-    buttonGoesTo: "http://192.168.77.99:8080/callback?code=<code>&state=s1",
-    handsOverByItself: false,
-  });
+/** What the rule names: the question, the address the code would go to, the button — in krobi's German wording. */
+const NAMED = { question: "Anmeldung fortsetzen?", showsTheAddress: true, button: "Weiter" };
 
-  it("asks in German when no sign-in is required", async () => {
-    const de = language("de");
-    const en = language("en");
-    const mem = memory();
-    const server = await started(mem, false);
+describe("BS-4: the question before a foreign target", () => {
+  it("when a foreign address wants the access code during sign-in without a required sign-in: the question, the address, the button", async () => {
+    const server = await started(memory(), false);
 
     const page = await ask(server, "192.168.77.50", "GET", `/auth/authorize?${new URLSearchParams(QUERY).toString()}`, {
       host: OWN_HOST,
     });
 
-    expect({
-      differs:
-        [de.authContinueTitle, de.authContinueButton].join() !== [en.authContinueTitle, en.authContinueButton].join(),
-    }).toEqual({ differs: true });
-    expect(question(page)).toEqual(expected(de));
+    expect(question(page)).toEqual(NAMED);
   });
 
-  it("asks in German after a valid sign-in", async () => {
-    const de = language("de");
-    const mem = memory();
-    const server = await started(mem, true);
+  it("when a foreign address wants the access code after a valid sign-in: the question, the address, the button", async () => {
+    const server = await started(memory(), true);
 
     const page = await ask(server, "192.168.77.51", "POST", "/auth/authorize", {
       form: { ...QUERY, username: USER, password: PASSWORD },
       host: OWN_HOST,
     });
 
-    expect(question(page)).toEqual(expected(de));
+    expect(question(page)).toEqual(NAMED);
   });
 });

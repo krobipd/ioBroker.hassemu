@@ -1,8 +1,11 @@
 /**
- * Guard K7 — one device per display: its id is the model its first visit names (or "display") and four characters
- * hassemu assigns itself, with a counter when taken, never changed afterwards; an id of the old form moves once, with
- * its rooms, functions and aliases; the name belongs to the adapter: the app's device name, else the host name, else
- * the address.
+ * Guard K7 — id: model, hyphen, four characters that hassemu assigns itself; "display" in front when the first visit
+ * names no model; a counter after an id that is taken already; once assigned, it never changes. Name: the app's device
+ * name as soon as the app reports it, following every change there; without the app the host name, without a host
+ * name the IP; a rename in the object tree does not hold, hassemu writes its name back. Existing installations: every
+ * existing display moves once — clients.61c3a1 becomes clients.display-c3a1 — with rooms, functions and aliases, and it
+ * is still recognised; the update points out in the admin that scripts and visualisations on the old id are the user's
+ * to adapt.
  *
  * The page, K7: "New: id — model, hyphen, four characters that hassemu assigns itself. If the display names no model
  * on its first visit, 'display' stands in front. If the id is taken already, a counter comes after it. Once assigned,
@@ -22,7 +25,9 @@
  * registers (registry restore with the move of old ids, the web server on a free port), over an adapter whose object
  * and state database lives in memory. Displays reach the running server by inject from a peer address of the host's
  * network (192.168.77.0/24): the first visit, the sign-in, the app's registration and its webhook; host names come
- * from the reverse lookup, answered from a table. The data folder is a fresh folder in the temporary directory,
+ * from the reverse lookup, answered from a table. For the taken id the four characters hassemu draws are held fixed,
+ * so that two displays draw the same. The admin shows an update notice from the manifest's `common.messages` when its
+ * condition holds for the versions of the update. The data folder is a fresh folder in the temporary directory,
  * written through the data-folder master as on a host.
  */
 
@@ -31,8 +36,9 @@ import type * as Os from "node:os";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type * as DisplayId from "../lib/display-id";
 
-const { data, db, dns } = vi.hoisted(() => ({
+const { data, db, dns, tail } = vi.hoisted(() => ({
   /** The instance data folder of the running test. */
   data: { dir: "" },
   db: {
@@ -42,6 +48,8 @@ const { data, db, dns } = vi.hoisted(() => ({
     problems: [] as string[],
   },
   dns: { names: new Map<string, string>(), asked: [] as string[] },
+  /** The four characters hassemu draws, held fixed while set. */
+  tail: { fixed: "" },
 }));
 
 vi.mock("@iobroker/adapter-core", () => {
@@ -244,6 +252,11 @@ vi.mock("node:os", async importOriginal => {
   return { ...real, networkInterfaces, default: { ...real, networkInterfaces } };
 });
 
+vi.mock("../lib/display-id", async importOriginal => {
+  const real = await importOriginal<typeof DisplayId>();
+  return { ...real, randomIdTail: (): string => tail.fixed || real.randomIdTail() };
+});
+
 import * as mainModule from "../main";
 import type { ClientRegistry } from "../lib/client-registry";
 
@@ -311,6 +324,7 @@ afterEach(async () => {
   db.problems.length = 0;
   dns.names.clear();
   dns.asked.length = 0;
+  tail.fixed = "";
 });
 
 /** The installation js-controller sets up: the instance object and the manifest's instance objects. */
@@ -361,12 +375,16 @@ function seedOldDisplay(oldId: string, cookie: string, ip: string, mode = "0", m
   }
 }
 
-/** The adapter, started through the ready handler its constructor registered. */
+/** The adapter, started through the ready handler its constructor registered; a start that ended throws. */
 async function started(): Promise<Emu> {
   const emu = new HassEmu() as unknown as Emu;
   emu.config = { ...CONFIG };
   running.push(emu);
   await emu.handlers.get("ready")?.();
+  const ended = db.problems.filter(line => line.startsWith("terminate:"));
+  if (ended.length > 0 || emu.webServer === null) {
+    throw new Error(`the adapter did not start: ${ended.join(", ")}`);
+  }
   return emu;
 }
 
@@ -433,7 +451,7 @@ function ask(
   }
   const server = emu.webServer;
   if (!server) {
-    return Promise.resolve({ statusCode: 0, body: "", headers: {}, json: () => ({}) });
+    throw new Error("the case needs the adapter's web server");
   }
   return server.inject({ method, url, headers, payload, remoteAddress: peer });
 }
@@ -458,7 +476,11 @@ function cookieOf(answer: Answer): string {
  */
 async function firstVisit(emu: Emu, peer: string, userAgent: string): Promise<{ cookie: string; id: string }> {
   const cookie = cookieOf(await ask(emu, peer, "GET", "/", { userAgent }));
-  return { cookie, id: emu.registry?.getByCookie(cookie)?.id ?? "" };
+  const id = emu.registry?.getByCookie(cookie)?.id;
+  if (id === undefined) {
+    throw new Error("the case needs the display its first visit creates");
+  }
+  return { cookie, id };
 }
 
 /**
@@ -560,40 +582,135 @@ function userRenames(id: string, text: string): void {
   }
 }
 
+/** The old display's cookie and the target of its manual URL. */
+const OLD_COOKIE = "6f9c2d1e-0b7a-4c3e-9a51-2d8e4f7a1c01";
+const OLD_DEVICE = `${NS}.clients.61c3a1`;
+const NEW_DEVICE = `${NS}.clients.display-c3a1`;
+
+/**
+ * An installation of 1.46.1 with the display clients.61c3a1, in a room and a function and behind aliases. Its mode is
+ * "global" while the global target is empty: a visit gets the start page — a redirect target would make the server
+ * probe an address outside the guard.
+ */
+function seedOldInstallation(): void {
+  seedInstall();
+  seedOldDisplay("61c3a1", OLD_COOKIE, "192.168.77.71", "global", "http://192.168.77.20:8082/vis-2/index.html?kitchen");
+  db.objects.set("enum.rooms.kitchen", {
+    _id: "enum.rooms.kitchen",
+    type: "enum",
+    common: { name: "Kitchen", members: [OLD_DEVICE, "zigbee.0.lamp"] },
+    native: {},
+  } as unknown as ioBroker.Object);
+  db.objects.set("enum.functions.screen", {
+    _id: "enum.functions.screen",
+    type: "enum",
+    common: { name: "Screen", members: [`${OLD_DEVICE}.mode`] },
+    native: {},
+  } as unknown as ioBroker.Object);
+  // Aliases in both forms of common.alias.id — one target, or a read and a write target.
+  const aliases: [string, unknown][] = [
+    ["alias.0.kitchen.screen", `${OLD_DEVICE}.mode`],
+    ["alias.0.kitchen.url", { read: `${OLD_DEVICE}.resolvedUrl`, write: `${OLD_DEVICE}.manualUrl` }],
+  ];
+  for (const [id, target] of aliases) {
+    db.objects.set(id, {
+      _id: id,
+      type: "state",
+      common: { name: id, type: "string", role: "text", read: true, write: true, alias: { id: target } },
+      native: {},
+    } as unknown as ioBroker.Object);
+  }
+}
+
+/**
+ * The members of an enum.
+ *
+ * @param id the enum id
+ */
+function members(id: string): string[] {
+  return (db.objects.get(id)?.common as { members?: string[] } | undefined)?.members ?? [];
+}
+
+/**
+ * The target of an alias.
+ *
+ * @param id the alias id
+ */
+function aliasTarget(id: string): unknown {
+  return (db.objects.get(id)?.common as { alias?: { id?: unknown } } | undefined)?.alias?.id;
+}
+
+/**
+ * Whether a version rule of an update notice (`oldVersion<2.0.0`, `newVersion>=2.0.0`) holds for these versions.
+ *
+ * @param rule the rule
+ * @param versions the versions of the update
+ * @param versions.oldVersion the installed version
+ * @param versions.newVersion the version updated to
+ */
+function holds(rule: string, versions: { oldVersion: string; newVersion: string }): boolean {
+  const m = /^(oldVersion|newVersion)(<=|>=|<|>|==|=)(.+)$/.exec(rule);
+  if (!m) {
+    return false;
+  }
+  const parts = (v: string): number[] => v.split(".").map(Number);
+  const [a, b] = [parts(versions[m[1] as "oldVersion" | "newVersion"]), parts(m[3])];
+  const cmp = a.map((n, i) => n - (b[i] ?? 0)).find(d => d !== 0) ?? 0;
+  return { "<": cmp < 0, "<=": cmp <= 0, ">": cmp > 0, ">=": cmp >= 0, "==": cmp === 0, "=": cmp === 0 }[m[2]] === true;
+}
+
+/**
+ * The model part of an id, letters and digits only, in lower case — to compare it with the model the display named.
+ *
+ * @param text the text
+ */
+function letters(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
 describe("K7: display ids and names", () => {
-  it("names a display by the model its first visit names and four characters of its own; without a model 'display'", async () => {
+  it("id: model, hyphen, four characters that hassemu assigns itself", async () => {
     seedInstall();
     const emu = await started();
 
-    const android = await firstVisit(emu, "192.168.77.51", UA_ANDROID_APP);
+    const { id } = await firstVisit(emu, "192.168.77.51", UA_ANDROID_APP);
+    const hyphen = id.lastIndexOf("-");
+
+    expect({ model: letters(id.slice(0, hyphen)), fourCharacters: id.slice(hyphen + 1).length }).toEqual({
+      model: letters("Pixel Tablet"),
+      fourCharacters: 4,
+    });
+  });
+
+  it("if the display names no model on its first visit, 'display' stands in front", async () => {
+    seedInstall();
+    const emu = await started();
+
     const ios = await firstVisit(emu, "192.168.77.52", UA_IOS_APP);
     const wall = await firstVisit(emu, "192.168.77.53", UA_WALL_PAGE);
 
-    expect({ problems: db.problems, android: android.id, ios: ios.id, wall: wall.id }).toEqual({
-      problems: [],
-      android: expect.stringMatching(/^pixel-tablet-[0-9a-f]{4}$/),
-      // Two displays without a model may draw the same four characters — the second then carries the counter.
-      ios: expect.stringMatching(/^display-[0-9a-f]{4}(?:-\d+)?$/),
-      wall: expect.stringMatching(/^display-[0-9a-f]{4}(?:-\d+)?$/),
+    expect({ ios: ios.id.startsWith("display-"), wall: wall.id.startsWith("display-") }).toEqual({
+      ios: true,
+      wall: true,
     });
-    expect(devices()).toEqual([android.id, ios.id, wall.id].sort());
   });
 
-  it("puts a counter behind an id that is taken already", async () => {
+  it("if the id is taken already, a counter comes after it", async () => {
     seedInstall();
-    seedOldDisplay("61c3a1", "6f9c2d1e-0b7a-4c3e-9a51-2d8e4f7a1c01", "192.168.77.71");
-    seedOldDisplay("72c3a1", "7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d", "192.168.77.72");
-
     const emu = await started();
+    tail.fixed = "0a1b";
 
-    expect({
-      problems: db.problems,
-      first: emu.registry?.getByCookie("6f9c2d1e-0b7a-4c3e-9a51-2d8e4f7a1c01")?.id,
-      second: emu.registry?.getByCookie("7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d")?.id,
-    }).toEqual({ problems: [], first: "display-c3a1", second: "display-c3a1-2" });
+    const first = await firstVisit(emu, "192.168.77.54", UA_WALL_PAGE);
+    const second = await firstVisit(emu, "192.168.77.55", UA_WALL_PAGE);
+    const after = second.id.slice(first.id.length);
+
+    expect({ sameIdAfterIt: second.id.startsWith(first.id), counter: /\d/.test(after) }).toEqual({
+      sameIdAfterIt: true,
+      counter: true,
+    });
   });
 
-  it("never changes an id once assigned: not on a new address, another agent, a host name or a restart", async () => {
+  it("once assigned, it never changes: not on a new address, another agent, a host name or a restart", async () => {
     seedInstall();
     dns.names.set("192.168.77.65", "hall-panel.lan");
     const first = await started();
@@ -602,179 +719,123 @@ describe("K7: display ids and names", () => {
     await ask(first, "192.168.77.65", "GET", "/", { cookie, userAgent: UA_WALL_PAGE });
     await settle();
     const afterVisit = first.registry?.getByCookie(cookie)?.id;
-    const nameAfterVisit = nameOf(id);
     await stopped(first);
     const second = await started();
-    const afterRestart = second.registry?.getByCookie(cookie)?.id;
 
-    expect({ problems: db.problems, id, afterVisit, nameAfterVisit, afterRestart, devices: devices() }).toEqual({
-      problems: [],
-      id: expect.stringMatching(/^pixel-tablet-[0-9a-f]{4}$/),
+    expect({ afterVisit, afterRestart: second.registry?.getByCookie(cookie)?.id }).toEqual({
       afterVisit: id,
-      nameAfterVisit: "hall-panel.lan",
       afterRestart: id,
-      devices: [id],
     });
   });
 
-  it("moves a display of the old id form once to display-<its last four>, with values, rooms, functions and aliases", async () => {
-    const cookie = "6f9c2d1e-0b7a-4c3e-9a51-2d8e4f7a1c01";
-    const manualUrl = "http://192.168.77.20:8082/vis-2/index.html?kitchen";
+  it("name: the device name from the app as soon as the app reports it; it follows every change there", async () => {
     seedInstall();
-    // On "global" while the global target is empty: a value of its own that moves, and a visit that gets the landing
-    // page — a redirect target would make the server probe an address outside the guard.
-    seedOldDisplay("61c3a1", cookie, "192.168.77.71", "global", manualUrl);
-    db.objects.set("enum.rooms.kitchen", {
-      _id: "enum.rooms.kitchen",
-      type: "enum",
-      common: { name: "Kitchen", members: [`${NS}.clients.61c3a1`, "zigbee.0.lamp"] },
-      native: {},
-    } as unknown as ioBroker.Object);
-    db.objects.set("enum.functions.screen", {
-      _id: "enum.functions.screen",
-      type: "enum",
-      common: { name: "Screen", members: [`${NS}.clients.61c3a1.mode`] },
-      native: {},
-    } as unknown as ioBroker.Object);
-    // Aliases in both forms of common.alias.id — one target, or a read and a write target — and one on a foreign
-    // device.
-    const aliasTargets: [string, unknown][] = [
-      ["alias.0.kitchen.screen", `${NS}.clients.61c3a1.mode`],
-      ["alias.0.kitchen.url", { read: `${NS}.clients.61c3a1.resolvedUrl`, write: `${NS}.clients.61c3a1.manualUrl` }],
-      ["alias.0.kitchen.lamp", "zigbee.0.lamp.state"],
-    ];
-    for (const [id, target] of aliasTargets) {
-      db.objects.set(id, {
-        _id: id,
-        type: "state",
-        common: { name: id, type: "string", role: "text", read: true, write: true, alias: { id: target } },
-        native: {},
-      } as unknown as ioBroker.Object);
-    }
-    const foreignAlias = structuredClone(db.objects.get("alias.0.kitchen.lamp"));
-    const manifest = JSON.parse(readFileSync(join(process.cwd(), "io-package.json"), "utf8")) as {
-      common: { messages?: { condition?: { rules?: string[] }; text?: Record<string, string> }[] };
-    };
-
-    // The start reads every state of the instance once, and the move takes the old display's values from it —
-    // never one by one.
-    const base = Object.getPrototypeOf(HassEmu.prototype) as ioBroker.Adapter;
-    const bulkReads = vi.spyOn(base, "getStatesAsync");
-    const singleReads = vi.spyOn(base, "getStateAsync");
-    const first = await started();
-    const reads = {
-      bulk: bulkReads.mock.calls.map(call => call[0]),
-      single: singleReads.mock.calls.map(call => call[0]).filter(id => String(id).includes("clients.")),
-    };
-    bulkReads.mockRestore();
-    singleReads.mockRestore();
-    const devicesAfterMove = devices();
-    const oldLeft = [...db.objects.keys()].filter(id => id.startsWith(`${NS}.clients.61c3a1`));
-    const values = {
-      mode: db.states.get(`${NS}.clients.display-c3a1.mode`)?.val,
-      manualUrl: db.states.get(`${NS}.clients.display-c3a1.manualUrl`)?.val,
-      ip: db.states.get(`${NS}.clients.display-c3a1.ip`)?.val,
-    };
-    const rooms = db.objects.get("enum.rooms.kitchen")?.common.members;
-    const functions = db.objects.get("enum.functions.screen")?.common.members;
-    const aliasesAfterMove = Object.fromEntries(
-      aliasTargets.map(([id]) => [id, (db.objects.get(id)?.common as { alias?: { id?: unknown } }).alias?.id]),
-    );
-    const foreignAliasAfterMove = db.objects.get("alias.0.kitchen.lamp");
-    await ask(first, "192.168.77.71", "GET", "/", { cookie });
-    const recognised = first.registry?.getByCookie(cookie)?.id;
-    const devicesAfterVisit = devices();
-    await stopped(first);
-    const second = await started();
-    const devicesAfterSecondStart = devices();
-    const recognisedAfterSecondStart = second.registry?.getByCookie(cookie)?.id;
-
-    expect(reads).toEqual({ bulk: ["*"], single: [] });
-    expect({ problems: db.problems, devicesAfterMove, oldLeft, values, rooms, functions }).toEqual({
-      problems: [],
-      devicesAfterMove: ["display-c3a1"],
-      oldLeft: [],
-      values: { mode: "global", manualUrl, ip: "192.168.77.71" },
-      rooms: ["zigbee.0.lamp", `${NS}.clients.display-c3a1`],
-      functions: [`${NS}.clients.display-c3a1.mode`],
-    });
-    expect({ aliasesAfterMove, foreignAliasAfterMove }).toEqual({
-      aliasesAfterMove: {
-        "alias.0.kitchen.screen": `${NS}.clients.display-c3a1.mode`,
-        "alias.0.kitchen.url": {
-          read: `${NS}.clients.display-c3a1.resolvedUrl`,
-          write: `${NS}.clients.display-c3a1.manualUrl`,
-        },
-        "alias.0.kitchen.lamp": "zigbee.0.lamp.state",
-      },
-      foreignAliasAfterMove: foreignAlias,
-    });
-    expect({ recognised, devicesAfterVisit }).toEqual({
-      recognised: "display-c3a1",
-      devicesAfterVisit: ["display-c3a1"],
-    });
-    expect({ devicesAfterSecondStart, recognisedAfterSecondStart }).toEqual({
-      devicesAfterSecondStart: ["display-c3a1"],
-      recognisedAfterSecondStart: "display-c3a1",
-    });
-    const notice = (manifest.common.messages ?? []).find(
-      m =>
-        (m.condition?.rules ?? []).some(rule => rule.startsWith("oldVersion<")) &&
-        (m.text?.en ?? "").includes("clients.display-"),
-    );
-    expect({ updateNoticeInAdmin: notice !== undefined }).toEqual({ updateNoticeInAdmin: true });
-  });
-
-  it("names a display by the app's device name and follows it, else by its host name, else by its address", async () => {
-    seedInstall();
-    dns.names.set("192.168.77.62", "kitchen-panel.lan");
-    dns.names.set("192.168.77.63", "tablet-63.lan");
     const emu = await started();
-
-    const bare = await firstVisit(emu, "192.168.77.61", UA_WALL_PAGE);
-    const named = await firstVisit(emu, "192.168.77.62", UA_WALL_PAGE);
     const app = await firstVisit(emu, "192.168.77.63", UA_ANDROID_APP);
-    await settle();
-    const before = { bare: nameOf(bare.id), named: nameOf(named.id), app: nameOf(app.id) };
     const token = await signedIn(emu, "192.168.77.63", app.cookie, UA_ANDROID_APP);
+
     const webhookId = await registered(emu, "192.168.77.63", token, "Kitchen Tablet");
     await settle();
     const reported = nameOf(app.id);
     await renamedInApp(emu, "192.168.77.63", webhookId, "Hall Tablet");
     await settle();
-    const followed = nameOf(app.id);
 
-    expect({ problems: db.problems, lookedUp: dns.asked.includes("192.168.77.61"), before }).toEqual({
-      problems: [],
-      lookedUp: true,
-      before: { bare: "192.168.77.61", named: "kitchen-panel.lan", app: "tablet-63.lan" },
-    });
-    expect({ reported, followed }).toEqual({ reported: "Kitchen Tablet", followed: "Hall Tablet" });
+    expect({ reported, followed: nameOf(app.id) }).toEqual({ reported: "Kitchen Tablet", followed: "Hall Tablet" });
   });
 
-  it("does not keep a name the user types in the object tree: the next change of a source and the start write it", async () => {
+  it("without the app the host name, without a host name the IP", async () => {
+    seedInstall();
+    dns.names.set("192.168.77.62", "kitchen-panel.lan");
+    const emu = await started();
+
+    const named = await firstVisit(emu, "192.168.77.62", UA_WALL_PAGE);
+    const bare = await firstVisit(emu, "192.168.77.61", UA_WALL_PAGE);
+    await settle();
+
+    expect({ hostName: nameOf(named.id), ip: nameOf(bare.id) }).toEqual({
+      hostName: "kitchen-panel.lan",
+      ip: "192.168.77.61",
+    });
+  });
+
+  it("a rename in the object tree does not hold: hassemu writes its name back", async () => {
     seedInstall();
     const first = await started();
     const app = await firstVisit(first, "192.168.77.66", UA_ANDROID_APP);
     const token = await signedIn(first, "192.168.77.66", app.cookie, UA_ANDROID_APP);
-    const webhookId = await registered(first, "192.168.77.66", token, "Kitchen Tablet");
+    await registered(first, "192.168.77.66", token, "Kitchen Tablet");
     await settle();
 
     userRenames(app.id, "My kitchen");
-    await renamedInApp(first, "192.168.77.66", webhookId, "Hall Tablet");
-    await settle();
-    const afterSourceChange = nameOf(app.id);
-    userRenames(app.id, "My hall");
-    const userNameBeforeStart = nameOf(app.id);
     await stopped(first);
     await started();
-    const afterStart = nameOf(app.id);
 
-    expect({ problems: db.problems, afterSourceChange, userNameBeforeStart, afterStart }).toEqual({
-      problems: [],
-      afterSourceChange: "Hall Tablet",
-      userNameBeforeStart: "My hall",
-      afterStart: "Hall Tablet",
+    expect(nameOf(app.id)).toBe("Kitchen Tablet");
+  });
+
+  it("existing installations: every existing display moves once — clients.61c3a1 becomes clients.display-c3a1", async () => {
+    seedOldInstallation();
+    const first = await started();
+    const afterTheUpdate = devices();
+    const oldLeft = [...db.objects.keys()].filter(id => id === OLD_DEVICE || id.startsWith(`${OLD_DEVICE}.`));
+    await stopped(first);
+    await started();
+
+    expect({ afterTheUpdate, oldLeft, afterTheNextStart: devices() }).toEqual({
+      afterTheUpdate: ["display-c3a1"],
+      oldLeft: [],
+      afterTheNextStart: ["display-c3a1"],
     });
+  });
+
+  it("rooms, functions and aliases move along", async () => {
+    seedOldInstallation();
+    await started();
+
+    expect({
+      room: {
+        new: members("enum.rooms.kitchen").includes(NEW_DEVICE),
+        old: members("enum.rooms.kitchen").includes(OLD_DEVICE),
+      },
+      function: {
+        new: members("enum.functions.screen").includes(`${NEW_DEVICE}.mode`),
+        old: members("enum.functions.screen").includes(`${OLD_DEVICE}.mode`),
+      },
+      aliases: [aliasTarget("alias.0.kitchen.screen"), aliasTarget("alias.0.kitchen.url")],
+    }).toEqual({
+      room: { new: true, old: false },
+      function: { new: true, old: false },
+      aliases: [`${NEW_DEVICE}.mode`, { read: `${NEW_DEVICE}.resolvedUrl`, write: `${NEW_DEVICE}.manualUrl` }],
+    });
+  });
+
+  it("and the display is still recognised", async () => {
+    seedOldInstallation();
+    const emu = await started();
+
+    await ask(emu, "192.168.77.71", "GET", "/", { cookie: OLD_COOKIE });
+
+    expect({ recognisedAs: emu.registry?.getByCookie(OLD_COOKIE)?.id, displays: devices() }).toEqual({
+      recognisedAs: "display-c3a1",
+      displays: ["display-c3a1"],
+    });
+  });
+
+  it("the update points out in the admin that scripts and visualisations on the old id are the user's to adapt", () => {
+    const manifest = JSON.parse(readFileSync(join(process.cwd(), "io-package.json"), "utf8")) as {
+      common: { messages?: { condition?: { operand?: string; rules?: string[] }; text?: Record<string, string> }[] };
+    };
+    const update = { oldVersion: "1.46.1", newVersion: "2.0.0" };
+
+    const shown = (manifest.common.messages ?? []).filter(m => {
+      const rules = m.condition?.rules ?? [];
+      return m.condition?.operand === "or" ? rules.some(r => holds(r, update)) : rules.every(r => holds(r, update));
+    });
+
+    expect(
+      shown.some(
+        m => (m.text?.en ?? "").includes("clients.61c3a1") && (m.text?.en ?? "").includes("clients.display-c3a1"),
+      ),
+    ).toBe(true);
   });
 });

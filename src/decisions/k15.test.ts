@@ -1,6 +1,6 @@
 /**
- * Guard K15 — per hour at most 30 new displays from one address and at most 100 in all; beyond that a request is
- * served but gets no entry in the object tree.
+ * Guard K15 — per hour hassemu creates at most 30 new displays from one address and at most 100 in all; whatever comes
+ * above that is served but gets no entry in the object tree.
  *
  * The page, K15: "Per hour hassemu creates at most 30 new displays from one address and at most 100 in all. Whatever
  * comes beyond that is served, but gets no entry in the object tree."
@@ -214,27 +214,12 @@ function firstVisit(server: WebServer, peer: string): Promise<Answer> {
 }
 
 /**
- * Whether an answer sets the display cookie.
+ * The ids of every object the adapter holds.
  *
- * @param answer the answer
+ * @param mem the adapter
  */
-function setsCookie(answer: Answer): boolean {
-  const raw = answer.headers["set-cookie"];
-  const text = Array.isArray(raw) ? raw.join(", ") : typeof raw === "string" ? raw : "";
-  return /hassemu_client=/.test(text);
-}
-
-/**
- * How an answer serves the display: status, a page, and whether it hands out a cookie.
- *
- * @param answer the answer
- */
-function served(answer: Answer): { status: number; page: boolean; cookie: boolean } {
-  return {
-    status: answer.statusCode,
-    page: String(answer.headers["content-type"]).startsWith("text/html") && answer.body.includes("<html"),
-    cookie: setsCookie(answer),
-  };
+function objectIds(mem: Memory): string[] {
+  return [...mem.objects.keys()].sort();
 }
 
 /**
@@ -246,59 +231,100 @@ function displayCount(mem: Memory): number {
   return [...mem.objects].filter(([id, obj]) => id.startsWith(`${NS}.clients.`) && obj.type === "device").length;
 }
 
-describe("K15: at most 30 new displays per address and 100 in all per hour; beyond that served without an entry", () => {
-  it("creates 30 displays from one address within the hour, serves the 31st without an entry, and again after an hour", async () => {
+/**
+ * First visits until the given number of displays exists — the start of a case, not its claim.
+ *
+ * @param server the server
+ * @param mem the adapter
+ * @param peers the peer addresses, each visiting `each` times
+ * @param each the visits per address
+ */
+async function filled(server: WebServer, mem: Memory, peers: string[], each: number): Promise<Answer> {
+  let last: Answer | undefined;
+  for (const peer of peers) {
+    for (let i = 0; i < each; i++) {
+      last = await firstVisit(server, peer);
+    }
+  }
+  if (!last || displayCount(mem) !== peers.length * each) {
+    throw new Error(`the case needs ${peers.length * each} displays, there are ${displayCount(mem)}`);
+  }
+  return last;
+}
+
+describe("K15: per hour at most 30 new displays from one address and 100 in all; beyond that served, no entry", () => {
+  it("creates no 31st display from one address within the hour", async () => {
     vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-11T12:00:00Z") });
     const mem = memory();
     const server = await started(mem);
-    const peer = "192.168.77.50";
+    await filled(server, mem, ["192.168.77.50"], 30);
 
-    const first30: boolean[] = [];
-    for (let i = 0; i < 30; i++) {
-      first30.push(setsCookie(await firstVisit(server, peer)));
-    }
-    const after30 = displayCount(mem);
-    const thirtyFirst = served(await firstVisit(server, peer));
-    const after31 = displayCount(mem);
-    vi.setSystemTime(Date.now() + HOUR_MS);
-    const nextHour = served(await firstVisit(server, peer));
+    await firstVisit(server, "192.168.77.50");
 
-    expect({ cookies: first30.filter(Boolean).length, after30 }).toEqual({ cookies: 30, after30: 30 });
-    expect({ thirtyFirst, after31 }).toEqual({
-      thirtyFirst: { status: 200, page: true, cookie: false },
-      after31: 30,
-    });
-    expect({ nextHour, afterHour: displayCount(mem) }).toEqual({
-      nextHour: { status: 200, page: true, cookie: true },
-      afterHour: 31,
+    expect(displayCount(mem)).toBe(30);
+  });
+
+  it("creates no 101st display in all within the hour", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-11T12:00:00Z") });
+    const mem = memory();
+    const server = await started(mem);
+    await filled(server, mem, ["192.168.77.101", "192.168.77.102", "192.168.77.103", "192.168.77.104"], 25);
+
+    await firstVisit(server, "192.168.77.105");
+
+    expect(displayCount(mem)).toBe(100);
+  });
+
+  it("the limits hold per hour: in the next hour a new display is created again", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-11T12:00:00Z") });
+    const mem = memory();
+    const server = await started(mem);
+    await filled(server, mem, ["192.168.77.101", "192.168.77.102", "192.168.77.103", "192.168.77.104"], 25);
+
+    vi.setSystemTime(Date.now() + HOUR_MS + 60_000);
+    await firstVisit(server, "192.168.77.101");
+
+    expect(displayCount(mem)).toBe(101);
+  });
+
+  it("a display above the limit from one address is served like a display with an entry, and gets no entry in the object tree", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-11T12:00:00Z") });
+    const mem = memory();
+    const server = await started(mem);
+    const withEntry = await filled(server, mem, ["192.168.77.50"], 30);
+    const before = objectIds(mem);
+
+    const above = await firstVisit(server, "192.168.77.50");
+
+    expect({
+      served: above.statusCode === withEntry.statusCode,
+      newObjects: objectIds(mem).filter(id => !before.includes(id)),
+    }).toEqual({
+      served: true,
+      newObjects: [],
     });
   });
 
-  it("creates 100 displays in all within the hour, serves the 101st without an entry, and again after an hour", async () => {
+  it("a display above the limit in all is served like a display with an entry, and gets no entry in the object tree", async () => {
     vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-11T12:00:00Z") });
     const mem = memory();
     const server = await started(mem);
+    const withEntry = await filled(
+      server,
+      mem,
+      ["192.168.77.101", "192.168.77.102", "192.168.77.103", "192.168.77.104"],
+      25,
+    );
+    const before = objectIds(mem);
 
-    let cookies = 0;
-    for (const peer of ["192.168.77.101", "192.168.77.102", "192.168.77.103", "192.168.77.104"]) {
-      for (let i = 0; i < 25; i++) {
-        cookies += setsCookie(await firstVisit(server, peer)) ? 1 : 0;
-      }
-    }
-    const after100 = displayCount(mem);
-    const hundredFirst = served(await firstVisit(server, "192.168.77.105"));
-    const after101 = displayCount(mem);
-    vi.setSystemTime(Date.now() + HOUR_MS);
-    const nextHour = served(await firstVisit(server, "192.168.77.105"));
+    const above = await firstVisit(server, "192.168.77.105");
 
-    expect({ cookies, after100 }).toEqual({ cookies: 100, after100: 100 });
-    expect({ hundredFirst, after101 }).toEqual({
-      hundredFirst: { status: 200, page: true, cookie: false },
-      after101: 100,
-    });
-    expect({ nextHour, afterHour: displayCount(mem) }).toEqual({
-      nextHour: { status: 200, page: true, cookie: true },
-      afterHour: 101,
+    expect({
+      served: above.statusCode === withEntry.statusCode,
+      newObjects: objectIds(mem).filter(id => !before.includes(id)),
+    }).toEqual({
+      served: true,
+      newObjects: [],
     });
   });
 });

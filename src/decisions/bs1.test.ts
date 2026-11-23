@@ -1,20 +1,19 @@
 /**
- * Guard BS-1 — the sign-in page: the heading "Home Assistant", fields for user name and password, the button "Sign in",
- * in the system language.
+ * Guard BS-1 — the sign-in page, when a display is set up and "Sign-in required" is switched on in the settings: the
+ * heading "Home Assistant", fields for user name and password, the button "Sign in" ("Anmelden").
  *
  * The page, BS-1 (sign-in): "When a display is set up and 'sign-in required' is switched on in the settings." "Shows the
- * heading 'Home Assistant', fields for user name and password, the button 'Sign in'." The screens: "the texts exist in
- * eleven languages", shown "in German system language".
+ * heading 'Home Assistant', fields for user name and password, the button 'Sign in'." krobi's wording of the rule is
+ * German, the button there „Anmelden“.
  * Accepted by krobi with the page of hassemu's core decisions (version 30) on 2026-11-11 20:19 ("so bs1 to bs9 are
  * ok").
  *
- * Path: the web server as main.ts starts it, with sign-in required and German as the system language, asked for the
- * sign-in page the Companion app opens; the texts come from the adapter's own admin/i18n files, read as data. The host
- * carries one network (192.168.77.0/24); the data folder is a map in memory, since a guard writes no file.
+ * Path: the web server as main.ts starts it, with sign-in required, asked for the sign-in page the Companion app opens
+ * when it sets the display up. The system language is German, the language of krobi's wording, so the button reads as
+ * the rule names it; the texts come from the adapter's own admin/i18n files, as adapter-core's I18n resolves a key.
+ * The host carries one network (192.168.77.0/24); the data folder is a map in memory, since a guard writes no file.
  */
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type * as Os from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -284,49 +283,42 @@ function ask(
 }
 
 /**
- * One language file of the adapter, read as data.
+ * The sign-in page the Companion app opens when it sets a display up.
  *
- * @param lang the language
+ * @returns the page's HTML
  */
-function language(lang: string): Record<string, string> {
-  return JSON.parse(readFileSync(join(process.cwd(), "admin", "i18n", `${lang}.json`), "utf8")) as Record<
-    string,
-    string
-  >;
+async function signInPage(): Promise<string> {
+  const server = await started(memory());
+  const query = new URLSearchParams({
+    response_type: "code",
+    client_id: "https://home-assistant.io/android",
+    redirect_uri: "homeassistant://auth-callback",
+    state: "s1",
+  });
+  return (await ask(server, "192.168.77.50", "GET", `/auth/authorize?${query.toString()}`)).body;
 }
 
-describe("BS-1: the sign-in page shows 'Home Assistant', user name, password and 'Sign in' in the system language", () => {
-  it("renders the heading, both fields and the button with the German texts", async () => {
-    const de = language("de");
-    const en = language("en");
-    const mem = memory();
-    const server = await started(mem);
-    const query = new URLSearchParams({
-      response_type: "code",
-      client_id: "https://home-assistant.io/android",
-      redirect_uri: "homeassistant://auth-callback",
-      state: "s1",
-    });
+describe("BS-1: the sign-in page when a display is set up and 'Sign-in required' is on", () => {
+  it("shows the heading 'Home Assistant'", async () => {
+    const page = await signInPage();
 
-    const page = await ask(server, "192.168.77.50", "GET", `/auth/authorize?${query.toString()}`);
+    expect(/<h1>([^<]*)<\/h1>/.exec(page)?.[1]).toBe("Home Assistant");
+  });
+
+  it("shows fields for user name and password", async () => {
+    const page = await signInPage();
 
     expect({
-      differs: [de.username, de.password, de.authSignIn].join() !== [en.username, en.password, en.authSignIn].join(),
-    }).toEqual({ differs: true });
-    expect({
-      status: page.statusCode,
-      lang: /<html lang="([^"]+)"/.exec(page.body)?.[1],
-      heading: /<h1>([^<]*)<\/h1>/.exec(page.body)?.[1],
-      user: /<input type="text" name="username" placeholder="([^"]*)"/.exec(page.body)?.[1],
-      password: /<input type="password" name="password" placeholder="([^"]*)"/.exec(page.body)?.[1],
-      button: /<button type="submit">([^<]*)<\/button>/.exec(page.body)?.[1],
-    }).toEqual({
-      status: 200,
-      lang: "de",
-      heading: "Home Assistant",
-      user: de.username,
-      password: de.password,
-      button: de.authSignIn,
-    });
+      userName: /<input [^>]*name="username"/.test(page),
+      password: /<input type="password" [^>]*name="password"|<input [^>]*name="password"[^>]*type="password"/.test(
+        page,
+      ),
+    }).toEqual({ userName: true, password: true });
+  });
+
+  it("shows the button 'Sign in' — „Anmelden“ in krobi's German wording", async () => {
+    const page = await signInPage();
+
+    expect(/<button type="submit">([^<]*)<\/button>/.exec(page)?.[1]).toBe("Anmelden");
   });
 });

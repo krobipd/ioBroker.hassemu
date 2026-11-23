@@ -1336,11 +1336,8 @@ export class WebServer {
     // v1.5.0: the `config: { mdns, auth }` block went too — it leaked the auth state
     // without authentication, which an attacker on the network could use for
     // reconnaissance (quickly mapping instances with auth disabled).
-    this.app.get("/health", PUBLIC_ROUTE, () => ({
-      status: "ok",
-      adapter: "hassemu",
-      version: HA_VERSION,
-    }));
+    // 2.0.0 (K18): it answers only "running" — no adapter name, no version.
+    this.app.get("/health", PUBLIC_ROUTE, () => "running");
 
     this.app.get("/manifest.json", PUBLIC_ROUTE, () => ({
       // `name` MUST be "Home Assistant" exactly — the HA Companion App

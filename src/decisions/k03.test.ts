@@ -1,16 +1,17 @@
 /**
- * Guard K3 — the port is configurable, the default stays 8123.
+ * Guard K3 — the port is configurable, the default stays 8123; for existing installations nothing changes.
  *
  * The page, K3: "The field is released, the default stays 8123. For existing installations nothing changes."
  * "hassemu already computes with the configured port everywhere internally, only the field is locked. Whoever already
- * runs something on 8123 on the same machine cannot use hassemu at all today." "The Home Assistant apps for Android
- * and iOS take the port from the address the server announces on the network or that one types in."
+ * runs something on 8123 on the same machine cannot use hassemu at all today." Until 1.46.1 the field was locked to
+ * 8123 (`disabled`, `min` = `max` = 8123), so every existing installation carries port 8123 in its settings.
  * Accepted by krobi with the page of hassemu's core decisions (version 30) on 2026-11-11 19:31 ("k3 and k4 absolutely
  * ok").
  *
- * Path: the adapter class from main.ts, started through the ready handler its constructor registers, over an adapter
- * whose object and state database lives in memory; the instance settings carry a free port found at runtime (never
- * 8123). The server it opens is asked over a real socket and by inject from a peer address; the mDNS announcement is
+ * Path: the settings page and the manifest read as data; the adapter class from main.ts, started through the ready
+ * handler its constructor registers, over an adapter whose object and state database lives in memory — once with a
+ * free port found at runtime in its settings, once as an existing installation with the settings 1.46.1 left (its
+ * instance object in the database, port 8123). Its server is asked over a real socket; the mDNS announcement is
  * recorded by a stand-in for bonjour-service, so nothing goes out on the network. The host carries one network
  * (192.168.77.0/24); the data folder is a map in memory, since a guard writes no file.
  */
@@ -238,6 +239,7 @@ import type { WebServer } from "../lib/webserver";
 /** The adapter instance with what the guard reads from its stub base. */
 interface Emu {
   namespace: string;
+  objects: Map<string, ioBroker.Object>;
   config: AdapterConfig;
   handlers: Map<string, (...args: unknown[]) => unknown>;
   states: Map<string, ioBroker.State>;
@@ -268,24 +270,33 @@ async function freePort(): Promise<number> {
   return port;
 }
 
+/** The instance settings 1.46.1 left in an installation (its io-package.json `native`, the port locked to 8123). */
+const SETTINGS_1_46_1 = {
+  port: 8123,
+  bind: "0.0.0.0",
+  authRequired: false,
+  username: "admin",
+  password: "",
+  mdnsEnabled: true,
+  serviceName: "ioBroker",
+  trustProxy: false,
+};
+const INSTANCE = "system.adapter.hassemu.0";
+
 /**
- * The adapter started through its ready handler, with these instance settings.
+ * The adapter started through its ready handler, with these instance settings, its instance object holding them.
  *
- * @param port the port of the instance settings
+ * @param settings the instance settings
  */
-async function startedOn(port: number): Promise<Emu> {
+async function startedWith(settings: Record<string, unknown>): Promise<Emu> {
   const emu = new HassEmu() as unknown as Emu;
-  emu.config = {
-    port,
-    bind: "0.0.0.0",
-    authRequired: false,
-    username: "admin",
-    password: "",
-    mdnsEnabled: true,
-    serviceName: "ioBroker",
-    trustProxy: false,
-    secure: false,
-  };
+  emu.objects.set(INSTANCE, {
+    _id: INSTANCE,
+    type: "instance",
+    common: { name: "hassemu" },
+    native: structuredClone(settings),
+  } as unknown as ioBroker.Object);
+  emu.config = structuredClone(settings) as unknown as AdapterConfig;
   started.push(emu);
   await emu.handlers.get("ready")?.();
   return emu;
@@ -316,44 +327,40 @@ function rootJson(name: string): Record<string, unknown> {
   return JSON.parse(readFileSync(join(process.cwd(), name), "utf8")) as Record<string, unknown>;
 }
 
-describe("K3: the port is configurable, the default stays 8123", () => {
-  it("keeps 8123 as the default of the instance settings and offers the port field unlocked", () => {
-    const native = rootJson("io-package.json").native as Record<string, unknown>;
+describe("K3: the port", () => {
+  it("is configurable: the settings offer the port field, unlocked and open to other ports, and hassemu listens on the port set there", async () => {
     const items = (rootJson(join("admin", "jsonConfig.json")) as { items: Record<string, Record<string, unknown>> })
       .items;
-    const field = items.port ?? {};
-    const locks = (["disabled", "readOnly", "hidden"] as const).filter(
-      key => field[key] !== undefined && field[key] !== false,
-    );
-
-    expect({ defaultPort: native.port }).toEqual({ defaultPort: 8123 });
-    expect({ type: field.type, locks }).toEqual({ type: "port", locks: [] });
-  });
-
-  it("listens on the port of the instance settings — not on 8123 — and announces that port", async () => {
+    const field = items.port;
     const port = await freePort();
-    const emu = await startedOn(port);
-    const server = emu.webServer;
+    if (port === 8123) {
+      throw new Error("the case needs a port other than the default");
+    }
+
+    const emu = await startedWith({ ...SETTINGS_1_46_1, port });
     const socket = await overSocket(port);
-    const answer = await server?.inject({ method: "GET", url: "/api/discovery_info", remoteAddress: "192.168.77.50" });
-    const info: { base_url?: unknown; internal_url?: unknown } = answer?.json() ?? {};
 
     expect({
-      running: emu.states.get(`${emu.namespace}.info.connection`)?.val,
-      errors: emu.errors,
-      terminations: emu.terminations,
-      notTheDefault: port !== 8123,
-    }).toEqual({ running: true, errors: [], terminations: [], notTheDefault: true });
-    expect({ bound: server?.boundAddress?.port, answersOnIt: typeof socket.status === "number" }).toEqual({
-      bound: port,
-      answersOnIt: true,
-    });
-    expect({ base: info.base_url, internal: info.internal_url }).toEqual({
-      base: `http://192.168.77.10:${port}`,
-      internal: `http://192.168.77.10:${port}`,
-    });
-    expect(announced.map(a => ({ port: a.port, base: a.txt.base_url }))).toEqual([
-      { port, base: `http://192.168.77.10:${port}` },
-    ]);
+      offered: field !== undefined,
+      locks: (["disabled", "readOnly", "hidden"] as const).filter(
+        key => field?.[key] !== undefined && field[key] !== false,
+      ),
+      onlyOnePort: field?.min !== undefined && field.min === field.max,
+      listensOn: emu.webServer?.boundAddress?.port,
+      answersThere: typeof socket.status === "number",
+    }).toEqual({ offered: true, locks: [], onlyOnePort: false, listensOn: port, answersThere: true });
+  });
+
+  it("the default stays 8123", () => {
+    expect((rootJson("io-package.json").native as Record<string, unknown>).port).toBe(8123);
+  });
+
+  it("for existing installations nothing changes: the settings of 1.46.1 keep port 8123, and hassemu listens on it", async () => {
+    const emu = await startedWith(SETTINGS_1_46_1);
+
+    expect({
+      settings: (emu.objects.get(INSTANCE)?.native as Record<string, unknown> | undefined)?.port,
+      listensOn: emu.webServer?.boundAddress?.port,
+    }).toEqual({ settings: 8123, listensOn: 8123 });
   });
 });

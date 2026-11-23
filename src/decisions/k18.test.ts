@@ -1,6 +1,6 @@
 /**
- * Guard K18 — a bare reachability test creates no display: HEAD without a cookie and /health leave the object tree
- * alone; a display comes into being only when a device fetches a page.
+ * Guard K18 — a probe that only asks "are you there?" and fetches no page creates no display; /health, the address for
+ * monitoring programs, only answers "running"; a display comes into being only when a device really fetches a page.
  *
  * The page, K18: "A test that only asks 'are you there?' and fetches no page creates no display. For monitoring
  * programs there is the own address /health as well, which answers only 'running'. A display comes into being only
@@ -9,9 +9,9 @@
  * ok").
  *
  * Path: the web server as main.ts starts it (plugins, peer guard, auth guard, routes, listener on a free port),
- * answered by inject from a peer address of its own network without a cookie — HEAD on the page and on the poll route,
- * GET on /health, then GET on the page — over an adapter whose object and state database lives in memory. The host
- * carries one network (192.168.77.0/24); the data folder is a map in memory, since a guard writes no file.
+ * answered by inject from a peer address of its own network without a cookie, over an adapter whose object and state
+ * database lives in memory. The host carries one network (192.168.77.0/24); the data folder is a map in memory, since
+ * a guard writes no file.
  */
 
 import type * as Os from "node:os";
@@ -78,6 +78,7 @@ interface Memory {
 }
 
 const NS = "hassemu.0";
+const PEER = "192.168.77.50";
 const DATA_DIR = "/guard/hassemu.0";
 const servers: WebServer[] = [];
 
@@ -216,17 +217,6 @@ function ask(server: WebServer, peer: string, method: "GET" | "HEAD", url: strin
 }
 
 /**
- * Whether an answer sets the display cookie.
- *
- * @param answer the answer
- */
-function setsCookie(answer: Answer): boolean {
-  const raw = answer.headers["set-cookie"];
-  const text = Array.isArray(raw) ? raw.join(", ") : typeof raw === "string" ? raw : "";
-  return /hassemu_client=/.test(text);
-}
-
-/**
  * The number of devices under clients.
  *
  * @param mem the adapter
@@ -235,39 +225,39 @@ function displayCount(mem: Memory): number {
   return [...mem.objects].filter(([id, obj]) => id.startsWith(`${NS}.clients.`) && obj.type === "device").length;
 }
 
-describe("K18: a bare reachability test creates no display; a fetched page does", () => {
-  it("answers HEAD without a cookie and /health without creating a display, and creates one for GET /", async () => {
+describe("K18: a probe creates no display, a fetched page does", () => {
+  it("a probe that only asks 'are you there?' and fetches no page creates no display", async () => {
     const mem = memory();
     const server = await started(mem);
-    const peer = "192.168.77.50";
 
-    const headPage = await ask(server, peer, "HEAD", "/");
-    const headPoll = await ask(server, peer, "HEAD", "/api/redirect_check");
-    const health = await ask(server, peer, "GET", "/health");
-    await new Promise(resolve => setTimeout(resolve, 0));
-    const afterTests = displayCount(mem);
-    const page = await ask(server, peer, "GET", "/");
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await ask(server, PEER, "HEAD", "/");
+    await settled();
 
-    expect({
-      headPage: { status: headPage.statusCode, cookie: setsCookie(headPage) },
-      headPoll: { status: headPoll.statusCode, cookie: setsCookie(headPoll) },
-      health: {
-        status: health.statusCode,
-        cookie: setsCookie(health),
-        running: (JSON.parse(health.body) as { status?: unknown }).status,
-      },
-      afterTests,
-    }).toEqual({
-      headPage: { status: 200, cookie: false },
-      headPoll: { status: 200, cookie: false },
-      health: { status: 200, cookie: false, running: "ok" },
-      afterTests: 0,
-    });
-    expect({ page: page.statusCode, cookie: setsCookie(page), displays: displayCount(mem) }).toEqual({
-      page: 200,
-      cookie: true,
-      displays: 1,
-    });
+    expect(displayCount(mem)).toBe(0);
+  });
+
+  it("/health, the address for monitoring programs, creates no display and only answers 'running'", async () => {
+    const mem = memory();
+    const server = await started(mem);
+
+    const health = await ask(server, PEER, "GET", "/health");
+    await settled();
+
+    expect({ displays: displayCount(mem), answer: health.body }).toEqual({ displays: 0, answer: "running" });
+  });
+
+  it("a display comes into being when a device really fetches a page", async () => {
+    const mem = memory();
+    const server = await started(mem);
+
+    await ask(server, PEER, "GET", "/");
+    await settled();
+
+    expect(displayCount(mem)).toBe(1);
   });
 });
+
+/** One turn of the event loop, so a write the request started has landed. */
+function settled(): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, 0));
+}

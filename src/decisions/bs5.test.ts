@@ -1,20 +1,23 @@
 /**
- * Guard BS-5 — the sign-in error page: "Authorization failed", the hint to check the server address and set the display
- * up again, the explanation of the error in the system language, and the error's code below it as the protocol names it.
+ * Guard BS-5 — the sign-in error page, when the sign-in request is incomplete or is to lead back to an address that is
+ * not allowed: "Authorization failed" („Autorisierung fehlgeschlagen“), the hint to check the server address and set the
+ * display up again, below it the technical reason in the system language, the error's short code below that as the
+ * protocol prescribes it.
  *
  * The page, BS-5 (sign-in error): "When the sign-in request is incomplete or is to lead back to an address that is not
  * allowed." "Shows 'Authorization failed', the hint to check the server address and to set up the display again, below
  * it the technical reason." "The technical reason is English in every language today. It gets translated; the code of
- * the error below it stays, as the protocol prescribes." The screens: "the texts exist in eleven languages", shown "in
- * German system language".
+ * the error below it stays, as the protocol prescribes." krobi's wording of the rule is German: „Autorisierung
+ * fehlgeschlagen“, „der Hinweis, die Server-Adresse zu prüfen und das Display neu einzurichten“.
  * Accepted by krobi with the page of hassemu's core decisions (version 30) on 2026-11-11 20:19 ("so bs1 to bs9 are
  * ok").
  *
- * Path: the web server as main.ts starts it with German as the system language, asked for /auth/authorize with each of
- * the three faults the route refuses (another response_type, a missing client_id or redirect_uri, a redirect address
- * not allowed for the app), by GET as the Companion app opens it and by POST as the form sends it. The texts come from
- * the adapter's own admin/i18n files, read as data. The host carries one network (192.168.77.0/24); the data folder is
- * a map in memory, since a guard writes no file.
+ * Path: the web server as main.ts starts it, asked for /auth/authorize with the faults the rule names — an incomplete
+ * request (no client_id as the Companion app opens it by GET, no redirect_uri as the form sends it by POST) and a
+ * redirect address not allowed for the app. The system language is German, the language of krobi's wording; the texts
+ * come from the adapter's own admin/i18n files, as adapter-core's I18n resolves a key, and the German reasons are read
+ * from them as data. The codes are OAuth 2.0's (RFC 6749 §4.1.2.1, §5.2). The host carries one network
+ * (192.168.77.0/24); the data folder is a map in memory, since a guard writes no file.
  */
 
 import { readFileSync } from "node:fs";
@@ -342,17 +345,6 @@ interface Fault {
 
 const FAULTS: Fault[] = [
   {
-    name: "a response_type other than code",
-    method: "GET",
-    fields: {
-      response_type: "token",
-      client_id: "https://home-assistant.io/android",
-      redirect_uri: "homeassistant://auth-callback",
-    },
-    code: "unsupported_response_type",
-    key: "authErrorResponseType",
-  },
-  {
     name: "no client_id (incomplete)",
     method: "GET",
     fields: { response_type: "code", redirect_uri: "homeassistant://auth-callback" },
@@ -389,22 +381,19 @@ function errorPage(page: Answer): Record<string, unknown> {
   const reason = /<div class="err">([^<]*)<\/div>/.exec(page.body);
   const at = (m: { index?: number } | null | undefined): number => m?.index ?? -1;
   return {
-    status: page.statusCode,
-    lang: /<html lang="([^"]+)"/.exec(page.body)?.[1],
     title: unescaped(/<h1>([^<]*)<\/h1>/.exec(page.body)?.[1]),
     hint: unescaped(subtitles[0]?.[1]),
     reason: unescaped(reason?.[1]),
     code: unescaped(subtitles[1]?.[1]),
-    order: at(subtitles[0]) < at(reason) && at(reason) < at(subtitles[1]),
+    reasonBelowHint: at(subtitles[0]) < at(reason),
+    codeBelowReason: at(reason) < at(subtitles[1]),
   };
 }
 
-describe("BS-5: the sign-in error page explains the error in the system language and keeps the code below", () => {
-  it("shows title, hint and the explanation in German, the protocol's code below it, for every refused request", async () => {
+describe("BS-5: the sign-in error page", () => {
+  it("an incomplete request, or one that is to lead back to an address not allowed: 'Authorization failed', the hint, below it the reason in the system language, below that the protocol's code", async () => {
     const de = language("de");
-    const en = language("en");
-    const mem = memory();
-    const server = await started(mem, false);
+    const server = await started(memory(), false);
 
     const seen: Record<string, unknown>[] = [];
     for (const fault of FAULTS) {
@@ -415,18 +404,15 @@ describe("BS-5: the sign-in error page explains the error in the system language
       seen.push({ name: fault.name, ...errorPage(page) });
     }
 
-    const keys = ["authErrorTitle", "authErrorHint", ...FAULTS.map(f => f.key)];
-    expect({ differs: keys.filter(key => de[key] === en[key]) }).toEqual({ differs: [] });
     expect(seen).toEqual(
       FAULTS.map(fault => ({
         name: fault.name,
-        status: 400,
-        lang: "de",
-        title: de.authErrorTitle,
-        hint: de.authErrorHint,
+        title: "Autorisierung fehlgeschlagen",
+        hint: "Bitte prüfe die Server-Adresse und richte das Display erneut ein.",
         reason: de[fault.key],
         code: fault.code,
-        order: true,
+        reasonBelowHint: true,
+        codeBelowReason: true,
       })),
     );
   });

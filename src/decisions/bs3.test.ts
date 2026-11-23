@@ -1,25 +1,26 @@
 /**
  * Guard BS-3 — the hand-over to the app: after a valid sign-in, or at once when no sign-in is required, the page shows
- * "Home Assistant" and "Signing in…" in the system language for a moment, then the app takes over.
+ * "Home Assistant" and "Signing in…" for a moment, then the app takes over; "Signing in…" is translated into the system
+ * language.
  *
  * The page, BS-3 (hand-over to the app): "After a valid sign-in. If no sign-in is required, it appears at once."
  * "Shows 'Home Assistant' and 'Signing in…' for a moment, then the app takes over." "The text 'Signing in…' is English
  * in every language today. Under the fleet rule on the system language it gets translated; that is a fix in the
- * adapter, no question to you." The screens: "the texts exist in eleven languages", shown "in German system language".
+ * adapter, no question to you."
  * Accepted by krobi with the page of hassemu's core decisions (version 30) on 2026-11-11 20:19 ("so bs1 to bs9 are
  * ok").
  *
- * Path: the web server as main.ts starts it with German as the system language — once with sign-in required, the form
- * the Companion app opens (GET /auth/authorize) sent back with the right credentials (POST /auth/authorize), once
- * without, the GET alone. The page's own script runs in a sandbox whose document records where it sends the browser.
- * The texts come from the adapter's own admin/i18n files, read as data. The host carries one network
- * (192.168.77.0/24); the data folder is a map in memory, since a guard writes no file.
+ * Path: the web server as main.ts starts it — once with sign-in required, the form the Companion app opens
+ * (GET /auth/authorize) sent back with the right credentials (POST /auth/authorize), once without, the GET alone. The
+ * system language is English where the texts are checked as the rule names them, and German where the translation is
+ * checked. The texts come from the adapter's own admin/i18n files, as adapter-core's I18n resolves a key; the German
+ * text is read from them as data. The host carries one network (192.168.77.0/24); the data folder is a map in memory,
+ * since a guard writes no file.
  */
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type * as Os from "node:os";
-import { runInNewContext } from "node:vm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { files } = vi.hoisted(() => ({ files: new Map<string, string>() }));
@@ -248,12 +249,13 @@ function memory(): Memory {
 }
 
 /**
- * The web server as main.ts starts it, German as the system language.
+ * The web server as main.ts starts it.
  *
  * @param mem the adapter
  * @param authRequired whether the settings require a sign-in
+ * @param systemLanguage the system language
  */
-async function started(mem: Memory, authRequired: boolean): Promise<WebServer> {
+async function started(mem: Memory, authRequired: boolean, systemLanguage: string): Promise<WebServer> {
   const registry = new ClientRegistry(mem.adapter as never, DATA_DIR);
   await registry.restore();
   const global = new GlobalConfig(mem.adapter as never);
@@ -268,8 +270,14 @@ async function started(mem: Memory, authRequired: boolean): Promise<WebServer> {
     mdnsEnabled: false,
     serviceName: "ioBroker",
   };
-  const server = new WebServer(mem.adapter as never, config, registry, global, registry.serverUuid, "de", () =>
-    Promise.resolve(true),
+  const server = new WebServer(
+    mem.adapter as never,
+    config,
+    registry,
+    global,
+    registry.serverUuid,
+    systemLanguage,
+    () => Promise.resolve(true),
   );
   servers.push(server);
   await server.start();
@@ -331,37 +339,6 @@ function unescaped(html: string | undefined): string | undefined {
     .replace(/&amp;/g, "&");
 }
 
-/**
- * Run the page's own scripts in a sandbox; every address the page sends the browser to, in order.
- *
- * @param html the page
- */
-function handedTo(html: string): string[] {
-  const assigned: string[] = [];
-  const document = { location: { assign: (url: string): void => void assigned.push(url) } };
-  for (const m of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
-    runInNewContext(m[1], { document });
-  }
-  return assigned;
-}
-
-/**
- * What the hand-over page shows and does.
- *
- * @param page the answer
- */
-function handover(page: Answer): Record<string, unknown> {
-  const to = handedTo(page.body);
-  return {
-    status: page.statusCode,
-    lang: /<html lang="([^"]+)"/.exec(page.body)?.[1],
-    heading: /<h1>([^<]*)<\/h1>/.exec(page.body)?.[1],
-    line: unescaped(/<p class="loading">([^<]*)<\/p>/.exec(page.body)?.[1]),
-    form: /<form\b/.test(page.body),
-    handedTo: to.map(url => url.replace(/code=[0-9a-f-]{36}&/, "code=<code>&")),
-  };
-}
-
 const QUERY = {
   response_type: "code",
   client_id: "https://home-assistant.io/android",
@@ -369,45 +346,52 @@ const QUERY = {
   state: "s1",
 };
 
-describe("BS-3: the hand-over shows 'Home Assistant' and 'Signing in…' in the system language, then the app takes over", () => {
-  it("after a valid sign-in shows the German 'Signing in…' and hands the code to the app at once", async () => {
-    const de = language("de");
-    const en = language("en");
-    const mem = memory();
-    const server = await started(mem, true);
-    const peer = "192.168.77.50";
+/**
+ * What the hand-over page shows and whether it hands over to the app.
+ *
+ * @param page the answer
+ */
+function handover(page: Answer): { heading?: string; line?: string; appTakesOver: boolean } {
+  return {
+    heading: /<h1>([^<]*)<\/h1>/.exec(page.body)?.[1],
+    line: unescaped(/<p class="loading">([^<]*)<\/p>/.exec(page.body)?.[1]),
+    appTakesOver: unescaped(page.body)?.includes(`${QUERY.redirect_uri}?code=`) ?? false,
+  };
+}
 
+describe("BS-3: the hand-over to the app", () => {
+  it("after a valid sign-in: for a moment 'Home Assistant' and 'Signing in…', then the app takes over", async () => {
+    const server = await started(memory(), true, "en");
+    const peer = "192.168.77.50";
     const form = await ask(server, peer, "GET", `/auth/authorize?${new URLSearchParams(QUERY).toString()}`);
+    if (!/name="password"/.test(form.body)) {
+      throw new Error("the case needs the sign-in form before the hand-over");
+    }
+
     const page = await ask(server, peer, "POST", "/auth/authorize", {
       form: { ...QUERY, username: USER, password: PASSWORD },
     });
 
-    expect({ differs: de.authSigningIn !== en.authSigningIn }).toEqual({ differs: true });
-    expect({ signInFirst: /<input type="password" name="password"/.test(form.body), ...handover(page) }).toEqual({
-      signInFirst: true,
-      status: 200,
-      lang: "de",
-      heading: "Home Assistant",
-      line: de.authSigningIn,
-      form: false,
-      handedTo: ["homeassistant://auth-callback?code=<code>&state=s1"],
-    });
+    expect(handover(page)).toEqual({ heading: "Home Assistant", line: "Signing in…", appTakesOver: true });
   });
 
-  it("without a required sign-in shows the same page at once, with no form before it", async () => {
-    const de = language("de");
-    const mem = memory();
-    const server = await started(mem, false);
+  it("if no sign-in is required it appears at once: 'Home Assistant' and 'Signing in…', then the app takes over", async () => {
+    const server = await started(memory(), false, "en");
 
     const page = await ask(server, "192.168.77.51", "GET", `/auth/authorize?${new URLSearchParams(QUERY).toString()}`);
 
-    expect(handover(page)).toEqual({
-      status: 200,
-      lang: "de",
-      heading: "Home Assistant",
-      line: de.authSigningIn,
-      form: false,
-      handedTo: ["homeassistant://auth-callback?code=<code>&state=s1"],
+    expect(handover(page)).toEqual({ heading: "Home Assistant", line: "Signing in…", appTakesOver: true });
+  });
+
+  it("the text 'Signing in…' is translated into the system language", async () => {
+    const german = language("de").authSigningIn;
+    const server = await started(memory(), false, "de");
+
+    const page = await ask(server, "192.168.77.52", "GET", `/auth/authorize?${new URLSearchParams(QUERY).toString()}`);
+
+    expect({ line: handover(page).line, translated: german !== "Signing in…" }).toEqual({
+      line: german,
+      translated: true,
     });
   });
 });

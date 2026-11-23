@@ -257,7 +257,7 @@ deckelt den Schaden — sie macht die Einstellung nicht sicher.
 | 5353 / UDP | eingehend | mDNS, damit Displays den Server von allein finden                        |
 
 Für Uptime-Monitore und Container-Healthchecks `http://<IP-deines-ioBroker>:8123/health`
-nehmen (mit HTTPS `https://`, mit anderem Port dieser Port). Diese Adresse antwortet, ohne etwas anzulegen. Ein `GET /` ist das, was ein Display
+nehmen (mit HTTPS `https://`, mit anderem Port dieser Port). Diese Adresse antwortet nur `running` und legt nichts an. Ein `GET /` ist das, was ein Display
 bei seinem ersten Besuch schickt — ein Monitor dort erschiene als neues Display; ein `HEAD /`
 legt nichts an.
 

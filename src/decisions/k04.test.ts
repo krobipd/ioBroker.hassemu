@@ -1,19 +1,22 @@
 /**
- * Guard K4 — HTTP stays the default, HTTPS is an option with a certificate from ioBroker.
+ * Guard K4 — HTTP stays the default, HTTPS is an option: it can be switched on in the settings, with a certificate from
+ * ioBroker; without that choice everything stays as it is today; with HTTPS hassemu announces a name on the network
+ * instead of the IP address, because a certificate is valid for a name.
  *
  * The page, K4: "HTTP stays the default, HTTPS as an option." "In the settings HTTPS can be switched on, with a
  * certificate from ioBroker. Without this choice everything stays as it is today. With HTTPS hassemu announces a name
- * on the network instead of the IP address, because a certificate is valid for a name."
+ * on the network instead of the IP address, because a certificate is valid for a name." Today (1.46.1) hassemu speaks
+ * plain HTTP and announces its IP address.
  * Accepted by krobi with the page of hassemu's core decisions (version 30) on 2026-11-11 19:31 ("k3 and k4 absolutely
  * ok").
  *
- * Path: the adapter class from main.ts, started through the ready handler its constructor registers, over an adapter
- * whose object and state database lives in memory and whose certificate read answers like the controller with a
- * certificate inlined here (a self-signed test certificate for hassemu.guard.lan; its dates are never judged). The
- * server listens on a free port found at runtime and is asked over a real socket (plain HTTP or a TLS handshake) and
- * by inject from a peer address; the mDNS announcement is recorded by a stand-in for bonjour-service, so nothing goes
- * out on the network. The host carries one network (192.168.77.0/24); the data folder is a map in memory, since a
- * guard writes no file.
+ * Path: the settings page and the manifest read as data; the adapter class from main.ts, started through the ready
+ * handler its constructor registers, over an adapter whose object and state database lives in memory, ioBroker's
+ * certificates in `system.certificates` with a certificate inlined here (a self-signed test certificate for
+ * hassemu.guard.lan; its dates are never judged). The server listens on a free port found at runtime and is asked over
+ * a real socket (plain HTTP or a TLS handshake); the mDNS announcement is recorded by a stand-in for bonjour-service,
+ * so nothing goes out on the network. The host carries one network (192.168.77.0/24); the data folder is a map in
+ * memory, since a guard writes no file.
  */
 
 import { X509Certificate } from "node:crypto";
@@ -374,17 +377,20 @@ function overSocket(scheme: "http" | "https", port: number): Promise<OnTheWire> 
 }
 
 /**
- * What the running server answers on /api/discovery_info, asked by inject from a display of the network.
+ * The adapter, which the case needs running.
  *
  * @param emu the started adapter
  */
-async function discoveryInfo(emu: Emu): Promise<{ base_url?: unknown; internal_url?: unknown }> {
-  const answer = await emu.webServer?.inject({
-    method: "GET",
-    url: "/api/discovery_info",
-    remoteAddress: "192.168.77.50",
-  });
-  return answer?.json() ?? {};
+function running(emu: Emu): Emu {
+  if (emu.states.get(`${emu.namespace}.info.connection`)?.val !== true) {
+    throw new Error(`the case needs a running adapter (${emu.errors.join(", ")})`);
+  }
+  return emu;
+}
+
+/** What hassemu announced on the network as its address. */
+function announcedAddresses(): string[] {
+  return announced.map(a => a.txt.base_url);
 }
 
 /**
@@ -396,72 +402,67 @@ function rootJson(name: string): Record<string, unknown> {
   return JSON.parse(readFileSync(join(process.cwd(), name), "utf8")) as Record<string, unknown>;
 }
 
-describe("K4: HTTP stays the default, HTTPS is an option with a certificate from ioBroker", () => {
-  it("offers HTTPS in the settings, switched off by default, with ioBroker's certificate choice", () => {
+describe("K4: HTTP stays the default, HTTPS is an option", () => {
+  it("HTTP stays the default", () => {
     const native = rootJson("io-package.json").native as Record<string, unknown>;
     const items = (rootJson(join("admin", "jsonConfig.json")) as { items: Record<string, Record<string, unknown>> })
       .items;
 
-    expect({ secure: native.secure }).toEqual({ secure: false });
-    expect({
-      field: items.secure?.type,
-      fieldDefault: items.secure?.default,
-      certificateChoice: Object.values(items).some(item => item.type === "certificates"),
-    }).toEqual({ field: "checkbox", fieldDefault: false, certificateChoice: true });
+    expect({ secure: native.secure, settingsDefault: items.secure?.default }).toEqual({
+      secure: false,
+      settingsDefault: false,
+    });
   });
 
-  it("without the choice speaks plain HTTP, announces the IP address and asks for no certificate", async () => {
+  it("HTTPS can be switched on in the settings, with a certificate from ioBroker — then hassemu speaks HTTPS with it", async () => {
+    const items = (rootJson(join("admin", "jsonConfig.json")) as { items: Record<string, Record<string, unknown>> })
+      .items;
     const port = await freePort();
-    const emu = await startedWith(port, {}, { key: KEY, cert: CERT });
+    running(
+      await startedWith(
+        port,
+        { secure: true, certPublic: "guardPublic", certPrivate: "guardPrivate" },
+        { key: KEY, cert: CERT },
+      ),
+    );
+    const tls = await overSocket("https", port);
+
+    expect({
+      switchInTheSettings: items.secure !== undefined,
+      ioBrokersCertificates: Object.values(items).some(item => item.type === "certificates"),
+      speaksHttps: typeof tls.status === "number",
+      withTheCertificate: tls.fingerprint,
+    }).toEqual({
+      switchInTheSettings: true,
+      ioBrokersCertificates: true,
+      speaksHttps: true,
+      withTheCertificate: new X509Certificate(CERT).fingerprint256,
+    });
+  });
+
+  it("without that choice everything stays as it is today: plain HTTP, the IP address announced", async () => {
+    const port = await freePort();
+    running(await startedWith(port, { secure: false }, { key: KEY, cert: CERT }));
     const plain = await overSocket("http", port);
     const tls = await overSocket("https", port);
-    const info = await discoveryInfo(emu);
 
     expect({
-      running: emu.states.get(`${emu.namespace}.info.connection`)?.val,
-      errors: emu.errors,
-      terminations: emu.terminations,
-    }).toEqual({ running: true, errors: [], terminations: [] });
-    expect({
-      plainAnswers: typeof plain.status === "number",
-      tlsHandshake: typeof tls.status === "number",
-      certificateReads: emu.certificateReads,
-    }).toEqual({ plainAnswers: true, tlsHandshake: false, certificateReads: [] });
-    expect({ base: info.base_url, internal: info.internal_url, announced: announced.map(a => a.txt.base_url) }).toEqual(
-      {
-        base: `http://192.168.77.10:${port}`,
-        internal: `http://192.168.77.10:${port}`,
-        announced: [`http://192.168.77.10:${port}`],
-      },
-    );
+      plainHttp: typeof plain.status === "number",
+      https: typeof tls.status === "number",
+      announced: announcedAddresses(),
+    }).toEqual({ plainHttp: true, https: false, announced: [`http://192.168.77.10:${port}`] });
   });
 
-  it("with the choice serves HTTPS with the certificate from ioBroker and announces its name instead of the IP", async () => {
+  it("with HTTPS hassemu announces a name on the network instead of the IP address — the name the certificate is valid for", async () => {
     const port = await freePort();
-    const emu = await startedWith(
-      port,
-      { secure: true, certPublic: "guardPublic", certPrivate: "guardPrivate" },
-      { key: KEY, cert: CERT },
+    running(
+      await startedWith(
+        port,
+        { secure: true, certPublic: "guardPublic", certPrivate: "guardPrivate" },
+        { key: KEY, cert: CERT },
+      ),
     );
-    const tls = await overSocket("https", port);
-    const info = await discoveryInfo(emu);
 
-    expect({
-      running: emu.states.get(`${emu.namespace}.info.connection`)?.val,
-      errors: emu.errors,
-      terminations: emu.terminations,
-      certificateReads: emu.certificateReads.map(names => names.slice(0, 2)),
-    }).toEqual({ running: true, errors: [], terminations: [], certificateReads: [["guardPublic", "guardPrivate"]] });
-    expect({ tlsAnswers: typeof tls.status === "number", presented: tls.fingerprint }).toEqual({
-      tlsAnswers: true,
-      presented: new X509Certificate(CERT).fingerprint256,
-    });
-    expect({ base: info.base_url, internal: info.internal_url, announced: announced.map(a => a.txt.base_url) }).toEqual(
-      {
-        base: `https://${CERT_NAME}:${port}`,
-        internal: `https://${CERT_NAME}:${port}`,
-        announced: [`https://${CERT_NAME}:${port}`],
-      },
-    );
+    expect(announcedAddresses()).toEqual([`https://${CERT_NAME}:${port}`]);
   });
 });

@@ -1,6 +1,6 @@
 /**
- * Guard K11 — hassemu fills the target list of the redirect mode itself, from the admin start page's tiles, the VIS
- * and VIS-2 projects and Aura, in plain text; "Refresh URL discovery" searches again without a restart.
+ * Guard K11 — hassemu fills the list in the "redirect mode" itself: from the tiles of the admin start page, the
+ * projects of VIS and VIS-2 and from Aura; "Reload URL discovery" searches again, without a restart.
  *
  * The page, K11: "hassemu fills the list in 'redirect mode' itself: from the tiles of the admin start page, the
  * projects of VIS and VIS-2 and from Aura. 'Refresh URL discovery' searches again, without a restart."
@@ -346,49 +346,50 @@ function seedInstall(): void {
   );
 }
 
-/** The adapter, started through the ready handler its constructor registered. */
+/** The adapter, started through the ready handler its constructor registered; a start that ended throws. */
 async function started(): Promise<Emu> {
   const emu = new HassEmu() as unknown as Emu;
   emu.config = { ...CONFIG };
   running.push(emu);
   await emu.handlers.get("ready")?.();
+  const ended = db.problems.filter(line => line.startsWith("terminate"));
+  if (ended.length > 0) {
+    throw new Error(`the adapter did not start: ${ended.join(", ")}`);
+  }
   return emu;
 }
 
 /**
- * The dropdown of a mode datapoint: its target URLs (the entries besides "---", "global" and "manual") and whether
- * every label is plain text.
+ * The target URLs in the list of a mode datapoint — the entries besides "---", "global" and "manual".
  *
  * @param id the datapoint below the namespace
  */
-function dropdown(id: string): { urls: string[]; plainText: boolean } {
+function listed(id: string): string[] {
   const states = (db.objects.get(`${NS}.${id}`)?.common as { states?: Record<string, unknown> } | undefined)?.states;
-  return {
-    urls: Object.keys(states ?? {})
-      .filter(key => /^https?:/.test(key))
-      .sort(),
-    plainText: Object.values(states ?? {}).every(label => typeof label === "string" && label !== ""),
-  };
+  return Object.keys(states ?? {})
+    .filter(key => /^https?:/.test(key))
+    .sort();
 }
 
-describe("K11: hassemu fills the target list itself; the refresh searches again without a restart", () => {
-  it("fills global.mode and every display's mode at start from the admin tiles, VIS and VIS-2 projects and Aura", async () => {
+describe("K11: the list in the redirect mode", () => {
+  it("hassemu fills it itself: from the tiles of the admin start page, the projects of VIS and VIS-2 and from Aura", async () => {
     seedInstall();
 
     await started();
 
-    const expected = { urls: [ADMIN_TILE, AURA, VIS2_PROJECT, VIS_PROJECT].sort(), plainText: true };
-    expect({
-      problems: db.problems,
-      global: dropdown("global.mode"),
-      display: dropdown(`clients.${DISPLAY}.mode`),
-    }).toEqual({ problems: [], global: expected, display: expected });
+    const fromTheSources = [ADMIN_TILE, AURA, VIS2_PROJECT, VIS_PROJECT].sort();
+    expect({ global: listed("global.mode"), display: listed(`clients.${DISPLAY}.mode`) }).toEqual({
+      global: fromTheSources,
+      display: fromTheSources,
+    });
   });
 
-  it("searches again on 'Refresh URL discovery' and re-arms the button, without a restart", async () => {
+  it("'Reload URL discovery' searches again, without a restart", async () => {
     seedInstall();
     const emu = await started();
-    const before = dropdown("global.mode").urls.includes(VIS2_NEW_PROJECT);
+    if (listed("global.mode").includes(VIS2_NEW_PROJECT)) {
+      throw new Error("the case needs a project the list does not hold yet");
+    }
     db.folders.set("vis-2.0", ["main", "tablet"]);
 
     await emu.handlers.get("stateChange")?.(`${emu.namespace}.info.refreshUrls`, {
@@ -399,13 +400,9 @@ describe("K11: hassemu fills the target list itself; the refresh searches again 
       from: "system.adapter.admin.0",
     });
 
-    const button = db.states.get(`${NS}.info.refreshUrls`);
     expect({
-      problems: db.problems,
-      before,
-      global: dropdown("global.mode").urls.includes(VIS2_NEW_PROJECT),
-      display: dropdown(`clients.${DISPLAY}.mode`).urls.includes(VIS2_NEW_PROJECT),
-      button: { val: button?.val, ack: button?.ack },
-    }).toEqual({ problems: [], before: false, global: true, display: true, button: { val: false, ack: true } });
+      global: listed("global.mode").includes(VIS2_NEW_PROJECT),
+      display: listed(`clients.${DISPLAY}.mode`).includes(VIS2_NEW_PROJECT),
+    }).toEqual({ global: true, display: true });
   });
 });

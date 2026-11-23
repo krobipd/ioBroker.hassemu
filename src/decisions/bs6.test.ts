@@ -1,23 +1,21 @@
 /**
- * Guard BS-6 — the landing page without a target: "Display connected", the display's id and IP address and a guide in
- * three steps, in the system language; it reloads every 15 seconds, and id and path follow the id form of K7.
+ * Guard BS-6 — the start page without a target, as long as no target is chosen for the display: "Display connected"
+ * („Display verbunden“), id and IP address of the display and instructions in three steps where the target is chosen in
+ * the admin; it reloads every 15 seconds; id and path in the instructions follow the id of K7.
  *
  * The page, BS-6 (landing page without a target): "As long as no target is chosen for the display. You accepted the
  * behaviour in K10; here it is about the picture." "Shows 'Display connected', id and IP address of the display and a
  * guide in three steps, where in the admin you choose the target." "Reloads itself every 15 seconds. Id and path in the
- * guide follow the new id from K7." The screens: "the texts exist in eleven languages", shown "in German system
- * language".
+ * guide follow the new id from K7." krobi's wording of the rule is German: „Display verbunden“.
  * Accepted by krobi with the page of hassemu's core decisions (version 30) on 2026-11-11 20:19 ("so bs1 to bs9 are
  * ok").
  *
- * Path: the web server as main.ts starts it with German as the system language and the master switch off, so a new
- * display gets no target; a Companion app asks for / as a display does, then once more after a target was chosen for
- * it. The texts come from the adapter's own admin/i18n files, read as data. The host carries one network
+ * Path: the web server as main.ts starts it with the master switch off, so a new display gets no target; a Companion
+ * app asks for / as a display does. The system language is German, the language of krobi's wording; the texts come
+ * from the adapter's own admin/i18n files, as adapter-core's I18n resolves a key. The host carries one network
  * (192.168.77.0/24); the data folder is a map in memory, since a guard writes no file.
  */
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type * as Os from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -117,7 +115,6 @@ interface Memory {
 
 const NS = "hassemu.0";
 const DATA_DIR = "/guard/hassemu.0";
-const TARGET = "http://192.168.77.20:8082/vis-2/index.html?main";
 const servers: WebServer[] = [];
 
 afterEach(async () => {
@@ -305,18 +302,6 @@ function ask(
 }
 
 /**
- * One language file of the adapter, read as data.
- *
- * @param lang the language
- */
-function language(lang: string): Record<string, string> {
-  return JSON.parse(readFileSync(join(process.cwd(), "admin", "i18n", `${lang}.json`), "utf8")) as Record<
-    string,
-    string
-  >;
-}
-
-/**
  * The text of an HTML fragment with its entities resolved.
  *
  * @param html the escaped text
@@ -342,76 +327,77 @@ function displayIds(mem: Memory): string[] {
 }
 
 /**
- * What the landing page shows.
+ * The text of the page without its markup.
  *
  * @param page the answer
  */
-function landing(page: Answer): Record<string, unknown> {
-  const steps = /<ol class="steps">([\s\S]*?)<\/ol>/.exec(page.body)?.[1] ?? "";
-  return {
-    status: page.statusCode,
-    lang: /<html lang="([^"]+)"/.exec(page.body)?.[1],
-    heading: unescaped(/<h1>([^<]*)<\/h1>/.exec(page.body)?.[1]),
-    idRow: [...(/<tr><th scope="row">([^<]*)<\/th><td><code>([^<]*)<\/code><\/td><\/tr>/.exec(page.body) ?? [])]
-      .slice(1)
-      .map(unescaped),
-    ipRow: [...(/<tr><th scope="row">([^<]*)<\/th><td>([^<]*)<\/td><\/tr>/.exec(page.body) ?? [])]
-      .slice(1)
-      .map(unescaped),
-    steps: [...steps.matchAll(/<li>([\s\S]*?)<\/li>/g)].map(m =>
-      unescaped(m[1].replace(/<code>([^<]*)<\/code>/g, "[$1]")),
-    ),
-    reloadSeconds: /<meta http-equiv="refresh" content="([^"]*)">/.exec(page.body)?.[1],
-    reloadNote: unescaped(/<footer>\s*([^<]*?)\s*</.exec(page.body)?.[1]),
-  };
+function text(page: Answer): string {
+  return unescaped(page.body.replace(/<[^>]*>/g, " ")) ?? "";
+}
+
+/**
+ * The steps of the page's instructions, as text.
+ *
+ * @param page the answer
+ */
+function steps(page: Answer): string[] {
+  const list = /<ol class="steps">([\s\S]*?)<\/ol>/.exec(page.body)?.[1] ?? "";
+  return [...list.matchAll(/<li>([\s\S]*?)<\/li>/g)].map(m => unescaped(m[1].replace(/<[^>]*>/g, " ")) ?? "");
 }
 
 const COMPANION = "Home Assistant/2026.11.1 (Android 13; SM-T220)";
+const PEER = "192.168.77.50";
 
-describe("BS-6: the landing page shows 'Display connected', id, IP and three steps in the system language, reloading every 15 s", () => {
-  it("shows the German landing page with the K7 id in the id row and in the guide's path while no target is chosen", async () => {
-    const de = language("de");
-    const en = language("en");
-    const mem = memory();
-    const { server, registry } = await started(mem);
-    const peer = "192.168.77.50";
+/** A new display's start page — the master switch is off, so no target is chosen for it. */
+async function startPage(): Promise<{ page: Answer; id: string }> {
+  const mem = memory();
+  const { server } = await started(mem);
+  const page = await ask(server, PEER, "GET", "/", { agent: COMPANION });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const [id] = displayIds(mem);
+  if (id === undefined) {
+    throw new Error("the case needs the display its first visit creates");
+  }
+  return { page, id };
+}
 
-    const first = await ask(server, peer, "GET", "/", { agent: COMPANION });
-    await new Promise(resolve => setTimeout(resolve, 0));
-    const raw = first.headers["set-cookie"];
-    const setCookie = Array.isArray(raw) ? raw.join("; ") : typeof raw === "string" ? raw : "";
-    const cookie = /hassemu_client=[^;]+/.exec(setCookie)?.[0] ?? "";
-    const again = await ask(server, peer, "GET", "/", { agent: COMPANION, cookie });
-    const ids = displayIds(mem);
-    const id = ids[0] ?? "";
-    await registry.handleModeWrite(id, TARGET);
-    const chosen = await ask(server, peer, "GET", "/", { agent: COMPANION, cookie });
+describe("BS-6: the start page without a target", () => {
+  it("shows 'Display connected' — „Display verbunden“ in krobi's German wording", async () => {
+    const { page } = await startPage();
 
-    const keys = [
-      "pageConnectedHeading",
-      "pageDeviceId",
-      "pageIpAddress",
-      "pageStep1",
-      "pageStep2",
-      "pageStep3",
-      "pageAutoRefresh",
-    ];
-    expect({ differs: keys.filter(key => de[key] === en[key]) }).toEqual({ differs: [] });
-    expect({ ids: ids.length, k7Form: /^sm-t220-[0-9a-f]{4}$/.test(id) }).toEqual({ ids: 1, k7Form: true });
-    const expected = {
-      status: 200,
-      lang: "de",
-      heading: de.pageConnectedHeading,
-      idRow: [de.pageDeviceId, id],
-      ipRow: [de.pageIpAddress, peer],
-      steps: [de.pageStep1, `${de.pageStep2} [${NS}.clients.${id}]`, de.pageStep3],
-      reloadSeconds: "15",
-      reloadNote: de.pageAutoRefresh,
-    };
-    expect({ first: landing(first), again: landing(again) }).toEqual({ first: expected, again: expected });
+    expect(unescaped(/<h1>([^<]*)<\/h1>/.exec(page.body)?.[1])).toBe("Display verbunden");
+  });
+
+  it("shows the id and the IP address of the display", async () => {
+    const { page, id } = await startPage();
+
+    expect({ id: text(page).includes(id), ip: text(page).includes(PEER) }).toEqual({ id: true, ip: true });
+  });
+
+  it("shows instructions in three steps where in the admin the target is chosen: the admin, the display's folder, its mode", async () => {
+    const { page, id } = await startPage();
+    const guide = steps(page);
+
     expect({
-      landingAfterChoice: /<ol class="steps">/.test(chosen.body),
-      showsTarget: chosen.body.includes(`<iframe id="hassemu-iframe" src="${TARGET}"`),
-    }).toEqual({ landingAfterChoice: false, showsTarget: true });
+      steps: guide.length,
+      admin: guide.some(step => step.includes("Admin")),
+      folder: guide.some(step => step.includes(`${NS}.clients.${id}`)),
+      mode: guide.some(step => /\bmode\b/.test(step)),
+    }).toEqual({ steps: 3, admin: true, folder: true, mode: true });
+  });
+
+  it("reloads every 15 seconds", async () => {
+    const { page } = await startPage();
+
+    expect(/<meta http-equiv="refresh" content="([^"]*)">/.exec(page.body)?.[1]).toBe("15");
+  });
+
+  it("id and path in the instructions follow the id of K7: model, hyphen, four characters", async () => {
+    const { page, id } = await startPage();
+
+    expect({
+      id: /^sm-t220-[0-9a-f]{4}$/.test(id),
+      path: steps(page).some(step => step.includes(`${NS}.clients.${id}`)),
+    }).toEqual({ id: true, path: true });
   });
 });

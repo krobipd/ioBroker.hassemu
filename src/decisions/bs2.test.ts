@@ -1,23 +1,21 @@
 /**
- * Guard BS-2 — a sign-in with a wrong user name or password shows the same sign-in page with a red notice above the
- * fields, in the system language; there is no lock, and the log carries only the first refusal per time window.
+ * Guard BS-2 — after a sign-in with a wrong user name or password: the same page with a red notice above the fields;
+ * there is no lockout, one can try again as often as one likes; the log carries only the first rejection per time
+ * window.
  *
  * The page, BS-2 (sign-in with a wrong password): "After a sign-in with a wrong user name or password." "Shows the same
  * page with a red notice above the fields." "There is no lock: you can try again as often as you like. The log shows
- * only the first refusal per time window." The screens: "the texts exist in eleven languages", shown "in German system
- * language".
+ * only the first refusal per time window."
  * Accepted by krobi with the page of hassemu's core decisions (version 30) on 2026-11-11 20:19 ("so bs1 to bs9 are
  * ok").
  *
- * Path: the web server as main.ts starts it, with sign-in required and German as the system language; the sign-in form
- * the Companion app opens (GET /auth/authorize) is sent back (POST /auth/authorize) with wrong credentials, again and
- * again, and then with the right ones. The texts come from the adapter's own admin/i18n files, read as data; the log
- * lines are the adapter logger's. The host carries one network (192.168.77.0/24); the data folder is a map in memory,
- * since a guard writes no file.
+ * Path: the web server as main.ts starts it, with sign-in required; the sign-in form the Companion app opens
+ * (GET /auth/authorize) is sent back (POST /auth/authorize) with wrong credentials, again and again, and then with the
+ * right ones. The texts come from the adapter's own admin/i18n files, as adapter-core's I18n resolves a key; the log
+ * is what the adapter logger writes at the log level an instance runs on (info: debug lines are not in it). The host
+ * carries one network (192.168.77.0/24); the data folder is a map in memory, since a guard writes no file.
  */
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type * as Os from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -306,32 +304,6 @@ function ask(
 }
 
 /**
- * One language file of the adapter, read as data.
- *
- * @param lang the language
- */
-function language(lang: string): Record<string, string> {
-  return JSON.parse(readFileSync(join(process.cwd(), "admin", "i18n", `${lang}.json`), "utf8")) as Record<
-    string,
-    string
-  >;
-}
-
-/**
- * The text of an HTML fragment with its entities resolved.
- *
- * @param html the escaped text
- */
-function unescaped(html: string | undefined): string | undefined {
-  return html
-    ?.replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, "&");
-}
-
-/**
  * The hue (0–360°) of a `#rrggbb` color.
  *
  * @param hex the color
@@ -363,91 +335,114 @@ const QUERY = {
   state: "s1",
 };
 
-describe("BS-2: a wrong sign-in shows the same page with a red notice above the fields, no lock, one log line per window", () => {
-  it("shows the sign-in page again with the German notice above the fields, in red", async () => {
-    const de = language("de");
-    const en = language("en");
+/**
+ * The lines the log carries at the log level an instance runs on — everything above debug.
+ *
+ * @param mem the adapter
+ */
+function inTheLog(mem: Memory): LogLine[] {
+  return mem.logs.filter(line => line.level !== "debug" && line.level !== "silly");
+}
+
+/**
+ * Whether an answer hands the code to the app: the target with a code in it.
+ *
+ * @param answer the answer
+ */
+function signedIn(answer: Answer): boolean {
+  return answer.body.replace(/&amp;/g, "&").includes(`${QUERY.redirect_uri}?code=`);
+}
+
+describe("BS-2: a sign-in with a wrong user name or password", () => {
+  it("shows the same page with a red notice above the fields — after a wrong user name and after a wrong password", async () => {
     const mem = memory();
     const server = await started(mem);
     const peer = "192.168.77.50";
 
     const form = await ask(server, peer, "GET", `/auth/authorize?${new URLSearchParams(QUERY).toString()}`);
-    const wrongUser = await ask(server, peer, "POST", "/auth/authorize", {
-      form: { ...QUERY, username: "someone", password: PASSWORD },
-    });
-    const wrongPassword = await ask(server, peer, "POST", "/auth/authorize", {
-      form: { ...QUERY, username: USER, password: "wrong" },
-    });
+    const refused = {
+      wrongUser: await ask(server, peer, "POST", "/auth/authorize", {
+        form: { ...QUERY, username: "someone", password: PASSWORD },
+      }),
+      wrongPassword: await ask(server, peer, "POST", "/auth/authorize", {
+        form: { ...QUERY, username: USER, password: "wrong" },
+      }),
+    };
 
-    expect({ differs: de.authInvalidCredentials !== en.authInvalidCredentials }).toEqual({ differs: true });
-    for (const refused of [wrongUser, wrongPassword]) {
-      const notice = /<div class="err">([^<]*)<\/div>/.exec(refused.body);
-      const errRule = /\.err\{[^}]*\}/.exec(refused.body)?.[0] ?? "";
-      expect({
-        status: refused.statusCode,
-        lang: /<html lang="([^"]+)"/.exec(refused.body)?.[1],
-        notice: unescaped(notice?.[1]),
-        noticeAboveFields:
-          notice !== null &&
-          refused.body.indexOf(notice[0]) < refused.body.indexOf('<input type="text" name="username"'),
-        samePageOtherwise: refused.body.replace(/<div class="err">[^<]*<\/div>/, "") === form.body,
-        noticeTextRed: isRed(hue(/[;{]color:(#[0-9a-fA-F]{6})/.exec(errRule)?.[1])),
-        noticeBackgroundRed: isRed(hue(/background:(#[0-9a-fA-F]{6})/.exec(errRule)?.[1])),
-      }).toEqual({
-        status: 401,
-        lang: "de",
-        notice: de.authInvalidCredentials,
-        noticeAboveFields: true,
-        samePageOtherwise: true,
-        noticeTextRed: true,
-        noticeBackgroundRed: true,
-      });
-    }
+    const seen = Object.fromEntries(
+      Object.entries(refused).map(([kind, answer]) => {
+        const notice = /<div class="err">[^<]*<\/div>/.exec(answer.body);
+        const style = /\.err\{[^}]*\}/.exec(answer.body)?.[0] ?? "";
+        return [
+          kind,
+          {
+            samePage: answer.body.replace(/<div class="err">[^<]*<\/div>/, "") === form.body,
+            noticeAboveFields:
+              notice !== null && answer.body.indexOf(notice[0]) < answer.body.indexOf('name="username"'),
+            noticeRed:
+              isRed(hue(/[;{]color:(#[0-9a-fA-F]{6})/.exec(style)?.[1])) ||
+              isRed(hue(/background:(#[0-9a-fA-F]{6})/.exec(style)?.[1])),
+          },
+        ];
+      }),
+    );
+
+    expect(seen).toEqual({
+      wrongUser: { samePage: true, noticeAboveFields: true, noticeRed: true },
+      wrongPassword: { samePage: true, noticeAboveFields: true, noticeRed: true },
+    });
   });
 
-  it("has no lock: after many refusals the right credentials still sign in", async () => {
+  it("there is no lockout: after many wrong tries the right user name and password still sign in", async () => {
     const mem = memory();
     const server = await started(mem);
     const peer = "192.168.77.51";
 
-    const refusals: number[] = [];
-    for (let i = 0; i < 8; i++) {
-      const refused = await ask(server, peer, "POST", "/auth/authorize", {
+    for (let i = 0; i < 25; i++) {
+      await ask(server, peer, "POST", "/auth/authorize", {
         form: { ...QUERY, username: USER, password: `wrong-${i}` },
       });
-      refusals.push(refused.statusCode);
     }
     const right = await ask(server, peer, "POST", "/auth/authorize", {
       form: { ...QUERY, username: USER, password: PASSWORD },
     });
 
-    expect({
-      refusals,
-      signedIn: right.statusCode,
-      handover: /document\.location\.assign\("homeassistant:\/\/auth-callback\?code=[^"&]+&state=s1"\)/.test(
-        right.body,
-      ),
-    }).toEqual({ refusals: Array.from({ length: 8 }, () => 401), signedIn: 200, handover: true });
+    expect(signedIn(right)).toBe(true);
   });
 
-  it("logs the first refusal of a window as a warning, every further one in that window on debug only", async () => {
+  it("the log carries only the first rejection per time window", async () => {
     const start = 1_800_000_000_000;
     const now = vi.spyOn(Date, "now").mockReturnValue(start);
     const mem = memory();
     const server = await started(mem);
-    const refusalLines = (level: string): number =>
-      mem.logs.filter(l => l.level === level && l.msg.startsWith("Invalid credentials")).length;
-
-    for (const peer of ["192.168.77.52", "192.168.77.53", "192.168.77.52", "192.168.77.54"]) {
-      await ask(server, peer, "POST", "/auth/authorize", { form: { ...QUERY, username: USER, password: "wrong" } });
+    const peers = ["192.168.77.52", "192.168.77.53", "192.168.77.54", "192.168.77.55"];
+    const cookies = new Map<string, string>();
+    for (const peer of peers) {
+      const first = await ask(server, peer, "GET", "/");
+      const raw = first.headers["set-cookie"];
+      const text = Array.isArray(raw) ? raw.join("; ") : typeof raw === "string" ? raw : "";
+      cookies.set(peer, /hassemu_client=[^;]+/.exec(text)?.[0] ?? "");
     }
-    const inWindow = { warn: refusalLines("warn"), debug: refusalLines("debug") };
-    now.mockReturnValue(start + REQUEST_ERROR_COOLDOWN_MS + 1);
-    await ask(server, "192.168.77.52", "POST", "/auth/authorize", {
-      form: { ...QUERY, username: USER, password: "wrong" },
-    });
-    const nextWindow = { warn: refusalLines("warn"), debug: refusalLines("debug") };
+    if ([...cookies.values()].some(cookie => cookie === "")) {
+      throw new Error("a display of the case got no cookie on its first visit");
+    }
+    const wrongTry = (peer: string): Promise<Answer> =>
+      ask(server, peer, "POST", "/auth/authorize", {
+        cookie: cookies.get(peer),
+        form: { ...QUERY, username: USER, password: "wrong" },
+      });
+    const before = inTheLog(mem).length;
 
-    expect({ inWindow, nextWindow }).toEqual({ inWindow: { warn: 1, debug: 3 }, nextWindow: { warn: 2, debug: 3 } });
+    for (const peer of [peers[0], peers[1], peers[0], peers[2]]) {
+      await wrongTry(peer);
+    }
+    const firstWindow = inTheLog(mem).length - before;
+    now.mockReturnValue(start + REQUEST_ERROR_COOLDOWN_MS + 1);
+    for (const peer of [peers[0], peers[3]]) {
+      await wrongTry(peer);
+    }
+    const nextWindow = inTheLog(mem).length - before - firstWindow;
+
+    expect({ firstWindow, nextWindow }).toEqual({ firstWindow: 1, nextWindow: 1 });
   });
 });

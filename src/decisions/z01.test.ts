@@ -1,18 +1,22 @@
 /**
- * Guard Z-01 — what hassemu is for: a display that can only show a Home Assistant dashboard shows the page the user
- * chose; hassemu writes no foreign datapoint, and its port answers only its own network.
+ * Guard Z-01 — what hassemu is for: a device that can only show a Home Assistant dashboard shows a page of the user's
+ * choice instead; hassemu presents itself as a Home Assistant server, lets the display run through the sign-in and
+ * forwards it to the chosen address; it switches nothing in ioBroker and writes no foreign datapoint; its port belongs
+ * in the own network; at the one-time move of K7 it enters the new id into rooms, functions and aliases and writes no
+ * value into a foreign datapoint then either.
  *
  * The page, Z-01: "Devices that can only show a Home Assistant dashboard show a page of your choice instead: VIS,
  * VIS-2, Aura, Grafana or any other web address." "hassemu presents itself on the network as a Home Assistant server,
  * lets the display run through the sign-in and then forwards it to the chosen address." "It switches nothing in
  * ioBroker and writes no foreign datapoint. Its port belongs in the own network, never on the internet."
  * Accepted by krobi with the page of hassemu's core decisions (version 30) on 2026-11-11 18:10 ("z01 and ha01 are ok
- * so far").
+ * so far"); the clarification of 2026-11-12 about the one-time move stands on the same card.
  *
  * Path: the web server as main.ts starts it (plugins, peer guard, auth guard, routes, listener on a free port),
  * answered by inject from a peer address, over an adapter whose object and state database lives in memory and that
- * records every write to a foreign id. The host carries one network (192.168.77.0/24); the data folder is a map in
- * memory, since a guard writes no file.
+ * records every write, deletion and message that reaches an id outside its own namespace; the move runs through the
+ * registry's restore as main.ts starts it, over the same adapter. The host carries one network (192.168.77.0/24); the
+ * data folder is a map in memory, since a guard writes no file.
  */
 
 import type * as Os from "node:os";
@@ -73,20 +77,24 @@ interface Answer {
   json(): unknown;
 }
 
-/** An adapter over a database in memory, with what it wrote. */
+/** An adapter over a database in memory, with what it wrote outside its own namespace. */
 interface Memory {
   adapter: Record<string, unknown>;
   objects: Map<string, ioBroker.Object>;
   states: Map<string, ioBroker.State>;
-  /** Every call that wrote, deleted or extended a foreign id, by method name. */
+  /** Every write, deletion or message to an id outside the own namespace, as `method(id)`. */
   foreign: string[];
-  /** Every state write to an own id. */
-  ownStateWrites: string[];
+  /** Every value written to an id outside the own namespace, as `method(id)`. */
+  foreignValues: string[];
 }
 
 const NS = "hassemu.0";
 const DATA_DIR = "/guard/hassemu.0";
 const TARGET = "http://192.168.77.20:8082/vis-2/index.html?main";
+/** Pages of a user's choice — a VIS-2 project, Grafana, any other web address. */
+const CHOICES = [TARGET, "http://192.168.77.30:3000/d/house/overview?kiosk", "http://192.168.77.40:8080/panel.html"];
+/** Home Assistant core's own answer on /api/ (homeassistant/components/api/__init__.py, APIStatusView). */
+const HA_API_ANSWER = { message: "API running." };
 const servers: WebServer[] = [];
 
 afterEach(async () => {
@@ -115,12 +123,12 @@ function merged(base: unknown, patch: unknown): unknown {
   return out;
 }
 
-/** An adapter whose database lives in memory; every method that touches a foreign id is recorded. */
+/** An adapter whose database lives in memory; every write, deletion and message outside its namespace is recorded. */
 function memory(): Memory {
   const objects = new Map<string, ioBroker.Object>();
   const states = new Map<string, ioBroker.State>();
   const foreign: string[] = [];
-  const ownStateWrites: string[] = [];
+  const foreignValues: string[] = [];
   const full = (id: string): string => (id.startsWith(`${NS}.`) ? id : `${NS}.${id}`);
   const noop = (): void => undefined;
   const base: Record<string, unknown> = {
@@ -166,7 +174,6 @@ function memory(): Memory {
       return Promise.resolve({ id: full(id) });
     },
     setState(id: string, state: ioBroker.SettableState) {
-      ownStateWrites.push(full(id));
       states.set(full(id), { ...(state as ioBroker.State), ts: Date.now(), lc: Date.now() });
       return Promise.resolve(full(id));
     },
@@ -176,7 +183,6 @@ function memory(): Memory {
       if (before && before.val === value && before.ack === ((state as ioBroker.State).ack ?? false)) {
         return Promise.resolve({ id: full(id), notChanged: true });
       }
-      ownStateWrites.push(full(id));
       states.set(full(id), { ...(state as ioBroker.State), ts: Date.now(), lc: Date.now() });
       return Promise.resolve({ id: full(id), notChanged: false });
     },
@@ -191,30 +197,63 @@ function memory(): Memory {
       return Promise.resolve();
     },
   };
+  /**
+   * Whether an id lies outside the own namespace.
+   *
+   * @param id the full id
+   */
+  const outside = (id: string): boolean => !id.startsWith(`${NS}.`);
+  /** The foreign-id methods as js-controller runs them on the database. */
+  const foreignMethods: Record<string, (id: string, arg?: unknown) => Promise<unknown>> = {
+    setForeignObject(id, obj) {
+      objects.set(id, { ...structuredClone(obj as object), _id: id } as ioBroker.Object);
+      return Promise.resolve({ id });
+    },
+    extendForeignObjectAsync(id, patch) {
+      objects.set(id, { ...(merged(objects.get(id) ?? {}, patch) as object), _id: id } as ioBroker.Object);
+      return Promise.resolve({ id });
+    },
+    delForeignObjectAsync(id) {
+      objects.delete(id);
+      states.delete(id);
+      return Promise.resolve();
+    },
+  };
   const adapter = new Proxy(base, {
     get(target, prop, receiver) {
-      if (typeof prop === "string" && /^(set|del|extend)Foreign/.test(prop)) {
+      if (typeof prop === "string" && /^((set|del|extend)Foreign|sendTo)/.test(prop)) {
         return (...args: unknown[]) => {
-          foreign.push(`${prop}(${String(args[0])})`);
-          return Promise.resolve();
+          const id = String(args[0]);
+          if (prop.startsWith("sendTo") || outside(id)) {
+            foreign.push(`${prop}(${id})`);
+          }
+          if (/^setForeignState/.test(prop)) {
+            if (outside(id)) {
+              foreignValues.push(`${prop}(${id})`);
+            }
+            states.set(id, { ...(args[1] as ioBroker.State), ts: Date.now(), lc: Date.now() });
+            return Promise.resolve(id);
+          }
+          return foreignMethods[prop]?.(id, args[1]) ?? Promise.resolve();
         };
       }
       return Reflect.get(target, prop, receiver) as unknown;
     },
   });
-  return { adapter, objects, states, foreign, ownStateWrites };
+  return { adapter, objects, states, foreign, foreignValues };
 }
 
 /**
  * The web server as main.ts starts it, every display following the global address, the master switch on.
  *
  * @param mem the adapter
+ * @param target the address the user chose
  */
-async function started(mem: Memory): Promise<WebServer> {
+async function started(mem: Memory, target = TARGET): Promise<WebServer> {
   const registry = new ClientRegistry(mem.adapter as never, DATA_DIR);
   await registry.restore();
   const global = new GlobalConfig(mem.adapter as never);
-  await global.handleModeWrite(TARGET);
+  await global.handleModeWrite(target);
   await global.handleEnabledWrite(true);
   const config: AdapterConfig = {
     port: 0,
@@ -273,58 +312,165 @@ function displays(mem: Memory): string[] {
     .map(([id]) => id);
 }
 
-describe("Z-01: a display shows the chosen page; hassemu writes no foreign datapoint and answers only its network", () => {
-  it("lets a display of its own network sign in, sends it to the chosen address and writes no foreign id", async () => {
-    const mem = memory();
-    const server = await started(mem);
-    const peer = "192.168.77.50";
+/**
+ * A display's whole visit: its first request, the sign-in (login flow, code, token) and its page afterwards.
+ *
+ * @param server the server
+ * @param peer the peer address on the socket
+ */
+async function displayVisits(server: WebServer, peer: string): Promise<{ token: Answer; page: Answer }> {
+  const first = await ask(server, peer, "GET", "/");
+  const raw = first.headers["set-cookie"];
+  const setCookie = Array.isArray(raw) ? raw.join("; ") : typeof raw === "string" ? raw : "";
+  const cookie = /hassemu_client=[^;]+/.exec(setCookie)?.[0] ?? "";
+  const flow = (await ask(server, peer, "POST", "/auth/login_flow", { cookie, form: {} })).json() as {
+    flow_id?: string;
+  };
+  const done = (
+    await ask(server, peer, "POST", `/auth/login_flow/${flow.flow_id ?? ""}`, { cookie, form: {} })
+  ).json() as { result?: string };
+  const token = await ask(server, peer, "POST", "/auth/token", {
+    cookie,
+    form: { grant_type: "authorization_code", code: done.result ?? "" },
+  });
+  const page = await ask(server, peer, "GET", "/", { cookie });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  return { token, page };
+}
 
-    const api = await ask(server, peer, "GET", "/api/");
-    const first = await ask(server, peer, "GET", "/");
-    const raw = first.headers["set-cookie"];
-    const setCookie = Array.isArray(raw) ? raw.join("; ") : typeof raw === "string" ? raw : "";
-    const cookie = /hassemu_client=[^;]+/.exec(setCookie)?.[0] ?? "";
-    const flow = (await ask(server, peer, "POST", "/auth/login_flow", { cookie, form: {} })).json() as {
-      flow_id?: string;
-    };
-    const done = (
-      await ask(server, peer, "POST", `/auth/login_flow/${flow.flow_id ?? ""}`, { cookie, form: {} })
-    ).json() as { result?: string };
-    const token = await ask(server, peer, "POST", "/auth/token", {
-      cookie,
-      form: { grant_type: "authorization_code", code: done.result ?? "" },
-    });
-    const page = await ask(server, peer, "GET", "/", { cookie });
-    await new Promise(resolve => setTimeout(resolve, 0));
+/**
+ * Whether an answer sends the display on to an address: a forwarding header to it, or the page carries it.
+ *
+ * @param answer the answer
+ * @param address the address
+ */
+function leadsTo(answer: Answer, address: string): boolean {
+  const location = answer.headers.location;
+  return location === address || answer.body.replace(/&amp;/g, "&").includes(address);
+}
 
-    expect({
-      api: api.json(),
-      signedIn: token.statusCode,
-      displays: displays(mem).length,
-      showsTarget: page.body.includes(`src="${TARGET.replace(/&/g, "&amp;")}"`),
-      foreign: mem.foreign,
-      ownStatesWritten: mem.ownStateWrites.some(id => id.startsWith(`${NS}.clients.`)),
-    }).toEqual({
-      api: { message: "API running." },
-      signedIn: 200,
-      displays: 1,
-      showsTarget: true,
-      foreign: [],
-      ownStatesWritten: true,
-    });
+/**
+ * A display as an installation up to 1.46.1 holds it: `clients.<six hex characters>`, its cookie in the device's
+ * `native`, its datapoints with their values.
+ *
+ * @param mem the adapter
+ * @param oldId the six hex characters
+ */
+function seedOldDisplay(mem: Memory, oldId: string): void {
+  const device = `${NS}.clients.${oldId}`;
+  mem.objects.set(device, {
+    _id: device,
+    type: "device",
+    common: { name: { en: "192.168.77.71" } },
+    native: { cookie: "6f9c2d1e-0b7a-4c3e-9a51-2d8e4f7a1c01", token: null, tokenExpiresAt: null, refreshToken: null },
+  } as unknown as ioBroker.Object);
+  const datapoints: [string, Record<string, unknown>, ioBroker.StateValue][] = [
+    ["mode", { type: "string", role: "text", read: true, write: true, def: "0", states: { 0: "---" } }, "0"],
+    ["manualUrl", { type: "string", role: "url", read: true, write: true, def: "" }, ""],
+    ["ip", { type: "string", role: "info.ip", read: true, write: false, def: "" }, "192.168.77.71"],
+    ["resolvedUrl", { type: "string", role: "url", read: true, write: false, def: "" }, ""],
+    ["remove", { type: "boolean", role: "button", read: false, write: true, def: false }, false],
+  ];
+  for (const [key, common, val] of datapoints) {
+    const id = `${device}.${key}`;
+    mem.objects.set(id, { _id: id, type: "state", common: { name: key, ...common }, native: {} } as ioBroker.Object);
+    mem.states.set(id, { val, ack: true, ts: 1, lc: 1, from: `system.adapter.${NS}` });
+  }
+}
+
+describe("Z-01: what hassemu is for", () => {
+  it("presents itself on the network as a Home Assistant server", async () => {
+    const server = await started(memory());
+
+    const api = await ask(server, "192.168.77.50", "GET", "/api/");
+
+    expect(api.json()).toEqual(HA_API_ANSWER);
   });
 
-  it("refuses a peer outside its networks with 403 and creates no display for it", async () => {
+  it("lets the display run through the sign-in", async () => {
+    const server = await started(memory());
+
+    const { token } = await displayVisits(server, "192.168.77.50");
+
+    expect(typeof (token.json() as { access_token?: unknown }).access_token).toBe("string");
+  });
+
+  it("then forwards it to the chosen address: the page of the user's choice — VIS-2, Grafana or any other web address", async () => {
+    const forwarded: Record<string, boolean> = {};
+    for (const choice of CHOICES) {
+      const server = await started(memory(), choice);
+      const { page } = await displayVisits(server, "192.168.77.50");
+      forwarded[choice] = leadsTo(page, choice);
+    }
+
+    expect(forwarded).toEqual(Object.fromEntries(CHOICES.map(choice => [choice, true])));
+  });
+
+  it("switches nothing in ioBroker and writes no foreign datapoint", async () => {
+    const mem = memory();
+    const server = await started(mem);
+
+    await displayVisits(server, "192.168.77.50");
+
+    expect(mem.foreign).toEqual([]);
+  });
+
+  it("its port belongs in the own network: a request from outside it gets no page and no display", async () => {
     const mem = memory();
     const server = await started(mem);
 
     const stranger = await ask(server, "203.0.113.7", "GET", "/");
-    const own = await ask(server, "192.168.77.51", "GET", "/");
+    await new Promise(resolve => setTimeout(resolve, 0));
 
-    expect({ stranger: stranger.statusCode, own: own.statusCode, displays: displays(mem).length }).toEqual({
-      stranger: 403,
-      own: 200,
-      displays: 1,
+    expect({ page: stranger.body, displays: displays(mem) }).toEqual({ page: "", displays: [] });
+  });
+
+  it("at the one-time move of K7 it enters the new id into rooms, functions and aliases, and writes no value into a foreign datapoint", async () => {
+    const mem = memory();
+    seedOldDisplay(mem, "61c3a1");
+    mem.objects.set("enum.rooms.kitchen", {
+      _id: "enum.rooms.kitchen",
+      type: "enum",
+      common: { name: "Kitchen", members: [`${NS}.clients.61c3a1`] },
+      native: {},
+    } as unknown as ioBroker.Object);
+    mem.objects.set("enum.functions.screen", {
+      _id: "enum.functions.screen",
+      type: "enum",
+      common: { name: "Screen", members: [`${NS}.clients.61c3a1.mode`] },
+      native: {},
+    } as unknown as ioBroker.Object);
+    mem.objects.set("alias.0.kitchen.screen", {
+      _id: "alias.0.kitchen.screen",
+      type: "state",
+      common: {
+        name: "screen",
+        type: "string",
+        role: "text",
+        read: true,
+        write: true,
+        alias: { id: `${NS}.clients.61c3a1.mode` },
+      },
+      native: {},
+    } as unknown as ioBroker.Object);
+
+    const registry = new ClientRegistry(mem.adapter as never, DATA_DIR);
+    await registry.restore();
+    const moved = registry.getByCookie("6f9c2d1e-0b7a-4c3e-9a51-2d8e4f7a1c01")?.id;
+    if (moved === undefined || moved === "61c3a1") {
+      throw new Error(`the display of the old id form did not move (${String(moved)})`);
+    }
+
+    expect({
+      rooms: mem.objects.get("enum.rooms.kitchen")?.common.members,
+      functions: mem.objects.get("enum.functions.screen")?.common.members,
+      alias: (mem.objects.get("alias.0.kitchen.screen")?.common as { alias?: { id?: unknown } }).alias?.id,
+      foreignValues: mem.foreignValues,
+    }).toEqual({
+      rooms: [`${NS}.clients.${moved}`],
+      functions: [`${NS}.clients.${moved}.mode`],
+      alias: `${NS}.clients.${moved}.mode`,
+      foreignValues: [],
     });
   });
 });

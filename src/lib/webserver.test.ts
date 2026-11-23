@@ -1168,14 +1168,11 @@ describe("WebServer", () => {
   });
 
   describe("misc endpoints", () => {
-    it("GET /health returns liveness without any config leak (security fix v1.5.0)", async () => {
+    it("GET /health answers only 'running' — no config, no adapter name, no version (v1.5.0, K18 in 2.0.0)", async () => {
       const res = await server.inject({ method: "GET", url: "/health" });
-      const body = res.json();
-      expect(body.status).to.equal("ok");
-      expect(body.version).to.equal(HA_VERSION);
-      // v1.5.0: complete config-block removed (was previously exposing `mdns` + `auth` flags
-      // unauthenticated — Reconnaissance vector for network attackers).
-      expect(body).to.not.have.property("config");
+      expect(res.statusCode).to.equal(200);
+      expect(res.body).to.equal("running");
+      expect(String(res.headers["content-type"])).to.match(/^text\/plain/);
     });
 
     it('GET /manifest.json returns name="Home Assistant" — required by HA Companion verification (v1.29.0)', async () => {
@@ -1861,14 +1858,12 @@ describe("WebServer", () => {
       }
     });
 
-    it("GET /health does not leak adapter config (v1.5.0)", async () => {
+    it("GET /health does not leak adapter config with sign-in required (v1.5.0, K18 in 2.0.0)", async () => {
       const s = await buildAuthServer();
       try {
         const res = await s.inject({ method: "GET", url: "/health" });
         expect(res.statusCode).to.equal(200);
-        const body = res.json();
-        expect(body).to.have.keys(["status", "adapter", "version"]);
-        expect(body).to.not.have.property("config");
+        expect(res.body).to.equal("running");
       } finally {
         await s["app"].close();
       }

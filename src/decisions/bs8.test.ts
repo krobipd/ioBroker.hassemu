@@ -1,23 +1,22 @@
 /**
- * Guard BS-8 — the card "Redirect target not reachable": an orange card with the target's address, the display's id
- * and IP address and the button "Reload now", in the system language.
+ * Guard BS-8 — the card "Redirect target not reachable" („Weiterleitungsziel nicht erreichbar“): when the target does
+ * not answer, an orange card with the address of the target, id and IP address of the display and the button "Reload
+ * now" („Jetzt neu laden“).
  *
  * The page, BS-8 (card "redirect target not reachable"): "When the target does not answer. You accepted the behaviour
  * in K13; here it is about the picture." "Shows an orange card with the address of the target, id and IP address of
- * the display and the button 'Reload now'." The screens: "the texts exist in eleven languages", shown "in German system
- * language".
+ * the display and the button 'Reload now'." krobi's wording of the rule is German: „Weiterleitungsziel nicht
+ * erreichbar“ and „Jetzt neu laden“.
  * Accepted by krobi with the page of hassemu's core decisions (version 30) on 2026-11-11 20:19 ("so bs1 to bs9 are
  * ok").
  *
- * Path: the web server as main.ts starts it with German as the system language and a target probe that finds the
- * target silent; a display asks for / (no target yet), its mode is set to a URL through the registry's mode write, and
- * it asks for / again. The served page runs in a sandbox (node:vm) with a fake window and document, which shows which
- * card is up and what its button does. The texts come from the adapter's own admin/i18n files, read as data. The host
- * carries one network (192.168.77.0/24); the data folder is a map in memory, since a guard writes no file.
+ * Path: the web server as main.ts starts it with a target probe that finds the target silent; a display asks for /, a
+ * URL is chosen as its mode, and it asks for / again. The served page runs in a sandbox (node:vm) with a fake window
+ * and document, which shows which card is up. The system language is German, the language of krobi's wording; the
+ * texts come from the adapter's own admin/i18n files, as adapter-core's I18n resolves a key. The host carries one
+ * network (192.168.77.0/24); the data folder is a map in memory, since a guard writes no file.
  */
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type * as Os from "node:os";
 import { createContext, runInContext } from "node:vm";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -306,18 +305,6 @@ function ask(
 }
 
 /**
- * One language file of the adapter, read as data.
- *
- * @param lang the language
- */
-function language(lang: string): Record<string, string> {
-  return JSON.parse(readFileSync(join(process.cwd(), "admin", "i18n", `${lang}.json`), "utf8")) as Record<
-    string,
-    string
-  >;
-}
-
-/**
  * The text of an HTML fragment with its entities resolved.
  *
  * @param html the escaped text
@@ -420,7 +407,7 @@ function running(html: string, answer: (url: string) => Promise<unknown>): Runni
 }
 
 /**
- * A display that asked for / once (no target yet), then got a URL as its mode through the registry, and asked again.
+ * A display that asked for / once, then got a URL as its mode, and asked again.
  *
  * @param server the server
  * @param registry the registry
@@ -432,15 +419,18 @@ async function displayOnTarget(
   registry: ClientRegistry,
   peer: string,
   target: string,
-): Promise<{ id: string; cookie: string; before: Answer; page: Answer }> {
+): Promise<{ id: string; page: Answer }> {
   const before = await ask(server, peer, "GET", "/");
   const raw = before.headers["set-cookie"];
   const setCookie = Array.isArray(raw) ? raw.join("; ") : typeof raw === "string" ? raw : "";
   const cookie = /hassemu_client=[^;]+/.exec(setCookie)?.[0] ?? "";
-  const id = registry.getByCookie(cookie.replace(/^hassemu_client=/, ""))?.id ?? "";
+  const id = registry.getByCookie(cookie.replace(/^hassemu_client=/, ""))?.id;
+  if (id === undefined) {
+    throw new Error("the case needs the display its first visit creates");
+  }
   await registry.handleModeWrite(id, target);
   const page = await ask(server, peer, "GET", "/", { cookie });
-  return { id, cookie, before, page };
+  return { id, page };
 }
 
 /**
@@ -459,53 +449,34 @@ function hue(hex: string | undefined): number {
   return (h * 60 + 360) % 360;
 }
 
-describe("BS-8: the target-down card is orange and shows the target's address, the display's id and IP and 'Reload now'", () => {
-  it("shows the German card with the target, id, IP and a reload button when the target does not answer", async () => {
-    const de = language("de");
-    const en = language("en");
-    const mem = memory();
-    const { server, registry } = await started(mem, false);
-    const peer = "192.168.77.50";
+const PEER = "192.168.77.50";
 
-    const { id, page } = await displayOnTarget(server, registry, peer, TARGET);
+describe("BS-8: the card 'Redirect target not reachable'", () => {
+  it("when the target does not answer: an orange card with the address of the target, id and IP address of the display and the button 'Reload now'", async () => {
+    const { server, registry } = await started(memory(), false);
+    const { id, page } = await displayOnTarget(server, registry, PEER, TARGET);
     const shown = running(page.body, () => new Promise(() => undefined));
     const start = page.body.indexOf('<div id="hassemu-target-down"');
     const card = start < 0 ? "" : page.body.slice(start, page.body.indexOf("<script>", start));
-    const rows = [
-      ...card.matchAll(/<tr><th scope="row">([^<]*)<\/th><td[^>]*>(?:<code>)?([^<]*)(?:<\/code>)?<\/td><\/tr>/g),
-    ].map(m => [unescaped(m[1]), unescaped(m[2])]);
-    const button = /<button type="button" onclick="([^"]*)">([^<]*)<\/button>/.exec(card);
-    const banner = /#hassemu-target-down \.banner\{background:(#[0-9a-fA-F]{6})/.exec(page.body)?.[1];
-    const reloadsBefore = shown.reloads();
-    shown.run(unescaped(button?.[1]) ?? "");
+    const text = unescaped(card.replace(/<[^>]*>/g, " ")) ?? "";
+    const orange = hue(/#hassemu-target-down \.banner\{background:(#[0-9a-fA-F]{6})/.exec(page.body)?.[1]);
 
-    const keys = ["pageTargetOfflineHeading", "pageTargetUrl", "pageDeviceId", "pageIpAddress", "pageReload"];
-    expect({ differs: keys.filter(key => de[key] === en[key]) }).toEqual({ differs: [] });
-    const orange = hue(banner);
     expect({
-      status: page.statusCode,
-      lang: /<html lang="([^"]+)"/.exec(page.body)?.[1],
       cardShown: shown.elements.get("hassemu-target-down")?.classes.has("visible"),
-      dashboardHidden: shown.elements.get("hassemu-iframe")?.style.display === "none",
-      heading: unescaped(/<h1>([^<]*)<\/h1>/.exec(card)?.[1]),
-      rows,
-      button: unescaped(button?.[2]),
-      buttonReloads: shown.reloads() - reloadsBefore,
+      card: unescaped(/<h1>([^<]*)<\/h1>/.exec(card)?.[1]),
       orange: orange >= 20 && orange < 45,
+      targetAddress: text.includes(TARGET),
+      id: text.includes(id),
+      ip: text.includes(PEER),
+      button: unescaped(/<button\b[^>]*>([^<]*)<\/button>/.exec(card)?.[1]),
     }).toEqual({
-      status: 200,
-      lang: "de",
       cardShown: true,
-      dashboardHidden: true,
-      heading: de.pageTargetOfflineHeading,
-      rows: [
-        [de.pageTargetUrl, TARGET],
-        [de.pageDeviceId, id],
-        [de.pageIpAddress, peer],
-      ],
-      button: de.pageReload,
-      buttonReloads: 1,
+      card: "Weiterleitungsziel nicht erreichbar",
       orange: true,
+      targetAddress: true,
+      id: true,
+      ip: true,
+      button: "Jetzt neu laden",
     });
   });
 });

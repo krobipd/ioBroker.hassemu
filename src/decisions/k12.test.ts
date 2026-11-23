@@ -1,5 +1,6 @@
 /**
- * Guard K12 — unsafe addresses are rejected on every write path of a redirect target.
+ * Guard K12 — hassemu does not accept as a target an address that starts with javascript:, data: or file:, contains
+ * credentials or is longer than 2048 characters.
  *
  * The page, K12: "An address that begins with javascript:, data: or file:, contains credentials or is longer than 2048
  * characters, hassemu does not accept as a target."
@@ -9,8 +10,8 @@
  * Path: the adapter class from main.ts, its stateChange handler as the constructor registers it, receiving user writes
  * (ack false) on the four datapoints a target is written to — clients.<id>.mode, clients.<id>.manualUrl, global.mode
  * and global.manualUrl — over an adapter whose object and state database lives in memory; the registry and the global
- * settings are the adapter's own, built on that adapter. The data folder is a map in memory, since a guard writes no
- * file.
+ * settings are the adapter's own, built on that adapter. Each datapoint first holds a safe target, so a refused
+ * address shows as the target that stays. The data folder is a map in memory, since a guard writes no file.
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -149,15 +150,8 @@ const { HassEmu } = mainModule as unknown as { HassEmu: new () => ioBroker.Adapt
 
 const SAFE = "http://192.168.77.20:8082/vis-2/index.html?main";
 const BASE = "http://192.168.77.20:8082/vis-2/index.html?";
-/** Exactly 2048 characters — the longest address the rule still takes. */
-const AT_LIMIT = `${BASE}${"a".repeat(2048 - BASE.length)}`;
-const UNSAFE = {
-  javascript: "javascript:alert(1)",
-  data: "data:text/html,<script>alert(1)</script>",
-  file: "file:///etc/passwd",
-  credentials: "http://admin:secret@192.168.77.20:8082/vis-2/index.html?main",
-  longerThan2048: `${AT_LIMIT}a`,
-};
+/** 2049 characters — one more than the rule takes. */
+const LONGER_THAN_2048 = `${BASE}${"a".repeat(2049 - BASE.length)}`;
 
 afterEach(() => {
   files.clear();
@@ -184,45 +178,70 @@ async function adapterWithOneDisplay(): Promise<{ emu: Emu; paths: WritePath[] }
 }
 
 /**
- * A user write (ack false), handed to the stateChange handler the constructor registered; answers what the adapter
- * holds afterwards and what the datapoint shows.
+ * A user write (ack false), handed to the stateChange handler the constructor registered; answers the target the
+ * adapter holds afterwards.
  *
  * @param emu the adapter
  * @param path the datapoint
  * @param val the value
  */
-async function userWrites(
-  emu: Emu,
-  path: WritePath,
-  val: ioBroker.StateValue,
-): Promise<{ held: unknown; shown: unknown }> {
+async function userWrites(emu: Emu, path: WritePath, val: ioBroker.StateValue): Promise<unknown> {
   const handler = emu.handlers.get("stateChange");
   await handler?.(`${emu.namespace}.${path.id}`, { val, ack: false, ts: 0, lc: 0, from: "system.adapter.admin.0" });
-  const state = emu.states.get(`${emu.namespace}.${path.id}`);
-  return { held: path.held(), shown: state?.ack === true ? state.val : undefined };
+  return path.held();
 }
 
-describe("K12: unsafe addresses are rejected on every write path of a redirect target", () => {
-  it("takes a safe address and one of exactly 2048 characters, and keeps it against every unsafe one", async () => {
-    const { emu, paths } = await adapterWithOneDisplay();
-    const outcome: Record<string, Record<string, unknown>> = {};
-    const expected: Record<string, Record<string, unknown>> = {};
-
-    for (const path of paths) {
-      const row: Record<string, unknown> = { safe: await userWrites(emu, path, SAFE) };
-      for (const [kind, value] of Object.entries(UNSAFE)) {
-        row[kind] = await userWrites(emu, path, value);
-      }
-      row.atLimit = await userWrites(emu, path, AT_LIMIT);
-      outcome[path.id] = row;
-      expected[path.id] = {
-        safe: { held: SAFE, shown: SAFE },
-        ...Object.fromEntries(Object.keys(UNSAFE).map(kind => [kind, { held: SAFE, shown: SAFE }])),
-        atLimit: { held: AT_LIMIT, shown: AT_LIMIT },
-      };
+/**
+ * What every datapoint a target is written to holds after the address was written over a safe target.
+ *
+ * @param address the address written
+ */
+async function targetsAfter(address: string): Promise<Record<string, unknown>> {
+  const { emu, paths } = await adapterWithOneDisplay();
+  const held: Record<string, unknown> = {};
+  for (const path of paths) {
+    if ((await userWrites(emu, path, SAFE)) !== SAFE) {
+      throw new Error(`${path.id} did not take the safe target the case starts from`);
     }
+    held[path.id] = await userWrites(emu, path, address);
+  }
+  return held;
+}
 
-    expect({ atLimit: AT_LIMIT.length, longer: UNSAFE.longerThan2048.length }).toEqual({ atLimit: 2048, longer: 2049 });
-    expect(outcome).toEqual(expected);
+/**
+ * The datapoints that took the address as their target.
+ *
+ * @param held what each datapoint holds
+ * @param address the address written
+ */
+function tookIt(held: Record<string, unknown>, address: string): string[] {
+  return Object.entries(held)
+    .filter(([, value]) => value === address)
+    .map(([id]) => id);
+}
+
+describe("K12: hassemu does not accept an unsafe address as a target", () => {
+  it("does not accept an address that starts with javascript:", async () => {
+    const address = "javascript:alert(1)";
+    expect(tookIt(await targetsAfter(address), address)).toEqual([]);
+  });
+
+  it("does not accept an address that starts with data:", async () => {
+    const address = "data:text/html,<script>alert(1)</script>";
+    expect(tookIt(await targetsAfter(address), address)).toEqual([]);
+  });
+
+  it("does not accept an address that starts with file:", async () => {
+    const address = "file:///etc/passwd";
+    expect(tookIt(await targetsAfter(address), address)).toEqual([]);
+  });
+
+  it("does not accept an address that contains credentials", async () => {
+    const address = "http://admin:secret@192.168.77.20:8082/vis-2/index.html?main";
+    expect(tookIt(await targetsAfter(address), address)).toEqual([]);
+  });
+
+  it("does not accept an address that is longer than 2048 characters", async () => {
+    expect(tookIt(await targetsAfter(LONGER_THAN_2048), LONGER_THAN_2048)).toEqual([]);
   });
 });

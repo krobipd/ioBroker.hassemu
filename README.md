@@ -74,7 +74,7 @@ Want to add a URL the adapter doesn't auto-detect? Set `manual` and paste it.
 
 8123 is Home Assistant's default port; the Home Assistant apps take the port from the address hassemu announces or the one you type in. Another port lets hassemu run on a host where 8123 is taken already, and a second instance on the same host needs its own port or its own interface. Several ioBroker hosts in the LAN may each run one; the displays then see separate servers.
 
-**Monitoring:** point uptime monitors and container health checks at `http://<ioBroker-IP>:8123/health` (with HTTPS `https://`, with another port that port) — it answers without creating a display entry. A `GET /` counts as a display's first visit; a `HEAD /` creates nothing.
+**Monitoring:** point uptime monitors and container health checks at `http://<ioBroker-IP>:8123/health` (with HTTPS `https://`, with another port that port) — it answers only `running` and creates no display entry. A `GET /` counts as a display's first visit; a `HEAD /` creates nothing.
 
 **Plain HTTP is the default**, as with Home Assistant. Without HTTPS everything on the port travels unencrypted — with authentication on, the username, password and tokens too. Treat the port as LAN-only and never forward it to the internet; Auth guards the HA API against other LAN devices — it is not internet-exposure protection.
 
@@ -251,6 +251,7 @@ Got scripts that still write to `visUrl`? Update them — write to `manualUrl` i
 - Fixed: an update from 1.0 or 1.1 no longer resets the global URL choice on every start — the URL you had set before the update stays in place for good
 - Fixed: on iOS the Home Assistant app no longer keeps its loading screen over the dashboard, and on Android the bottom of the dashboard no longer hides behind the navigation bar
 - Fixed: uptime monitors and container health checks no longer create display entries, and the adapter settings name the /health address meant for them
+- Changed: /health answers only `running` (plain text) instead of a JSON object
 - Fixed: stopping the adapter no longer waits on open connections or hangs while a display is mid-request, and a stop during the start no longer brings the server up
 - Fixed: room and function assignments move along reliably when an old datapoint is replaced, and a read error no longer gives the server a new identity
 - Changed: the sign-in hands its code to an unknown address only after a click on Continue, and a signed-in app is disconnected when its display is removed

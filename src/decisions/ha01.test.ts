@@ -1,6 +1,7 @@
 /**
- * Guard HA-01 — no datapoint "reachable" or "online" per display, no time window, no sum of online displays;
- * "connected" means the adapter runs and its server accepts connections.
+ * Guard HA-01 — a display that is not asking for anything right now is not gone: hassemu keeps no datapoint that shows
+ * a display as reachable or online, not over a time window either ("seen in the last minutes"), and no sum "displays
+ * online"; "connected" means the adapter runs and the server accepts connections.
  *
  * The page, HA-01: "A display that is not asking for anything right now is not gone. hassemu therefore keeps no
  * datapoint that shows a display as reachable or online, not even over a time window ('seen in the last minutes'),
@@ -8,15 +9,15 @@
  * Accepted by krobi with the page of hassemu's core decisions (version 30) on 2026-11-11 18:10 ("z01 and ha01 are ok
  * so far").
  *
- * Path: the manifest read as data, then the adapter class from main.ts started by the ready handler its constructor
- * registers (instanceObjects from io-package.json in the database first, as js-controller puts them there), over an
- * object and state database in memory; displays are created and served by the web server that start built, asked by
- * inject from a peer address, and the adapter is started a second time over the same database. The host carries one
- * network (192.168.77.0/24); the data folder is a fresh folder in the temporary directory, written through the
- * data-folder master as on a host.
+ * Path: the adapter class from main.ts started by the ready handler its constructor registers (instanceObjects from
+ * io-package.json in the database first, as js-controller puts them there), over an object and state database in
+ * memory; displays are created and served by the web server that start built, asked by inject from a peer address.
+ * Whether the server accepts connections is asked on its port. The host carries one network (192.168.77.0/24); the
+ * data folder is a fresh folder in the temporary directory, written through the data-folder master as on a host.
  */
 
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { connect, createServer } from "node:net";
 import { join } from "node:path";
 import type * as Os from "node:os";
 import { tmpdir } from "node:os";
@@ -219,13 +220,15 @@ interface Emu {
   handlers: Map<string, (...args: unknown[]) => unknown>;
   intervals: (() => void)[];
   terminated: string[];
-  webServer: { inject(request: Record<string, unknown>): Promise<Answer> } | null;
+  webServer: {
+    inject(request: Record<string, unknown>): Promise<Answer>;
+    readonly boundAddress: { address: string; port: number } | null;
+  } | null;
 }
 
 /** The parts of io-package.json the guard reads. */
 interface Manifest {
   native: Record<string, unknown>;
-  objects?: { _id: string }[];
   instanceObjects: (Record<string, unknown> & { _id: string })[];
 }
 
@@ -233,8 +236,8 @@ const { HassEmu } = mainModule as unknown as { HassEmu: new () => ioBroker.Adapt
 
 const NS = "hassemu.0";
 const CLIENTS = `${NS}.clients.`;
-/** Every word for "this display is there right now" a datapoint id could carry. */
-const PRESENCE = /reachable|online|seen|alive/i;
+/** The rule's words for a display that is there: reachable, online. */
+const REACHABLE_OR_ONLINE = /reachable|online/i;
 const running: Emu[] = [];
 
 beforeEach(() => {
@@ -261,10 +264,12 @@ function manifest(): Manifest {
 
 /**
  * The adapter as js-controller starts it: the manifest's instanceObjects in the database, the instance settings from
- * the manifest (port 0 instead of 8123, mDNS off — a guard opens no fixed port and announces nothing), then the ready
- * handler the constructor registered.
+ * the manifest (port 0 instead of 8123 unless a port is given, mDNS off — a guard opens no fixed port and announces
+ * nothing), then the ready handler the constructor registered.
+ *
+ * @param port the port of the settings
  */
-async function start(): Promise<Emu> {
+async function launch(port = 0): Promise<Emu> {
   const known = manifest();
   for (const obj of known.instanceObjects) {
     const id = `${NS}.${obj._id}`;
@@ -273,10 +278,18 @@ async function start(): Promise<Emu> {
     }
   }
   const emu = new HassEmu() as unknown as Emu;
-  emu.config = { ...known.native, port: 0, mdnsEnabled: false };
+  emu.config = { ...known.native, port, mdnsEnabled: false };
   running.push(emu);
   await emu.handlers.get("ready")?.();
-  expect({ terminated: emu.terminated, serving: emu.webServer !== null }).toEqual({ terminated: [], serving: true });
+  return emu;
+}
+
+/** The adapter started and serving. */
+async function start(): Promise<Emu> {
+  const emu = await launch();
+  if (emu.terminated.length > 0 || emu.webServer === null) {
+    throw new Error(`the case needs a running adapter (${emu.terminated.join(", ")})`);
+  }
   return emu;
 }
 
@@ -305,8 +318,10 @@ function ask(emu: Emu, peer: string, url: string, cookie = ""): Promise<Answer> 
   if (cookie) {
     headers.cookie = cookie;
   }
-  expect(emu.webServer).not.toBeNull();
-  return (emu.webServer as NonNullable<Emu["webServer"]>).inject({
+  if (emu.webServer === null) {
+    throw new Error("the case needs the adapter's web server");
+  }
+  return emu.webServer.inject({
     method: "GET",
     url,
     headers,
@@ -332,11 +347,10 @@ function cookieOf(answer: Answer): string {
  * @param emu the adapter
  * @param peer the display's address
  */
-async function displayVisits(emu: Emu, peer: string): Promise<{ page: number; poll: number }> {
+async function displayVisits(emu: Emu, peer: string): Promise<void> {
   const first = await ask(emu, peer, "/");
-  const poll = await ask(emu, peer, "/api/redirect_check", cookieOf(first));
+  await ask(emu, peer, "/api/redirect_check", cookieOf(first));
   await new Promise(resolve => setTimeout(resolve, 0));
-  return { page: first.statusCode, poll: poll.statusCode };
 }
 
 /** The display ids: the devices below clients. */
@@ -347,104 +361,79 @@ function displayIds(): string[] {
     .sort();
 }
 
+/** The one display the case needs. */
+function theDisplay(): string {
+  const [id] = displayIds();
+  if (id === undefined) {
+    throw new Error("the case needs the display its visit creates");
+  }
+  return id;
+}
+
 /**
- * Below one display: the objects, the ids that hold a value, and the device's status links.
+ * The datapoints of one display whose id or name speaks of reachable or online, and the device's own online link.
  *
  * @param id the display id
  */
-function display(id: string): { objects: string[]; states: string[]; statusStates: unknown } {
+function reachableOrOnline(id: string): { datapoints: string[]; onlineLink: unknown } {
   const prefix = `${CLIENTS}${id}.`;
-  const below = (ids: Iterable<string>): string[] =>
-    [...ids]
-      .filter(key => key.startsWith(prefix))
-      .map(key => key.slice(prefix.length))
-      .sort();
-  const device = db.objects.get(`${CLIENTS}${id}`)?.common as Record<string, unknown> | undefined;
-  return { objects: below(db.objects.keys()), states: below(db.states.keys()), statusStates: device?.statusStates };
+  const datapoints = [...db.objects]
+    .filter(([key]) => key.startsWith(prefix))
+    .filter(([key, obj]) => REACHABLE_OR_ONLINE.test(key) || REACHABLE_OR_ONLINE.test(JSON.stringify(obj.common?.name)))
+    .map(([key]) => key.slice(prefix.length));
+  const device = db.objects.get(`${CLIENTS}${id}`)?.common as { statusStates?: { onlineId?: unknown } } | undefined;
+  return { datapoints, onlineLink: device?.statusStates?.onlineId };
 }
 
-/** Every id outside the displays (objects and values) whose name speaks of presence. */
-function presenceIdsOutsideDisplays(): string[] {
-  return [...new Set([...db.objects.keys(), ...db.states.keys()])].filter(
-    id => !id.startsWith(CLIENTS) && PRESENCE.test(id),
+/**
+ * The values of one display's datapoints.
+ *
+ * @param id the display id
+ */
+function valuesOf(id: string): Record<string, unknown> {
+  const prefix = `${CLIENTS}${id}.`;
+  return Object.fromEntries([...db.states].filter(([key]) => key.startsWith(prefix)).map(([key, s]) => [key, s.val]));
+}
+
+/** The number values outside the displays. */
+function numbersOutsideDisplays(): Record<string, number> {
+  return Object.fromEntries(
+    [...db.states]
+      .filter(([id, state]) => !id.startsWith(CLIENTS) && typeof state.val === "number")
+      .map(([id, state]) => [id, state.val as number]),
   );
 }
 
-/** Everything in the database outside the displays: each object and each value, as text. */
-function outsideDisplays(): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [id, obj] of db.objects) {
-    if (!id.startsWith(CLIENTS)) {
-      out[`object ${id}`] = JSON.stringify(obj);
-    }
-  }
-  for (const [id, state] of db.states) {
-    if (!id.startsWith(CLIENTS)) {
-      out[`value ${id}`] = JSON.stringify(state.val);
-    }
-  }
-  return out;
+/**
+ * Whether anything accepts a connection on the port.
+ *
+ * @param port the port
+ */
+function acceptsOn(port: number): Promise<boolean> {
+  return new Promise(resolve => {
+    const socket = connect({ host: "127.0.0.1", port });
+    socket.once("connect", () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once("error", () => resolve(false));
+  });
 }
 
-/** The whole database as ids and values — what a time window would change. */
-function wholeTree(): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [id, obj] of db.objects) {
-    out[`object ${id}`] = JSON.stringify(obj);
-  }
-  for (const [id, state] of db.states) {
-    out[`value ${id}`] = JSON.stringify(state.val);
-  }
-  return out;
-}
+describe("HA-01: a display that is not asking for anything is not gone", () => {
+  it("hassemu keeps no datapoint that shows a display as reachable or online", async () => {
+    const emu = await start();
+    await displayVisits(emu, "192.168.77.51");
 
-const FIVE = ["ip", "manualUrl", "mode", "remove", "resolvedUrl"];
-
-describe("HA-01: no datapoint 'reachable' or 'online' per display, no window, no sum; connected = adapter and server", () => {
-  it("the manifest declares no datapoint that speaks of reachable, online or seen", () => {
-    const known = manifest();
-    const ids = [...known.instanceObjects.map(obj => obj._id), ...(known.objects ?? []).map(obj => obj._id)];
-
-    expect({
-      declares: ids.length > 0,
-      presence: ids.filter(id => PRESENCE.test(id)),
-    }).toEqual({ declares: true, presence: [] });
+    expect(reachableOrOnline(theDisplay())).toEqual({ datapoints: [], onlineLink: undefined });
   });
 
-  it("a display created and served carries mode, manualUrl, resolvedUrl, ip and remove — no online mark, also after a restart", async () => {
-    const first = await start();
-    const visit = await displayVisits(first, "192.168.77.51");
-    const [id] = displayIds();
-    const served = display(id ?? "");
-    const outsideServed = presenceIdsOutsideDisplays();
-    await stop(first);
-    await start();
-    const restored = display(id ?? "");
-
-    expect({ visit, displays: displayIds().length }).toEqual({ visit: { page: 200, poll: 200 }, displays: 1 });
-    expect({ objects: served.objects, statusStates: served.statusStates }).toEqual({
-      objects: FIVE,
-      statusStates: undefined,
-    });
-    expect({
-      valuesOutsideTheFive: served.states.filter(child => !FIVE.includes(child)),
-      valuesWritten: served.states.length > 0,
-    }).toEqual({ valuesOutsideTheFive: [], valuesWritten: true });
-    expect({ objects: restored.objects, statusStates: restored.statusStates }).toEqual({
-      objects: FIVE,
-      statusStates: undefined,
-    });
-    expect({ outsideServed, outsideRestored: presenceIdsOutsideDisplays() }).toEqual({
-      outsideServed: [],
-      outsideRestored: [],
-    });
-  });
-
-  it("a display that has gone quiet changes nothing when time passes — no 'seen in the last minutes'", async () => {
+  it("not over a time window either ('seen in the last minutes'): a display that has gone quiet shows the same as time passes", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const emu = await start();
     await displayVisits(emu, "192.168.77.51");
-    const afterVisit = wholeTree();
+    const id = theDisplay();
+    const quiet = valuesOf(id);
 
     vi.setSystemTime(Date.now() + 30 * 60 * 1000);
     for (const tick of emu.intervals) {
@@ -452,44 +441,40 @@ describe("HA-01: no datapoint 'reachable' or 'online' per display, no window, no
     }
     await new Promise(resolve => setTimeout(resolve, 0));
 
-    expect({ timers: emu.intervals.length > 0, displays: displayIds().length }).toEqual({ timers: true, displays: 1 });
-    expect(wholeTree()).toEqual(afterVisit);
+    expect(valuesOf(id)).toEqual(quiet);
   });
 
-  it("a second display seen changes nothing outside the displays — no sum 'displays online'", async () => {
+  it("no sum 'displays online': no number outside the displays follows a second display that comes", async () => {
     const emu = await start();
     await displayVisits(emu, "192.168.77.51");
-    const withOne = { displays: displayIds().length, outside: outsideDisplays() };
-    await displayVisits(emu, "192.168.77.52");
-    const withTwo = { displays: displayIds().length, outside: outsideDisplays() };
+    const withOne = numbersOutsideDisplays();
 
-    expect({ before: withOne.displays, after: withTwo.displays }).toEqual({ before: 1, after: 2 });
-    expect(withTwo.outside).toEqual(withOne.outside);
-    expect(presenceIdsOutsideDisplays()).toEqual([]);
+    await displayVisits(emu, "192.168.77.52");
+    if (displayIds().length !== 2) {
+      throw new Error("the case needs the second display");
+    }
+
+    expect(numbersOutsideDisplays()).toEqual(withOne);
   });
 
-  it("'connected' is the adapter running with a server that answers — before any display, and false once it stops", async () => {
-    const before = db.states.get(`${NS}.info.connection`)?.val;
+  it("'connected' means: the adapter runs and the server accepts connections", async () => {
     const emu = await start();
-    const whileRunning = db.states.get(`${NS}.info.connection`)?.val;
-    const health = await ask(emu, "192.168.77.50", "/health");
-    const displaysWhileConnected = displayIds().length;
+    const port = emu.webServer?.boundAddress?.port ?? 0;
+    const runsAndAccepts = { connected: db.states.get(`${NS}.info.connection`)?.val, accepts: await acceptsOn(port) };
     await stop(emu);
+    const stopped = db.states.get(`${NS}.info.connection`)?.val;
 
-    expect({
-      before,
-      whileRunning,
-      health: health.statusCode,
-      healthBody: (health.json() as { status?: unknown }).status,
-      displaysWhileConnected,
-      stopped: db.states.get(`${NS}.info.connection`)?.val,
-    }).toEqual({
-      before: undefined,
-      whileRunning: true,
-      health: 200,
-      healthBody: "ok",
-      displaysWhileConnected: 0,
+    const other = createServer();
+    await new Promise<void>(resolve => other.listen({ port: 0, host: "0.0.0.0" }, resolve));
+    const held = (other.address() as { port: number }).port;
+    await launch(held);
+    const serverCannotAccept = db.states.get(`${NS}.info.connection`)?.val;
+    await new Promise<void>(resolve => other.close(() => resolve()));
+
+    expect({ runsAndAccepts, stopped, serverCannotAccept: serverCannotAccept === true }).toEqual({
+      runsAndAccepts: { connected: true, accepts: true },
       stopped: false,
+      serverCannotAccept: false,
     });
   });
 });

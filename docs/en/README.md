@@ -249,7 +249,7 @@ the setting safe.
 
 For uptime monitors and container health checks use `http://<ip-of-your-ioBroker>:8123/health`
 (with HTTPS `https://`, with another port that port).
-It answers without creating anything. A `GET /` is what a display sends on its first visit,
+It answers only `running` and creates nothing. A `GET /` is what a display sends on its first visit,
 so a monitor pointed there would show up as a new display; a `HEAD /` creates nothing.
 
 ## Updating from 1.x

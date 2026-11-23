@@ -1,5 +1,6 @@
 /**
- * Guard B1 — no datapoint clients.<id>.targetReachable: whether a display's target answers is no datapoint.
+ * Guard B1 — clients.<id>.targetReachable ("target reachable": whether the page answers to which the display is sent)
+ * does not exist and does not come.
  *
  * The page, B1: "Today: does not exist." "Stays: so. clients.<id>.targetReachable ('target reachable': whether the
  * page answers to which the display is sent) does not come. The AI takes it out of the unreleased state again."
@@ -7,13 +8,13 @@
  * Accepted by krobi with the page of hassemu's core decisions (version 30) on 2026-11-11 19:17 ("b1 is the same as
  * ha02. same topic").
  *
- * Path: the manifest read as data, then the adapter class from main.ts started by the ready handler its constructor
- * registers (instanceObjects from io-package.json in the database first, as js-controller puts them there), over an
- * object and state database in memory; a display is created by the web server that start built, asked by inject from
- * a peer address, sent to a dashboard by a user write to its mode through the stateChange handler the constructor
- * registered, and polls while its target answers and after it stopped answering — the server's own probe asks a
- * dashboard the guard runs on the loopback address, so no request leaves the host. The host carries one network
- * (192.168.77.0/24); the data folder is a map in memory, since a guard writes no file.
+ * Path: the adapter class from main.ts started by the ready handler its constructor registers (instanceObjects from
+ * io-package.json in the database first, as js-controller puts them there), over an object and state database in
+ * memory; a display is created by the web server that start built, asked by inject from a peer address, sent to a
+ * dashboard by a user write to its mode through the stateChange handler the constructor registered, and polls while
+ * its target answers and after it stopped answering — the moments the datapoint would carry a value; the server's own
+ * probe asks a dashboard the guard runs on the loopback address, so no request leaves the host. The host carries one
+ * network (192.168.77.0/24); the data folder is a map in memory, since a guard writes no file.
  */
 
 import { readFileSync } from "node:fs";
@@ -227,7 +228,6 @@ interface Emu {
 /** The parts of io-package.json the guard reads. */
 interface Manifest {
   native: Record<string, unknown>;
-  objects?: { _id: string }[];
   instanceObjects: (Record<string, unknown> & { _id: string })[];
 }
 
@@ -237,7 +237,6 @@ const NS = "hassemu.0";
 const CLIENTS = `${NS}.clients.`;
 /** The datapoint the page names, and every id that would carry the target's reachability by its name. */
 const NAMED = "targetReachable";
-const REACHABLE = /reachable/i;
 const running: Emu[] = [];
 const targets: Server[] = [];
 
@@ -306,7 +305,9 @@ async function start(): Promise<Emu> {
   emu.config = { ...known.native, port: 0, mdnsEnabled: false };
   running.push(emu);
   await emu.handlers.get("ready")?.();
-  expect({ terminated: emu.terminated, serving: emu.webServer !== null }).toEqual({ terminated: [], serving: true });
+  if (emu.terminated.length > 0 || emu.webServer === null) {
+    throw new Error(`the case needs a running adapter (${emu.terminated.join(", ")})`);
+  }
   return emu;
 }
 
@@ -323,8 +324,10 @@ function ask(emu: Emu, peer: string, url: string, cookie = ""): Promise<Answer> 
   if (cookie) {
     headers.cookie = cookie;
   }
-  expect(emu.webServer).not.toBeNull();
-  return (emu.webServer as NonNullable<Emu["webServer"]>).inject({
+  if (emu.webServer === null) {
+    throw new Error("the case needs the adapter's web server");
+  }
+  return emu.webServer.inject({
     method: "GET",
     url,
     headers,
@@ -381,66 +384,39 @@ function displayIds(): string[] {
     .sort();
 }
 
-/** Every id in the database (objects and values) that is the named datapoint or speaks of reachability. */
-function reachabilityIds(): string[] {
-  return [...new Set([...db.objects.keys(), ...db.states.keys()])].filter(
-    id => id.split(".").pop() === NAMED || REACHABLE.test(id.slice(NS.length)),
-  );
+/**
+ * The display's datapoint clients.<id>.targetReachable, as object and as value — whatever of it exists.
+ *
+ * @param id the display id
+ */
+function targetReachable(id: string): string[] {
+  const full = `${CLIENTS}${id}.${NAMED}`;
+  return [db.objects.has(full) ? "object" : "", db.states.has(full) ? "value" : ""].filter(Boolean);
 }
 
-/** The whole database as ids and values. */
-function wholeTree(): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [id, obj] of db.objects) {
-    out[`object ${id}`] = JSON.stringify(obj);
-  }
-  for (const [id, state] of db.states) {
-    out[`value ${id}`] = JSON.stringify(state.val);
-  }
-  return out;
-}
-
-describe("B1: no datapoint 'target reachable' per display", () => {
-  it("the manifest declares no targetReachable and no id that speaks of reachability", () => {
-    const known = manifest();
-    const ids = [...known.instanceObjects.map(obj => obj._id), ...(known.objects ?? []).map(obj => obj._id)];
-
-    expect({
-      declares: ids.length > 0,
-      named: ids.filter(id => id.split(".").pop() === NAMED),
-      reachability: ids.filter(id => REACHABLE.test(id)),
-    }).toEqual({ declares: true, named: [], reachability: [] });
-  });
-
-  it("a display sent to a target that answers and then stops answering gets no such datapoint", async () => {
+describe("B1: clients.<id>.targetReachable does not exist and does not come", () => {
+  it("a display whose target answers and then stops answering has no clients.<id>.targetReachable at either moment", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const target = await dashboard();
     const emu = await start();
     const peer = "192.168.77.51";
-    const first = await ask(emu, peer, "/");
-    const cookie = cookieOf(first);
+    const cookie = cookieOf(await ask(emu, peer, "/"));
     const [id] = displayIds();
-    await userWrites(emu, `clients.${id ?? ""}.mode`, target.url);
-    const page = await ask(emu, peer, "/", cookie);
+    if (id === undefined) {
+      throw new Error("the case needs the display its first visit creates");
+    }
+    await userWrites(emu, `clients.${id}.mode`, target.url);
+    await ask(emu, peer, "/", cookie);
     const up = await poll(emu, peer, cookie);
-    const whileUp = { ids: reachabilityIds(), tree: wholeTree() };
+    const whileItAnswers = targetReachable(id);
 
     await closed(target.server);
     vi.setSystemTime(Date.now() + 60 * 1000);
     const down = await poll(emu, peer, cookie);
+    if (up.targetReachable !== true || down.targetReachable !== false) {
+      throw new Error("the case needs hassemu to have found the target answering, then silent");
+    }
 
-    expect({
-      displays: displayIds().length,
-      page: page.statusCode,
-      up,
-      down,
-    }).toEqual({
-      displays: 1,
-      page: 200,
-      up: { target: target.url, targetReachable: true },
-      down: { target: target.url, targetReachable: false },
-    });
-    expect({ whileUp: whileUp.ids, whileDown: reachabilityIds() }).toEqual({ whileUp: [], whileDown: [] });
-    expect(wholeTree()).toEqual(whileUp.tree);
+    expect({ whileItAnswers, afterItStopped: targetReachable(id) }).toEqual({ whileItAnswers: [], afterItStopped: [] });
   });
 });

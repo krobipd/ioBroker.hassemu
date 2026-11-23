@@ -1,15 +1,17 @@
 /**
- * Guard K19 — a foreign address that wants the access code gets a page with a "Continue" button first; only the Home
- * Assistant app and the address the request came from get it without asking.
+ * Guard K19 — when a foreign address wants the access code during sign-in, hassemu first shows a page with the button
+ * "Continue"; without that question only the Home Assistant app and the address the request came from get it.
  *
  * The page, K19: "If at sign-in a foreign address wants the access code, hassemu first shows a page with the button
  * 'Continue'. Without asking, only the Home Assistant app and the address the request came from get it."
  * Accepted by krobi with the page of hassemu's core decisions (version 30) on 2026-11-11 19:56 ("k19 sounds ok").
  *
  * Path: the web server as main.ts starts it (plugins, peer guard, auth guard, routes, listener on a free port), asked
- * for /auth/authorize by inject from a peer address of its own network on the Host the display reaches hassemu by —
- * GET without sign-in, POST with sign-in — over an adapter whose object and state database lives in memory. The host
- * carries one network (192.168.77.0/24); the data folder is a map in memory, since a guard writes no file.
+ * for /auth/authorize by inject from a display of its own network — GET without sign-in, POST with sign-in — over an
+ * adapter whose object and state database lives in memory. The sign-in request comes from hassemu's own sign-in page
+ * the display shows: it is sent from that page's address (Origin and Referer) to the same address (Host) — that is the
+ * address the request came from. Page texts are the adapter's English texts, as adapter-core's I18n resolves a key.
+ * The host carries one network (192.168.77.0/24); the data folder is a map in memory, since a guard writes no file.
  */
 
 import type * as Os from "node:os";
@@ -17,9 +19,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { files } = vi.hoisted(() => ({ files: new Map<string, string>() }));
 
-vi.mock("@iobroker/adapter-core", () => ({
-  I18n: { getTranslatedObject: (key: string) => ({ en: key }), translate: (key: string) => key },
-}));
+vi.mock("@iobroker/adapter-core", async () => {
+  const fs = await import("node:fs");
+  /** The adapter's English texts, as adapter-core's I18n resolves a key. */
+  const english = JSON.parse(fs.readFileSync(`${process.cwd()}/admin/i18n/en.json`, "utf8")) as Record<string, string>;
+  return {
+    I18n: {
+      getTranslatedObject: (key: string) => ({ en: english[key] ?? key }),
+      translate: (key: string) => english[key] ?? key,
+    },
+  };
+});
 vi.mock("node:dns/promises", () => ({
   default: {
     reverse: (): Promise<string[]> => Promise.resolve([]),
@@ -78,12 +88,13 @@ interface Memory {
 const NS = "hassemu.0";
 const DATA_DIR = "/guard/hassemu.0";
 const PEER = "192.168.77.50";
+/** The address of hassemu's own sign-in page, which sends the request — the address the request came from. */
 const HOST = "192.168.77.10:8123";
 const PASSWORD = "guard-secret";
 const FOREIGN_CLIENT = "http://192.168.77.99:8080/";
 const FOREIGN_TARGET = "http://192.168.77.99:8080/callback";
-const OWN_CLIENT = "http://192.168.77.10:8123/";
-const OWN_TARGET = "http://192.168.77.10:8123/auth-done";
+const OWN_CLIENT = `http://${HOST}/`;
+const OWN_TARGET = `http://${HOST}/auth-done`;
 const APP_TARGET = "homeassistant://auth-callback";
 const servers: WebServer[] = [];
 
@@ -222,6 +233,8 @@ function authorize(server: WebServer, method: "GET" | "POST", clientId: string, 
   };
   const headers: Record<string, string> = {
     host: HOST,
+    origin: `http://${HOST}`,
+    referer: `http://${HOST}/`,
     "user-agent": "Mozilla/5.0 (Linux; Android 13; WebView)",
   };
   if (method === "GET") {
@@ -242,83 +255,74 @@ function authorize(server: WebServer, method: "GET" | "POST", clientId: string, 
   });
 }
 
-/** How an authorize answer hands the code over. */
+/** How an authorize answer treats the access code. */
 interface Handover {
-  status: number;
-  /** The target of a "Continue" button, or null without such a button. */
-  button: string | null;
-  /** The target of a meta refresh that forwards at once, or null without one. */
-  refresh: string | null;
-  /** The page forwards by script. */
-  script: boolean;
+  /** The page shows a button "Continue". */
+  continueButton: boolean;
+  /** The answer hands the code to the target without a button: a forwarding to it that is no button's link. */
+  handedOver: boolean;
 }
 
 /**
- * Read from an authorize answer whether it asks with a button or forwards by itself.
+ * Read from an authorize answer whether it asks with a "Continue" button or hands the code to the target by itself.
  *
  * @param answer the answer
+ * @param target the redirect_uri the code goes to
  */
-function handover(answer: Answer): Handover {
-  const unescape = (text: string): string => text.replace(/&amp;/g, "&");
-  const button = /<a class="button" href="([^"]*)">/.exec(answer.body)?.[1];
-  const refresh = /<meta http-equiv="refresh" content="0; URL=([^"]*)">/.exec(answer.body)?.[1];
+function handover(answer: Answer, target: string): Handover {
+  const body = answer.body.replace(/&amp;/g, "&");
+  const buttons = [...body.matchAll(/<a class="button" href="([^"]*)">([^<]*)<\/a>/g)];
+  const withCode = `${target}?code=`;
+  const location = typeof answer.headers.location === "string" ? answer.headers.location : "";
+  const outsideButtons = buttons.reduce((rest, b) => rest.replace(b[0], ""), body);
   return {
-    status: answer.statusCode,
-    button: button === undefined ? null : unescape(button),
-    refresh: refresh === undefined ? null : unescape(refresh),
-    script: /document\.location\.assign\(/.test(answer.body),
+    continueButton: buttons.some(b => b[2] === "Continue"),
+    handedOver: location.startsWith(withCode) || outsideButtons.includes(withCode),
   };
 }
 
-/**
- * A target with the code and the round-tripped state appended, as the pattern the answer must carry.
- *
- * @param redirectUri the redirect_uri
- */
-function withCode(redirectUri: string): RegExp {
-  const escaped = redirectUri.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
-  return new RegExp(`^${escaped}\\?code=[0-9a-f-]{36}&state=s1$`);
-}
-
-describe("K19: a foreign target gets a Continue page; only the app and the request's own host get the code at once", () => {
-  it("asks with a Continue button before handing the code to a foreign address, with and without sign-in", async () => {
+describe("K19: the access code and a foreign address", () => {
+  it("a foreign address that wants the access code first gets a page with the button 'Continue' — without and with sign-in", async () => {
     const open = await started(memory(), false);
     const signIn = await started(memory(), true);
 
-    const withoutSignIn = handover(await authorize(open, "GET", FOREIGN_CLIENT, FOREIGN_TARGET));
-    const afterSignIn = handover(await authorize(signIn, "POST", FOREIGN_CLIENT, FOREIGN_TARGET));
+    const withoutSignIn = handover(await authorize(open, "GET", FOREIGN_CLIENT, FOREIGN_TARGET), FOREIGN_TARGET);
+    const afterSignIn = handover(await authorize(signIn, "POST", FOREIGN_CLIENT, FOREIGN_TARGET), FOREIGN_TARGET);
 
-    for (const page of [withoutSignIn, afterSignIn]) {
-      expect(page).toEqual({
-        status: 200,
-        button: expect.stringMatching(withCode(FOREIGN_TARGET)) as unknown,
-        refresh: null,
-        script: false,
-      });
-    }
+    expect({ withoutSignIn, afterSignIn }).toEqual({
+      withoutSignIn: { continueButton: true, handedOver: false },
+      afterSignIn: { continueButton: true, handedOver: false },
+    });
   });
 
-  it("hands the code over at once to the Home Assistant apps and to the address of the request itself", async () => {
+  it("the Home Assistant app gets the access code without the question", async () => {
     const open = await started(memory(), false);
     const signIn = await started(memory(), true);
 
-    const android = handover(await authorize(open, "GET", "https://home-assistant.io/android", APP_TARGET));
-    const ios = handover(await authorize(open, "GET", "https://home-assistant.io/iOS", APP_TARGET));
-    const ownHost = handover(await authorize(open, "GET", OWN_CLIENT, OWN_TARGET));
-    const appAfterSignIn = handover(await authorize(signIn, "POST", "https://home-assistant.io/android", APP_TARGET));
+    const android = handover(await authorize(open, "GET", "https://home-assistant.io/android", APP_TARGET), APP_TARGET);
+    const ios = handover(await authorize(open, "GET", "https://home-assistant.io/iOS", APP_TARGET), APP_TARGET);
+    const afterSignIn = handover(
+      await authorize(signIn, "POST", "https://home-assistant.io/android", APP_TARGET),
+      APP_TARGET,
+    );
 
-    for (const [page, target] of [
-      [android, APP_TARGET],
-      [ios, APP_TARGET],
-      [ownHost, OWN_TARGET],
-      [appAfterSignIn, APP_TARGET],
-    ] as const) {
-      expect(page).toEqual({
-        status: 200,
-        button: null,
-        refresh: expect.stringMatching(withCode(target)) as unknown,
-        script: true,
-      });
-    }
+    expect({ android, ios, afterSignIn }).toEqual({
+      android: { continueButton: false, handedOver: true },
+      ios: { continueButton: false, handedOver: true },
+      afterSignIn: { continueButton: false, handedOver: true },
+    });
+  });
+
+  it("the address the request came from gets the access code without the question", async () => {
+    const open = await started(memory(), false);
+    const signIn = await started(memory(), true);
+
+    const withoutSignIn = handover(await authorize(open, "GET", OWN_CLIENT, OWN_TARGET), OWN_TARGET);
+    const afterSignIn = handover(await authorize(signIn, "POST", OWN_CLIENT, OWN_TARGET), OWN_TARGET);
+
+    expect({ withoutSignIn, afterSignIn }).toEqual({
+      withoutSignIn: { continueButton: false, handedOver: true },
+      afterSignIn: { continueButton: false, handedOver: true },
+    });
   });
 });

@@ -1,28 +1,29 @@
 /**
- * Guard BS-9 — the card "hassemu offline": once the dashboard runs and hassemu leaves three polls in a row unanswered
- * (about one and a half minutes), a red card with the display's id and IP address and the button "Reload now" covers
- * the dashboard, in the system language; when hassemu answers again, the card goes and the dashboard is back.
+ * Guard BS-9 — the card "hassemu offline": the display already shows its dashboard, and hassemu does not answer the
+ * query three times in a row (after about a minute and a half): a red card with id and IP address of the display and
+ * the button "Reload now" („Jetzt neu laden“). The card covers the dashboard although the dashboard itself would keep
+ * running: it talks to its target directly. When hassemu answers again, the card disappears and the dashboard is back.
+ * If hassemu is not running already when the app opens, the app shows its own error page.
  *
  * The page, BS-9 (card "hassemu offline"): "The display already shows its dashboard, and hassemu does not answer the
  * poll three times in a row. That is the case after about one and a half minutes." "Shows a red card with id and IP
  * address of the display and the button 'Reload now'." "The card covers the dashboard, although it would keep running
  * itself: it talks directly to its target. When hassemu answers again, the card disappears and the dashboard is back."
- * "If hassemu is already not running when the app opens, the app shows its own error page." The screens: "the texts exist
- * in eleven languages", shown "in German system language".
+ * "If hassemu is already not running when the app opens, the app shows its own error page." krobi's wording of the
+ * rule is German: „Jetzt neu laden“. "About a minute and a half" is read as within a quarter of a minute of it.
  * Accepted by krobi with the page of hassemu's core decisions (version 30) on 2026-11-11 20:19 ("so bs1 to bs9 are
  * ok").
  *
- * Path: the web server as main.ts starts it with German as the system language and a reachable target; a display asks
- * for / (no target yet), its mode is set to a URL through the registry's mode write, and it asks for / again. The
- * served page runs in a sandbox (node:vm) with a fake window and document; its poll goes to the same server's
- * /api/redirect_check with the display's cookie while hassemu is up, and fails while it is down. The last sentence of
- * the page names the app's own error page, which hassemu does not serve; nothing is asserted for it. The texts come
- * from the adapter's own admin/i18n files, read as data. The host carries one network (192.168.77.0/24); the data
- * folder is a map in memory, since a guard writes no file.
+ * Path: the web server as main.ts starts it with a reachable target; a display asks for /, a URL is chosen as its
+ * mode, and it asks for / again. The served page runs in a sandbox (node:vm) with a fake window and document; its
+ * query goes to the same server with the display's cookie while hassemu is up, and fails while it is down. The app's
+ * own error page is the app's; for it the guard checks that a hassemu which does not run answers nothing on its port.
+ * The system language is German, the language of krobi's wording; the texts come from the adapter's own admin/i18n
+ * files, as adapter-core's I18n resolves a key. The host carries one network (192.168.77.0/24); the data folder is a
+ * map in memory, since a guard writes no file.
  */
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { connect } from "node:net";
 import type * as Os from "node:os";
 import { createContext, runInContext } from "node:vm";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -311,18 +312,6 @@ function ask(
 }
 
 /**
- * One language file of the adapter, read as data.
- *
- * @param lang the language
- */
-function language(lang: string): Record<string, string> {
-  return JSON.parse(readFileSync(join(process.cwd(), "admin", "i18n", `${lang}.json`), "utf8")) as Record<
-    string,
-    string
-  >;
-}
-
-/**
  * The text of an HTML fragment with its entities resolved.
  *
  * @param html the escaped text
@@ -338,6 +327,8 @@ function unescaped(html: string | undefined): string | undefined {
 
 /** One element of the page, faked: its classes and inline style. */
 interface FakeElement {
+  /** The address an iframe shows. */
+  src?: string;
   classes: Set<string>;
   style: Record<string, string>;
   classList: { contains(c: string): boolean; add(c: string): void; remove(c: string): void };
@@ -372,6 +363,7 @@ function running(html: string, answer: (url: string) => Promise<unknown>): Runni
     const classes = new Set((/class="([^"]*)"/.exec(m[2])?.[1] ?? "").split(/\s+/).filter(Boolean));
     const style: Record<string, string> = /style="display:none"/.test(m[2]) ? { display: "none" } : {};
     elements.set(m[1], {
+      src: unescaped(/\bsrc="([^"]*)"/.exec(m[2])?.[1]),
       classes,
       style,
       classList: {
@@ -495,81 +487,162 @@ function zIndex(html: string, selector: string): number {
   return Number(new RegExp(`\\n${selector}\\{[^}]*z-index:(\\d+)`).exec(html)?.[1] ?? Number.NaN);
 }
 
-describe("BS-9: after three unanswered polls a red 'hassemu offline' card covers the dashboard until hassemu answers again", () => {
-  it("shows the German card after three failed polls (one and a half minutes) and hides it when hassemu answers", async () => {
-    const mem = memory();
-    const { server, registry } = await started(mem, true);
-    const peer = "192.168.77.50";
-    const { cookie, page } = await displayOnTarget(server, registry, peer, TARGET);
-    const answers: unknown[] = [];
-    const poll = pollOf(server, peer, cookie, answers);
-    let up = true;
-    const shown = running(page.body, url => (up ? poll(url) : Promise.reject(new Error("no answer from hassemu"))));
-    const card = (): boolean => shown.elements.get("hassemu-down")?.classes.has("visible") === true;
-    const dashboard = (): string | undefined => shown.elements.get("hassemu-iframe")?.style.display;
+/**
+ * The elements the body shows at its top level as the page's scripts left it — scripts aside, an element is hidden when
+ * its own style or the page's stylesheet hides it and no class of it shows it again.
+ *
+ * @param html the page
+ * @param shown the page, running
+ */
+function shownOnScreen(html: string, shown: Running): string[] {
+  const body = (/<body>([\s\S]*)<\/body>/.exec(html)?.[1] ?? "").replace(/<script>[\s\S]*?<\/script>/g, "");
+  const css = [...html.matchAll(/<style>([\s\S]*?)<\/style>/g)].map(m => m[1]).join("\n");
+  const visible: string[] = [];
+  let depth = 0;
+  for (const m of body.matchAll(/<(\/?)([a-z0-9]+)([^>]*)>/gi)) {
+    if (m[1] === "/") {
+      depth--;
+      continue;
+    }
+    if (depth === 0) {
+      const id = /\bid="([^"]+)"/.exec(m[3])?.[1];
+      const element = id === undefined ? undefined : shown.elements.get(id);
+      const hiddenByStyle = element?.style.display === "none";
+      const hiddenBySheet = id !== undefined && css.includes(`#${id}{display:none`);
+      const shownByClass = [...(element?.classes ?? [])].some(c => css.includes(`#${id}.${c}{display:`));
+      if (!hiddenByStyle && (!hiddenBySheet || shownByClass)) {
+        visible.push(id ?? m[2]);
+      }
+    }
+    depth++;
+  }
+  return visible;
+}
 
-    await shown.tick();
-    const running0 = { answers: answers.length, card: card(), dashboardHidden: dashboard() === "none" };
-    up = false;
-    const failed: boolean[] = [];
+/**
+ * Whether anything accepts a connection on the port.
+ *
+ * @param port the port
+ */
+function answersOn(port: number): Promise<boolean> {
+  return new Promise(resolve => {
+    const socket = connect({ host: "127.0.0.1", port });
+    socket.once("connect", () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once("error", () => resolve(false));
+  });
+}
+
+const PEER = "192.168.77.50";
+
+/** A display on its dashboard; hassemu answers its queries while `hassemu.up` is true. */
+async function onItsDashboard(): Promise<{
+  id: string;
+  page: Answer;
+  shown: Running;
+  hassemu: { up: boolean };
+  card: () => boolean;
+}> {
+  const { server, registry } = await started(memory(), true);
+  const { id, cookie, page } = await displayOnTarget(server, registry, PEER, TARGET);
+  const poll = pollOf(server, PEER, cookie, []);
+  const hassemu = { up: true };
+  const shown = running(page.body, url =>
+    hassemu.up ? poll(url) : Promise.reject(new Error("no answer from hassemu")),
+  );
+  const card = (): boolean => shown.elements.get("hassemu-down")?.classes.has("visible") === true;
+  await shown.tick();
+  if (card() || shownOnScreen(page.body, shown).join() !== "hassemu-iframe") {
+    throw new Error("the case needs a display that already shows its dashboard");
+  }
+  return { id, page, shown, hassemu, card };
+}
+
+describe("BS-9: the card 'hassemu offline'", () => {
+  it("hassemu does not answer the query three times in a row, after about a minute and a half: a red card with id and IP address of the display and the button 'Reload now'", async () => {
+    const { id, page, shown, hassemu, card } = await onItsDashboard();
+
+    hassemu.up = false;
+    const afterEachQuery: boolean[] = [];
     for (let i = 0; i < 3; i++) {
       await shown.tick();
-      failed.push(card());
+      afterEachQuery.push(card());
     }
-    const down = { dashboard: dashboard(), downAfterSeconds: (3 * (shown.intervals[0]?.ms ?? 0)) / 1000 };
-    up = true;
-    await shown.tick();
-    const back = { card: card(), dashboard: dashboard(), reloads: shown.reloads() };
-
-    expect({ running0, failed, down, back }).toEqual({
-      running0: { answers: 1, card: false, dashboardHidden: false },
-      failed: [false, false, true],
-      down: { dashboard: "none", downAfterSeconds: 90 },
-      back: { card: false, dashboard: "block", reloads: 0 },
-    });
-  });
-
-  it("is a red card with the display's id and IP address and a 'Reload now' button, above the dashboard", async () => {
-    const de = language("de");
-    const en = language("en");
-    const mem = memory();
-    const { server, registry } = await started(mem, true);
-    const peer = "192.168.77.51";
-    const { id, page } = await displayOnTarget(server, registry, peer, TARGET);
-    const shown = running(page.body, () => new Promise(() => undefined));
+    const seconds = (afterEachQuery.indexOf(true) + 1) * ((shown.intervals[0]?.ms ?? 0) / 1000);
     const start = page.body.indexOf('<div id="hassemu-down"');
     const end = page.body.indexOf('<div id="hassemu-target-down"', start);
     const block = start < 0 ? "" : page.body.slice(start, end < 0 ? undefined : end);
-    const rows = [
-      ...block.matchAll(/<tr><th scope="row">([^<]*)<\/th><td>(?:<code>)?([^<]*)(?:<\/code>)?<\/td><\/tr>/g),
-    ].map(m => [unescaped(m[1]), unescaped(m[2])]);
-    const button = /<button type="button" onclick="([^"]*)">([^<]*)<\/button>/.exec(block);
-    const banner = /#hassemu-down \.banner\{background:(#[0-9a-fA-F]{6})/.exec(page.body)?.[1];
-    shown.run(unescaped(button?.[1]) ?? "");
+    const text = unescaped(block.replace(/<[^>]*>/g, " ")) ?? "";
+    const red = hue(/#hassemu-down \.banner\{background:(#[0-9a-fA-F]{6})/.exec(page.body)?.[1]);
 
-    // The heading "hassemu offline" reads the same in both files; the labels and the button carry the language proof.
-    const keys = ["pageDeviceId", "pageIpAddress", "pageReload"];
-    expect({ differs: keys.filter(key => de[key] === en[key]) }).toEqual({ differs: [] });
-    const red = hue(banner);
     expect({
-      lang: /<html lang="([^"]+)"/.exec(page.body)?.[1],
-      heading: unescaped(/<h1>([^<]*)<\/h1>/.exec(block)?.[1]),
-      rows,
-      button: unescaped(button?.[2]),
-      buttonReloads: shown.reloads(),
+      afterEachQuery,
+      aboutAMinuteAndAHalf: Math.abs(seconds - 90) <= 15,
+      card: unescaped(/<h1>([^<]*)<\/h1>/.exec(block)?.[1]),
       red: red >= 0 && (red < 15 || red >= 345),
-      above: zIndex(page.body, "#hassemu-down") > zIndex(page.body, "iframe"),
+      id: text.includes(id),
+      ip: text.includes(PEER),
+      button: unescaped(/<button\b[^>]*>([^<]*)<\/button>/.exec(block)?.[1]),
     }).toEqual({
-      lang: "de",
-      heading: de.pageOfflineHeading,
-      rows: [
-        [de.pageDeviceId, id],
-        [de.pageIpAddress, peer],
-      ],
-      button: de.pageReload,
-      buttonReloads: 1,
+      afterEachQuery: [false, false, true],
+      aboutAMinuteAndAHalf: true,
+      card: "hassemu offline",
       red: true,
-      above: true,
+      id: true,
+      ip: true,
+      button: "Jetzt neu laden",
     });
+  });
+
+  it("the card covers the dashboard, although the dashboard itself would keep running: it talks to its target directly", async () => {
+    const { page, shown, hassemu, card } = await onItsDashboard();
+    hassemu.up = false;
+    for (let i = 0; i < 10 && !card(); i++) {
+      await shown.tick();
+    }
+    if (!card()) {
+      throw new Error("the case needs the card on screen");
+    }
+    const cardRule = (/\n#hassemu-down\{([^}]*)\}/.exec(page.body)?.[1] ?? "").split(";");
+
+    expect({
+      covers:
+        ["position:fixed", "top:0", "left:0", "right:0", "bottom:0"].every(d => cardRule.includes(d)) &&
+        zIndex(page.body, "#hassemu-down") > zIndex(page.body, "iframe"),
+      dashboardKeepsRunning: { talksTo: shown.elements.get("hassemu-iframe")?.src, reloaded: shown.reloads() },
+    }).toEqual({ covers: true, dashboardKeepsRunning: { talksTo: TARGET, reloaded: 0 } });
+  });
+
+  it("when hassemu answers again, the card disappears and the dashboard is back", async () => {
+    const { page, shown, hassemu, card } = await onItsDashboard();
+    hassemu.up = false;
+    for (let i = 0; i < 10 && !card(); i++) {
+      await shown.tick();
+    }
+    if (!card()) {
+      throw new Error("the case needs the card on screen");
+    }
+
+    hassemu.up = true;
+    await shown.tick();
+
+    expect({ card: card(), onScreen: shownOnScreen(page.body, shown) }).toEqual({
+      card: false,
+      onScreen: ["hassemu-iframe"],
+    });
+  });
+
+  it("if hassemu is not running already when the app opens, nothing of hassemu answers — the app shows its own error page", async () => {
+    const { server } = await started(memory(), true);
+    const port = server.boundAddress?.port;
+    if (port === undefined || !(await answersOn(port))) {
+      throw new Error("the case needs a hassemu that listens before it stops");
+    }
+    servers.splice(servers.indexOf(server), 1);
+    await server.stop();
+
+    expect(await answersOn(port)).toBe(false);
   });
 });

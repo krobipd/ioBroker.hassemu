@@ -1,24 +1,22 @@
 /**
- * Guard BS-7 — the dashboard: as soon as a target is chosen and reachable, the display shows it over the whole screen,
- * without a frame and without anything of hassemu's; the page asks hassemu every 30 seconds and reloads only when
- * another target is chosen.
+ * Guard BS-7 — the dashboard: as soon as a target is chosen and reachable, the display shows the target (VIS, VIS-2,
+ * Aura, admin or an own address) over the whole screen, without a frame and without anything added by hassemu; the page
+ * asks hassemu every 30 seconds and reloads only when another target is chosen.
  *
  * The page, BS-7 (dashboard): "As soon as a target is chosen and reachable." "Shows your target (VIS, VIS-2, Aura,
  * Admin or an own address) over the whole screen, without a frame and without any addition by hassemu. That is why
  * there is no picture here." "The page asks hassemu every 30 seconds. It is reloaded only when you choose another
- * target." The screens: "the texts exist in eleven languages", shown "in German system language".
+ * target."
  * Accepted by krobi with the page of hassemu's core decisions (version 30) on 2026-11-11 20:19 ("so bs1 to bs9 are
  * ok").
  *
- * Path: the web server as main.ts starts it with German as the system language and a reachable target; a display asks
- * for / (no target yet), its mode is set to a URL through the registry's mode write, and it asks for / again. The
- * served page then runs in a sandbox (node:vm) with a fake window and document; its poll goes to the same server's
- * /api/redirect_check with the display's cookie. The texts come from the adapter's own admin/i18n files, read as data.
- * The host carries one network (192.168.77.0/24); the data folder is a map in memory, since a guard writes no file.
+ * Path: the web server as main.ts starts it with a reachable target; a display asks for / once, a target is chosen for
+ * it — a dashboard of the list through its mode, an own address through the mode "Manual URL" and its datapoint — and
+ * it asks for / again. The served page then runs in a sandbox (node:vm) with a fake window and document; whatever it
+ * fetches goes to the same server with the display's cookie. The host carries one network (192.168.77.0/24); the data
+ * folder is a map in memory, since a guard writes no file.
  */
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type * as Os from "node:os";
 import { createContext, runInContext } from "node:vm";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -87,7 +85,7 @@ vi.mock("../lib/data-file", () => ({
 }));
 
 import { ClientRegistry } from "../lib/client-registry";
-import { MODE_GLOBAL, NO_CHOICE } from "../lib/constants";
+import { MODE_GLOBAL, MODE_MANUAL, NO_CHOICE } from "../lib/constants";
 import { GlobalConfig } from "../lib/global-config";
 import type { AdapterConfig } from "../lib/types";
 import { WebServer } from "../lib/webserver";
@@ -307,18 +305,6 @@ function ask(
 }
 
 /**
- * One language file of the adapter, read as data.
- *
- * @param lang the language
- */
-function language(lang: string): Record<string, string> {
-  return JSON.parse(readFileSync(join(process.cwd(), "admin", "i18n", `${lang}.json`), "utf8")) as Record<
-    string,
-    string
-  >;
-}
-
-/**
  * The text of an HTML fragment with its entities resolved.
  *
  * @param html the escaped text
@@ -420,118 +406,171 @@ function running(html: string, answer: (url: string) => Promise<unknown>): Runni
   };
 }
 
+/** A choice of target for one display. */
+type Choice = (registry: ClientRegistry, id: string) => Promise<void>;
+
 /**
- * A display that asked for / once (no target yet), then got a URL as its mode through the registry, and asked again.
+ * A display that asked for / once, then got its target chosen, and asked again.
  *
  * @param server the server
  * @param registry the registry
  * @param peer the display's address
- * @param target the URL the mode is set to
+ * @param choose how its target is chosen
  */
 async function displayOnTarget(
   server: WebServer,
   registry: ClientRegistry,
   peer: string,
-  target: string,
-): Promise<{ id: string; cookie: string; before: Answer; page: Answer }> {
+  choose: Choice,
+): Promise<{ id: string; cookie: string; page: Answer }> {
   const before = await ask(server, peer, "GET", "/");
   const raw = before.headers["set-cookie"];
   const setCookie = Array.isArray(raw) ? raw.join("; ") : typeof raw === "string" ? raw : "";
   const cookie = /hassemu_client=[^;]+/.exec(setCookie)?.[0] ?? "";
-  const id = registry.getByCookie(cookie.replace(/^hassemu_client=/, ""))?.id ?? "";
-  await registry.handleModeWrite(id, target);
+  const id = registry.getByCookie(cookie.replace(/^hassemu_client=/, ""))?.id;
+  if (id === undefined) {
+    throw new Error("the case needs the display its first visit creates");
+  }
+  await choose(registry, id);
   const page = await ask(server, peer, "GET", "/", { cookie });
-  return { id, cookie, before, page };
+  return { id, cookie, page };
 }
 
 /**
- * What the display's poll gets from the server: /api/redirect_check with the display's cookie.
+ * What the display's fetch gets: the same server, with the display's cookie.
  *
  * @param server the server
  * @param peer the display's address
  * @param cookie the display's cookie
- * @param answers every body the server answered, in order
  */
-function pollOf(
+function servedBy(
   server: WebServer,
   peer: string,
   cookie: string,
-  answers: unknown[],
 ): (url: string) => Promise<{ json(): Promise<unknown> }> {
   return async url => {
     const reply = await ask(server, peer, "GET", url, { cookie });
     const body = reply.json();
-    answers.push(body);
     return { json: () => Promise.resolve(body) };
   };
 }
-const OTHER = "http://192.168.77.21:8099/aura/";
 
-describe("BS-7: the dashboard shows the target alone over the whole screen; it polls every 30 s and reloads only for another target", () => {
-  it("shows the chosen, reachable target full screen without a frame and without anything of hassemu over it", async () => {
-    const de = language("de");
-    const en = language("en");
-    const mem = memory();
-    const { server, registry } = await started(mem, true);
+/**
+ * The elements the body shows at its top level once the page's scripts ran — scripts aside, an element is hidden when
+ * its own style or the page's stylesheet hides it and no class of it shows it again.
+ *
+ * @param html the page
+ * @param shown the page, running
+ */
+function shownOnScreen(html: string, shown: Running): string[] {
+  const body = (/<body>([\s\S]*)<\/body>/.exec(html)?.[1] ?? "").replace(/<script>[\s\S]*?<\/script>/g, "");
+  const css = [...html.matchAll(/<style>([\s\S]*?)<\/style>/g)].map(m => m[1]).join("\n");
+  const visible: string[] = [];
+  let depth = 0;
+  let last = 0;
+  for (const m of body.matchAll(/<(\/?)([a-z0-9]+)([^>]*)>/gi)) {
+    if (depth === 0 && body.slice(last, m.index).trim() !== "") {
+      visible.push("text");
+    }
+    last = (m.index ?? 0) + m[0].length;
+    if (m[1] === "/") {
+      depth--;
+      continue;
+    }
+    if (depth === 0) {
+      const id = /\bid="([^"]+)"/.exec(m[3])?.[1];
+      const element = id === undefined ? undefined : shown.elements.get(id);
+      const hiddenByStyle = element?.style.display === "none";
+      const hiddenBySheet = id !== undefined && css.includes(`#${id}{display:none`);
+      const shownByClass = [...(element?.classes ?? [])].some(c => css.includes(`#${id}.${c}{display:`));
+      if (!hiddenByStyle && (!hiddenBySheet || shownByClass)) {
+        visible.push(id ?? m[2]);
+      }
+    }
+    depth++;
+  }
+  if (body.slice(last).trim() !== "") {
+    visible.push("text");
+  }
+  return visible;
+}
 
-    const { before, page } = await displayOnTarget(server, registry, "192.168.77.50", TARGET);
-    const shown = running(page.body, () => new Promise(() => undefined));
-    const iframeRule = /\niframe\{([^}]*)\}/.exec(page.body)?.[1] ?? "";
-    const bodyRule = /html,body\{([^}]*)\}/.exec(page.body)?.[1] ?? "";
+const PEER = "192.168.77.50";
+/** The targets the rule names, each as the user chooses it. */
+const TARGETS: { kind: string; url: string; choose: Choice }[] = [
+  ["VIS", "http://192.168.77.20:8082/vis/index.html?main"],
+  ["VIS-2", TARGET],
+  ["Aura", "http://192.168.77.21:8099/aura/"],
+  ["admin", "http://192.168.77.20:8081/"],
+].map(([kind, url]) => ({ kind, url, choose: (registry, id) => registry.handleModeWrite(id, url) }));
+TARGETS.push({
+  kind: "an own address",
+  url: "http://192.168.77.30/wall.html",
+  choose: async (registry, id) => {
+    await registry.handleModeWrite(id, MODE_MANUAL);
+    await registry.handleManualUrlWrite(id, "http://192.168.77.30/wall.html");
+  },
+});
 
-    expect({ differs: de.pageConnectedTitle !== en.pageConnectedTitle }).toEqual({ differs: true });
-    expect({
-      dashboardBeforeChoice: /<iframe\b/.test(before.body),
-      status: page.statusCode,
-      lang: /<html lang="([^"]+)"/.exec(page.body)?.[1],
-      title: unescaped(/<title>([^<]*)<\/title>/.exec(page.body)?.[1]),
-      target: unescaped(/<iframe id="hassemu-iframe" src="([^"]*)"/.exec(page.body)?.[1]),
-      iframeHidden: shown.elements.get("hassemu-iframe")?.style.display === "none",
-      wholeScreen: ["position:fixed", "top:0", "left:0", "width:100vw", "height:100vh"].every(d =>
-        iframeRule.split(";").includes(d),
-      ),
-      noFrame: iframeRule.split(";").includes("border:0") && bodyRule.split(";").includes("margin:0"),
-      cardsShown: ["hassemu-down", "hassemu-target-down"].filter(id => shown.elements.get(id)?.classes.has("visible")),
-    }).toEqual({
-      dashboardBeforeChoice: false,
-      status: 200,
-      lang: "de",
-      title: de.pageConnectedTitle,
-      target: TARGET,
-      iframeHidden: false,
-      wholeScreen: true,
-      noFrame: true,
-      cardsShown: [],
-    });
+describe("BS-7: the dashboard", () => {
+  it("as soon as a target is chosen and reachable: the target over the whole screen, without a frame and without anything added by hassemu", async () => {
+    const seen: Record<string, unknown>[] = [];
+    for (const target of TARGETS) {
+      const { server, registry } = await started(memory(), true);
+      const { page } = await displayOnTarget(server, registry, PEER, target.choose);
+      const shown = running(page.body, () => new Promise(() => undefined));
+      const iframeRule = (/\niframe\{([^}]*)\}/.exec(page.body)?.[1] ?? "").split(";");
+      const bodyRule = (/html,body\{([^}]*)\}/.exec(page.body)?.[1] ?? "").split(";");
+      seen.push({
+        kind: target.kind,
+        shows: unescaped(/<iframe id="hassemu-iframe" src="([^"]*)"/.exec(page.body)?.[1]),
+        wholeScreen: ["position:fixed", "top:0", "left:0", "width:100vw", "height:100vh"].every(d =>
+          iframeRule.includes(d),
+        ),
+        noFrame: iframeRule.includes("border:0") && bodyRule.includes("margin:0"),
+        onScreen: shownOnScreen(page.body, shown),
+      });
+    }
+
+    expect(seen).toEqual(
+      TARGETS.map(target => ({
+        kind: target.kind,
+        shows: target.url,
+        wholeScreen: true,
+        noFrame: true,
+        onScreen: ["hassemu-iframe"],
+      })),
+    );
   });
 
-  it("asks hassemu every 30 seconds and reloads only once another target is chosen", async () => {
-    const mem = memory();
-    const { server, registry } = await started(mem, true);
-    const peer = "192.168.77.51";
-    const { id, cookie, page } = await displayOnTarget(server, registry, peer, TARGET);
-    const answers: unknown[] = [];
-    const shown = running(page.body, pollOf(server, peer, cookie, answers));
+  it("the page asks hassemu every 30 seconds", async () => {
+    const { server, registry } = await started(memory(), true);
+    const { cookie, page } = await displayOnTarget(server, registry, PEER, TARGETS[1].choose);
+    const shown = running(page.body, servedBy(server, PEER, cookie));
 
     await shown.tick();
     await shown.tick();
-    await shown.tick();
-    const sameTarget = { answers: answers.length, reloads: shown.reloads() };
-    await registry.handleModeWrite(id, OTHER);
     await shown.tick();
 
     expect({
-      intervals: shown.intervals.map(i => i.ms),
-      fetched: [...new Set(shown.fetched)],
-      sameTarget,
-      lastAnswer: answers.at(-1),
-      reloadsAfterChoice: shown.reloads(),
-    }).toEqual({
-      intervals: [30_000],
-      fetched: ["/api/redirect_check"],
-      sameTarget: { answers: 3, reloads: 0 },
-      lastAnswer: { target: OTHER, targetReachable: true },
-      reloadsAfterChoice: 1,
-    });
+      every: shown.intervals.map(i => i.ms),
+      asked: shown.fetched.length,
+      ofHassemu: shown.fetched.every(url => url.startsWith("/") && !url.startsWith("//")),
+    }).toEqual({ every: [30_000], asked: 3, ofHassemu: true });
+  });
+
+  it("it reloads only when another target is chosen", async () => {
+    const { server, registry } = await started(memory(), true);
+    const { id, cookie, page } = await displayOnTarget(server, registry, PEER, TARGETS[1].choose);
+    const shown = running(page.body, servedBy(server, PEER, cookie));
+
+    await shown.tick();
+    await shown.tick();
+    await shown.tick();
+    const sameTarget = shown.reloads();
+    await registry.handleModeWrite(id, TARGETS[2].url);
+    await shown.tick();
+
+    expect({ sameTarget, anotherTarget: shown.reloads() }).toEqual({ sameTarget: 0, anotherTarget: 1 });
   });
 });

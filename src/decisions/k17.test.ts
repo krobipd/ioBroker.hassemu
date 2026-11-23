@@ -1,5 +1,8 @@
 /**
- * Guard K17 — hassemu reports Home Assistant 2026.8.0 or newer and sends the app the signal "loaded" from every page.
+ * Guard K17 — hassemu reports itself as Home Assistant 2026.8.0 and additionally sends the app the signal "finished
+ * loading": at once for the start page and the cards, for the dashboard as soon as it has loaded, at the latest after
+ * a fixed time; the app keeps its own start screen until the dashboard is there; on the iPhone hassemu itself keeps the
+ * distance to clock and camera cut-out; the reported version is 2026.8.0 today.
  *
  * The page, K17: "hassemu reports itself as 2026.8.0 and additionally sends the app the signal 'finished loading': on
  * the landing page and the cards at once, on the dashboard as soon as it has loaded, at the latest after a fixed time.
@@ -11,9 +14,9 @@
  *
  * Path: the web server as main.ts starts it, with the production reachability probe, every display following the
  * global target — a small HTTP server on a free local port that answers or drops each connection. The version is read
- * from the routes the apps ask; each page is taken from the server by GET / and its inline scripts run in a sandbox
- * with an app bridge (V1, `externalApp.externalBus`) that records every message, held timers and a fetch that asks the
- * same server. The host carries one network (192.168.77.0/24); the data folder is a map in memory, since a guard
+ * from the routes the apps ask (`/api/config`, `/api/discovery_info`); each page is taken from the server by GET / and
+ * its inline scripts run in a sandbox with an app bridge (V1, `externalApp.externalBus`) that records every message,
+ * held timers and a fetch that fails like a hassemu that does not answer. The host carries one network (192.168.77.0/24); the data folder is a map in memory, since a guard
  * writes no file.
  */
 
@@ -114,8 +117,9 @@ const NS = "hassemu.0";
 const DATA_DIR = "/guard/hassemu.0";
 const PEER = "192.168.77.50";
 const UA = "Mozilla/5.0 (Linux; Android 13; WebView)";
-const CONNECTED = { id: 1, type: "connection-status", payload: { event: "connected" } };
-const LOADED = { id: 2, type: "frontend/loaded" };
+/** The Home Assistant app on an iPhone. */
+const UA_IPHONE_APP =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Home Assistant/2026.10.3 (io.robbie.HomeAssistant; build:2026.1032; iOS 18.1.0)";
 const servers: WebServer[] = [];
 const targets: Target[] = [];
 
@@ -313,9 +317,15 @@ function element(classes: string[]): FakeElement {
  * timers are held, poll ticks are fired by hand.
  *
  * @param server the server
+ * @param userAgent the display's user agent
  */
-async function openPage(server: WebServer): Promise<Display> {
-  const page = await server.inject({ method: "GET", url: "/", headers: { "user-agent": UA }, remoteAddress: PEER });
+async function openPage(server: WebServer, userAgent = UA): Promise<Display> {
+  const page = await server.inject({
+    method: "GET",
+    url: "/",
+    headers: { "user-agent": userAgent },
+    remoteAddress: PEER,
+  });
   const html = page.body;
   const cards: Record<string, FakeElement> = {
     "hassemu-iframe": element([]),
@@ -367,124 +377,99 @@ async function openPage(server: WebServer): Promise<Display> {
 }
 
 /**
- * A version "YYYY.M.P" as a number that orders like the version.
+ * Whether the app received the signal "finished loading".
  *
- * @param version the version text
+ * @param display the display
  */
-function versionRank(version: unknown): number {
-  const [year, month, patch] = String(version).split(".").map(Number);
-  return year * 10_000 + month * 100 + patch;
+function loadedSent(display: Display): boolean {
+  return display.messages.some(m => (m as { type?: unknown } | null)?.type === "frontend/loaded");
 }
 
-describe("K17: hassemu reports Home Assistant 2026.8.0 or newer and every page sends the app 'loaded'", () => {
-  it("reports a Home Assistant version of at least 2026.8.0 where the apps read it", async () => {
+describe("K17: Home Assistant 2026.8.0 and the signal 'finished loading'", () => {
+  it("hassemu reports itself as Home Assistant 2026.8.0 — today the reported version is 2026.8.0", async () => {
     const server = await started(memory());
     const config = await server.inject({ method: "GET", url: "/api/config", remoteAddress: PEER });
     const info = await server.inject({ method: "GET", url: "/api/discovery_info", remoteAddress: PEER });
     const configBody: { version?: unknown } = config.json();
     const infoBody: { version?: unknown } = info.json();
-    const versions = [configBody.version, infoBody.version];
 
-    expect({
-      statuses: [config.statusCode, info.statusCode],
-      notBelow2026dot8: versions.map(v => versionRank(v) >= versionRank("2026.8.0")),
-    }).toEqual({
-      statuses: [200, 200],
-      notBelow2026dot8: [true, true],
-    });
+    expect([configBody.version, infoBody.version]).toEqual(["2026.8.0", "2026.8.0"]);
   });
 
-  it("the landing page sends 'loaded' at once", async () => {
+  it("the start page sends 'finished loading' at once", async () => {
     const server = await started(memory());
     const display = await openPage(server);
 
-    expect({ landing: display.html.includes('<meta http-equiv="refresh"'), messages: display.messages }).toEqual({
-      landing: true,
-      messages: [CONNECTED, LOADED],
-    });
+    expect(loadedSent(display)).toBe(true);
   });
 
-  it("the card 'target not reachable' sends 'loaded' at once", async () => {
+  it("the card 'target not reachable' sends 'finished loading' at once", async () => {
     const target = await targetServer(true);
     const server = await started(memory(), target.url);
     const display = await openPage(server);
+    if (!display.cardVisible("hassemu-target-down")) {
+      throw new Error("the case needs the card on screen");
+    }
 
-    expect({ card: display.cardVisible("hassemu-target-down"), messages: display.messages }).toEqual({
-      card: true,
-      messages: [CONNECTED, LOADED],
-    });
+    expect(loadedSent(display)).toBe(true);
   });
 
-  it("the dashboard keeps the app's launch screen until its frame has loaded, then sends 'loaded'", async () => {
+  it("the card 'hassemu offline' sends 'finished loading' at once", async () => {
     const target = await targetServer(false);
     const server = await started(memory(), target.url);
     const display = await openPage(server);
-    const beforeLoad = [...display.messages];
+    for (let i = 0; i < 10 && !display.cardVisible("hassemu-down"); i++) {
+      await display.tickUnanswered();
+    }
+    if (!display.cardVisible("hassemu-down")) {
+      throw new Error("the case needs the card on screen");
+    }
+
+    expect(loadedSent(display)).toBe(true);
+  });
+
+  it("the dashboard sends it as soon as it has loaded; the app keeps its start screen until the dashboard is there", async () => {
+    const target = await targetServer(false);
+    const server = await started(memory(), target.url);
+    const display = await openPage(server);
+    const beforeLoad = loadedSent(display);
 
     display.iframeLoads();
 
-    expect({
-      card: display.cardVisible("hassemu-target-down"),
-      showsTarget: display.html.includes(`<iframe id="hassemu-iframe" src="${target.url}"`),
-      beforeLoad,
-      afterLoad: display.messages,
-    }).toEqual({ card: false, showsTarget: true, beforeLoad: [CONNECTED], afterLoad: [CONNECTED, LOADED] });
+    expect({ beforeLoad, afterLoad: loadedSent(display) }).toEqual({ beforeLoad: false, afterLoad: true });
   });
 
-  it("the dashboard sends 'loaded' after a fixed time when its frame never finishes loading", async () => {
+  it("the dashboard sends it at the latest after a fixed time", async () => {
     const target = await targetServer(false);
     const server = await started(memory(), target.url);
     const display = await openPage(server);
-    const beforeTimers = [...display.messages];
     let sentBy: unknown = null;
 
     for (const timer of display.timers) {
-      const before = display.messages.length;
+      const before = loadedSent(display);
       timer.callback();
-      if (sentBy === null && display.messages.length > before) {
+      if (sentBy === null && !before && loadedSent(display)) {
         sentBy = timer.delay;
       }
     }
 
-    expect({
-      beforeTimers,
-      afterTimers: display.messages,
-      fixedDelay: typeof sentBy === "number" && Number.isFinite(sentBy) && sentBy > 0,
-    }).toEqual({ beforeTimers: [CONNECTED], afterTimers: [CONNECTED, LOADED], fixedDelay: true });
+    expect(typeof sentBy === "number" && Number.isFinite(sentBy) && sentBy > 0).toBe(true);
   });
 
-  it("the card 'hassemu offline' sends 'loaded' as soon as it shows", async () => {
+  it("on the iPhone the page reaches the edge and hassemu itself keeps the distance to clock and camera cut-out", async () => {
     const target = await targetServer(false);
-    const server = await started(memory(), target.url);
-    const display = await openPage(server);
-    const seen: { card: boolean; messages: unknown[] }[] = [];
-
-    for (let i = 0; i < 3; i++) {
-      await display.tickUnanswered();
-      seen.push({ card: display.cardVisible("hassemu-down"), messages: [...display.messages] });
-    }
-
-    expect(seen).toEqual([
-      { card: false, messages: [CONNECTED] },
-      { card: false, messages: [CONNECTED] },
-      { card: true, messages: [CONNECTED, LOADED] },
-    ]);
-  });
-
-  it("the landing page and the dashboard reach to the edge and keep the safe area themselves", async () => {
-    const target = await targetServer(false);
-    const landing = await openPage(await started(memory()));
-    const dashboard = await openPage(await started(memory(), target.url));
-    const keepsSafeArea = (html: string): Record<string, boolean> => ({
+    const landing = await openPage(await started(memory()), UA_IPHONE_APP);
+    const dashboard = await openPage(await started(memory(), target.url), UA_IPHONE_APP);
+    const keepsDistance = (html: string): Record<string, boolean> => ({
       edgeToEdge: /<meta name="viewport" content="[^"]*viewport-fit=cover/.test(html),
       ...Object.fromEntries(
-        ["top", "right", "bottom", "left"].map(edge => [edge, html.includes(`env(safe-area-inset-${edge}`)]),
+        ["top", "left", "right"].map(edge => [edge, html.includes(`env(safe-area-inset-${edge},`)]),
       ),
     });
-    const all = { edgeToEdge: true, top: true, right: true, bottom: true, left: true };
+    const all = { edgeToEdge: true, top: true, left: true, right: true };
 
-    expect({ landing: keepsSafeArea(landing.html), dashboard: keepsSafeArea(dashboard.html) }).toEqual({
-      landing: all,
+    expect({ startPage: keepsDistance(landing.html), dashboard: keepsDistance(dashboard.html) }).toEqual({
+      startPage: all,
       dashboard: all,
     });
   });

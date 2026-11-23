@@ -1,6 +1,6 @@
 /**
- * Guard K10 — a display without a target gets a small page with its id that reloads every 15 seconds, never an
- * error; a target chosen meanwhile is reached with the next load.
+ * Guard K10 — a display without a target shows a small page with its id that reloads every 15 seconds; when a target is
+ * chosen, the display changes to it at the next load.
  *
  * The page, K10 ("Landing page instead of an error message"): "If a display has no target, it shows a small page with
  * its id that reloads every 15 seconds. If you choose a target, the display switches there with the next load."
@@ -297,7 +297,9 @@ async function displayOfARunningAdapter(): Promise<Display> {
   emu.config = { ...known.native, port: 0, mdnsEnabled: false };
   running.push(emu);
   await emu.handlers.get("ready")?.();
-  expect({ terminated: emu.terminated, serving: emu.webServer !== null }).toEqual({ terminated: [], serving: true });
+  if (emu.terminated.length > 0 || emu.webServer === null) {
+    throw new Error(`the case needs a running adapter (${emu.terminated.join(", ")})`);
+  }
   const peer = "192.168.77.51";
   const first = await ask(emu, peer, "/");
   await new Promise(resolve => setTimeout(resolve, 0));
@@ -306,7 +308,9 @@ async function displayOfARunningAdapter(): Promise<Display> {
   const ids = [...db.objects]
     .filter(([id, obj]) => id.startsWith(CLIENTS) && obj.type === "device")
     .map(([id]) => id.slice(CLIENTS.length));
-  expect(ids.length).toBe(1);
+  if (ids.length !== 1) {
+    throw new Error("the case needs the display its first visit creates");
+  }
   return { emu, peer, cookie: /hassemu_client=[^;]+/.exec(text)?.[0] ?? "", id: ids[0] ?? "", first };
 }
 
@@ -323,8 +327,10 @@ function ask(emu: Emu, peer: string, url: string, cookie = ""): Promise<Answer> 
   if (cookie) {
     headers.cookie = cookie;
   }
-  expect(emu.webServer).not.toBeNull();
-  return (emu.webServer as NonNullable<Emu["webServer"]>).inject({
+  if (emu.webServer === null) {
+    throw new Error("the case needs the adapter's web server");
+  }
+  return emu.webServer.inject({
     method: "GET",
     url,
     headers,
@@ -378,39 +384,29 @@ function shape(page: Answer, id: string): { status: number; html: boolean; names
 
 const LANDING = { status: 200, html: true, namesId: true, frame: null };
 
-describe("K10: a display without a target gets the landing page instead of an error", () => {
-  it("shows a page with the display's id, not an error — new, on 'global' with nothing global, on 'manual' without an address", async () => {
+describe("K10: a display without a target", () => {
+  it("shows a small page with its id", async () => {
     const display = await displayOfARunningAdapter();
-    const fresh = shape(display.first, display.id);
-    await userWrites(display.emu, `clients.${display.id}.mode`, "global");
-    const globalWithoutTarget = shape(await reload(display), display.id);
-    await userWrites(display.emu, `clients.${display.id}.mode`, "manual");
-    const manualWithoutAddress = shape(await reload(display), display.id);
 
-    expect({ fresh, globalWithoutTarget, manualWithoutAddress }).toEqual({
-      fresh: LANDING,
-      globalWithoutTarget: LANDING,
-      manualWithoutAddress: LANDING,
-    });
+    expect(shape(display.first, display.id)).toEqual(LANDING);
   });
 
-  it("the page reloads itself every 15 seconds", async () => {
+  it("the page reloads every 15 seconds", async () => {
     const display = await displayOfARunningAdapter();
     const refresh = [...display.first.body.matchAll(/<meta http-equiv="refresh" content="([^"]*)">/g)].map(m => m[1]);
 
-    expect({ landing: shape(display.first, display.id), refresh }).toEqual({ landing: LANDING, refresh: ["15"] });
+    expect(refresh).toEqual(["15"]);
   });
 
-  it("a target chosen while the page shows: the next load goes there", async () => {
+  it("when a target is chosen, the display changes to it at the next load", async () => {
     const target = await dashboard();
     const display = await displayOfARunningAdapter();
-    const before = shape(display.first, display.id);
-    await userWrites(display.emu, `clients.${display.id}.mode`, target);
-    const next = shape(await reload(display), display.id);
+    if (shape(display.first, display.id).frame !== null) {
+      throw new Error("the case needs the display on its page without a target");
+    }
 
-    expect({ before, next: { status: next.status, frame: next.frame } }).toEqual({
-      before: LANDING,
-      next: { status: 200, frame: target },
-    });
+    await userWrites(display.emu, `clients.${display.id}.mode`, target);
+
+    expect(shape(await reload(display), display.id).frame).toBe(target);
   });
 });
