@@ -21,65 +21,40 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import type * as Os from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { FakeState } from "../lib/adapter-fake";
 
 const { files, db } = vi.hoisted(() => ({
   files: new Map<string, string>(),
   db: { objects: new Map<string, ioBroker.Object>(), states: new Map<string, ioBroker.State>() },
 }));
 
-vi.mock("@iobroker/adapter-core", () => {
+vi.mock("@iobroker/adapter-core", async () => {
+  const { FakeAdapter } = await import("../lib/adapter-fake.js");
   const noop = (): void => undefined;
-  const plain = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
-  // Merge a patch the way js-controller's extendObject does: plain objects key by key, everything else replaced.
-  const merged = (base: unknown, patch: unknown): unknown => {
-    if (!plain(base) || !plain(patch)) {
-      return structuredClone(patch);
-    }
-    const out: Record<string, unknown> = { ...base };
-    for (const [key, value] of Object.entries(patch)) {
-      out[key] = merged(base[key], value);
-    }
-    return out;
-  };
-  /** The adapter base class over the database in memory. */
-  class Adapter {
-    namespace = "hassemu.0";
+  /** The adapter base class: the fleet's fake adapter over the database in memory, plus what hassemu itself calls. */
+  class Adapter extends FakeAdapter {
+    override readonly objects = db.objects as unknown as Map<string, Record<string, unknown>>;
+    override readonly states = db.states as unknown as Map<string, FakeState>;
     adapterDir = process.cwd();
-    config: Record<string, unknown> = {};
     handlers = new Map<string, (...args: unknown[]) => unknown>();
     intervals: (() => void)[] = [];
     terminated: string[] = [];
     log = { silly: noop, debug: noop, info: noop, warn: noop, error: noop, level: "info" };
-    on(event: string, handler: (...args: unknown[]) => unknown): this {
-      this.handlers.set(event, handler);
+    on(event: string, handler: (...args: never[]) => unknown): this {
+      this.handlers.set(event, handler as (...args: unknown[]) => unknown);
       return this;
-    }
-    full(id: string): string {
-      return id.startsWith(`${this.namespace}.`) ? id : `${this.namespace}.${id}`;
     }
     setInterval(callback: () => void): object {
       this.intervals.push(callback);
       return {};
     }
     clearInterval(): void {}
-    setTimeout(): object {
-      return {};
-    }
-    clearTimeout(): void {}
-    terminate(reason: string): void {
+    override terminate(reason: string, exitCode: number): never {
       this.terminated.push(reason);
+      return super.terminate(reason, exitCode);
     }
     getObjectAsync(id: string): Promise<ioBroker.Object | null> {
       return Promise.resolve(structuredClone(db.objects.get(this.full(id)) ?? null));
-    }
-    getForeignObjectAsync(id: string): Promise<ioBroker.Object | null> {
-      return Promise.resolve(structuredClone(db.objects.get(id) ?? null));
-    }
-    getForeignObjectsAsync(pattern: string, type?: string): Promise<Record<string, ioBroker.Object>> {
-      const prefix = pattern.replace(/\*$/, "");
-      const wanted = type ?? "state";
-      const found = [...db.objects].filter(([id, obj]) => id.startsWith(prefix) && obj.type === wanted);
-      return Promise.resolve(structuredClone(Object.fromEntries(found)));
     }
     getAdapterObjectsAsync(): Promise<Record<string, ioBroker.Object>> {
       const own = [...db.objects].filter(([id]) => id.startsWith(`${this.namespace}.`));
@@ -90,27 +65,6 @@ vi.mock("@iobroker/adapter-core", () => {
         db.objects.set(this.full(id), { ...structuredClone(obj), _id: this.full(id) } as ioBroker.Object);
       }
       return Promise.resolve({ id: this.full(id) });
-    }
-    extendObject(id: string, patch: Partial<ioBroker.Object>): Promise<{ id: string }> {
-      return this.extendForeignObjectAsync(this.full(id), patch);
-    }
-    extendForeignObjectAsync(id: string, patch: Partial<ioBroker.Object>): Promise<{ id: string }> {
-      db.objects.set(id, { ...(merged(db.objects.get(id) ?? {}, patch) as object), _id: id } as ioBroker.Object);
-      return Promise.resolve({ id });
-    }
-    setForeignObject(id: string, obj: ioBroker.Object): Promise<{ id: string }> {
-      db.objects.set(id, { ...structuredClone(obj), _id: id } as ioBroker.Object);
-      return Promise.resolve({ id });
-    }
-    delObjectAsync(id: string, options?: { recursive?: boolean }): Promise<void> {
-      const key = this.full(id);
-      for (const stored of [...db.objects.keys()]) {
-        if (stored === key || (options?.recursive === true && stored.startsWith(`${key}.`))) {
-          db.objects.delete(stored);
-          db.states.delete(stored);
-        }
-      }
-      return Promise.resolve();
     }
     delStateAsync(id: string): Promise<void> {
       db.states.delete(this.full(id));
@@ -145,9 +99,6 @@ vi.mock("@iobroker/adapter-core", () => {
       return Promise.resolve({ id: this.full(id), notChanged: false });
     }
     subscribeStatesAsync(): Promise<void> {
-      return Promise.resolve();
-    }
-    subscribeForeignObjectsAsync(): Promise<void> {
       return Promise.resolve();
     }
     unsubscribeStatesAsync(): Promise<void> {

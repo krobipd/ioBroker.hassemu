@@ -9,77 +9,44 @@
  *
  * Path: the adapter class from main.ts, its stateChange handler as the constructor registers it, receiving user writes
  * (ack false) on the four datapoints a target is written to — clients.<id>.mode, clients.<id>.manualUrl, global.mode
- * and global.manualUrl — over an adapter whose object and state database lives in memory; the registry and the global
- * settings are the adapter's own, built on that adapter. Each datapoint first holds a safe target, so a refused
- * address shows as the target that stays. The data folder is a map in memory, since a guard writes no file.
+ * and global.manualUrl — over the fleet's fake adapter with its object and state database in memory; the registry and
+ * the global settings are the adapter's own, built on that adapter. Each datapoint first holds a safe target, so a
+ * refused address shows as the target that stays. The data folder is a map in memory, since a guard writes no file.
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { files } = vi.hoisted(() => ({ files: new Map<string, string>() }));
 
-vi.mock("@iobroker/adapter-core", () => {
+vi.mock("@iobroker/adapter-core", async () => {
+  const { FakeAdapter } = await import("../lib/adapter-fake.js");
   const noop = (): void => undefined;
-  /** The adapter base class over a database in memory. */
-  class Adapter {
-    namespace = "hassemu.0";
-    config: Record<string, unknown> = {};
+  /** The adapter base class: the fleet's fake adapter over the database in memory, plus what hassemu itself calls. */
+  class Adapter extends FakeAdapter {
     handlers = new Map<string, (...args: unknown[]) => unknown>();
-    objects = new Map<string, ioBroker.Object>();
-    states = new Map<string, ioBroker.State>();
     log = { silly: noop, debug: noop, info: noop, warn: noop, error: noop, level: "info" };
-    on(event: string, handler: (...args: unknown[]) => unknown): this {
-      this.handlers.set(event, handler);
+    on(event: string, handler: (...args: never[]) => unknown): this {
+      this.handlers.set(event, handler as (...args: unknown[]) => unknown);
       return this;
-    }
-    full(id: string): string {
-      return id.startsWith(`${this.namespace}.`) ? id : `${this.namespace}.${id}`;
     }
     setInterval(): object {
       return {};
     }
     clearInterval(): void {}
-    setTimeout(): object {
-      return {};
-    }
-    clearTimeout(): void {}
     getObjectAsync(id: string): Promise<ioBroker.Object | null> {
-      return Promise.resolve(structuredClone(this.objects.get(this.full(id)) ?? null));
-    }
-    getForeignObjectAsync(id: string): Promise<ioBroker.Object | null> {
-      return Promise.resolve(structuredClone(this.objects.get(id) ?? null));
-    }
-    getForeignObjectsAsync(pattern: string, type?: string): Promise<Record<string, ioBroker.Object>> {
-      const prefix = pattern.replace(/\*$/, "");
-      const wanted = type ?? "state";
-      const found = [...this.objects].filter(([id, obj]) => id.startsWith(prefix) && obj.type === wanted);
-      return Promise.resolve(structuredClone(Object.fromEntries(found)));
+      return this.getForeignObjectAsync(this.full(id));
     }
     getAdapterObjectsAsync(): Promise<Record<string, ioBroker.Object>> {
       const own = [...this.objects].filter(([id]) => id.startsWith(`${this.namespace}.`));
-      return Promise.resolve(structuredClone(Object.fromEntries(own)));
+      return Promise.resolve(structuredClone(Object.fromEntries(own)) as unknown as Record<string, ioBroker.Object>);
     }
     setObjectNotExistsAsync(id: string, obj: ioBroker.Object): Promise<{ id: string }> {
-      if (!this.objects.has(this.full(id))) {
-        this.objects.set(this.full(id), { ...structuredClone(obj), _id: this.full(id) } as ioBroker.Object);
-      }
-      return Promise.resolve({ id: this.full(id) });
-    }
-    extendObject(id: string, patch: Record<string, unknown>): Promise<{ id: string }> {
-      const before = (this.objects.get(this.full(id)) ?? {}) as unknown as Record<string, unknown>;
-      const after: Record<string, unknown> = { ...before, _id: this.full(id) };
-      for (const [key, value] of Object.entries(patch)) {
-        const old = before[key];
-        after[key] =
-          typeof old === "object" && old !== null && typeof value === "object" && value !== null
-            ? { ...old, ...value }
-            : value;
-      }
-      this.objects.set(this.full(id), after as unknown as ioBroker.Object);
-      return Promise.resolve({ id: this.full(id) });
+      return this.objects.has(this.full(id))
+        ? Promise.resolve({ id: this.full(id) })
+        : this.setForeignObject(this.full(id), obj);
     }
     getStateAsync(id: string): Promise<ioBroker.State | null> {
-      return Promise.resolve(structuredClone(this.states.get(this.full(id)) ?? null));
+      return Promise.resolve(structuredClone(this.states.get(this.full(id)) ?? null) as ioBroker.State | null);
     }
     getStatesAsync(pattern: string): Promise<Record<string, ioBroker.State | null>> {
       // js-controller 7.2.5 getStates: every state object below the pattern, with its value or null.
@@ -87,13 +54,14 @@ vi.mock("@iobroker/adapter-core", () => {
       const found: Record<string, ioBroker.State | null> = {};
       for (const [id, obj] of this.objects) {
         if (obj.type === "state" && id.startsWith(prefix)) {
-          found[id] = structuredClone(this.states.get(id) ?? null);
+          found[id] = structuredClone(this.states.get(id) ?? null) as ioBroker.State | null;
         }
       }
       return Promise.resolve(found);
     }
     setState(id: string, state: ioBroker.SettableState): Promise<string> {
-      this.states.set(this.full(id), { ...(state as ioBroker.State), ts: Date.now(), lc: Date.now() });
+      const stored: ioBroker.State = { ...(state as ioBroker.State), ts: Date.now(), lc: Date.now() };
+      this.states.set(this.full(id), stored);
       return Promise.resolve(this.full(id));
     }
     setStateChangedAsync(id: string, state: ioBroker.SettableState): Promise<{ id: string; notChanged: boolean }> {
@@ -102,7 +70,8 @@ vi.mock("@iobroker/adapter-core", () => {
       if (before && before.val === next.val && before.ack === (next.ack ?? false)) {
         return Promise.resolve({ id: this.full(id), notChanged: true });
       }
-      this.states.set(this.full(id), { ...next, ts: Date.now(), lc: Date.now() });
+      const stored: ioBroker.State = { ...next, ts: Date.now(), lc: Date.now() };
+      this.states.set(this.full(id), stored);
       return Promise.resolve({ id: this.full(id), notChanged: false });
     }
   }
