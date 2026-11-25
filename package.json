@@ -57,7 +57,7 @@
     "rimraf": "^6.1.4",
     "typescript": "~6.0.3",
     "vitest": "^5.1.0",
-    "ws": "^8.22.2"
+    "ws": "^8.23.0"
   },
   "main": "build/main.js",
   "files": [
